@@ -603,7 +603,7 @@ export function EmployeeDashboard({
                         </span>
                         {canEdit ? (
                           <Badge variant="secondary" className="text-xs">
-                            Pending ({cancelTimeLeft !== null ? `${cancelTimeLeft}m` : "15m"})
+                            Pending
                           </Badge>
                         ) : (
                           <Badge variant="default" className="text-xs bg-green-600">
