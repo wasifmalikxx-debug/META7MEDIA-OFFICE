@@ -49,17 +49,7 @@ export default async function ProfilePage() {
             <CardTitle className="text-base">Work Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <InfoRow label="Designation" value={user.designation || "—"} />
             <InfoRow label="Department" value={user.department?.name || "—"} />
-            <InfoRow label="Team" value={user.team?.name || "—"} />
-            <InfoRow
-              label="Manager"
-              value={
-                user.manager
-                  ? `${user.manager.firstName} ${user.manager.lastName}`
-                  : "—"
-              }
-            />
             <InfoRow
               label="Joining Date"
               value={format(new Date(user.joiningDate), "MMM d, yyyy")}
