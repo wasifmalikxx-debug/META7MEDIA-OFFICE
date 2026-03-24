@@ -20,6 +20,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 
 interface EmployeeDashboardProps {
+  employeeName: string;
   todayAttendance: any;
   leaveBalance: any;
   currentPayroll: any;
@@ -34,6 +35,7 @@ interface EmployeeDashboardProps {
 }
 
 export function EmployeeDashboard({
+  employeeName,
   todayAttendance,
   leaveBalance,
   currentPayroll,
@@ -156,7 +158,7 @@ export function EmployeeDashboard({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="My Dashboard"
+        title={`Welcome Back, ${employeeName}`}
         description={format(new Date(), "EEEE, MMMM d, yyyy")}
       />
 

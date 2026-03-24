@@ -124,12 +124,14 @@ export default async function DashboardPage() {
     monthAttendances.reduce((sum, a) => sum + (a.workedMinutes || 0), 0) / 60
   );
 
-  const salaryStructure = await prisma.salaryStructure.findUnique({
-    where: { userId },
-  });
+  const [salaryStructure, currentUser] = await Promise.all([
+    prisma.salaryStructure.findUnique({ where: { userId } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { firstName: true } }),
+  ]);
 
   return (
     <EmployeeDashboard
+      employeeName={currentUser?.firstName || ""}
       todayAttendance={todayAttendance}
       leaveBalance={leaveBalance}
       currentPayroll={currentPayroll}
