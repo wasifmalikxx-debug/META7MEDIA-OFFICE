@@ -320,7 +320,7 @@ export function EmployeeDashboard({
 
   // liveTotalMinutes already includes all completed days + today's live hours
   const earnedFromHours = Math.round((liveTotalMinutes / 60) * hourlyRate);
-  const salaryTillNow = Math.max(0, earnedFromHours + totalIncentivesAmount - totalFinesAmount);
+  const salaryTillNow = Math.round(earnedFromHours + totalIncentivesAmount - totalFinesAmount);
 
   return (
     <div className="space-y-6">
