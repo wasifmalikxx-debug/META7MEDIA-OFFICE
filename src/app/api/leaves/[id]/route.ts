@@ -19,6 +19,19 @@ export async function DELETE(
   }
   if (leave.status !== "PENDING") return error("Can only cancel pending leaves");
 
+  // For same-day leaves, employees can only cancel within 15 minutes
+  const isAdmin = (session.user as any).role === "SUPER_ADMIN";
+  if (!isAdmin && leave.userId === session.user.id) {
+    const leaveDate = new Date(leave.startDate); leaveDate.setHours(0,0,0,0);
+    const today = new Date(); today.setHours(0,0,0,0);
+    if (leaveDate.getTime() === today.getTime()) {
+      const minutesSinceCreated = Math.floor((Date.now() - leave.createdAt.getTime()) / 60000);
+      if (minutesSinceCreated > 15) {
+        return error("Same-day leave can only be cancelled within 15 minutes of applying");
+      }
+    }
+  }
+
   await prisma.leaveRequest.delete({ where: { id } });
   return json({ success: true });
 }

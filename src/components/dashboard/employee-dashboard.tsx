@@ -463,7 +463,13 @@ export function EmployeeDashboard({
               {leaves.map((leave: any) => {
                 const leaveDate = new Date(leave.startDate);
                 const today = new Date(); today.setHours(0,0,0,0);
-                const canEdit = leaveDate >= today && leave.status === "PENDING";
+                const isToday = leaveDate.getTime() === today.getTime();
+                const isFuture = leaveDate > today;
+                const createdAt = new Date(leave.createdAt);
+                const minutesSinceCreated = Math.floor((Date.now() - createdAt.getTime()) / 60000);
+                // Future leaves: always editable. Today's leaves: only within 15 min of applying
+                const canEdit = leave.status === "PENDING" && (isFuture || (isToday && minutesSinceCreated <= 15));
+                const cancelTimeLeft = isToday && canEdit ? Math.max(0, 15 - minutesSinceCreated) : null;
                 return (
                   <div key={leave.id} className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-muted/50 border-b last:border-0">
                     <div>
@@ -488,7 +494,10 @@ export function EmployeeDashboard({
                       </p>
                     </div>
                     {canEdit && (
-                      <div className="flex gap-1">
+                      <div className="flex items-center gap-1">
+                        {cancelTimeLeft !== null && (
+                          <span className="text-xs text-muted-foreground mr-1">{cancelTimeLeft}m left</span>
+                        )}
                         <Button size="sm" variant="ghost" onClick={() => openEditLeave(leave)}>
                           Edit
                         </Button>
