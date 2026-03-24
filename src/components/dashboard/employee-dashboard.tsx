@@ -554,9 +554,9 @@ export function EmployeeDashboard({
       {/* Monthly stats */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between px-1">
-          <h3 className="text-sm font-medium text-muted-foreground">
+          <h2 className="text-lg font-bold">
             {new Date().toLocaleString("en-US", { month: "long", year: "numeric" })}
-          </h3>
+          </h2>
           <p className="text-[10px] text-muted-foreground/60">Resets on 1st of every month</p>
         </div>
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">

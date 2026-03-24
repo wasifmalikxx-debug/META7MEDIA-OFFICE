@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
         });
         if (activeAttendance) {
           const now = new Date();
-          const checkIn = new Date(activeAttendance.checkIn);
+          const checkIn = activeAttendance.checkIn ? new Date(activeAttendance.checkIn) : now;
           const totalMinutes = Math.floor((now.getTime() - checkIn.getTime()) / 60000);
           // Subtract break time if applicable
           let breakMinutes = 0;
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
             where: { id: activeAttendance.id },
             data: {
               checkOut: now,
-              totalHours: Math.round((workingMinutes / 60) * 100) / 100,
+              workedMinutes: workingMinutes,
               status: "HALF_DAY",
             },
           });
