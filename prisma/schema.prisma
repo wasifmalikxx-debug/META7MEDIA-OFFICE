@@ -17,10 +17,10 @@ enum Role {
 }
 
 enum EmployeeStatus {
-  ACTIVE
-  INACTIVE
+  HIRED
+  PROBATION
+  RESIGNED
   TERMINATED
-  ON_LEAVE
 }
 
 enum AttendanceStatus {
@@ -103,9 +103,15 @@ model User {
   phone        String?
   profilePhoto String?
   role         Role           @default(EMPLOYEE)
-  status       EmployeeStatus @default(ACTIVE)
+  status       EmployeeStatus @default(HIRED)
   joiningDate  DateTime
+  resignDate   DateTime?
   designation  String?
+
+  // Bank account details
+  bankName      String?
+  accountNumber String?
+  accountTitle  String?
 
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
@@ -191,6 +197,8 @@ model Attendance {
   breakStart DateTime?
   breakEnd   DateTime?
   breakMinutes Int?
+
+  informedAbsent Boolean @default(false) // employee informed about absence
 
   notes         String?
   isManualEntry Boolean @default(false)

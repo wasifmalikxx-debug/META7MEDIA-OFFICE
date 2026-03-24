@@ -29,7 +29,7 @@ export default async function AttendancePage() {
       orderBy: { date: "desc" },
     });
     employees = await prisma.user.findMany({
-      where: { status: "ACTIVE" },
+      where: { status: { in: ["HIRED", "PROBATION"] } },
       select: { id: true, firstName: true, lastName: true, employeeId: true },
       orderBy: { firstName: "asc" },
     });

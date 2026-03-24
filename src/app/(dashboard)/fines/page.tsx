@@ -27,7 +27,7 @@ export default async function FinesPage() {
     }),
     isAdmin
       ? prisma.user.findMany({
-          where: { status: "ACTIVE" },
+          where: { status: { in: ["HIRED", "PROBATION"] } },
           select: { id: true, firstName: true, lastName: true, employeeId: true },
           orderBy: { firstName: "asc" },
         })

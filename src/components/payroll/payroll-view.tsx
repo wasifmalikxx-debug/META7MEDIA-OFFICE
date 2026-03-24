@@ -73,156 +73,139 @@ export function PayrollView({
   const totalNet = records.reduce((s, r) => s + r.netSalary, 0);
   const totalFines = records.reduce((s, r) => s + r.totalFines, 0);
   const totalIncentives = records.reduce((s, r) => s + r.totalIncentives, 0);
-
-  const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-    DRAFT: "outline",
-    CALCULATED: "secondary",
-    APPROVED: "default",
-    PAID: "default",
-    DISPUTED: "destructive",
-  };
+  const monthName = format(new Date(currentYear, currentMonth - 1), "MMMM yyyy");
 
   return (
     <div className="space-y-4">
       {isAdmin && (
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <p className="text-xs text-muted-foreground">Total Net Payable</p>
-              <p className="text-lg font-bold">PKR {totalNet.toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <p className="text-xs text-muted-foreground">Total Fines</p>
-              <p className="text-lg font-bold text-red-600">
-                PKR {totalFines.toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <p className="text-xs text-muted-foreground">Total Incentives</p>
-              <p className="text-lg font-bold text-green-600">
-                PKR {totalIncentives.toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3 flex items-center justify-center">
-              <Button onClick={handleGenerate} disabled={generating} className="gap-2">
-                <Calculator className="size-4" />
-                {generating ? "Generating..." : "Generate Payroll"}
-              </Button>
-            </CardContent>
-          </Card>
+        <div className="flex items-center justify-between">
+          <div className="flex gap-4 text-sm">
+            <span>Total Payable: <strong>PKR {totalNet.toLocaleString()}</strong></span>
+            <span className="text-red-600">Fines: PKR {totalFines.toLocaleString()}</span>
+            <span className="text-green-600">Bonuses: PKR {totalIncentives.toLocaleString()}</span>
+          </div>
+          <Button onClick={handleGenerate} disabled={generating} size="sm" className="gap-2">
+            <Calculator className="size-4" />
+            {generating ? "Generating..." : "Generate Payroll"}
+          </Button>
         </div>
       )}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base">
-            Payroll — {format(new Date(currentYear, currentMonth - 1), "MMMM yyyy")}
+            Salary Sheet — {monthName}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Monthly Salary</TableHead>
-                <TableHead>Present</TableHead>
-                <TableHead>Absent</TableHead>
-                <TableHead>Earned</TableHead>
-                <TableHead>Fines</TableHead>
-                <TableHead>Incentives</TableHead>
-                <TableHead>Deductions</TableHead>
-                <TableHead>Net Salary</TableHead>
-                <TableHead>Status</TableHead>
-                {isAdmin && <TableHead>Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {records.length === 0 ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={isAdmin ? 11 : 10}
-                    className="text-center text-muted-foreground"
-                  >
-                    No payroll records. {isAdmin && "Click 'Generate Payroll' to start."}
-                  </TableCell>
+                  <TableHead className="whitespace-nowrap">Employee</TableHead>
+                  <TableHead className="whitespace-nowrap">Status</TableHead>
+                  <TableHead className="whitespace-nowrap text-right">Salary</TableHead>
+                  <TableHead className="whitespace-nowrap text-center">Absents</TableHead>
+                  <TableHead className="whitespace-nowrap text-right">Absent Fine</TableHead>
+                  <TableHead className="whitespace-nowrap text-right">After Fine</TableHead>
+                  <TableHead className="whitespace-nowrap text-right">Extra Bonus</TableHead>
+                  <TableHead className="whitespace-nowrap text-right font-bold">Final Salary</TableHead>
+                  <TableHead className="whitespace-nowrap">Account Details</TableHead>
+                  {isAdmin && <TableHead>Actions</TableHead>}
                 </TableRow>
-              ) : (
-                records.map((rec) => (
-                  <TableRow key={rec.id} className="cursor-pointer" onClick={() => router.push(`/payroll/${rec.id}`)}>
-                    <TableCell className="text-sm">
-                      <div>
-                        {rec.user.firstName} {rec.user.lastName}
-                        <span className="text-muted-foreground text-xs block">
-                          {rec.user.employeeId}
-                        </span>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {records.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={isAdmin ? 10 : 9}
+                      className="text-center text-muted-foreground"
+                    >
+                      No payroll records. {isAdmin && "Click 'Generate Payroll' to start."}
                     </TableCell>
-                    <TableCell className="text-sm">
-                      PKR {rec.monthlySalary.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-sm">{rec.presentDays}</TableCell>
-                    <TableCell className="text-sm">{rec.absentDays}</TableCell>
-                    <TableCell className="text-sm">
-                      PKR {rec.earnedSalary.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-sm text-red-600">
-                      {rec.totalFines > 0 ? `- ${rec.totalFines.toLocaleString()}` : "0"}
-                    </TableCell>
-                    <TableCell className="text-sm text-green-600">
-                      {rec.totalIncentives > 0
-                        ? `+ ${rec.totalIncentives.toLocaleString()}`
-                        : "0"}
-                    </TableCell>
-                    <TableCell className="text-sm text-red-600">
-                      {rec.totalDeductions > 0
-                        ? `- ${rec.totalDeductions.toLocaleString()}`
-                        : "0"}
-                    </TableCell>
-                    <TableCell className="text-sm font-bold">
-                      PKR {rec.netSalary.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={statusColors[rec.status] || "outline"}
-                        className="text-xs"
-                      >
-                        {rec.status}
-                      </Badge>
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                          {rec.status === "DRAFT" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleStatusUpdate(rec.id, "APPROVED")}
-                            >
-                              <CheckCircle className="size-3 mr-1" /> Approve
-                            </Button>
-                          )}
-                          {rec.status === "APPROVED" && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleStatusUpdate(rec.id, "PAID")}
-                            >
-                              <Wallet className="size-3 mr-1" /> Mark Paid
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    )}
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  records.map((rec) => {
+                    const absentFine = rec.totalDeductions - rec.totalFines;
+                    const afterFine = rec.monthlySalary - (absentFine > 0 ? absentFine : 0);
+                    return (
+                      <TableRow key={rec.id}>
+                        <TableCell className="whitespace-nowrap">
+                          <div>
+                            <span className="text-sm font-medium">
+                              {rec.user.firstName} {rec.user.lastName}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              rec.status === "PAID"
+                                ? "default"
+                                : rec.status === "APPROVED"
+                                ? "default"
+                                : "outline"
+                            }
+                            className="text-xs"
+                          >
+                            {rec.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          Rs{rec.monthlySalary.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-center text-sm">
+                          {rec.absentDays}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-red-600">
+                          {absentFine > 0 ? `Rs${Math.round(absentFine).toLocaleString()}` : "Rs0"}
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          Rs{Math.round(afterFine > 0 ? afterFine : rec.earnedSalary).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-green-600">
+                          {rec.totalIncentives > 0
+                            ? `Rs${rec.totalIncentives.toLocaleString()}`
+                            : "Rs0"}
+                        </TableCell>
+                        <TableCell className="text-right text-sm font-bold">
+                          Rs{rec.netSalary.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                          {rec.user.bankName
+                            ? `${rec.user.bankName} | ${rec.user.accountNumber || ""} | ${rec.user.accountTitle || ""}`
+                            : "—"}
+                        </TableCell>
+                        {isAdmin && (
+                          <TableCell>
+                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                              {rec.status === "DRAFT" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleStatusUpdate(rec.id, "APPROVED")}
+                                >
+                                  <CheckCircle className="size-3 mr-1" /> Approve
+                                </Button>
+                              )}
+                              {rec.status === "APPROVED" && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleStatusUpdate(rec.id, "PAID")}
+                                >
+                                  <Wallet className="size-3 mr-1" /> Paid
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

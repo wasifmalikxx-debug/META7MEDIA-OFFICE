@@ -205,7 +205,7 @@ export async function generatePayrollForAll(
   generatedBy: string
 ) {
   const employees = await prisma.user.findMany({
-    where: { status: "ACTIVE", salaryStructure: { isNot: null } },
+    where: { status: { in: ["HIRED", "PROBATION"] }, salaryStructure: { isNot: null } },
     select: { id: true },
   });
 

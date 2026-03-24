@@ -24,7 +24,7 @@ export default async function DashboardPage() {
       pendingLeaves,
       announcements,
     ] = await Promise.all([
-      prisma.user.count({ where: { status: "ACTIVE" } }),
+      prisma.user.count({ where: { status: { in: ["HIRED", "PROBATION"] } } }),
       prisma.attendance.findMany({
         where: { date: today },
         include: { user: { select: { firstName: true, lastName: true, employeeId: true } } },

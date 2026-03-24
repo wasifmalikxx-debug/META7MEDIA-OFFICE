@@ -59,6 +59,11 @@ export async function PATCH(
     const updateData: any = { ...parsed };
     if (parsed.joiningDate) updateData.joiningDate = new Date(parsed.joiningDate);
     delete updateData.monthlySalary;
+    // Handle bank details
+    if (body.bankName !== undefined) updateData.bankName = body.bankName || null;
+    if (body.accountNumber !== undefined) updateData.accountNumber = body.accountNumber || null;
+    if (body.accountTitle !== undefined) updateData.accountTitle = body.accountTitle || null;
+    if (body.status) updateData.status = body.status;
 
     const employee = await prisma.user.update({
       where: { id },

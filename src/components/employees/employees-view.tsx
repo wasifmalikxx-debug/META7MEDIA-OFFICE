@@ -45,10 +45,14 @@ const emptyForm = {
   lastName: "",
   phone: "",
   role: "EMPLOYEE",
+  status: "HIRED",
   designation: "",
   departmentId: "",
   joiningDate: "",
   monthlySalary: 0,
+  bankName: "",
+  accountNumber: "",
+  accountTitle: "",
 };
 
 export function EmployeesView({ employees, departments }: EmployeesViewProps) {
@@ -99,10 +103,13 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
       firstName: emp.firstName,
       lastName: emp.lastName,
       phone: emp.phone || "",
-      role: emp.role,
+      status: emp.status,
       designation: emp.designation || "",
       departmentId: emp.department?.id || "",
       monthlySalary: emp.salaryStructure?.monthlySalary || 0,
+      bankName: emp.bankName || "",
+      accountNumber: emp.accountNumber || "",
+      accountTitle: emp.accountTitle || "",
     });
     setEditOpen(true);
   }
@@ -247,15 +254,54 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Monthly Salary (PKR)</Label>
+                  <Label>Status</Label>
+                  <Select
+                    value={form.status}
+                    onValueChange={(v) => v && setForm({ ...form, status: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="HIRED">Hired</SelectItem>
+                      <SelectItem value="PROBATION">Probation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Monthly Salary (PKR)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.monthlySalary}
+                  onChange={(e) =>
+                    setForm({ ...form, monthlySalary: parseFloat(e.target.value) || 0 })
+                  }
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Bank Name</Label>
                   <Input
-                    type="number"
-                    min="0"
-                    value={form.monthlySalary}
-                    onChange={(e) =>
-                      setForm({ ...form, monthlySalary: parseFloat(e.target.value) || 0 })
-                    }
-                    required
+                    value={form.bankName}
+                    onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+                    placeholder="e.g. Meezan Bank"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Number</Label>
+                  <Input
+                    value={form.accountNumber}
+                    onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Title</Label>
+                  <Input
+                    value={form.accountTitle}
+                    onChange={(e) => setForm({ ...form, accountTitle: e.target.value })}
                   />
                 </div>
               </div>
@@ -302,14 +348,31 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={editForm.status}
+                    onValueChange={(v) => v && setEditForm({ ...editForm, status: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="HIRED">Hired</SelectItem>
+                      <SelectItem value="PROBATION">Probation</SelectItem>
+                      <SelectItem value="RESIGNED">Resigned</SelectItem>
+                      <SelectItem value="TERMINATED">Terminated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label>Designation</Label>
                   <Input
                     value={editForm.designation}
                     onChange={(e) => setEditForm({ ...editForm, designation: e.target.value })}
                   />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Department</Label>
                   <Select
@@ -328,16 +391,39 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Monthly Salary (PKR)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={editForm.monthlySalary}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
+                  }
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>Monthly Salary (PKR)</Label>
+                  <Label>Bank Name</Label>
                   <Input
-                    type="number"
-                    min="0"
-                    value={editForm.monthlySalary}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
-                    }
-                    required
+                    value={editForm.bankName}
+                    onChange={(e) => setEditForm({ ...editForm, bankName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Number</Label>
+                  <Input
+                    value={editForm.accountNumber}
+                    onChange={(e) => setEditForm({ ...editForm, accountNumber: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Title</Label>
+                  <Input
+                    value={editForm.accountTitle}
+                    onChange={(e) => setEditForm({ ...editForm, accountTitle: e.target.value })}
                   />
                 </div>
               </div>
@@ -383,7 +469,13 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={emp.status === "ACTIVE" ? "default" : "destructive"}
+                      variant={
+                        emp.status === "HIRED"
+                          ? "default"
+                          : emp.status === "PROBATION"
+                          ? "secondary"
+                          : "destructive"
+                      }
                       className="text-xs"
                     >
                       {emp.status}
