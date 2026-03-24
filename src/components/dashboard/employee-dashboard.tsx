@@ -30,6 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CalendarPlus } from "lucide-react";
+import { AnimatedNumber } from "@/components/common/animated-number";
 
 interface EmployeeDashboardProps {
   employeeName: string;
@@ -75,10 +76,10 @@ export function EmployeeDashboard({
   const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
-  // Real-time salary ticker — updates every 60 seconds
+  // Real-time salary ticker — updates every 30 seconds for smooth animation
   useEffect(() => {
     if (attendance?.checkIn && !attendance?.checkOut) {
-      const interval = setInterval(() => setTick((t) => t + 1), 60000);
+      const interval = setInterval(() => setTick((t) => t + 1), 30000);
       return () => clearInterval(interval);
     }
   }, [attendance?.checkIn, attendance?.checkOut]);
@@ -592,12 +593,38 @@ export function EmployeeDashboard({
             icon={Gift}
             description="This month"
           />
-          <StatCard
-            title="Estimated Salary"
-            value={showSalary ? `PKR ${salaryTillNow.toLocaleString()}` : "PKR ****"}
-            icon={Wallet}
-            description="Earned so far"
-          />
+          <Card>
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground font-medium">Estimated Salary</p>
+                  <p className="text-2xl font-bold tracking-tight">
+                    {showSalary ? (
+                      <AnimatedNumber value={salaryTillNow} prefix="PKR " />
+                    ) : (
+                      "PKR ****"
+                    )}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-2.5">
+                  <Wallet className="size-5 text-muted-foreground" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {attendance?.checkIn && !attendance?.checkOut ? (
+                  <span className="text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                    </span>
+                    Live — updating every minute
+                  </span>
+                ) : (
+                  "Earned so far"
+                )}
+              </p>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
