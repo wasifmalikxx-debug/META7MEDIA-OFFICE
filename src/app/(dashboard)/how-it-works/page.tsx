@@ -265,20 +265,19 @@ export default async function HowItWorksPage() {
         </CardContent>
       </Card>
 
-      {/* Device Security */}
+      {/* Login Security */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
-            <ShieldCheck className="size-5" /> Device Security
+            <ShieldCheck className="size-5" /> Login Security
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 text-sm">
+        <CardContent className="text-sm">
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>First login from any new device requires <strong>CEO approval</strong></li>
-            <li>Your browser fingerprint is captured and stored securely</li>
-            <li>Once approved, you can login freely from that device</li>
-            <li>If you try from a different device (e.g., phone at home), it will be blocked until approved</li>
-            <li>CEO can revoke device access at any time</li>
+            <li>Your first login requires <strong>one-time CEO approval</strong></li>
+            <li>Once approved, you can login daily without any issues</li>
+            <li>Logging in from any other device will be <strong>automatically blocked</strong></li>
+            <li>CEO can revoke access at any time</li>
           </ul>
         </CardContent>
       </Card>
