@@ -40,7 +40,8 @@ export async function PATCH(
     if (leave.userId !== session.user.id) return error("Forbidden", 403);
     if (leave.status !== "PENDING") return error("Can only edit pending leaves");
     const startDate = new Date(body.startDate);
-    if (startDate <= new Date()) return error("Can only edit future leaves");
+    const today = new Date(); today.setHours(0,0,0,0);
+    if (startDate < today) return error("Can only edit today's or future leaves");
 
     const updated = await prisma.leaveRequest.update({
       where: { id },

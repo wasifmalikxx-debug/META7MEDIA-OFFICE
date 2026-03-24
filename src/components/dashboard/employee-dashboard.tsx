@@ -328,7 +328,10 @@ export function EmployeeDashboard({
 
       {/* Apply Leave */}
       <div className="flex gap-2">
-        <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <Dialog open={leaveOpen} onOpenChange={(open) => {
+          setLeaveOpen(open);
+          if (!open) { setEditLeaveId(null); setLeaveForm({ type: "FULL", date: "", reason: "" }); }
+        }}>
           <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2" />}>
             <CalendarPlus className="size-4" /> Apply Leave
           </DialogTrigger>
@@ -459,8 +462,8 @@ export function EmployeeDashboard({
             <div className="space-y-2">
               {leaves.map((leave: any) => {
                 const leaveDate = new Date(leave.startDate);
-                const isFuture = leaveDate > new Date();
-                const canEdit = isFuture && leave.status === "PENDING";
+                const today = new Date(); today.setHours(0,0,0,0);
+                const canEdit = leaveDate >= today && leave.status === "PENDING";
                 return (
                   <div key={leave.id} className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-muted/50 border-b last:border-0">
                     <div>
