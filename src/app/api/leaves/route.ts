@@ -46,6 +46,11 @@ export async function POST(request: NextRequest) {
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(0, 0, 0, 0);
 
+    // Reason is required
+    if (!parsed.reason || !parsed.reason.trim()) {
+      return error("Please provide a valid reason for half day leave.");
+    }
+
     let totalDays: number;
     if (parsed.leaveType === "HALF_DAY") {
       totalDays = 0.5;
@@ -53,6 +58,12 @@ export async function POST(request: NextRequest) {
       totalDays = Math.floor(
         (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
       ) + 1;
+    }
+
+    // Block past dates
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (startDate < today) {
+      return error("Cannot apply leave for past dates.");
     }
 
     // Block duplicate leave for same date

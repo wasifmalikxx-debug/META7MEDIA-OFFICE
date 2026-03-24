@@ -469,23 +469,27 @@ export function EmployeeDashboard({
                     <Input
                       type="date"
                       value={leaveForm.date}
+                      min={new Date().toISOString().split("T")[0]}
                       onChange={(e) => setLeaveForm({ ...leaveForm, date: e.target.value })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Reason (optional)</Label>
+                    <Label className="text-xs">Reason <span className="text-red-500">*</span></Label>
                     <Input
                       value={leaveForm.reason}
                       onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                      placeholder="e.g. Personal work"
+                      placeholder="e.g. Doctor appointment, Family emergency"
                     />
+                    {leaveForm.date && !leaveForm.reason.trim() && (
+                      <p className="text-xs text-red-500">Please provide a valid reason for half day leave.</p>
+                    )}
                   </div>
                   {leaveBlockMsg && (
                     <div className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-2.5 text-sm text-red-600 dark:text-red-400">
                       {leaveBlockMsg}
                     </div>
                   )}
-                  <Button onClick={handleApplyLeave} disabled={loading || !!leaveBlockMsg} className="w-full">
+                  <Button onClick={handleApplyLeave} disabled={loading || !!leaveBlockMsg || !leaveForm.reason.trim()} className="w-full">
                     {loading ? "Applying..." : "Submit Half Day"}
                   </Button>
                 </div>
