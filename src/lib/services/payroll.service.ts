@@ -84,27 +84,39 @@ export async function generatePayrollForEmployee(
     }
   }
 
-  // Auto-apply paid leaves: 1 paid leave = 1 full absent OR 2 half days
+  // Paid leave budget: 1.0 day per month
+  // Half day = 0.5 from budget, absent = uses remaining budget, then deducted
   const settings = await prisma.officeSettings.findUnique({
     where: { id: "default" },
   });
-  const paidLeaveAllowance = settings?.paidLeavesPerMonth ?? 1;
+  const paidLeaveBudget = settings?.paidLeavesPerMonth ?? 1; // 1.0 day
 
-  // Convert absents + half days into a combined "leave units" to cover
-  // 1 full absent = 1 unit, 1 half day = 0.5 units
-  let remainingAllowance = paidLeaveAllowance;
+  let remainingBudget = paidLeaveBudget;
 
-  // First cover full absents
-  const coveredAbsents = Math.min(absentDays, Math.floor(remainingAllowance));
-  absentDays = absentDays - coveredAbsents;
-  remainingAllowance -= coveredAbsents;
-
-  // Then cover half days with remaining allowance (each half day = 0.5)
-  const coveredHalfDays = Math.min(halfDays, Math.floor(remainingAllowance / 0.5));
+  // Half days consume 0.5 each from budget
+  const coveredHalfDays = Math.min(halfDays, Math.floor(remainingBudget / 0.5));
   const deductibleHalfDays = halfDays - coveredHalfDays;
-  remainingAllowance -= coveredHalfDays * 0.5;
+  remainingBudget -= coveredHalfDays * 0.5;
 
-  const autoPaidLeaves = coveredAbsents + coveredHalfDays * 0.5;
+  // Absences consume remaining budget (partial coverage possible)
+  // e.g., if 0.5 budget left and 1 absent → 0.5 covered, 0.5 deducted
+  let coveredAbsentDays = 0;
+  let partialAbsentCoverage = 0;
+  if (absentDays > 0 && remainingBudget > 0) {
+    if (remainingBudget >= absentDays) {
+      coveredAbsentDays = absentDays;
+      remainingBudget -= absentDays;
+    } else {
+      // Partial: e.g., 0.5 budget covers 0.5 of first absent day
+      coveredAbsentDays = Math.floor(remainingBudget);
+      partialAbsentCoverage = remainingBudget - coveredAbsentDays; // e.g., 0.5
+      remainingBudget = 0;
+    }
+  }
+  const uncoveredAbsentDays = absentDays - coveredAbsentDays;
+  absentDays = uncoveredAbsentDays;
+
+  const autoPaidLeaves = coveredAbsentDays + partialAbsentCoverage + coveredHalfDays * 0.5;
 
   // Get approved leaves for the month (manual leave requests)
   const leaves = await prisma.leaveRequest.findMany({
@@ -158,14 +170,16 @@ export async function generatePayrollForEmployee(
   }
   totalIncentives = roundMoney(totalIncentives);
 
-  // Calculate
-  // covered half days count as full present, deductible half days count as 0.5
-  const effectivePresentDays = presentDays + coveredHalfDays + deductibleHalfDays * 0.5 + paidLeaveDays;
-  const earnedSalary = roundMoney(effectivePresentDays * dailyRate);
-
+  // Calculate salary
+  // Gross = monthly salary
+  // Deductions = uncovered absences + uncovered half days + partial absent + fines + tax
   const halfDayDeductions = roundMoney(deductibleHalfDays * dailyRate * 0.5);
   const leaveDeductions = roundMoney(unpaidLeaveDays * dailyRate);
-  const absentDeductions = roundMoney(absentDays * dailyRate);
+  // Uncovered absents deducted fully, partial coverage deducts the uncovered portion
+  const absentDeductions = roundMoney(
+    absentDays * dailyRate + (partialAbsentCoverage > 0 ? (1 - partialAbsentCoverage) * dailyRate : 0)
+  );
+  const earnedSalary = roundMoney(salary.monthlySalary);
   const taxDeduction = roundMoney(earnedSalary * (salary.taxPercent / 100));
   const fixedDeductions = roundMoney(
     salary.socialSecurity + salary.otherDeductions
@@ -175,7 +189,7 @@ export async function generatePayrollForEmployee(
   );
 
   const netSalary = roundMoney(
-    Math.max(0, earnedSalary + totalIncentives - totalDeductions)
+    Math.max(0, salary.monthlySalary + totalIncentives - totalDeductions)
   );
 
   // Upsert payroll record

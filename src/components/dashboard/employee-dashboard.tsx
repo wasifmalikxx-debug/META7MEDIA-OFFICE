@@ -66,7 +66,7 @@ export function EmployeeDashboard({
   const [attendance, setAttendance] = useState(todayAttendance);
   const [showSalary, setShowSalary] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
-  const [leaveForm, setLeaveForm] = useState({ type: "FULL", date: "", reason: "" });
+  const [leaveForm, setLeaveForm] = useState({ type: "HALF", date: "", reason: "" });
   const [leaves, setLeaves] = useState(initialLeaveRequests);
   const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
 
@@ -80,10 +80,10 @@ export function EmployeeDashboard({
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          leaveType: leaveForm.type === "HALF" ? "HALF_DAY" : "CASUAL",
+          leaveType: "HALF_DAY",
           startDate: leaveForm.date,
           endDate: leaveForm.date,
-          reason: leaveForm.reason || (leaveForm.type === "HALF" ? "Half day leave" : "Full day leave"),
+          reason: leaveForm.reason || "Half day leave",
         }),
       });
       const data = await res.json();
@@ -128,18 +128,19 @@ export function EmployeeDashboard({
   const hasCheckedOut = !!attendance?.checkOut;
   const onBreak = !!attendance?.breakStart && !attendance?.breakEnd;
 
-  // Leave policy: 1 paid leave per month, 2 half days = 1 full leave
+  // Paid leave budget: 1.0 day per month. Half day = 0.5, absent = uses remaining budget
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   const thisMonthLeaves = leaves.filter((l: any) => {
     const d = new Date(l.startDate);
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear && l.status !== "REJECTED";
   });
-  const fullDayLeaves = thisMonthLeaves.filter((l: any) => l.leaveType !== "HALF_DAY");
   const halfDayLeaves = thisMonthLeaves.filter((l: any) => l.leaveType === "HALF_DAY");
-  const paidLeaveUsed = fullDayLeaves.length > 0 ? 1 : (halfDayLeaves.length >= 2 ? 1 : 0);
-  const paidLeaveRemaining = 1 - paidLeaveUsed;
   const halfDaysUsed = halfDayLeaves.length;
+  // Budget consumed: each half day = 0.5, absences auto-consume from budget too
+  const budgetUsedByHalfDays = halfDaysUsed * 0.5;
+  const paidLeaveBudget = 1.0;
+  const paidBudgetRemaining = Math.max(0, paidLeaveBudget - budgetUsedByHalfDays - (monthAbsent > 0 ? Math.min(paidLeaveBudget - budgetUsedByHalfDays, monthAbsent) : 0));
 
   // Check if leave already exists for selected date
   function getLeaveBlockMessage(): string | null {
@@ -149,17 +150,10 @@ export function EmployeeDashboard({
       const ld = l.startDate.split("T")[0];
       return ld === selectedDate && l.status !== "REJECTED" && l.id !== editLeaveId;
     });
-    if (!existingLeave) return null;
-    if (existingLeave.leaveType === "HALF_DAY" && leaveForm.type === "HALF") {
-      return "You already took a half day leave on this date.";
+    if (existingLeave) {
+      return "You already have a leave on this date.";
     }
-    if (existingLeave.leaveType !== "HALF_DAY") {
-      return "You already have a full day leave on this date.";
-    }
-    if (leaveForm.type === "FULL" && existingLeave.leaveType === "HALF_DAY") {
-      return "You already have a half day leave on this date. Cancel it first to apply full day.";
-    }
-    return "You already have a leave on this date.";
+    return null;
   }
   const leaveBlockMsg = getLeaveBlockMessage();
   const breakDone = !!attendance?.breakEnd;
@@ -361,95 +355,93 @@ export function EmployeeDashboard({
         </CardContent>
       </Card>
 
-      {/* Apply Leave */}
-      <div className="flex gap-2">
-        <Dialog open={leaveOpen} onOpenChange={(open) => {
-          setLeaveOpen(open);
-          if (!open) { setEditLeaveId(null); setLeaveForm({ type: "FULL", date: "", reason: "" }); }
-        }}>
-          <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2" />}>
-            <CalendarPlus className="size-4" /> Apply Leave
-          </DialogTrigger>
-          <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle>Apply for Leave</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              {/* Leave Policy Summary */}
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Leave Policy — This Month</p>
-                <div className="flex justify-between text-sm">
-                  <span>Paid Leave</span>
-                  <span className={paidLeaveRemaining > 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
-                    {paidLeaveRemaining} of 1 remaining
-                  </span>
+      {/* Paid Leave Budget Card */}
+      <Card>
+        <CardContent className="pt-4 pb-3">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold">Leave Policy — This Month</p>
+            <Dialog open={leaveOpen} onOpenChange={(open) => {
+              setLeaveOpen(open);
+              if (!open) { setEditLeaveId(null); setLeaveForm({ type: "HALF", date: "", reason: "" }); }
+            }}>
+              <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2" />}>
+                <CalendarPlus className="size-4" /> Apply Half Day
+              </DialogTrigger>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Apply Half Day Leave</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      Half day uses <strong>0.5</strong> from your paid leave budget. You must complete the minimum threshold before checking out.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Date</Label>
+                    <Input
+                      type="date"
+                      value={leaveForm.date}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Reason (optional)</Label>
+                    <Input
+                      value={leaveForm.reason}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                      placeholder="e.g. Personal work"
+                    />
+                  </div>
+                  {leaveBlockMsg && (
+                    <div className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-2.5 text-sm text-red-600 dark:text-red-400">
+                      {leaveBlockMsg}
+                    </div>
+                  )}
+                  <Button onClick={handleApplyLeave} disabled={loading || !!leaveBlockMsg} className="w-full">
+                    {loading ? "Applying..." : "Submit Half Day"}
+                  </Button>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span>Half Days Used</span>
-                  <span className="font-medium">{halfDaysUsed}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Full Days Used</span>
-                  <span className="font-medium">{fullDayLeaves.length}</span>
-                </div>
-                {halfDaysUsed === 1 && fullDayLeaves.length === 0 && (
-                  <p className="text-xs text-blue-600 mt-1">
-                    💡 1 more half day = your paid leave is used
-                  </p>
-                )}
-                {paidLeaveRemaining === 0 && (
-                  <p className="text-xs text-red-500 mt-1">
-                    ⚠️ Paid leave used. Further leaves will be unpaid (PKR deducted from salary).
-                  </p>
-                )}
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div className="space-y-2">
+            {/* Budget bar */}
+            <div>
+              <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                <span>Paid Leave Budget</span>
+                <span>{paidBudgetRemaining.toFixed(1)} / 1.0 day remaining</span>
               </div>
-
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant={leaveForm.type === "FULL" ? "default" : "outline"}
-                  onClick={() => setLeaveForm({ ...leaveForm, type: "FULL" })}
-                  className="flex-1"
-                >
-                  Full Day
-                </Button>
-                <Button
-                  size="sm"
-                  variant={leaveForm.type === "HALF" ? "default" : "outline"}
-                  onClick={() => setLeaveForm({ ...leaveForm, type: "HALF" })}
-                  className="flex-1"
-                >
-                  Half Day
-                </Button>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Date</Label>
-                <Input
-                  type="date"
-                  value={leaveForm.date}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, date: e.target.value })}
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${paidBudgetRemaining > 0.5 ? "bg-green-500" : paidBudgetRemaining > 0 ? "bg-yellow-500" : "bg-red-500"}`}
+                  style={{ width: `${paidBudgetRemaining * 100}%` }}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Reason (optional)</Label>
-                <Input
-                  value={leaveForm.reason}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                  placeholder="e.g. Personal work"
-                />
-              </div>
-              {leaveBlockMsg && (
-                <div className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-2.5 text-sm text-red-600 dark:text-red-400">
-                  {leaveBlockMsg}
-                </div>
-              )}
-              <Button onClick={handleApplyLeave} disabled={loading || !!leaveBlockMsg} className="w-full">
-                {loading ? "Applying..." : "Submit Leave"}
-              </Button>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Half Days</span>
+                <span className="font-medium">{halfDaysUsed}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Absences</span>
+                <span className="font-medium">{monthAbsent}</span>
+              </div>
+            </div>
+            {halfDaysUsed === 1 && monthAbsent === 0 && (
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                1 more half day or absence = paid leave fully used
+              </p>
+            )}
+            {paidBudgetRemaining === 0 && (
+              <p className="text-xs text-red-500">
+                Paid leave exhausted. Further absences/half days will be deducted from salary.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Monthly stats */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
