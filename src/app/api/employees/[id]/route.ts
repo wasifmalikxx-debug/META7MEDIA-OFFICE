@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { updateEmployeeSchema } from "@/lib/validations/employee";
+import bcrypt from "bcryptjs";
 
 export async function GET(
   request: NextRequest,
@@ -59,6 +60,13 @@ export async function PATCH(
     const updateData: any = { ...parsed };
     if (parsed.joiningDate) updateData.joiningDate = new Date(parsed.joiningDate);
     delete updateData.monthlySalary;
+    // Handle email
+    if (body.email) updateData.email = body.email;
+    // Handle password reset
+    if (body.newPassword && body.newPassword.length >= 6) {
+      updateData.password = await bcrypt.hash(body.newPassword, 12);
+    }
+    delete updateData.newPassword;
     // Handle bank details
     if (body.bankName !== undefined) updateData.bankName = body.bankName || null;
     if (body.accountNumber !== undefined) updateData.accountNumber = body.accountNumber || null;

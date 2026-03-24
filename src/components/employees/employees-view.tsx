@@ -100,6 +100,8 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
   function openEdit(emp: any) {
     setEditId(emp.id);
     setEditForm({
+      email: emp.email,
+      newPassword: "",
       firstName: emp.firstName,
       lastName: emp.lastName,
       phone: emp.phone || "",
@@ -334,6 +336,27 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
           </DialogHeader>
           {editForm && (
             <form onSubmit={handleEdit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>New Password</Label>
+                  <Input
+                    type="password"
+                    placeholder="Leave blank to keep current"
+                    value={editForm.newPassword}
+                    onChange={(e) => setEditForm({ ...editForm, newPassword: e.target.value })}
+                    minLength={6}
+                  />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>First Name</Label>

@@ -18,4 +18,7 @@ export const createEmployeeSchema = z.object({
 
 export const updateEmployeeSchema = createEmployeeSchema
   .omit({ password: true, employeeId: true })
-  .partial();
+  .partial()
+  .extend({
+    newPassword: z.string().min(6).optional().or(z.literal("")),
+  });
