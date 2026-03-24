@@ -170,14 +170,12 @@ export function BonusProgramView({
   }, [employees, bonusEligibilities]);
 
   const [rowStates, setRowStates] = useState<Record<string, RowState>>(buildInitialStates);
-  const hasFetched = useRef(false);
-
-  // Auto-fetch profits from Google Sheets on page load
+  // Auto-fetch profits from Google Sheets on page load + every 30 seconds
   useEffect(() => {
-    if (hasFetched.current) return;
-    hasFetched.current = true;
     handleFetchProfits();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const interval = setInterval(handleFetchProfits, 30000);
+    return () => clearInterval(interval);
+  }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateRow(userId: string, field: keyof RowState, value: boolean | number) {
     setRowStates((prev) => ({
