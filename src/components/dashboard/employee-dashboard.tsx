@@ -313,20 +313,14 @@ export function EmployeeDashboard({
   const liveWorkedHours = Math.floor(liveTotalMinutes / 60);
   const liveWorkedMins = liveTotalMinutes % 60;
 
-  // Estimated Salary = Monthly Salary - all deductions + incentives
-  // This shows what the employee will receive at month end based on current data
+  // Estimated Salary = Total hours worked × hourly rate - fines + incentives
+  // Shows actual earned amount based on real working hours from 1st till now
   const dailyRate = Math.round(monthlySalary / 30);
-  const hourlyRate = Math.round(dailyRate / 8);
+  const hourlyRate = Math.round(dailyRate / 8); // 8 hour work day
 
-  // Deductions: uncovered absences + uncovered half days + fines
-  const uncoveredAbsents = Math.max(0, monthAbsent - coveredAbsents);
-  const absentDeduction = uncoveredAbsents * dailyRate;
-  const uncoveredHalfDays = Math.max(0, halfDaysUsed - coveredHalfDays);
-  const halfDayDeduction = uncoveredHalfDays * Math.round(dailyRate * 0.5);
-  const totalDeductions = absentDeduction + halfDayDeduction + totalFinesAmount;
-
-  // Estimated = Monthly Salary + Incentives - Deductions
-  const salaryTillNow = Math.max(0, Math.round(monthlySalary + totalIncentivesAmount - totalDeductions));
+  // liveTotalMinutes already includes all completed days + today's live hours
+  const earnedFromHours = Math.round((liveTotalMinutes / 60) * hourlyRate);
+  const salaryTillNow = Math.max(0, earnedFromHours + totalIncentivesAmount - totalFinesAmount);
 
   return (
     <div className="space-y-6">
