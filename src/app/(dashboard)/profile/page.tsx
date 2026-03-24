@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { BankDetailsCard } from "@/components/profile/bank-details-card";
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -73,6 +74,12 @@ export default async function ProfilePage() {
             />
           </CardContent>
         </Card>
+        <BankDetailsCard
+          userId={user.id}
+          bankName={user.bankName}
+          accountNumber={user.accountNumber}
+          accountTitle={user.accountTitle}
+        />
       </div>
     </div>
   );
