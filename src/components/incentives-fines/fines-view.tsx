@@ -206,7 +206,9 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
                       {format(new Date(fine.date), "MMM d, yyyy")}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {fine.issuedBy.firstName} {fine.issuedBy.lastName}
+                      {fine.reason?.startsWith("Auto-generated") || fine.reason?.startsWith("Late from break")
+                        ? "META7 AI"
+                        : `${fine.issuedBy.firstName} ${fine.issuedBy.lastName}`}
                     </TableCell>
                   </TableRow>
                 ))
