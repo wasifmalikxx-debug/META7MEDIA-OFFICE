@@ -14,7 +14,11 @@ export default async function PayrollPage() {
   const year = new Date().getFullYear();
 
   const where: any = { month, year };
-  if (!isAdmin) where.userId = session.user.id;
+  if (!isAdmin) {
+    where.userId = session.user.id;
+  } else {
+    where.user = { role: { not: "SUPER_ADMIN" } };
+  }
 
   const records = await prisma.payrollRecord.findMany({
     where,
