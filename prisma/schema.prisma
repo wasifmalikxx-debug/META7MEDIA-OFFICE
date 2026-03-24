@@ -135,6 +135,7 @@ model User {
   notifications      Notification[]
   announcements      Announcement[]
   leaveBalances      LeaveBalance[]
+  deviceApprovals    DeviceApproval[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -461,4 +462,29 @@ model Holiday {
   createdAt DateTime @default(now())
 
   @@index([year])
+}
+
+enum DeviceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model DeviceApproval {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  fingerprint   String       // browser fingerprint hash
+  deviceName    String?      // e.g. "Chrome on Windows", "Safari on iPhone"
+  ipAddress     String?
+  status        DeviceStatus @default(PENDING)
+  approvedAt    DateTime?
+  rejectedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, fingerprint])
+  @@index([status])
+  @@index([userId])
 }

@@ -12,6 +12,7 @@ import {
   Settings,
   User,
   LogOut,
+  ShieldCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,6 +53,7 @@ const mainNav = [
 const managementNav = [
   { title: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN"] },
   { title: "Departments", href: "/departments", icon: Building2, roles: ["SUPER_ADMIN"] },
+  { title: "Login Approvals", href: "/login-approvals", icon: ShieldCheck, roles: ["SUPER_ADMIN"] },
 ];
 
 const financeNav = [
