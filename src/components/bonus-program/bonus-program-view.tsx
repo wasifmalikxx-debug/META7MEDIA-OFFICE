@@ -261,6 +261,15 @@ export function BonusProgramView({
     return sum + calculateBonus(state).bonusAmount;
   }, 0);
 
+  // Team Lead bonus: PKR 5,000 per eligible employee (excluding team lead EM-4)
+  const eligibleCount = employees.reduce((count, emp) => {
+    if (emp.employeeId === "EM-4") return count; // Skip Izaan himself
+    const state = rowStates[emp.id];
+    if (!state) return count;
+    return count + (calculateBonus(state).isEligible ? 1 : 0);
+  }, 0);
+  const teamLeadBonus = eligibleCount * 5000;
+
   const totalReviewBonuses = reviewBonuses.reduce((sum, rb) => sum + rb.amount, 0);
 
   // Generate year options
@@ -529,8 +538,26 @@ export function BonusProgramView({
         </CardContent>
       </Card>
 
+      {/* Team Lead Bonus Card */}
+      <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+        <CardContent className="pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Team Lead Bonus — Izaan Kashif (EM-4)</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                PKR 5,000 × {eligibleCount} eligible employee{eligibleCount !== 1 ? "s" : ""} = <span className="font-bold text-lg">PKR {teamLeadBonus.toLocaleString()}</span>
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">PKR {teamLeadBonus.toLocaleString()}</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">+ Basic Salary</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-3">
@@ -538,8 +565,22 @@ export function BonusProgramView({
                 <DollarSign className="size-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Performance Bonuses</p>
+                <p className="text-sm text-muted-foreground">Performance Bonuses</p>
                 <p className="text-xl font-bold text-green-600">PKR {totalBonuses.toLocaleString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-amber-100">
+                <Trophy className="size-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Team Lead Bonus</p>
+                <p className="text-xl font-bold text-amber-600">PKR {teamLeadBonus.toLocaleString()}</p>
               </div>
             </div>
           </CardContent>
@@ -552,7 +593,7 @@ export function BonusProgramView({
                 <Trophy className="size-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Review Bonuses</p>
+                <p className="text-sm text-muted-foreground">Review Bonuses</p>
                 <p className="text-xl font-bold text-blue-600">PKR {totalReviewBonuses.toLocaleString()}</p>
               </div>
             </div>
@@ -568,7 +609,7 @@ export function BonusProgramView({
               <div>
                 <p className="text-sm text-muted-foreground">Grand Total</p>
                 <p className="text-xl font-bold text-purple-600">
-                  PKR {(totalBonuses + totalReviewBonuses).toLocaleString()}
+                  PKR {(totalBonuses + teamLeadBonus + totalReviewBonuses).toLocaleString()}
                 </p>
               </div>
             </div>
