@@ -535,10 +535,10 @@ export function EmployeeDashboard({
             icon={Wallet}
           />
           <StatCard
-            title="Salary Till Now"
-            value={showSalary ? `PKR ${salaryTillNow.toLocaleString()}` : "PKR ****"}
-            icon={Wallet}
-            description="Earned so far"
+            title="Fines"
+            value={showSalary ? `PKR ${totalFinesAmount.toLocaleString()}` : "PKR ****"}
+            icon={AlertTriangle}
+            description="This month"
           />
           <StatCard
             title="Incentives"
@@ -547,10 +547,10 @@ export function EmployeeDashboard({
             description="This month"
           />
           <StatCard
-            title="Fines"
-            value={showSalary ? `PKR ${totalFinesAmount.toLocaleString()}` : "PKR ****"}
-            icon={AlertTriangle}
-            description="This month"
+            title="Estimated Salary"
+            value={showSalary ? `PKR ${salaryTillNow.toLocaleString()}` : "PKR ****"}
+            icon={Wallet}
+            description="Earned so far"
           />
         </div>
       </div>
