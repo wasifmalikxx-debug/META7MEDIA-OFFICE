@@ -296,6 +296,23 @@ export function EmployeeDashboard({
   const totalFinesAmount = recentFines.reduce((s, f) => s + f.amount, 0);
   const totalIncentivesAmount = recentIncentives.reduce((s, i) => s + i.amount, 0);
 
+  // Live hours worked: server total + today's live hours
+  let liveTotalMinutes = totalWorkedHours * 60;
+  if (attendance?.checkIn && !attendance?.checkOut) {
+    const checkInMs = new Date(attendance.checkIn).getTime();
+    let todayWorkedMs = Date.now() - checkInMs;
+    if (attendance.breakStart) {
+      const breakEndMs = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : Date.now();
+      todayWorkedMs -= (breakEndMs - new Date(attendance.breakStart).getTime());
+    }
+    liveTotalMinutes += Math.max(0, Math.floor(todayWorkedMs / 60000));
+  } else if (attendance?.workedMinutes) {
+    // Today already checked out but might not be in monthAttendances yet
+    liveTotalMinutes += attendance.workedMinutes;
+  }
+  const liveWorkedHours = Math.floor(liveTotalMinutes / 60);
+  const liveWorkedMins = liveTotalMinutes % 60;
+
   // Salary Till Now: real-time calculation based on hours worked
   const dailyRate = Math.round(monthlySalary / 30);
   const hourlyRate = Math.round(dailyRate / 8); // 8 hour work day
@@ -535,31 +552,35 @@ export function EmployeeDashboard({
       </Card>
 
       {/* Monthly stats */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Present Days"
-          value={monthPresent}
-          icon={CheckCircle}
-          description="This month"
-        />
-        <StatCard
-          title="Absent Days"
-          value={monthAbsent}
-          icon={XCircle}
-          description="This month"
-        />
-        <StatCard
-          title="Late Arrivals"
-          value={monthLate}
-          icon={Clock}
-          description="This month"
-        />
-        <StatCard
-          title="Hours Worked"
-          value={`${totalWorkedHours}h`}
-          icon={Clock}
-          description="This month"
-        />
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-sm font-medium text-muted-foreground">
+            {new Date().toLocaleString("en-US", { month: "long", year: "numeric" })}
+          </h3>
+          <p className="text-[10px] text-muted-foreground/60">Resets on 1st of every month</p>
+        </div>
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Present Days"
+            value={monthPresent}
+            icon={CheckCircle}
+          />
+          <StatCard
+            title="Absent Days"
+            value={monthAbsent}
+            icon={XCircle}
+          />
+          <StatCard
+            title="Late Arrivals"
+            value={monthLate}
+            icon={Clock}
+          />
+          <StatCard
+            title="Hours Worked"
+            value={`${liveWorkedHours}h ${liveWorkedMins}m`}
+            icon={Clock}
+          />
+        </div>
       </div>
 
       <div className="space-y-2">

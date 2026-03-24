@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calculator, CheckCircle, Wallet } from "lucide-react";
+import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface PayrollViewProps {
   records: any[];
@@ -75,19 +75,42 @@ export function PayrollView({
   const totalIncentives = records.reduce((s, r) => s + r.totalIncentives, 0);
   const monthName = format(new Date(currentYear, currentMonth - 1), "MMMM yyyy");
 
+  function goMonth(offset: number) {
+    let m = currentMonth + offset;
+    let y = currentYear;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1) { m = 12; y--; }
+    router.push(`/payroll?month=${m}&year=${y}`);
+  }
+
+  const isCurrentMonth = currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear();
+
   return (
     <div className="space-y-4">
-      {isAdmin && (
-        <div className="flex items-center justify-between">
-          <div className="flex gap-4 text-sm">
-            <span>Total Payable: <strong>PKR {totalNet.toLocaleString()}</strong></span>
-            <span className="text-red-600">Fines: PKR {totalFines.toLocaleString()}</span>
-            <span className="text-green-600">Bonuses: PKR {totalIncentives.toLocaleString()}</span>
-          </div>
+      {/* Month Navigation */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-8">
+            <ChevronLeft className="size-4" />
+          </Button>
+          <h2 className="text-lg font-semibold min-w-[160px] text-center">{monthName}</h2>
+          <Button variant="outline" size="icon" onClick={() => goMonth(1)} disabled={isCurrentMonth} className="size-8">
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+        {isAdmin && (
           <Button onClick={handleGenerate} disabled={generating} size="sm" className="gap-2">
             <Calculator className="size-4" />
             {generating ? "Generating..." : "Generate Payroll"}
           </Button>
+        )}
+      </div>
+
+      {isAdmin && records.length > 0 && (
+        <div className="flex gap-4 text-sm">
+          <span>Total Payable: <strong>PKR {totalNet.toLocaleString()}</strong></span>
+          <span className="text-red-600">Fines: PKR {totalFines.toLocaleString()}</span>
+          <span className="text-green-600">Bonuses: PKR {totalIncentives.toLocaleString()}</span>
         </div>
       )}
 

@@ -4,14 +4,15 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { PayrollView } from "@/components/payroll/payroll-view";
 
-export default async function PayrollPage() {
+export default async function PayrollPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const params = await searchParams;
   const role = (session.user as any).role;
   const isAdmin = role === "SUPER_ADMIN";
-  const month = new Date().getMonth() + 1;
-  const year = new Date().getFullYear();
+  const month = params.month ? parseInt(params.month) : new Date().getMonth() + 1;
+  const year = params.year ? parseInt(params.year) : new Date().getFullYear();
 
   const where: any = { month, year };
   if (!isAdmin) {
