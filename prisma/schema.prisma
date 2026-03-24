@@ -89,6 +89,16 @@ enum NotificationType {
   ANNOUNCEMENT
   WARNING_ISSUED
   GENERAL
+  REVIEW_BONUS_SUBMITTED
+  REVIEW_BONUS_APPROVED
+  REVIEW_BONUS_REJECTED
+  BONUS_ELIGIBILITY_UPDATED
+}
+
+enum ReviewBonusStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // ─── Models ──────────────────────────────────────────
@@ -136,6 +146,10 @@ model User {
   announcements      Announcement[]
   leaveBalances      LeaveBalance[]
   deviceApprovals    DeviceApproval[]
+  bonusEligibilities BonusEligibility[] @relation("BonusEmployee")
+  bonusUpdatedBy     BonusEligibility[] @relation("BonusUpdater")
+  reviewBonusesSubmitted ReviewBonus[]  @relation("ReviewBonusSubmitter")
+  reviewBonusesApproved  ReviewBonus[]  @relation("ReviewBonusApprover")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -487,4 +501,65 @@ model DeviceApproval {
   @@unique([userId, fingerprint])
   @@index([status])
   @@index([userId])
+}
+
+// ─── Bonus Program ──────────────────────────────────
+
+model BonusEligibility {
+  id                    String  @id @default(cuid())
+  userId                String
+  user                  User    @relation("BonusEmployee", fields: [userId], references: [id])
+  month                 Int
+  year                  Int
+
+  // 7 Eligibility Criteria
+  dailyListingsComplete Boolean @default(false)  // 1. Daily 5 listings
+  ordersProcessedSameDay Boolean @default(false) // 2. All orders processed daily
+  messagesCleared       Boolean @default(false)  // 3. All messages cleared daily
+  zeroWrongOrders       Boolean @default(false)  // 4. Zero wrong orders
+  listingsRemovedCount  Int     @default(0)      // 5. Max 3 allowed
+  allStoresAbove4Stars  Boolean @default(false)  // 6. All stores >= 4 stars
+  totalProfit           Float   @default(0)      // 7. Monthly profit in USD
+
+  // Computed
+  isEligible            Boolean @default(false)
+  bonusAmount           Float   @default(0)      // Calculated bonus in PKR
+  notes                 String?
+
+  updatedById           String?
+  updatedBy             User?   @relation("BonusUpdater", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, month, year])
+  @@index([month, year])
+}
+
+model ReviewBonus {
+  id               String            @id @default(cuid())
+  userId           String
+  user             User              @relation("ReviewBonusSubmitter", fields: [userId], references: [id])
+  month            Int
+  year             Int
+
+  storeName        String
+  customerName     String?
+  originalRating   Int               // 1-3
+  newRating        Int               // 4-5
+  beforeScreenshot String            // file path
+  afterScreenshot  String            // file path
+  amount           Float             @default(500) // Rs. 500 per review
+
+  status           ReviewBonusStatus @default(PENDING)
+  approvedById     String?
+  approvedBy       User?             @relation("ReviewBonusApprover", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  rejectionReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, month, year])
+  @@index([status])
 }

@@ -16,6 +16,8 @@ import {
   LogOut,
   ShieldCheck,
   HelpCircle,
+  Target,
+  Star,
 } from "lucide-react";
 import {
   Sidebar,
@@ -62,6 +64,11 @@ const managementNav = [
 const financeNav = [
   { title: "Payroll", href: "/payroll", icon: Wallet, roles: ["all"] },
   { title: "Fines", href: "/fines", icon: AlertTriangle, roles: ["all"] },
+];
+
+const etsyNav = [
+  { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER"] },
+  { title: "Review Bonus", href: "/review-bonus", icon: Star, roles: ["all"] },
 ];
 
 const settingsNav = [
@@ -154,6 +161,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <SidebarMenu>{renderNavItems(financeNav)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {etsyNav.some((item) => hasAccess(item.roles, user.role)) && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{renderNavItems(etsyNav)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {settingsNav.some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
