@@ -9,21 +9,59 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Trash2, Plus } from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<any>(null);
+  const [holidays, setHolidays] = useState<any[]>([]);
+  const [newHoliday, setNewHoliday] = useState({ name: "", date: "" });
+  const [addingHoliday, setAddingHoliday] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((data) => {
-        setSettings(data);
-        setLoading(false);
-      });
+    Promise.all([
+      fetch("/api/settings").then((r) => r.json()),
+      fetch("/api/holidays").then((r) => r.json()),
+    ]).then(([settingsData, holidaysData]) => {
+      setSettings(settingsData);
+      setHolidays(holidaysData);
+      setLoading(false);
+    });
   }, []);
+
+  async function addHoliday() {
+    if (!newHoliday.name || !newHoliday.date) return;
+    setAddingHoliday(true);
+    try {
+      const res = await fetch("/api/holidays", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newHoliday),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setHolidays([...holidays, data].sort((a, b) => a.date.localeCompare(b.date)));
+      setNewHoliday({ name: "", date: "" });
+      toast.success("Holiday added");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setAddingHoliday(false);
+    }
+  }
+
+  async function deleteHoliday(id: string) {
+    if (!confirm("Remove this holiday?")) return;
+    try {
+      await fetch(`/api/holidays/${id}`, { method: "DELETE" });
+      setHolidays(holidays.filter((h) => h.id !== id));
+      toast.success("Holiday removed");
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -206,26 +244,20 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Leave Quotas (Yearly)</CardTitle>
+            <CardTitle className="text-base">Leave Policy</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Casual Leave</Label>
-                <Input
-                  type="number"
-                  value={settings.casualLeaveQuota}
-                  onChange={(e) => update("casualLeaveQuota", parseInt(e.target.value))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Sick Leave</Label>
-                <Input
-                  type="number"
-                  value={settings.sickLeaveQuota}
-                  onChange={(e) => update("sickLeaveQuota", parseInt(e.target.value))}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label>Paid Leaves Per Month</Label>
+              <Input
+                type="number"
+                min="0"
+                value={settings.paidLeavesPerMonth}
+                onChange={(e) => update("paidLeavesPerMonth", parseInt(e.target.value))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Auto-applied to first absence(s) each month. No application needed from employee.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -254,6 +286,71 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Official Holidays */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Official Holidays / Govt Off Days</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Employees will not be marked absent on these days. No salary deduction.
+          </p>
+          <div className="flex gap-3 items-end">
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-xs">Holiday Name</Label>
+              <Input
+                value={newHoliday.name}
+                onChange={(e) => setNewHoliday({ ...newHoliday, name: e.target.value })}
+                placeholder="e.g. Eid ul Fitr, 23 March, Independence Day"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Date</Label>
+              <Input
+                type="date"
+                value={newHoliday.date}
+                onChange={(e) => setNewHoliday({ ...newHoliday, date: e.target.value })}
+              />
+            </div>
+            <Button size="sm" onClick={addHoliday} disabled={addingHoliday}>
+              <Plus className="size-4 mr-1" /> Add
+            </Button>
+          </div>
+
+          {holidays.length > 0 ? (
+            <div className="border rounded-lg divide-y">
+              {holidays.map((h) => (
+                <div key={h.id} className="flex items-center justify-between px-4 py-2.5">
+                  <div>
+                    <span className="text-sm font-medium">{h.name}</span>
+                    <span className="text-xs text-muted-foreground ml-3">
+                      {new Date(h.date).toLocaleDateString("en-PK", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-500 hover:text-red-700"
+                    onClick={() => deleteHoliday(h.id)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No holidays added yet
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={saving}>

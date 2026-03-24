@@ -423,8 +423,7 @@ model OfficeSettings {
 
   autoAbsentAfterMin Int @default(240) // no check-in after 4hrs
 
-  casualLeaveQuota Int @default(12)
-  sickLeaveQuota   Int @default(10)
+  paidLeavesPerMonth   Int @default(1)  // auto-applied to first absence each month
 
   allowedIps           String  @default("")
   ipRestrictionEnabled Boolean @default(false)

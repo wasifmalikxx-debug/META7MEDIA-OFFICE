@@ -83,7 +83,17 @@ export async function generatePayrollForEmployee(
     }
   }
 
-  // Get approved leaves for the month
+  // Auto-apply paid leaves: first N absences are treated as paid leave
+  const settings = await prisma.officeSettings.findUnique({
+    where: { id: "default" },
+  });
+  const paidLeaveAllowance = settings?.paidLeavesPerMonth ?? 1;
+
+  // Auto-convert first absence(s) to paid leave
+  const autoPaidLeaves = Math.min(absentDays, paidLeaveAllowance);
+  absentDays = absentDays - autoPaidLeaves;
+
+  // Get approved leaves for the month (manual leave requests)
   const leaves = await prisma.leaveRequest.findMany({
     where: {
       userId,
@@ -93,10 +103,9 @@ export async function generatePayrollForEmployee(
     },
   });
 
-  let paidLeaveDays = 0;
+  let paidLeaveDays = autoPaidLeaves;
   let unpaidLeaveDays = 0;
   for (const leave of leaves) {
-    // Calculate days that fall within this month
     const leaveStart = new Date(
       Math.max(leave.startDate.getTime(), startDate.getTime())
     );
