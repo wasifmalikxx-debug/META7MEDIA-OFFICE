@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Save, DollarSign, Users, Trophy } from "lucide-react";
+import { Save, DollarSign, Users, Trophy, RefreshCw, Cloud } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -137,6 +137,7 @@ export function BonusProgramView({
   const [month, setMonth] = useState(String(currentMonth));
   const [year, setYear] = useState(String(currentYear));
   const [savingRows, setSavingRows] = useState<Record<string, boolean>>({});
+  const [fetchingProfits, setFetchingProfits] = useState(false);
 
   // Build row states from existing data
   const buildInitialStates = useCallback(() => {
@@ -214,6 +215,39 @@ export function BonusProgramView({
     router.refresh();
   }
 
+  async function handleFetchProfits() {
+    setFetchingProfits(true);
+    try {
+      const res = await fetch(`/api/sheets-profit?month=${month}&year=${year}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to fetch");
+
+      let updated = 0;
+      let errors = 0;
+      const newStates = { ...rowStates };
+
+      for (const emp of employees) {
+        const profitData = data.profits?.[emp.id];
+        if (profitData?.profit !== null && profitData?.profit !== undefined) {
+          newStates[emp.id] = { ...newStates[emp.id], totalProfit: profitData.profit };
+          updated++;
+        } else if (profitData?.error) {
+          errors++;
+        }
+      }
+
+      setRowStates(newStates);
+
+      if (updated > 0) toast.success(`Fetched profits for ${updated} employees from Google Sheets`);
+      if (errors > 0) toast.error(`${errors} sheets had errors — check if sheets are shared`);
+      if (updated === 0 && errors === 0) toast.info("No Google Sheet URLs configured for employees");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setFetchingProfits(false);
+    }
+  }
+
   // Calculate totals
   const totalBonuses = employees.reduce((sum, emp) => {
     const state = rowStates[emp.id];
@@ -268,6 +302,22 @@ export function BonusProgramView({
             <Button size="sm" onClick={handleMonthChange}>
               Load
             </Button>
+            <div className="ml-auto">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleFetchProfits}
+                disabled={fetchingProfits}
+                className="gap-2"
+              >
+                {fetchingProfits ? (
+                  <RefreshCw className="size-3.5 animate-spin" />
+                ) : (
+                  <Cloud className="size-3.5" />
+                )}
+                {fetchingProfits ? "Fetching..." : "Fetch Profits from Sheets"}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
