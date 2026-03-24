@@ -126,12 +126,12 @@ export default async function DashboardPage() {
 
   const [salaryStructure, currentUser] = await Promise.all([
     prisma.salaryStructure.findUnique({ where: { userId } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { firstName: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } }),
   ]);
 
   return (
     <EmployeeDashboard
-      employeeName={currentUser?.firstName || ""}
+      employeeName={currentUser ? `${currentUser.firstName} ${currentUser.lastName || ""}`.trim() : ""}
       todayAttendance={todayAttendance}
       leaveBalance={leaveBalance}
       currentPayroll={currentPayroll}
