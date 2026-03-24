@@ -250,13 +250,6 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Designation</Label>
-                  <Input
-                    value={form.designation}
-                    onChange={(e) => setForm({ ...form, designation: e.target.value })}
-                  />
-                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -330,139 +323,159 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
 
       {/* Edit Employee Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Employee</DialogTitle>
           </DialogHeader>
           {editForm && (
-            <form onSubmit={handleEdit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={editForm.email}
-                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>New Password</Label>
-                  <Input
-                    type="password"
-                    placeholder="Leave blank to keep current"
-                    value={editForm.newPassword}
-                    onChange={(e) => setEditForm({ ...editForm, newPassword: e.target.value })}
-                    minLength={6}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>First Name</Label>
-                  <Input
-                    value={editForm.firstName}
-                    onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Last Name</Label>
-                  <Input
-                    value={editForm.lastName}
-                    onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
-                    required
-                  />
+            <form onSubmit={handleEdit} className="space-y-5">
+              {/* Login Credentials */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Login Credentials</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Email</Label>
+                    <Input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Reset Password</Label>
+                    <Input
+                      type="password"
+                      placeholder="Leave blank to keep"
+                      value={editForm.newPassword}
+                      onChange={(e) => setEditForm({ ...editForm, newPassword: e.target.value })}
+                      minLength={6}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Phone</Label>
+
+              <hr className="border-border" />
+
+              {/* Personal Info */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Personal Information</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">First Name</Label>
+                    <Input
+                      value={editForm.firstName}
+                      onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Last Name</Label>
+                    <Input
+                      value={editForm.lastName}
+                      onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Phone</Label>
                   <Input
                     value={editForm.phone}
                     onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    placeholder="e.g. 0300-1234567"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={editForm.status}
-                    onValueChange={(v) => v && setEditForm({ ...editForm, status: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="HIRED">Hired</SelectItem>
-                      <SelectItem value="PROBATION">Probation</SelectItem>
-                      <SelectItem value="RESIGNED">Resigned</SelectItem>
-                      <SelectItem value="TERMINATED">Terminated</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Designation</Label>
+
+              <hr className="border-border" />
+
+              {/* Employment */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Employment</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Department</Label>
+                    <Select
+                      value={editForm.departmentId}
+                      onValueChange={(v) => v && setEditForm({ ...editForm, departmentId: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue>
+                          {departments.find((d) => d.id === editForm.departmentId)?.name || "Select..."}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Status</Label>
+                    <Select
+                      value={editForm.status}
+                      onValueChange={(v) => v && setEditForm({ ...editForm, status: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="HIRED">Hired</SelectItem>
+                        <SelectItem value="PROBATION">Probation</SelectItem>
+                        <SelectItem value="RESIGNED">Resigned</SelectItem>
+                        <SelectItem value="TERMINATED">Terminated</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Monthly Salary (PKR)</Label>
                   <Input
-                    value={editForm.designation}
-                    onChange={(e) => setEditForm({ ...editForm, designation: e.target.value })}
+                    type="number"
+                    min="0"
+                    value={editForm.monthlySalary}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
+                    }
+                    required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Select
-                    value={editForm.departmentId}
-                    onValueChange={(v) => v && setEditForm({ ...editForm, departmentId: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id}>
-                          {dept.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Monthly Salary (PKR)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={editForm.monthlySalary}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
-                  }
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Bank Name</Label>
+
+              <hr className="border-border" />
+
+              {/* Bank Details */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Bank Details</p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Bank Name</Label>
                   <Input
                     value={editForm.bankName}
                     onChange={(e) => setEditForm({ ...editForm, bankName: e.target.value })}
+                    placeholder="e.g. Meezan Bank"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Account Number</Label>
-                  <Input
-                    value={editForm.accountNumber}
-                    onChange={(e) => setEditForm({ ...editForm, accountNumber: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Account Title</Label>
-                  <Input
-                    value={editForm.accountTitle}
-                    onChange={(e) => setEditForm({ ...editForm, accountTitle: e.target.value })}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Account Number</Label>
+                    <Input
+                      value={editForm.accountNumber}
+                      onChange={(e) => setEditForm({ ...editForm, accountNumber: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Account Title</Label>
+                    <Input
+                      value={editForm.accountTitle}
+                      onChange={(e) => setEditForm({ ...editForm, accountTitle: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
+
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Saving..." : "Save Changes"}
               </Button>
