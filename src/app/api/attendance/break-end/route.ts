@@ -23,6 +23,11 @@ export async function POST() {
     (now.getTime() - attendance.breakStart.getTime()) / (1000 * 60)
   );
 
+  // Minimum 15 minutes break required
+  if (breakMinutes < 15) {
+    return error(`Break must be at least 15 minutes. You've been on break for ${breakMinutes} min.`);
+  }
+
   const updated = await prisma.attendance.update({
     where: { id: attendance.id },
     data: { breakEnd: now, breakMinutes },
