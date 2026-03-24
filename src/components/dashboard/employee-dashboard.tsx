@@ -372,22 +372,31 @@ export function EmployeeDashboard({
               </Button>
             )}
             {hasCheckedIn && !hasCheckedOut && !onBreak && !breakDone && (
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleBreakStart}
-                  disabled={loading || !isInBreakWindow}
-                  variant="secondary"
-                  className="gap-2"
-                >
-                  <Coffee className="size-4" />
-                  {loading ? "..." : "Start Break"}
-                </Button>
-                {!isInBreakWindow && (
-                  <span className="text-xs text-muted-foreground">
-                    Break: {breakWindowLabel}
+              <>
+                {currentMinutes < breakStartMin && (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Coffee className="size-3" />
+                    Break starts at {breakStartTime}
                   </span>
                 )}
-              </div>
+                {isInBreakWindow && (
+                  <Button
+                    onClick={handleBreakStart}
+                    disabled={loading}
+                    variant="secondary"
+                    className="gap-2"
+                  >
+                    <Coffee className="size-4" />
+                    {loading ? "..." : "Start Break"}
+                  </Button>
+                )}
+                {currentMinutes > breakEndMin && (
+                  <Badge variant="destructive" className="text-xs py-1.5 px-3 gap-1.5">
+                    <Coffee className="size-3" />
+                    Break missed ({breakWindowLabel})
+                  </Badge>
+                )}
+              </>
             )}
             {onBreak && (
               <Button
@@ -399,6 +408,12 @@ export function EmployeeDashboard({
                 <Coffee className="size-4" />
                 {loading ? "..." : "End Break"}
               </Button>
+            )}
+            {breakDone && (
+              <Badge variant="secondary" className="text-xs py-1.5 px-3 gap-1.5">
+                <Coffee className="size-3" />
+                Break ended at {format(new Date(attendance.breakEnd), "h:mm a")}
+              </Badge>
             )}
             {hasCheckedIn && !hasCheckedOut && (
               <Button
