@@ -146,7 +146,7 @@ export default function LoginPage() {
                 Please wait or contact your CEO.
               </p>
               <Button variant="outline" size="sm" onClick={() => { setDeviceStatus(null); setError(""); }}>
-                Try Again
+                Refresh
               </Button>
             </div>
           )}
