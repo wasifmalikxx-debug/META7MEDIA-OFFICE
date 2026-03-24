@@ -5,8 +5,6 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   LayoutDashboard,
-  Clock,
-  Calendar,
   Users,
   Building2,
   Wallet,
@@ -50,8 +48,6 @@ interface AppSidebarProps {
 
 const mainNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
-  { title: "Attendance", href: "/attendance", icon: Clock, roles: ["all"] },
-  { title: "Leaves", href: "/leaves", icon: Calendar, roles: ["all"] },
 ];
 
 const managementNav = [
