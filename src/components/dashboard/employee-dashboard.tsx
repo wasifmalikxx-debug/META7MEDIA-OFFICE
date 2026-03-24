@@ -144,8 +144,8 @@ export function EmployeeDashboard({
   // Break window check
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const [bsH, bsM] = breakStartTime.split(":").map(Number);
-  const [beH, beM] = breakEndTime.split(":").map(Number);
+  const [bsH, bsM] = (breakStartTime || "14:00").split(":").map(Number);
+  const [beH, beM] = (breakEndTime || "15:00").split(":").map(Number);
   const breakStartMin = bsH * 60 + bsM;
   const breakEndMin = beH * 60 + beM;
   const isInBreakWindow = currentMinutes >= breakStartMin && currentMinutes <= breakEndMin;
