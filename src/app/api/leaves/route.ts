@@ -66,6 +66,35 @@ export async function POST(request: NextRequest) {
       return error("Cannot apply leave for past dates.");
     }
 
+    // For today's half day: must have checked in and completed 4h threshold
+    if (parsed.leaveType === "HALF_DAY" && startDate.getTime() === today.getTime()) {
+      const todayAttendance = await prisma.attendance.findUnique({
+        where: { userId_date: { userId: session.user.id, date: today } },
+      });
+      if (!todayAttendance?.checkIn) {
+        return error("You must check in first before applying half day for today.");
+      }
+      if (todayAttendance.checkOut) {
+        return error("You already checked out today.");
+      }
+      const settings = await prisma.officeSettings.findUnique({ where: { id: "default" } });
+      const threshold = settings?.halfDayThresholdMin ?? 240;
+      const now = new Date();
+      const checkInMs = todayAttendance.checkIn.getTime();
+      let workedMs = now.getTime() - checkInMs;
+      if (todayAttendance.breakStart) {
+        const breakEndMs = todayAttendance.breakEnd ? todayAttendance.breakEnd.getTime() : now.getTime();
+        workedMs -= (breakEndMs - todayAttendance.breakStart.getTime());
+      }
+      const workedMinutes = Math.floor(workedMs / 60000);
+      if (workedMinutes < threshold) {
+        const remaining = threshold - workedMinutes;
+        const h = Math.floor(remaining / 60);
+        const m = remaining % 60;
+        return error(`Complete ${h}h ${m}m more work before applying half day (${Math.floor(threshold/60)}h minimum required).`);
+      }
+    }
+
     // Block duplicate leave for same date
     const existingLeave = await prisma.leaveRequest.findFirst({
       where: {

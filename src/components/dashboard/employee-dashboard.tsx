@@ -181,10 +181,27 @@ export function EmployeeDashboard({
   remainingBudgetCalc -= coveredAbsents;
   const paidBudgetRemaining = Math.max(0, remainingBudgetCalc);
 
-  // Check if leave already exists for selected date
+  // Check if leave can be applied
+  const todayStr = new Date().toISOString().split("T")[0];
+  // Calculate today's worked minutes for threshold check
+  let todayWorkedMinutes = 0;
+  if (attendance?.checkIn) {
+    const checkInMs = new Date(attendance.checkIn).getTime();
+    let workedMs = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : Date.now()) - checkInMs;
+    if (attendance.breakStart) {
+      const breakEndMs = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : Date.now();
+      workedMs -= (breakEndMs - new Date(attendance.breakStart).getTime());
+    }
+    todayWorkedMinutes = Math.max(0, Math.floor(workedMs / 60000));
+  }
+  const thresholdMinutes = 240; // 4 hours
+  const thresholdMet = todayWorkedMinutes >= thresholdMinutes;
+
   function getLeaveBlockMessage(): string | null {
     if (!leaveForm.date) return null;
     const selectedDate = leaveForm.date;
+
+    // Check duplicate
     const existingLeave = leaves.find((l: any) => {
       const ld = l.startDate.split("T")[0];
       return ld === selectedDate && l.status !== "REJECTED" && l.id !== editLeaveId;
@@ -192,6 +209,23 @@ export function EmployeeDashboard({
     if (existingLeave) {
       return "You already have a leave on this date.";
     }
+
+    // For today: must complete threshold first
+    if (selectedDate === todayStr) {
+      if (!attendance?.checkIn) {
+        return "You must check in and complete 4 hours before applying half day for today.";
+      }
+      if (attendance?.checkOut) {
+        return "You already checked out today.";
+      }
+      if (!thresholdMet) {
+        const remaining = thresholdMinutes - todayWorkedMinutes;
+        const h = Math.floor(remaining / 60);
+        const m = remaining % 60;
+        return `Complete ${h}h ${m}m more work before applying half day (4h minimum required).`;
+      }
+    }
+
     return null;
   }
   const leaveBlockMsg = getLeaveBlockMessage();
