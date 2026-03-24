@@ -3,7 +3,7 @@
  *
  * Reads employee profit data from their individual Google Sheets.
  * Each employee has a sheet with monthly tabs (e.g., "MARCH - 2K26")
- * GROSS PROFIT is in cell Y9 of each monthly tab.
+ * GROSS PROFIT is in cell Y10 of each monthly tab.
  */
 
 import { google } from "googleapis";
@@ -59,7 +59,7 @@ export function extractSheetId(url: string): string | null {
 
 /**
  * Fetch GROSS PROFIT from an employee's Google Sheet for a specific month
- * Reads cell Y9 from the monthly tab
+ * Reads cell Y10 from the monthly tab
  */
 export async function fetchProfitFromSheet(
   sheetUrl: string,
@@ -101,24 +101,34 @@ export async function fetchProfitFromSheet(
       };
     }
 
-    // Read GROSS PROFIT from cell Y9
-    const range = `'${matchedTab}'!Y9`;
+    // Read the analytics area (V1:AD15) and search for "AFTER TAX" label
+    // Layout varies between sheets — label could be in any column, value is always next column
+    const range = `'${matchedTab}'!V1:AD15`;
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
       range,
     });
 
-    const rawValue = response.data.values?.[0]?.[0];
-    if (!rawValue) {
-      return { profit: null, error: "Cell Y9 is empty", tabName: matchedTab };
+    const rows = response.data.values || [];
+    let profit: number | null = null;
+
+    for (const row of rows) {
+      for (let col = 0; col < row.length; col++) {
+        if (String(row[col]).trim().toUpperCase() === "AFTER TAX") {
+          // Value is in the next column
+          const rawValue = row[col + 1];
+          if (rawValue) {
+            const cleanValue = String(rawValue).replace(/[$,\s]/g, "");
+            profit = parseFloat(cleanValue);
+          }
+          break;
+        }
+      }
+      if (profit !== null) break;
     }
 
-    // Parse the profit value — remove $, commas, etc.
-    const cleanValue = String(rawValue).replace(/[$,\s]/g, "");
-    const profit = parseFloat(cleanValue);
-
-    if (isNaN(profit)) {
-      return { profit: null, error: `Cannot parse value: ${rawValue}`, tabName: matchedTab };
+    if (profit === null || isNaN(profit)) {
+      return { profit: null, error: "AFTER TAX value not found in analytics area", tabName: matchedTab };
     }
 
     return { profit, error: null, tabName: matchedTab };
