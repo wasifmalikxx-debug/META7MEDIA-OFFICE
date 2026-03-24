@@ -39,11 +39,17 @@ export default async function BonusProgramPage() {
       })
     : [];
 
-  // Sort by numeric part of employeeId (EM-2, EM-3, ... EM-10)
+  // Sort by employeeId: EM-2, EM-3, EM-4, EM-4B, EM-6, EM-7, EM-8, EM-9, EM-10
   employees.sort((a, b) => {
-    const numA = parseInt(a.employeeId?.replace(/[^0-9]/g, "") || "0");
-    const numB = parseInt(b.employeeId?.replace(/[^0-9]/g, "") || "0");
-    return numA - numB;
+    const parseId = (id: string | null) => {
+      if (!id) return { num: 999, suffix: "" };
+      const match = id.match(/EM-(\d+)(.*)/i);
+      return match ? { num: parseInt(match[1]), suffix: match[2] || "" } : { num: 999, suffix: "" };
+    };
+    const pa = parseId(a.employeeId);
+    const pb = parseId(b.employeeId);
+    if (pa.num !== pb.num) return pa.num - pb.num;
+    return pa.suffix.localeCompare(pb.suffix);
   });
 
   // Fetch bonus eligibilities for the current month
