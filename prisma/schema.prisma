@@ -1,13 +1,441 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  HR_ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+  ON_LEAVE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ABSENT
+  ON_LEAVE
+  HOLIDAY
+  WEEKEND
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+  UNPAID
+  EMERGENCY
+  HALF_DAY
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum IncentiveType {
+  FIXED
+  PERCENTAGE
+  TARGET_BASED
+  MANUAL
+}
+
+enum FineType {
+  LATE_ARRIVAL
+  EARLY_DEPARTURE
+  ABSENT_WITHOUT_LEAVE
+  POLICY_VIOLATION
+  OTHER
+}
+
+enum WarningLevel {
+  VERBAL
+  FIRST_WRITTEN
+  SECOND_WRITTEN
+  FINAL
+  TERMINATION
+}
+
+enum PayrollStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  PAID
+  DISPUTED
+}
+
+enum NotificationType {
+  LEAVE_REQUEST
+  LEAVE_APPROVED
+  LEAVE_REJECTED
+  FINE_ISSUED
+  INCENTIVE_AWARDED
+  PAYROLL_GENERATED
+  ANNOUNCEMENT
+  WARNING_ISSUED
+  GENERAL
+}
+
+// ─── Models ──────────────────────────────────────────
+
+model User {
+  id           String         @id @default(cuid())
+  employeeId   String         @unique // e.g. "M7M-001"
+  email        String         @unique
+  password     String // bcrypt hashed
+  firstName    String
+  lastName     String
+  phone        String?
+  profilePhoto String?
+  role         Role           @default(EMPLOYEE)
+  status       EmployeeStatus @default(ACTIVE)
+  joiningDate  DateTime
+  designation  String?
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  teamId       String?
+  team         Team?       @relation(fields: [teamId], references: [id])
+  managerId    String?
+  manager      User?       @relation("ManagerSubordinates", fields: [managerId], references: [id])
+  subordinates User[]      @relation("ManagerSubordinates")
+
+  attendances        Attendance[]
+  leaveRequests      LeaveRequest[]  @relation("LeaveRequester")
+  leaveApprovals     LeaveRequest[]  @relation("LeaveApprover")
+  salaryStructure    SalaryStructure?
+  payrollRecords     PayrollRecord[]
+  incentivesReceived Incentive[]     @relation("IncentiveRecipient")
+  incentivesGiven    Incentive[]     @relation("IncentiveGiver")
+  finesReceived      Fine[]          @relation("FineRecipient")
+  finesIssuedBy      Fine[]          @relation("FineIssuer")
+  warningsReceived   Warning[]       @relation("WarningRecipient")
+  warningsIssuedBy   Warning[]       @relation("WarningIssuer")
+  notifications      Notification[]
+  announcements      Announcement[]
+  leaveBalances      LeaveBalance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([departmentId])
+  @@index([managerId])
+  @@index([status])
+}
+
+model Department {
+  id     String  @id @default(cuid())
+  name   String  @unique
+  headId String?
+  teams  Team[]
+  users  User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Team {
+  id           String     @id @default(cuid())
+  name         String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  leadId       String?
+  members      User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, departmentId])
+  @@index([departmentId])
+}
+
+model Attendance {
+  id     String           @id @default(cuid())
+  userId String
+  user   User             @relation(fields: [userId], references: [id])
+  date   DateTime         @db.Date
+  status AttendanceStatus @default(ABSENT)
+
+  checkIn  DateTime?
+  checkOut DateTime?
+
+  checkInIp     String?
+  checkOutIp    String?
+  checkInLat    Float?
+  checkInLng    Float?
+  checkOutLat   Float?
+  checkOutLng   Float?
+  checkInSelfie String?
+
+  workedMinutes   Int?
+  lateMinutes     Int?
+  earlyLeaveMin   Int?
+  overtimeMinutes Int?
+
+  notes         String?
+  isManualEntry Boolean @default(false)
+  approvedBy    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@index([date])
+  @@index([status])
+}
+
+model LeaveRequest {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation("LeaveRequester", fields: [userId], references: [id])
+  leaveType LeaveType
+  startDate DateTime    @db.Date
+  endDate   DateTime    @db.Date
+  totalDays Float // supports 0.5 for half-day
+  reason    String
+  status    LeaveStatus @default(PENDING)
+
+  approverId      String?
+  approver        User?    @relation("LeaveApprover", fields: [approverId], references: [id])
+  approvedAt      DateTime?
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([startDate, endDate])
+  @@index([status])
+}
+
+model LeaveBalance {
+  id         String @id @default(cuid())
+  userId     String
+  user       User   @relation(fields: [userId], references: [id])
+  year       Int
+  casualTotal Int   @default(12)
+  casualUsed  Float @default(0)
+  sickTotal   Int   @default(10)
+  sickUsed    Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, year])
+}
+
+model SalaryStructure {
+  id            String @id @default(cuid())
+  userId        String @unique
+  user          User   @relation(fields: [userId], references: [id])
+  monthlySalary Float
+  currency      String @default("PKR")
+
+  taxPercent      Float   @default(0)
+  socialSecurity  Float   @default(0)
+  otherDeductions Float   @default(0)
+  deductionNotes  String?
+
+  effectiveFrom DateTime @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PayrollRecord {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  month  Int
+  year   Int
+
+  monthlySalary   Float
+  workingDays     Int
+  presentDays     Float
+  paidLeaveDays   Float
+  unpaidLeaveDays Float
+  lateDays        Int
+  absentDays      Int
+  halfDays        Float @default(0)
+
+  dailyRate    Float
+  earnedSalary Float
+
+  totalIncentives Float         @default(0)
+  totalFines      Float         @default(0)
+  totalDeductions Float         @default(0)
+  netSalary       Float
+  status          PayrollStatus @default(DRAFT)
+
+  paidAt      DateTime?
+  notes       String?
+  generatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, month, year])
+  @@index([month, year])
+  @@index([status])
+}
+
+model Incentive {
+  id         String        @id @default(cuid())
+  userId     String
+  user       User          @relation("IncentiveRecipient", fields: [userId], references: [id])
+  type       IncentiveType
+  amount     Float
+  percentage Float?
+  reason     String
+  month      Int
+  year       Int
+
+  givenById String
+  givenBy   User @relation("IncentiveGiver", fields: [givenById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, month, year])
+}
+
+model Fine {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation("FineRecipient", fields: [userId], references: [id])
+  type   FineType
+  amount Float
+  reason String
+  date   DateTime @db.Date
+  month  Int
+  year   Int
+
+  issuedById String
+  issuedBy   User @relation("FineIssuer", fields: [issuedById], references: [id])
+
+  linkedAttendanceId String?
+  linkedWarningId    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, month, year])
+  @@index([date])
+}
+
+model Warning {
+  id       String       @id @default(cuid())
+  userId   String
+  user     User         @relation("WarningRecipient", fields: [userId], references: [id])
+  level    WarningLevel
+  reason   String
+  details  String?
+  date     DateTime     @db.Date
+
+  issuedById String
+  issuedBy   User @relation("WarningIssuer", fields: [issuedById], references: [id])
+
+  acknowledged   Boolean   @default(false)
+  acknowledgedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([level])
+}
+
+model Announcement {
+  id       String @id @default(cuid())
+  title    String
+  content  String
+  priority Int    @default(0) // 0=normal, 1=important, 2=urgent
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  expiresAt DateTime?
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, createdAt])
+}
+
+model Notification {
+  id      String           @id @default(cuid())
+  userId  String
+  user    User             @relation(fields: [userId], references: [id])
+  type    NotificationType
+  title   String
+  message String
+  isRead  Boolean          @default(false)
+  linkUrl String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+model OfficeSettings {
+  id         String @id @default("default")
+  officeName String @default("META7MEDIA")
+
+  workStartTime       String @default("11:00") // HH:mm
+  workEndTime         String @default("19:00")
+  graceMinutes        Int    @default(10)
+  halfDayThresholdMin Int    @default(240) // <4hrs worked = half day
+
+  lateFineTier1Min Int   @default(10)
+  lateFineTier1Amt Float @default(0)
+  lateFineTier2Min Int   @default(30)
+  lateFineTier2Amt Float @default(0)
+  lateFineTier3Min Int   @default(60)
+  lateFineTier3Amt Float @default(0)
+
+  autoAbsentAfterMin Int @default(240) // no check-in after 4hrs
+
+  casualLeaveQuota Int @default(12)
+  sickLeaveQuota   Int @default(10)
+
+  allowedIps           String  @default("")
+  ipRestrictionEnabled Boolean @default(false)
+
+  officeLat        Float?
+  officeLng        Float?
+  geoFenceRadiusM  Int     @default(200)
+  geoFenceEnabled  Boolean @default(false)
+
+  selfieRequired Boolean @default(false)
+
+  workingDaysPerWeek Int    @default(6) // Mon-Sat
+  weekendDays        String @default("0") // 0=Sunday
+
+  updatedAt DateTime @updatedAt
+}
+
+model Holiday {
+  id   String   @id @default(cuid())
+  name String
+  date DateTime @unique @db.Date
+  year Int
+
+  createdAt DateTime @default(now())
+
+  @@index([year])
 }
