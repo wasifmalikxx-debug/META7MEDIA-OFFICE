@@ -22,6 +22,17 @@ export async function POST() {
     return error("Already checked out for the day");
   }
 
+  // Enforce break window
+  const settings = await prisma.officeSettings.findUnique({ where: { id: "default" } });
+  if (settings) {
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+    const [bsH, bsM] = settings.breakStartTime.split(":").map(Number);
+    const [beH, beM] = settings.breakEndTime.split(":").map(Number);
+    if (currentMin < bsH * 60 + bsM || currentMin > beH * 60 + beM) {
+      return error(`Break can only be started between ${settings.breakStartTime} and ${settings.breakEndTime}`);
+    }
+  }
+
   const updated = await prisma.attendance.update({
     where: { id: attendance.id },
     data: { breakStart: now },

@@ -130,9 +130,10 @@ export default async function DashboardPage() {
     monthAttendances.reduce((sum, a) => sum + (a.workedMinutes || 0), 0) / 60
   );
 
-  const [salaryStructure, currentUser] = await Promise.all([
+  const [salaryStructure, currentUser, officeSettings] = await Promise.all([
     prisma.salaryStructure.findUnique({ where: { userId } }),
     prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } }),
+    prisma.officeSettings.findUnique({ where: { id: "default" } }),
   ]);
 
   return (
@@ -150,6 +151,8 @@ export default async function DashboardPage() {
       totalWorkedHours={totalWorkedHours}
       monthlySalary={salaryStructure?.monthlySalary || 0}
       leaveRequests={JSON.parse(JSON.stringify(leaveRequests))}
+      breakStartTime={officeSettings?.breakStartTime || "14:00"}
+      breakEndTime={officeSettings?.breakEndTime || "15:00"}
     />
   );
 }

@@ -45,6 +45,8 @@ interface EmployeeDashboardProps {
   totalWorkedHours: number;
   monthlySalary: number;
   leaveRequests: any[];
+  breakStartTime: string;
+  breakEndTime: string;
 }
 
 export function EmployeeDashboard({
@@ -61,6 +63,8 @@ export function EmployeeDashboard({
   totalWorkedHours,
   monthlySalary,
   leaveRequests: initialLeaveRequests,
+  breakStartTime,
+  breakEndTime,
 }: EmployeeDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
@@ -136,6 +140,16 @@ export function EmployeeDashboard({
   const hasCheckedIn = !!attendance?.checkIn;
   const hasCheckedOut = !!attendance?.checkOut;
   const onBreak = !!attendance?.breakStart && !attendance?.breakEnd;
+
+  // Break window check
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const [bsH, bsM] = breakStartTime.split(":").map(Number);
+  const [beH, beM] = breakEndTime.split(":").map(Number);
+  const breakStartMin = bsH * 60 + bsM;
+  const breakEndMin = beH * 60 + beM;
+  const isInBreakWindow = currentMinutes >= breakStartMin && currentMinutes <= breakEndMin;
+  const breakWindowLabel = `${breakStartTime} - ${breakEndTime}`;
 
   // Paid leave budget: 1.0 day per month. Half day = 0.5, absent = uses remaining budget
   const currentMonth = new Date().getMonth();
@@ -358,15 +372,22 @@ export function EmployeeDashboard({
               </Button>
             )}
             {hasCheckedIn && !hasCheckedOut && !onBreak && !breakDone && (
-              <Button
-                onClick={handleBreakStart}
-                disabled={loading}
-                variant="secondary"
-                className="gap-2"
-              >
-                <Coffee className="size-4" />
-                {loading ? "..." : "Start Break"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleBreakStart}
+                  disabled={loading || !isInBreakWindow}
+                  variant="secondary"
+                  className="gap-2"
+                >
+                  <Coffee className="size-4" />
+                  {loading ? "..." : "Start Break"}
+                </Button>
+                {!isInBreakWindow && (
+                  <span className="text-xs text-muted-foreground">
+                    Break: {breakWindowLabel}
+                  </span>
+                )}
+              </div>
             )}
             {onBreak && (
               <Button
