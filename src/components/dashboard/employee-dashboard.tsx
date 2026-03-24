@@ -655,9 +655,15 @@ export function EmployeeDashboard({
                         <span className="text-sm font-medium">
                           {leave.leaveType === "HALF_DAY" ? "Half Day" : "Full Day"}
                         </span>
-                        <Badge variant="default" className="text-xs bg-green-600">
-                          Approved
-                        </Badge>
+                        {canEdit ? (
+                          <Badge variant="secondary" className="text-xs">
+                            Pending ({cancelTimeLeft !== null ? `${cancelTimeLeft}m` : "15m"})
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="text-xs bg-green-600">
+                            Approved
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {format(leaveDate, "EEE, MMM d, yyyy")}
