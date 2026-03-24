@@ -313,35 +313,20 @@ export function EmployeeDashboard({
   const liveWorkedHours = Math.floor(liveTotalMinutes / 60);
   const liveWorkedMins = liveTotalMinutes % 60;
 
-  // Salary Till Now: real-time calculation based on hours worked
+  // Estimated Salary = Monthly Salary - all deductions + incentives
+  // This shows what the employee will receive at month end based on current data
   const dailyRate = Math.round(monthlySalary / 30);
-  const hourlyRate = Math.round(dailyRate / 8); // 8 hour work day
-  // Completed days earning
-  const completedDaysEarning = (monthPresent + coveredAbsents + (coveredHalfDays * 0.5)) * dailyRate;
-  // Today's real-time earning (if checked in and not yet checked out)
-  let todayEarning = 0;
-  if (attendance?.checkIn && !attendance?.checkOut) {
-    const checkInTime = new Date(attendance.checkIn).getTime();
-    const nowTime = Date.now();
-    let workedMs = nowTime - checkInTime;
-    // Subtract break time
-    if (attendance.breakStart) {
-      const breakEnd = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : nowTime;
-      workedMs -= (breakEnd - new Date(attendance.breakStart).getTime());
-    }
-    const workedHours = Math.max(0, workedMs / (1000 * 60 * 60));
-    todayEarning = Math.round(workedHours * hourlyRate);
-  } else if (attendance?.checkOut) {
-    // Already checked out today — use worked minutes
-    const workedHours = (attendance.workedMinutes || 0) / 60;
-    todayEarning = Math.round(workedHours * hourlyRate);
-  }
-  // Deductions
+  const hourlyRate = Math.round(dailyRate / 8);
+
+  // Deductions: uncovered absences + uncovered half days + fines
   const uncoveredAbsents = Math.max(0, monthAbsent - coveredAbsents);
   const absentDeduction = uncoveredAbsents * dailyRate;
   const uncoveredHalfDays = Math.max(0, halfDaysUsed - coveredHalfDays);
-  const halfDayDeduction = uncoveredHalfDays * dailyRate * 0.5;
-  const salaryTillNow = Math.max(0, Math.round(completedDaysEarning + todayEarning + totalIncentivesAmount - totalFinesAmount - absentDeduction - halfDayDeduction));
+  const halfDayDeduction = uncoveredHalfDays * Math.round(dailyRate * 0.5);
+  const totalDeductions = absentDeduction + halfDayDeduction + totalFinesAmount;
+
+  // Estimated = Monthly Salary + Incentives - Deductions
+  const salaryTillNow = Math.max(0, Math.round(monthlySalary + totalIncentivesAmount - totalDeductions));
 
   return (
     <div className="space-y-6">
