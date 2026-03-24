@@ -48,6 +48,7 @@ interface EmployeeDashboardProps {
   leaveRequests: any[];
   breakStartTime: string;
   breakEndTime: string;
+  workEndTime: string;
 }
 
 export function EmployeeDashboard({
@@ -66,6 +67,7 @@ export function EmployeeDashboard({
   leaveRequests: initialLeaveRequests,
   breakStartTime,
   breakEndTime,
+  workEndTime,
 }: EmployeeDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
@@ -162,6 +164,35 @@ export function EmployeeDashboard({
   const isInBreakWindow = currentMinutes >= breakStartMin && currentMinutes <= breakEndMin;
   const breakWindowLabel = `${breakStartTime} - ${breakEndTime}`;
 
+  // Work end time check (strict checkout rule)
+  const [weH, weM] = (workEndTime || "19:00").split(":").map(Number);
+  const workEndMin = weH * 60 + weM;
+  const canCheckoutByTime = currentMinutes >= workEndMin;
+  // Check if employee has an approved half-day leave for today
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const hasHalfDayToday = leaves.some((l: any) => {
+    const d = format(new Date(l.startDate), "yyyy-MM-dd");
+    return d === todayStr && l.leaveType === "HALF_DAY" && l.status !== "REJECTED";
+  });
+  // Half day threshold = 4 hours = 240 minutes
+  const halfDayThresholdMin = 240;
+  // Calculate today's worked minutes for early checkout check
+  let todayWorkedMin = 0;
+  if (attendance?.checkIn) {
+    const cIn = new Date(attendance.checkIn).getTime();
+    let worked = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : Date.now()) - cIn;
+    if (attendance?.breakStart) {
+      const bEnd = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : Date.now();
+      worked -= (bEnd - new Date(attendance.breakStart).getTime());
+    }
+    todayWorkedMin = Math.max(0, Math.floor(worked / 60000));
+  }
+  const canCheckoutHalfDay = hasHalfDayToday && todayWorkedMin >= halfDayThresholdMin;
+  const canCheckout = canCheckoutByTime || canCheckoutHalfDay;
+
+  // Format work end time for display
+  const workEndFormatted = `${weH > 12 ? weH - 12 : weH}:${String(weM).padStart(2, "0")} ${weH >= 12 ? "PM" : "AM"}`;
+
   // Paid leave budget: 1.0 day per month. Half day = 0.5, absent = uses remaining budget
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
@@ -181,8 +212,7 @@ export function EmployeeDashboard({
   remainingBudgetCalc -= coveredAbsents;
   const paidBudgetRemaining = Math.max(0, remainingBudgetCalc);
 
-  // Check if leave can be applied
-  const todayStr = new Date().toISOString().split("T")[0];
+  // Check if leave can be applied (todayStr already defined above)
   // Calculate today's worked minutes for threshold check
   let todayWorkedMinutes = 0;
   if (attendance?.checkIn) {
@@ -456,16 +486,33 @@ export function EmployeeDashboard({
                 Break ended at {format(new Date(attendance.breakEnd), "h:mm a")}
               </Badge>
             )}
-            {hasCheckedIn && !hasCheckedOut && (
-              <Button
-                onClick={handleCheckOut}
-                disabled={loading || onBreak}
-                variant="outline"
-                className="gap-2"
-              >
-                <XCircle className="size-4" />
-                {loading ? "..." : "Check Out"}
-              </Button>
+            {hasCheckedIn && !hasCheckedOut && !onBreak && (
+              <>
+                {canCheckout ? (
+                  <Button
+                    onClick={handleCheckOut}
+                    disabled={loading}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <XCircle className="size-4" />
+                    {loading ? "..." : "Check Out"}
+                  </Button>
+                ) : todayWorkedMin < halfDayThresholdMin ? (
+                  <span className="text-xs text-muted-foreground">
+                    Checkout available at {workEndFormatted}
+                  </span>
+                ) : (
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                      You&apos;ve worked {Math.floor(todayWorkedMin / 60)}h {todayWorkedMin % 60}m — half day will be recorded
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Full checkout at {workEndFormatted} • Or apply half day leave
+                    </span>
+                  </div>
+                )}
+              </>
             )}
             {hasCheckedOut && (
               <Badge variant="secondary" className="text-sm py-1.5 px-3">

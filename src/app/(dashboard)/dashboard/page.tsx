@@ -153,6 +153,7 @@ export default async function DashboardPage() {
       leaveRequests={JSON.parse(JSON.stringify(leaveRequests))}
       breakStartTime={officeSettings?.breakStartTime || "14:00"}
       breakEndTime={officeSettings?.breakEndTime || "15:00"}
+      workEndTime={officeSettings?.workEndTime || "19:00"}
     />
   );
 }
