@@ -123,6 +123,9 @@ model User {
   accountNumber String?
   accountTitle  String?
 
+  // Google Sheet URL for profit tracking
+  googleSheetUrl String?
+
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
   teamId       String?
