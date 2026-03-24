@@ -15,6 +15,7 @@ export default async function EmployeesPage() {
 
   const [employees, departments] = await Promise.all([
     prisma.user.findMany({
+      where: { role: { not: "SUPER_ADMIN" } },
       select: {
         id: true,
         employeeId: true,

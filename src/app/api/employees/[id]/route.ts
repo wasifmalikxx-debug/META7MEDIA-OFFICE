@@ -98,10 +98,19 @@ export async function DELETE(
 
   const { id } = await params;
 
-  await prisma.user.update({
-    where: { id },
-    data: { status: "TERMINATED" },
-  });
+  // Delete all related records first
+  await prisma.$transaction([
+    prisma.notification.deleteMany({ where: { userId: id } }),
+    prisma.fine.deleteMany({ where: { userId: id } }),
+    prisma.incentive.deleteMany({ where: { userId: id } }),
+    prisma.payrollRecord.deleteMany({ where: { userId: id } }),
+    prisma.leaveRequest.deleteMany({ where: { userId: id } }),
+    prisma.leaveBalance.deleteMany({ where: { userId: id } }),
+    prisma.attendance.deleteMany({ where: { userId: id } }),
+    prisma.warning.deleteMany({ where: { userId: id } }),
+    prisma.salaryStructure.deleteMany({ where: { userId: id } }),
+    prisma.user.delete({ where: { id } }),
+  ]);
 
   return json({ success: true });
 }

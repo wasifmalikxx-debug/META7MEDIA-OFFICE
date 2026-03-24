@@ -30,7 +30,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Search, Pencil } from "lucide-react";
+import { Plus, Search, Pencil, Trash2 } from "lucide-react";
 
 interface EmployeesViewProps {
   employees: any[];
@@ -135,6 +135,19 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
       toast.error(err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Are you sure you want to delete ${name}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/employees/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Employee deleted");
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
     }
   }
 
@@ -435,67 +448,128 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
         </DialogContent>
       </Dialog>
 
-      <Card>
-        <CardContent className="pt-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Designation</TableHead>
-                <TableHead>Salary</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((emp) => (
-                <TableRow key={emp.id}>
-                  <TableCell className="text-sm font-mono">{emp.employeeId}</TableCell>
-                  <TableCell className="text-sm font-medium">
-                    {emp.firstName} {emp.lastName}
-                  </TableCell>
-                  <TableCell className="text-sm">{emp.email}</TableCell>
-                  <TableCell className="text-sm">
-                    {emp.department?.name || "—"}
-                  </TableCell>
-                  <TableCell className="text-sm">{emp.designation || "—"}</TableCell>
-                  <TableCell className="text-sm">
-                    {emp.salaryStructure
-                      ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}`
-                      : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        emp.status === "HIRED"
-                          ? "default"
-                          : emp.status === "PROBATION"
-                          ? "secondary"
-                          : "destructive"
-                      }
-                      className="text-xs"
-                    >
-                      {emp.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => openEdit(emp)}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {(() => {
+        const grouped: Record<string, any[]> = {};
+        filtered.forEach((emp) => {
+          const dept = emp.department?.name || "Unassigned";
+          if (!grouped[dept]) grouped[dept] = [];
+          grouped[dept].push(emp);
+        });
+        const deptOrder = ["Etsy", "Facebook"];
+        const sortedKeys = Object.keys(grouped).sort((a, b) => {
+          const ai = deptOrder.indexOf(a);
+          const bi = deptOrder.indexOf(b);
+          if (ai !== -1 && bi !== -1) return ai - bi;
+          if (ai !== -1) return -1;
+          if (bi !== -1) return 1;
+          return a.localeCompare(b);
+        });
+
+        return sortedKeys.map((dept) => (
+          <div key={dept} className="space-y-2">
+            <div className="flex items-center gap-3 px-1">
+              <h3 className="text-lg font-semibold">{dept} Team</h3>
+              <Badge variant="outline" className="text-xs">
+                {grouped[dept].length} employees
+              </Badge>
+            </div>
+            <Card>
+              <CardContent className="pt-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Salary</TableHead>
+                      <TableHead>Bank Details</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Joining</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {grouped[dept].map((emp) => (
+                      <TableRow key={emp.id}>
+                        <TableCell className="text-sm font-mono">{emp.employeeId}</TableCell>
+                        <TableCell>
+                          <div className="text-sm font-medium">
+                            {emp.firstName} {emp.lastName}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{emp.email}</div>
+                        </TableCell>
+                        <TableCell className="text-sm font-medium">
+                          {emp.salaryStructure
+                            ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}`
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {emp.bankName ? (
+                            <div>
+                              <div className="text-sm">{emp.bankName}</div>
+                              <div className="text-xs text-muted-foreground font-mono">
+                                {emp.accountNumber}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {emp.accountTitle}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Not provided</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              emp.status === "HIRED"
+                                ? "default"
+                                : emp.status === "PROBATION"
+                                ? "secondary"
+                                : "destructive"
+                            }
+                            className="text-xs"
+                          >
+                            {emp.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {emp.joiningDate
+                            ? new Date(emp.joiningDate).toLocaleDateString("en-PK", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => openEdit(emp)}
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-500 hover:text-red-700"
+                              onClick={() =>
+                                handleDelete(emp.id, `${emp.firstName} ${emp.lastName}`)
+                              }
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        ));
+      })()}
     </div>
   );
 }
