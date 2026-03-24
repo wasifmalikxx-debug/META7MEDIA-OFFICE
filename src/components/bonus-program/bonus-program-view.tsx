@@ -157,12 +157,12 @@ export function BonusProgramView({
             totalProfit: existing.totalProfit,
           }
         : {
-            dailyListingsComplete: false,
-            ordersProcessedSameDay: false,
-            messagesCleared: false,
-            zeroWrongOrders: false,
+            dailyListingsComplete: true,
+            ordersProcessedSameDay: true,
+            messagesCleared: true,
+            zeroWrongOrders: true,
             listingsRemovedCount: 0,
-            allStoresAbove4Stars: false,
+            allStoresAbove4Stars: true,
             totalProfit: 0,
           };
     }
