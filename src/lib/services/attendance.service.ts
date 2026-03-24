@@ -60,12 +60,11 @@ export async function checkIn(
   const currentMinutes = getMinutesSinceMidnight(now);
   const lateMinutes = Math.max(0, currentMinutes - startMinutes - settings.graceMinutes);
 
+  // If employee physically checks in, they are PRESENT or LATE — never ABSENT
+  // ABSENT is only for employees who don't show up at all (end-of-day system marking)
   let status: AttendanceStatus = AttendanceStatus.PRESENT;
   if (lateMinutes > 0) {
     status = AttendanceStatus.LATE;
-  }
-  if (currentMinutes - startMinutes >= settings.autoAbsentAfterMin) {
-    status = AttendanceStatus.ABSENT;
   }
 
   const attendance = await prisma.attendance.upsert({
