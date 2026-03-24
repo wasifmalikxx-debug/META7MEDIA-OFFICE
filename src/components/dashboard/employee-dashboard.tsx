@@ -101,13 +101,20 @@ export function EmployeeDashboard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast.success(editLeaveId ? "Leave updated!" : "Leave applied!");
+      toast.success(editLeaveId ? "Leave updated!" : "Half day leave applied!");
       setLeaveOpen(false);
       setEditLeaveId(null);
-      setLeaveForm({ type: "FULL", date: "", reason: "" });
-      // Refresh leaves
-      const res2 = await fetch("/api/leaves");
-      if (res2.ok) setLeaves(await res2.json());
+      setLeaveForm({ type: "HALF", date: "", reason: "" });
+      // Refresh leaves and attendance in parallel
+      const [leavesRes, attRes] = await Promise.all([
+        fetch("/api/leaves"),
+        fetch("/api/attendance/today"),
+      ]);
+      if (leavesRes.ok) setLeaves(await leavesRes.json());
+      if (attRes.ok) {
+        const attData = await attRes.json();
+        setAttendance(attData);
+      }
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -122,6 +129,9 @@ export function EmployeeDashboard({
       if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
       setLeaves(leaves.filter((l: any) => l.id !== id));
       toast.success("Leave cancelled");
+      // Refresh attendance in case it was auto-checkout
+      const attRes = await fetch("/api/attendance/today");
+      if (attRes.ok) setAttendance(await attRes.json());
     } catch (err: any) {
       toast.error(err.message);
     }
