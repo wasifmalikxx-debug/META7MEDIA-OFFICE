@@ -755,28 +755,6 @@ export function EmployeeDashboard({
           </CardContent>
         </Card>
 
-        {/* Announcements */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Announcements</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {announcements.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No announcements.</p>
-            ) : (
-              <div className="space-y-3">
-                {announcements.map((ann: any) => (
-                  <div key={ann.id} className="border-b pb-2 last:border-0">
-                    <span className="text-sm font-medium">{ann.title}</span>
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                      {ann.content}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
