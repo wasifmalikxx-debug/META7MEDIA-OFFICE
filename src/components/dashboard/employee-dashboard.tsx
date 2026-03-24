@@ -10,6 +10,8 @@ import {
   CheckCircle,
   XCircle,
   Coffee,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { StatCard } from "@/components/common/stat-card";
 import { PageHeader } from "@/components/common/page-header";
@@ -50,6 +52,7 @@ export function EmployeeDashboard({
 }: EmployeeDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
+  const [showSalary, setShowSalary] = useState(false);
 
   const hasCheckedIn = !!attendance?.checkIn;
   const hasCheckedOut = !!attendance?.checkOut;
@@ -281,30 +284,44 @@ export function EmployeeDashboard({
         />
       </div>
 
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Monthly Salary"
-          value={`PKR ${monthlySalary.toLocaleString()}`}
-          icon={Wallet}
-        />
-        <StatCard
-          title="Net Payable"
-          value={`PKR ${(currentPayroll?.netSalary || 0).toLocaleString()}`}
-          icon={Wallet}
-          description="Estimated"
-        />
-        <StatCard
-          title="Fines"
-          value={`PKR ${totalFinesAmount.toLocaleString()}`}
-          icon={AlertTriangle}
-          description="This month"
-        />
-        <StatCard
-          title="Incentives"
-          value={`PKR ${totalIncentivesAmount.toLocaleString()}`}
-          icon={Gift}
-          description="This month"
-        />
+      <div className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-sm font-medium text-muted-foreground">Salary & Finance</h3>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1.5 text-xs text-muted-foreground"
+            onClick={() => setShowSalary(!showSalary)}
+          >
+            {showSalary ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            {showSalary ? "Hide" : "Show"}
+          </Button>
+        </div>
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Monthly Salary"
+            value={showSalary ? `PKR ${monthlySalary.toLocaleString()}` : "PKR ****"}
+            icon={Wallet}
+          />
+          <StatCard
+            title="Net Payable"
+            value={showSalary ? `PKR ${(currentPayroll?.netSalary || 0).toLocaleString()}` : "PKR ****"}
+            icon={Wallet}
+            description="Estimated"
+          />
+          <StatCard
+            title="Fines"
+            value={showSalary ? `PKR ${totalFinesAmount.toLocaleString()}` : "PKR ****"}
+            icon={AlertTriangle}
+            description="This month"
+          />
+          <StatCard
+            title="Incentives"
+            value={showSalary ? `PKR ${totalIncentivesAmount.toLocaleString()}` : "PKR ****"}
+            icon={Gift}
+            description="This month"
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
