@@ -143,20 +143,40 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     throw new Error("Already checked out today");
   }
 
+  // Subtract break time from worked minutes
+  let breakMinutes = 0;
+  if (attendance.breakStart && attendance.breakEnd) {
+    breakMinutes = Math.floor(
+      (attendance.breakEnd.getTime() - attendance.breakStart.getTime()) / (1000 * 60)
+    );
+  }
   const workedMinutes = Math.floor(
     (now.getTime() - attendance.checkIn.getTime()) / (1000 * 60)
-  );
+  ) - breakMinutes;
 
-  // Check if half day
-  let status = attendance.status;
+  // Block checkout if threshold not met
   if (workedMinutes < settings.halfDayThresholdMin) {
+    const hoursNeeded = Math.floor(settings.halfDayThresholdMin / 60);
+    const minsNeeded = settings.halfDayThresholdMin % 60;
+    const hoursWorked = Math.floor(workedMinutes / 60);
+    const minsWorked = workedMinutes % 60;
+    throw new Error(
+      `You must complete at least ${hoursNeeded}h ${minsNeeded}m before checking out for half day. You have worked ${hoursWorked}h ${minsWorked}m so far.`
+    );
+  }
+
+  // Check if half day (worked less than full day)
+  let status = attendance.status;
+  const officeEnd = parseTime(settings.workEndTime);
+  const officeStart = parseTime(settings.workStartTime);
+  const fullDayMinutes = (officeEnd.hours * 60 + officeEnd.minutes) - (officeStart.hours * 60 + officeStart.minutes);
+  // If worked less than 75% of full day, it's a half day
+  if (workedMinutes < fullDayMinutes * 0.75) {
     status = AttendanceStatus.HALF_DAY;
   }
 
   // Calculate overtime
-  const endTime = parseTime(settings.workEndTime);
-  const startTime = parseTime(settings.workStartTime);
-  const standardMinutes = (endTime.hours * 60 + endTime.minutes) - (startTime.hours * 60 + startTime.minutes);
+  const standardMinutes = fullDayMinutes;
   const overtimeMinutes = Math.max(0, workedMinutes - standardMinutes);
 
   // Early leave
