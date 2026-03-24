@@ -485,8 +485,11 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
       </Dialog>
 
       {(() => {
+        const active = filtered.filter((e) => e.status === "HIRED" || e.status === "PROBATION");
+        const inactive = filtered.filter((e) => e.status === "RESIGNED" || e.status === "TERMINATED");
+
         const grouped: Record<string, any[]> = {};
-        filtered.forEach((emp) => {
+        active.forEach((emp) => {
           const dept = emp.department?.name || "Unassigned";
           if (!grouped[dept]) grouped[dept] = [];
           grouped[dept].push(emp);
@@ -501,7 +504,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
           return a.localeCompare(b);
         });
 
-        return sortedKeys.map((dept) => (
+        const sections = sortedKeys.map((dept) => (
           <div key={dept} className="space-y-2">
             <div className="flex items-center gap-3 px-1">
               <h3 className="text-lg font-semibold">{dept} Team</h3>
@@ -605,6 +608,89 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
             </Card>
           </div>
         ));
+
+        // Resigned / Fired section
+        if (inactive.length > 0) {
+          sections.push(
+            <div key="inactive" className="space-y-2 mt-4">
+              <div className="flex items-center gap-3 px-1">
+                <h3 className="text-lg font-semibold text-muted-foreground">Resigned / Fired</h3>
+                <Badge variant="outline" className="text-xs text-muted-foreground">
+                  {inactive.length} employees
+                </Badge>
+              </div>
+              <Card className="opacity-75">
+                <CardContent className="pt-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Department</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Joining</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {inactive.map((emp) => (
+                        <TableRow key={emp.id} className="text-muted-foreground">
+                          <TableCell className="text-sm font-mono">{emp.employeeId}</TableCell>
+                          <TableCell>
+                            <div className="text-sm font-medium">
+                              {emp.firstName} {emp.lastName}
+                            </div>
+                            <div className="text-xs">{emp.email}</div>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {emp.department?.name || "—"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="destructive" className="text-xs">
+                              {emp.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {emp.joiningDate
+                              ? new Date(emp.joiningDate).toLocaleDateString("en-PK", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => openEdit(emp)}
+                              >
+                                <Pencil className="size-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-red-500 hover:text-red-700"
+                                onClick={() =>
+                                  handleDelete(emp.id, `${emp.firstName} ${emp.lastName}`)
+                                }
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        }
+
+        return sections;
       })()}
     </div>
   );
