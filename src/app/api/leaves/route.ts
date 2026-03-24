@@ -91,6 +91,43 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Auto-checkout if half-day leave is for today and employee is checked in
+    if (parsed.leaveType === "HALF_DAY") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (startDate.getTime() === today.getTime()) {
+        const activeAttendance = await prisma.attendance.findFirst({
+          where: {
+            userId: session.user.id,
+            date: today,
+            checkOut: null,
+          },
+        });
+        if (activeAttendance) {
+          const now = new Date();
+          const checkIn = new Date(activeAttendance.checkIn);
+          const totalMinutes = Math.floor((now.getTime() - checkIn.getTime()) / 60000);
+          // Subtract break time if applicable
+          let breakMinutes = 0;
+          if (activeAttendance.breakStart && activeAttendance.breakEnd) {
+            breakMinutes = Math.floor(
+              (new Date(activeAttendance.breakEnd).getTime() - new Date(activeAttendance.breakStart).getTime()) / 60000
+            );
+          }
+          const workingMinutes = totalMinutes - breakMinutes;
+
+          await prisma.attendance.update({
+            where: { id: activeAttendance.id },
+            data: {
+              checkOut: now,
+              totalHours: Math.round((workingMinutes / 60) * 100) / 100,
+              status: "HALF_DAY",
+            },
+          });
+        }
+      }
+    }
+
     // Notify admins
     await notifyAdmins(
       "LEAVE_REQUEST",
