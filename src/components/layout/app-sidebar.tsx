@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   Settings,
   User,
-  Bell,
   LogOut,
 } from "lucide-react";
 import {
@@ -34,7 +33,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+
+
 
 interface AppSidebarProps {
   user: {
@@ -43,7 +43,6 @@ interface AppSidebarProps {
     role: string;
     employeeId: string;
   };
-  unreadCount?: number;
 }
 
 const mainNav = [
@@ -68,7 +67,7 @@ function hasAccess(roles: string[], userRole: string) {
   return roles.includes("all") || roles.includes(userRole);
 }
 
-export function AppSidebar({ user, unreadCount = 0 }: AppSidebarProps) {
+export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
 
   const renderNavItems = (items: typeof mainNav) =>
@@ -141,18 +140,6 @@ export function AppSidebar({ user, unreadCount = 0 }: AppSidebarProps) {
       <SidebarFooter className="p-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton render={<Link href="/notifications" />} isActive={pathname === "/notifications"}>
-                <Bell className="size-4" />
-                <span>Notifications</span>
-                {unreadCount > 0 && (
-                  <Badge variant="destructive" className="ml-auto text-xs px-1.5 py-0">
-                    {unreadCount}
-                  </Badge>
-                )}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
-          <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuButton className="w-full" />}>
                   <Avatar className="size-6">
@@ -166,7 +153,7 @@ export function AppSidebar({ user, unreadCount = 0 }: AppSidebarProps) {
               <DropdownMenuContent side="top" align="start" className="w-48">
                 <DropdownMenuItem render={<Link href="/profile" />}>
                     <User className="mr-2 size-4" />
-                    Profile
+                    Settings
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={async () => {
                   await signOut({ redirect: false });
