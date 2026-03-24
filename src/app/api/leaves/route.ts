@@ -154,6 +154,13 @@ export async function POST(request: NextRequest) {
       "/leaves"
     );
 
+    // WhatsApp: notify employee + CEO
+    const { notifyEmployee, notifyAdmin, halfDayAppliedMsg, adminLeaveAlertMsg } = await import("@/lib/services/whatsapp.service");
+    const name = (session.user as any).name || "Employee";
+    const dateStr = startDate.toLocaleDateString("en-PK", { weekday: "short", month: "short", day: "numeric" });
+    notifyEmployee(session.user.id, halfDayAppliedMsg(name, dateStr));
+    notifyAdmin(adminLeaveAlertMsg(name, dateStr));
+
     return json(leave, 201);
   } catch (err: any) {
     return error(err.message);

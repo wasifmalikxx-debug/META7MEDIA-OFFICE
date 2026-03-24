@@ -445,6 +445,10 @@ model OfficeSettings {
   workingDaysPerWeek Int    @default(6) // Mon-Sat
   weekendDays        String @default("0") // 0=Sunday
 
+  // WhatsApp notifications
+  whatsappEnabled Boolean @default(true)
+  adminPhone      String? // CEO phone for admin alerts (with country code e.g. +923208888445)
+
   updatedAt DateTime @updatedAt
 }
 

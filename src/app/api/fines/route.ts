@@ -65,6 +65,12 @@ export async function POST(request: NextRequest) {
       "/fines"
     );
 
+    // WhatsApp notification
+    const { notifyEmployee, fineAddedMsg } = await import("@/lib/services/whatsapp.service");
+    const user = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { firstName: true, lastName: true } });
+    const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
+    notifyEmployee(parsed.userId, fineAddedMsg(empName, parsed.amount, parsed.reason));
+
     return json(fine, 201);
   } catch (err: any) {
     return error(err.message);

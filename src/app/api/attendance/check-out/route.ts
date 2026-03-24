@@ -16,6 +16,15 @@ export async function POST(request: NextRequest) {
       body.latitude,
       body.longitude
     );
+
+    // WhatsApp checkout notification
+    const name = (session.user as any).name || "Employee";
+    const hours = attendance.workedMinutes
+      ? `${Math.floor(attendance.workedMinutes / 60)}h ${attendance.workedMinutes % 60}m`
+      : "N/A";
+    const { notifyEmployee, checkOutMsg } = await import("@/lib/services/whatsapp.service");
+    notifyEmployee(session.user.id, checkOutMsg(name, hours));
+
     return json(attendance);
   } catch (err: any) {
     return error(err.message);
