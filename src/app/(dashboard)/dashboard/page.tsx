@@ -82,6 +82,7 @@ export default async function DashboardPage() {
     recentFines,
     recentIncentives,
     announcements,
+    leaveRequests,
   ] = await Promise.all([
     prisma.attendance.findUnique({
       where: { userId_date: { userId, date: today } },
@@ -105,6 +106,11 @@ export default async function DashboardPage() {
       orderBy: { createdAt: "desc" },
       take: 5,
       include: { author: { select: { firstName: true, lastName: true } } },
+    }),
+    prisma.leaveRequest.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
     }),
   ]);
 
@@ -143,6 +149,7 @@ export default async function DashboardPage() {
       monthLate={monthLate}
       totalWorkedHours={totalWorkedHours}
       monthlySalary={salaryStructure?.monthlySalary || 0}
+      leaveRequests={JSON.parse(JSON.stringify(leaveRequests))}
     />
   );
 }

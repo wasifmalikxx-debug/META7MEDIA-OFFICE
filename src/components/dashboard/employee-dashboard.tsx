@@ -44,6 +44,7 @@ interface EmployeeDashboardProps {
   monthLate: number;
   totalWorkedHours: number;
   monthlySalary: number;
+  leaveRequests: any[];
 }
 
 export function EmployeeDashboard({
@@ -59,19 +60,24 @@ export function EmployeeDashboard({
   monthLate,
   totalWorkedHours,
   monthlySalary,
+  leaveRequests: initialLeaveRequests,
 }: EmployeeDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
   const [showSalary, setShowSalary] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ type: "FULL", date: "", reason: "" });
+  const [leaves, setLeaves] = useState(initialLeaveRequests);
+  const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
 
   async function handleApplyLeave() {
     if (!leaveForm.date) { toast.error("Please select a date"); return; }
     setLoading(true);
     try {
-      const res = await fetch("/api/leaves", {
-        method: "POST",
+      const url = editLeaveId ? `/api/leaves/${editLeaveId}` : "/api/leaves";
+      const method = editLeaveId ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           leaveType: leaveForm.type === "HALF" ? "HALF_DAY" : "CASUAL",
@@ -82,14 +88,40 @@ export function EmployeeDashboard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast.success("Leave applied successfully!");
+      toast.success(editLeaveId ? "Leave updated!" : "Leave applied!");
       setLeaveOpen(false);
+      setEditLeaveId(null);
       setLeaveForm({ type: "FULL", date: "", reason: "" });
+      // Refresh leaves
+      const res2 = await fetch("/api/leaves");
+      if (res2.ok) setLeaves(await res2.json());
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleCancelLeave(id: string) {
+    if (!confirm("Cancel this leave request?")) return;
+    try {
+      const res = await fetch(`/api/leaves/${id}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      setLeaves(leaves.filter((l: any) => l.id !== id));
+      toast.success("Leave cancelled");
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
+
+  function openEditLeave(leave: any) {
+    setEditLeaveId(leave.id);
+    setLeaveForm({
+      type: leave.leaveType === "HALF_DAY" ? "HALF" : "FULL",
+      date: leave.startDate.split("T")[0],
+      reason: leave.reason || "",
+    });
+    setLeaveOpen(true);
   }
 
   const hasCheckedIn = !!attendance?.checkIn;
@@ -414,6 +446,66 @@ export function EmployeeDashboard({
           />
         </div>
       </div>
+
+      {/* My Leave Requests */}
+      {leaves.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar className="size-4" /> My Leave Requests
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {leaves.map((leave: any) => {
+                const leaveDate = new Date(leave.startDate);
+                const isFuture = leaveDate > new Date();
+                const canEdit = isFuture && leave.status === "PENDING";
+                return (
+                  <div key={leave.id} className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-muted/50 border-b last:border-0">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">
+                          {leave.leaveType === "HALF_DAY" ? "Half Day" : "Full Day"}
+                        </span>
+                        <Badge
+                          variant={
+                            leave.status === "APPROVED" ? "default"
+                              : leave.status === "PENDING" ? "secondary"
+                              : "destructive"
+                          }
+                          className="text-xs"
+                        >
+                          {leave.status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {format(leaveDate, "EEE, MMM d, yyyy")}
+                        {leave.reason && ` — ${leave.reason}`}
+                      </p>
+                    </div>
+                    {canEdit && (
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => openEditLeave(leave)}>
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500"
+                          onClick={() => handleCancelLeave(leave.id)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Leave Policy */}

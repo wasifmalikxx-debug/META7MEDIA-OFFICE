@@ -4,17 +4,62 @@ import { prisma } from "@/lib/prisma";
 import { leaveActionSchema } from "@/lib/validations/leave";
 import { createNotification } from "@/lib/services/notification.service";
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await requireAuth();
+  if (!session) return error("Unauthorized", 401);
+
+  const { id } = await params;
+  const leave = await prisma.leaveRequest.findUnique({ where: { id } });
+  if (!leave) return error("Not found", 404);
+  if (leave.userId !== session.user.id && (session.user as any).role !== "SUPER_ADMIN") {
+    return error("Forbidden", 403);
+  }
+  if (leave.status !== "PENDING") return error("Can only cancel pending leaves");
+
+  await prisma.leaveRequest.delete({ where: { id } });
+  return json({ success: true });
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireRole("SUPER_ADMIN");
-  if (!session) return error("Forbidden", 403);
+  const session = await requireAuth();
+  if (!session) return error("Unauthorized", 401);
 
   const { id } = await params;
+  const body = await request.json();
+
+  // Employee editing their own leave
+  if (body.leaveType) {
+    const leave = await prisma.leaveRequest.findUnique({ where: { id } });
+    if (!leave) return error("Not found", 404);
+    if (leave.userId !== session.user.id) return error("Forbidden", 403);
+    if (leave.status !== "PENDING") return error("Can only edit pending leaves");
+    const startDate = new Date(body.startDate);
+    if (startDate <= new Date()) return error("Can only edit future leaves");
+
+    const updated = await prisma.leaveRequest.update({
+      where: { id },
+      data: {
+        leaveType: body.leaveType,
+        startDate: new Date(body.startDate),
+        endDate: new Date(body.endDate),
+        totalDays: body.leaveType === "HALF_DAY" ? 0.5 : 1,
+        reason: body.reason,
+      },
+    });
+    return json(updated);
+  }
+
+  // Admin approve/reject
+  const role = (session.user as any).role;
+  if (role !== "SUPER_ADMIN") return error("Forbidden", 403);
 
   try {
-    const body = await request.json();
     const parsed = leaveActionSchema.parse(body);
 
     const leave = await prisma.leaveRequest.findUnique({
