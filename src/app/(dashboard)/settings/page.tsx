@@ -177,6 +177,30 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Break Grace Period (min)</Label>
+                <Input
+                  type="number"
+                  value={settings.breakGraceMinutes}
+                  onChange={(e) => update("breakGraceMinutes", parseInt(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Extra minutes allowed after break ends before fine applies
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Late From Break Fine (PKR)</Label>
+                <Input
+                  type="number"
+                  value={settings.breakLateFineAmt}
+                  onChange={(e) => update("breakLateFineAmt", parseFloat(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Auto-fine if employee returns after break end + grace
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 

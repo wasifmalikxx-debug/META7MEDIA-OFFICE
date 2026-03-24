@@ -48,7 +48,8 @@ export async function generatePayrollForEmployee(
   if (!salary) throw new Error(`No salary structure for user ${userId}`);
 
   const workingDays = await getWorkingDaysInMonth(month, year);
-  const dailyRate = roundMoney(salary.monthlySalary / workingDays);
+  // Fixed 30-day formula: 30K salary = 1K/day deduction
+  const dailyRate = roundMoney(salary.monthlySalary / 30);
 
   // Get attendance records for the month
   const startDate = new Date(year, month - 1, 1);

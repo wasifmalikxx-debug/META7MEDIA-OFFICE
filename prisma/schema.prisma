@@ -436,9 +436,11 @@ model OfficeSettings {
   selfieRequired Boolean @default(false)
 
   // Break timings
-  breakStartTime    String @default("14:00") // HH:mm
-  breakEndTime      String @default("15:00")
-  breakDurationMin  Int    @default(60)
+  breakStartTime      String @default("14:00") // HH:mm
+  breakEndTime        String @default("15:00")
+  breakDurationMin    Int    @default(60)
+  breakGraceMinutes   Int    @default(5)   // grace after break end
+  breakLateFineAmt    Float  @default(200) // fine for returning late from break
 
   workingDaysPerWeek Int    @default(6) // Mon-Sat
   weekendDays        String @default("0") // 0=Sunday
