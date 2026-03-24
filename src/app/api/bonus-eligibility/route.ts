@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = bonusEligibilitySchema.parse(body);
 
-    // Auto-compute eligibility and bonus amount
-    const { isEligible, bonusAmount } = calculateEligibility({
+    // Auto-compute eligibility and bonus amount in PKR
+    const result = calculateEligibility({
       dailyListingsComplete: parsed.dailyListingsComplete,
       ordersProcessedSameDay: parsed.ordersProcessedSameDay,
       messagesCleared: parsed.messagesCleared,
@@ -69,6 +69,8 @@ export async function POST(request: NextRequest) {
       allStoresAbove4Stars: parsed.allStoresAbove4Stars,
       totalProfit: parsed.totalProfit,
     });
+    const isEligible = result.isEligible;
+    const bonusAmount = result.bonusAmountPKR;
 
     const record = await prisma.bonusEligibility.upsert({
       where: {

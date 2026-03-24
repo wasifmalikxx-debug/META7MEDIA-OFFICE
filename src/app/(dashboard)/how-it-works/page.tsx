@@ -228,12 +228,45 @@ export default async function HowItWorksPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
+          <p className="font-semibold text-foreground">Etsy Team — Monthly Performance Bonus</p>
+          <p className="text-muted-foreground">To qualify, <strong>ALL</strong> of these must be met:</p>
+          <ol className="list-decimal pl-5 space-y-1 text-muted-foreground">
+            <li>Daily listings completed on time</li>
+            <li>All orders processed same day</li>
+            <li>Customer messages cleared daily</li>
+            <li>Zero wrong orders / shipping mistakes</li>
+            <li>No more than 3 listings removed by Etsy</li>
+            <li>All stores maintained above 4-star rating</li>
+            <li>Combined monthly profit of all stores ≥ <strong>$1,000</strong></li>
+          </ol>
+
+          <p className="font-semibold text-foreground mt-4">Bonus Tiers (PKR)</p>
+          <div className="border rounded-md overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="text-left p-2 font-medium">Monthly Profit (USD)</th>
+                  <th className="text-left p-2 font-medium">Bonus (PKR)</th>
+                </tr>
+              </thead>
+              <tbody className="text-muted-foreground">
+                <tr className="border-t"><td className="p-2">Below $1,000</td><td className="p-2 text-red-500 font-medium">Not Eligible</td></tr>
+                <tr className="border-t"><td className="p-2">$1,000</td><td className="p-2 font-medium">PKR 10,000</td></tr>
+                <tr className="border-t"><td className="p-2">$1,001 – $1,499</td><td className="p-2 font-medium">PKR 10,000 (capped)</td></tr>
+                <tr className="border-t"><td className="p-2">$1,500</td><td className="p-2 font-medium">PKR 15,000</td></tr>
+                <tr className="border-t"><td className="p-2">$2,000</td><td className="p-2 font-medium">PKR 20,000</td></tr>
+                <tr className="border-t"><td className="p-2">$2,500</td><td className="p-2 font-medium">PKR 25,000</td></tr>
+                <tr className="border-t"><td className="p-2">$3,000</td><td className="p-2 font-medium">PKR 30,000</td></tr>
+                <tr className="border-t bg-green-50 dark:bg-green-950"><td className="p-2">$5,000</td><td className="p-2 font-bold text-green-600">PKR 50,000 + Basic Salary</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Formula: Every $500 profit = PKR 5,000 bonus. Rounded down to nearest $500 tier.</p>
+
+          <p className="font-semibold text-foreground mt-4">Bad Review Fix Bonus</p>
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Incentives are based on <strong>monthly performance and profit</strong></li>
-            <li>CEO assigns incentives manually based on results</li>
-            <li>Added to your salary on top of monthly pay</li>
-            <li>You can see incentive amount, reason, and date on your dashboard</li>
-            <li>Incentive criteria may be linked to Google Sheets performance data (coming soon)</li>
+            <li>Fix a bad review (1-3 stars) to a good review (4-5 stars) → <strong>PKR 500 per review</strong></li>
+            <li>Submit proof (before/after screenshots) for Team Lead approval</li>
           </ul>
         </CardContent>
       </Card>

@@ -81,10 +81,18 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-const BASE_BONUS = 2500; // PKR base bonus
-const PROFIT_CAP_BONUS = 1000; // PKR capped bonus for $1000-$1499
-
-function calculateBonus(state: RowState): { isEligible: boolean; bonusAmount: number; profitTier: string } {
+/**
+ * Bonus Formula:
+ *   < $1,000  => PKR 0 (not eligible)
+ *   $1,000    => PKR 10,000
+ *   $1,499    => PKR 10,000 (capped at $1,000 tier)
+ *   $1,500    => PKR 15,000
+ *   $2,000    => PKR 20,000
+ *   $5,000    => PKR 50,000
+ *
+ * Core: floor(profit / 500) * 5,000 PKR
+ */
+function calculateBonus(state: RowState): { isEligible: boolean; bonusAmount: number; profitTier: string; nextTierAt: number | null; nextTierBonus: number | null } {
   const checkboxesMet =
     state.dailyListingsComplete &&
     state.ordersProcessedSameDay &&
@@ -95,19 +103,27 @@ function calculateBonus(state: RowState): { isEligible: boolean; bonusAmount: nu
   const listingsOk = state.listingsRemovedCount <= 3;
 
   if (!checkboxesMet || !listingsOk) {
-    return { isEligible: false, bonusAmount: 0, profitTier: "not_eligible" };
+    return { isEligible: false, bonusAmount: 0, profitTier: "criteria_not_met", nextTierAt: null, nextTierBonus: null };
   }
 
   if (state.totalProfit < 1000) {
-    return { isEligible: false, bonusAmount: 0, profitTier: "below_1000" };
+    return { isEligible: false, bonusAmount: 0, profitTier: "below_1000", nextTierAt: 1000, nextTierBonus: 10000 };
   }
 
-  if (state.totalProfit >= 1000 && state.totalProfit < 1500) {
-    return { isEligible: true, bonusAmount: PROFIT_CAP_BONUS, profitTier: "capped" };
-  }
+  // floor(profit / 500) * 5,000 PKR
+  const tiers = Math.floor(state.totalProfit / 500);
+  const bonusAmount = tiers * 5000;
+  const tierUSD = tiers * 500;
+  const nextTierAt = (tiers + 1) * 500;
+  const nextTierBonus = (tiers + 1) * 5000;
 
-  // $1500+
-  return { isEligible: true, bonusAmount: BASE_BONUS, profitTier: "full" };
+  return {
+    isEligible: true,
+    bonusAmount,
+    profitTier: `$${tierUSD.toLocaleString()}`,
+    nextTierAt,
+    nextTierBonus,
+  };
 }
 
 export function BonusProgramView({
@@ -387,15 +403,29 @@ export function BonusProgramView({
                           </div>
                           {/* Profit tier indicator */}
                           <div className="mt-1">
-                            {state.totalProfit < 1000 && (
-                              <span className="text-xs text-red-500 font-medium">Not Eligible</span>
+                            {state.totalProfit < 1000 && state.totalProfit > 0 && (
+                              <span className="text-xs text-red-500 font-medium">
+                                Need ${(1000 - state.totalProfit).toLocaleString()} more
+                              </span>
                             )}
-                            {state.totalProfit >= 1000 && state.totalProfit < 1500 && (
-                              <span className="text-xs text-amber-500 font-medium">Capped at Rs.1000</span>
-                            )}
-                            {state.totalProfit >= 1500 && (
-                              <span className="text-xs text-green-600 font-medium">Full Bonus</span>
-                            )}
+                            {state.totalProfit >= 1000 && (() => {
+                              const tiers = Math.floor(state.totalProfit / 500);
+                              const tierUSD = tiers * 500;
+                              const bonusPKR = tiers * 5000;
+                              const nextTier = (tiers + 1) * 500;
+                              const gap = nextTier - state.totalProfit;
+                              return (
+                                <div>
+                                  <span className="text-xs text-green-600 font-semibold">
+                                    ${tierUSD.toLocaleString()} tier → PKR {bonusPKR.toLocaleString()}
+                                  </span>
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">
+                                    ${gap.toLocaleString()} to next tier (PKR {((tiers + 1) * 5000).toLocaleString()})
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </TableCell>
 
