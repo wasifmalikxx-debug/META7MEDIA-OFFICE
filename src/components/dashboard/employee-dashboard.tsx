@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Clock,
   Calendar,
@@ -69,6 +69,15 @@ export function EmployeeDashboard({
   const [leaveForm, setLeaveForm] = useState({ type: "HALF", date: "", reason: "" });
   const [leaves, setLeaves] = useState(initialLeaveRequests);
   const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+
+  // Real-time salary ticker — updates every 60 seconds
+  useEffect(() => {
+    if (attendance?.checkIn && !attendance?.checkOut) {
+      const interval = setInterval(() => setTick((t) => t + 1), 60000);
+      return () => clearInterval(interval);
+    }
+  }, [attendance?.checkIn, attendance?.checkOut]);
 
   async function handleApplyLeave() {
     if (!leaveForm.date) { toast.error("Please select a date"); return; }
@@ -140,7 +149,12 @@ export function EmployeeDashboard({
   // Budget consumed: each half day = 0.5, absences auto-consume from budget too
   const budgetUsedByHalfDays = halfDaysUsed * 0.5;
   const paidLeaveBudget = 1.0;
-  const paidBudgetRemaining = Math.max(0, paidLeaveBudget - budgetUsedByHalfDays - (monthAbsent > 0 ? Math.min(paidLeaveBudget - budgetUsedByHalfDays, monthAbsent) : 0));
+  let remainingBudgetCalc = paidLeaveBudget;
+  const coveredHalfDays = Math.min(halfDaysUsed, Math.floor(remainingBudgetCalc / 0.5));
+  remainingBudgetCalc -= coveredHalfDays * 0.5;
+  const coveredAbsents = Math.min(monthAbsent, Math.floor(remainingBudgetCalc));
+  remainingBudgetCalc -= coveredAbsents;
+  const paidBudgetRemaining = Math.max(0, remainingBudgetCalc);
 
   // Check if leave already exists for selected date
   function getLeaveBlockMessage(): string | null {
@@ -256,6 +270,36 @@ export function EmployeeDashboard({
 
   const totalFinesAmount = recentFines.reduce((s, f) => s + f.amount, 0);
   const totalIncentivesAmount = recentIncentives.reduce((s, i) => s + i.amount, 0);
+
+  // Salary Till Now: real-time calculation based on hours worked
+  const dailyRate = Math.round(monthlySalary / 30);
+  const hourlyRate = Math.round(dailyRate / 8); // 8 hour work day
+  // Completed days earning
+  const completedDaysEarning = (monthPresent + coveredAbsents + (coveredHalfDays * 0.5)) * dailyRate;
+  // Today's real-time earning (if checked in and not yet checked out)
+  let todayEarning = 0;
+  if (attendance?.checkIn && !attendance?.checkOut) {
+    const checkInTime = new Date(attendance.checkIn).getTime();
+    const nowTime = Date.now();
+    let workedMs = nowTime - checkInTime;
+    // Subtract break time
+    if (attendance.breakStart) {
+      const breakEnd = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : nowTime;
+      workedMs -= (breakEnd - new Date(attendance.breakStart).getTime());
+    }
+    const workedHours = Math.max(0, workedMs / (1000 * 60 * 60));
+    todayEarning = Math.round(workedHours * hourlyRate);
+  } else if (attendance?.checkOut) {
+    // Already checked out today — use worked minutes
+    const workedHours = (attendance.workedMinutes || 0) / 60;
+    todayEarning = Math.round(workedHours * hourlyRate);
+  }
+  // Deductions
+  const uncoveredAbsents = Math.max(0, monthAbsent - coveredAbsents);
+  const absentDeduction = uncoveredAbsents * dailyRate;
+  const uncoveredHalfDays = Math.max(0, halfDaysUsed - coveredHalfDays);
+  const halfDayDeduction = uncoveredHalfDays * dailyRate * 0.5;
+  const salaryTillNow = Math.max(0, Math.round(completedDaysEarning + todayEarning + totalIncentivesAmount - totalFinesAmount - absentDeduction - halfDayDeduction));
 
   return (
     <div className="space-y-6">
@@ -491,21 +535,21 @@ export function EmployeeDashboard({
             icon={Wallet}
           />
           <StatCard
-            title="Net Payable"
-            value={showSalary ? `PKR ${(currentPayroll?.netSalary || 0).toLocaleString()}` : "PKR ****"}
+            title="Salary Till Now"
+            value={showSalary ? `PKR ${salaryTillNow.toLocaleString()}` : "PKR ****"}
             icon={Wallet}
-            description="Estimated"
-          />
-          <StatCard
-            title="Fines"
-            value={showSalary ? `PKR ${totalFinesAmount.toLocaleString()}` : "PKR ****"}
-            icon={AlertTriangle}
-            description="This month"
+            description="Earned so far"
           />
           <StatCard
             title="Incentives"
             value={showSalary ? `PKR ${totalIncentivesAmount.toLocaleString()}` : "PKR ****"}
             icon={Gift}
+            description="This month"
+          />
+          <StatCard
+            title="Fines"
+            value={showSalary ? `PKR ${totalFinesAmount.toLocaleString()}` : "PKR ****"}
+            icon={AlertTriangle}
             description="This month"
           />
         </div>
