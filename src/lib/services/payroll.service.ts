@@ -84,15 +84,27 @@ export async function generatePayrollForEmployee(
     }
   }
 
-  // Auto-apply paid leaves: first N absences are treated as paid leave
+  // Auto-apply paid leaves: 1 paid leave = 1 full absent OR 2 half days
   const settings = await prisma.officeSettings.findUnique({
     where: { id: "default" },
   });
   const paidLeaveAllowance = settings?.paidLeavesPerMonth ?? 1;
 
-  // Auto-convert first absence(s) to paid leave
-  const autoPaidLeaves = Math.min(absentDays, paidLeaveAllowance);
-  absentDays = absentDays - autoPaidLeaves;
+  // Convert absents + half days into a combined "leave units" to cover
+  // 1 full absent = 1 unit, 1 half day = 0.5 units
+  let remainingAllowance = paidLeaveAllowance;
+
+  // First cover full absents
+  const coveredAbsents = Math.min(absentDays, Math.floor(remainingAllowance));
+  absentDays = absentDays - coveredAbsents;
+  remainingAllowance -= coveredAbsents;
+
+  // Then cover half days with remaining allowance (each half day = 0.5)
+  const coveredHalfDays = Math.min(halfDays, Math.floor(remainingAllowance / 0.5));
+  const deductibleHalfDays = halfDays - coveredHalfDays;
+  remainingAllowance -= coveredHalfDays * 0.5;
+
+  const autoPaidLeaves = coveredAbsents + coveredHalfDays * 0.5;
 
   // Get approved leaves for the month (manual leave requests)
   const leaves = await prisma.leaveRequest.findMany({
@@ -147,9 +159,11 @@ export async function generatePayrollForEmployee(
   totalIncentives = roundMoney(totalIncentives);
 
   // Calculate
-  const effectivePresentDays = presentDays + halfDays * 0.5 + paidLeaveDays;
+  // covered half days count as full present, deductible half days count as 0.5
+  const effectivePresentDays = presentDays + coveredHalfDays + deductibleHalfDays * 0.5 + paidLeaveDays;
   const earnedSalary = roundMoney(effectivePresentDays * dailyRate);
 
+  const halfDayDeductions = roundMoney(deductibleHalfDays * dailyRate * 0.5);
   const leaveDeductions = roundMoney(unpaidLeaveDays * dailyRate);
   const absentDeductions = roundMoney(absentDays * dailyRate);
   const taxDeduction = roundMoney(earnedSalary * (salary.taxPercent / 100));
@@ -157,7 +171,7 @@ export async function generatePayrollForEmployee(
     salary.socialSecurity + salary.otherDeductions
   );
   const totalDeductions = roundMoney(
-    leaveDeductions + absentDeductions + totalFines + taxDeduction + fixedDeductions
+    halfDayDeductions + leaveDeductions + absentDeductions + totalFines + taxDeduction + fixedDeductions
   );
 
   const netSalary = roundMoney(
