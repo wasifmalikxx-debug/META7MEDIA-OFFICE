@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -170,6 +170,14 @@ export function BonusProgramView({
   }, [employees, bonusEligibilities]);
 
   const [rowStates, setRowStates] = useState<Record<string, RowState>>(buildInitialStates);
+  const hasFetched = useRef(false);
+
+  // Auto-fetch profits from Google Sheets on page load
+  useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+    handleFetchProfits();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateRow(userId: string, field: keyof RowState, value: boolean | number) {
     setRowStates((prev) => ({
