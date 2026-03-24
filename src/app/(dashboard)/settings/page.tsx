@@ -110,6 +110,40 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">Break Timings</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Break Start Time</Label>
+                <Input
+                  type="time"
+                  value={settings.breakStartTime}
+                  onChange={(e) => update("breakStartTime", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Break End Time</Label>
+                <Input
+                  type="time"
+                  value={settings.breakEndTime}
+                  onChange={(e) => update("breakEndTime", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Break Duration (min)</Label>
+                <Input
+                  type="number"
+                  value={settings.breakDurationMin}
+                  onChange={(e) => update("breakDurationMin", parseInt(e.target.value))}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Late Fine Tiers</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

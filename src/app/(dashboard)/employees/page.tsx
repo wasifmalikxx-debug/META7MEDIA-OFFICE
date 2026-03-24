@@ -9,7 +9,7 @@ export default async function EmployeesPage() {
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN" && role !== "HR_ADMIN") {
+  if (role !== "SUPER_ADMIN") {
     redirect("/dashboard");
   }
 

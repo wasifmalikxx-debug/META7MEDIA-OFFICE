@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
 // Manual attendance entry (admin only)
 export async function POST(request: NextRequest) {
-  const session = await requireRole("SUPER_ADMIN", "HR_ADMIN");
+  const session = await requireRole("SUPER_ADMIN");
   if (!session) return error("Forbidden", 403);
 
   try {

@@ -10,11 +10,7 @@ import {
   Users,
   Building2,
   Wallet,
-  Gift,
   AlertTriangle,
-  ShieldAlert,
-  Megaphone,
-  BarChart3,
   Settings,
   User,
   Bell,
@@ -58,21 +54,17 @@ const mainNav = [
   { title: "Leaves", href: "/leaves", icon: Calendar, roles: ["all"] },
 ];
 
-const adminNav = [
-  { title: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN", "HR_ADMIN"] },
-  { title: "Departments", href: "/departments", icon: Building2, roles: ["SUPER_ADMIN", "HR_ADMIN"] },
+const managementNav = [
+  { title: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN"] },
+  { title: "Departments", href: "/departments", icon: Building2, roles: ["SUPER_ADMIN"] },
 ];
 
 const financeNav = [
   { title: "Payroll", href: "/payroll", icon: Wallet, roles: ["all"] },
-  { title: "Incentives", href: "/incentives", icon: Gift, roles: ["all"] },
   { title: "Fines", href: "/fines", icon: AlertTriangle, roles: ["all"] },
-  { title: "Warnings", href: "/warnings", icon: ShieldAlert, roles: ["all"] },
 ];
 
-const otherNav = [
-  { title: "Announcements", href: "/announcements", icon: Megaphone, roles: ["all"] },
-  { title: "Reports", href: "/reports", icon: BarChart3, roles: ["SUPER_ADMIN", "HR_ADMIN"] },
+const settingsNav = [
   { title: "Settings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
 ];
 
@@ -123,28 +115,29 @@ export function AppSidebar({ user, unreadCount = 0 }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {adminNav.some((item) => hasAccess(item.roles, user.role)) && (
+        {managementNav.some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
             <SidebarGroupLabel>Management</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>{renderNavItems(adminNav)}</SidebarMenu>
+              <SidebarMenu>{renderNavItems(managementNav)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         )}
 
         <SidebarGroup>
-          <SidebarGroupLabel>Finance & Discipline</SidebarGroupLabel>
+          <SidebarGroupLabel>Finance</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>{renderNavItems(financeNav)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Other</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>{renderNavItems(otherNav)}</SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {settingsNav.some((item) => hasAccess(item.roles, user.role)) && (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>{renderNavItems(settingsNav)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarSeparator />

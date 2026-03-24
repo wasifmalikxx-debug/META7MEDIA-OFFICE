@@ -9,6 +9,7 @@ import {
   Gift,
   CheckCircle,
   XCircle,
+  Coffee,
 } from "lucide-react";
 import { StatCard } from "@/components/common/stat-card";
 import { PageHeader } from "@/components/common/page-header";
@@ -50,6 +51,8 @@ export function EmployeeDashboard({
 
   const hasCheckedIn = !!attendance?.checkIn;
   const hasCheckedOut = !!attendance?.checkOut;
+  const onBreak = !!attendance?.breakStart && !attendance?.breakEnd;
+  const breakDone = !!attendance?.breakEnd;
 
   async function handleCheckIn() {
     setLoading(true);
@@ -117,6 +120,36 @@ export function EmployeeDashboard({
     }
   }
 
+  async function handleBreakStart() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/attendance/break-start", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start break");
+      setAttendance(data);
+      toast.success("Break started!");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleBreakEnd() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/attendance/break-end", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to end break");
+      setAttendance(data);
+      toast.success("Break ended!");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const totalFinesAmount = recentFines.reduce((s, f) => s + f.amount, 0);
   const totalIncentivesAmount = recentIncentives.reduce((s, i) => s + i.amount, 0);
   const casualRemaining = leaveBalance
@@ -175,17 +208,39 @@ export function EmployeeDashboard({
               )}
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {!hasCheckedIn && (
               <Button onClick={handleCheckIn} disabled={loading} className="gap-2">
                 <CheckCircle className="size-4" />
                 {loading ? "..." : "Check In"}
               </Button>
             )}
+            {hasCheckedIn && !hasCheckedOut && !onBreak && !breakDone && (
+              <Button
+                onClick={handleBreakStart}
+                disabled={loading}
+                variant="secondary"
+                className="gap-2"
+              >
+                <Coffee className="size-4" />
+                {loading ? "..." : "Start Break"}
+              </Button>
+            )}
+            {onBreak && (
+              <Button
+                onClick={handleBreakEnd}
+                disabled={loading}
+                variant="secondary"
+                className="gap-2"
+              >
+                <Coffee className="size-4" />
+                {loading ? "..." : "End Break"}
+              </Button>
+            )}
             {hasCheckedIn && !hasCheckedOut && (
               <Button
                 onClick={handleCheckOut}
-                disabled={loading}
+                disabled={loading || onBreak}
                 variant="outline"
                 className="gap-2"
               >

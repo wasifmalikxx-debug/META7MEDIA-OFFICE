@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireRole("SUPER_ADMIN", "HR_ADMIN");
+  const session = await requireRole("SUPER_ADMIN");
   if (!session) return error("Forbidden", 403);
 
   try {

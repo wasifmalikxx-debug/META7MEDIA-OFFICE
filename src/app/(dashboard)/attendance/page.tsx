@@ -9,7 +9,7 @@ export default async function AttendancePage() {
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
-  const isAdmin = role === "SUPER_ADMIN" || role === "HR_ADMIN";
+  const isAdmin = role === "SUPER_ADMIN";
 
   const today = new Date();
   const month = today.getMonth() + 1;

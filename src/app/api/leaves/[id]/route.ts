@@ -8,7 +8,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireRole("SUPER_ADMIN", "HR_ADMIN", "MANAGER");
+  const session = await requireRole("SUPER_ADMIN");
   if (!session) return error("Forbidden", 403);
 
   const { id } = await params;

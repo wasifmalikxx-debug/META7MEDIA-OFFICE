@@ -20,8 +20,9 @@ export async function GET(request: NextRequest) {
   const where: any = {};
   if (dept) where.departmentId = dept;
   if (status) where.status = status;
-  if (role === "MANAGER") {
-    where.managerId = session.user.id;
+  // Employees can only see their own via other endpoints
+  if (role === "EMPLOYEE") {
+    return error("Forbidden", 403);
   }
 
   const employees = await prisma.user.findMany({
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireRole("SUPER_ADMIN", "HR_ADMIN");
+  const session = await requireRole("SUPER_ADMIN");
   if (!session) return error("Forbidden", 403);
 
   try {

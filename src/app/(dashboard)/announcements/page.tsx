@@ -9,7 +9,7 @@ export default async function AnnouncementsPage() {
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
-  const isAdmin = role === "SUPER_ADMIN" || role === "HR_ADMIN";
+  const isAdmin = role === "SUPER_ADMIN";
 
   const announcements = await prisma.announcement.findMany({
     where: { isActive: true },

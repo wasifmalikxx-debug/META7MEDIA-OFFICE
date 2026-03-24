@@ -9,7 +9,7 @@ export default async function PayrollPage() {
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
-  const isAdmin = role === "SUPER_ADMIN" || role === "HR_ADMIN";
+  const isAdmin = role === "SUPER_ADMIN";
   const month = new Date().getMonth() + 1;
   const year = new Date().getFullYear();
 

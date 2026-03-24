@@ -187,6 +187,11 @@ model Attendance {
   earlyLeaveMin   Int?
   overtimeMinutes Int?
 
+  // Break tracking
+  breakStart DateTime?
+  breakEnd   DateTime?
+  breakMinutes Int?
+
   notes         String?
   isManualEntry Boolean @default(false)
   approvedBy    String?
@@ -422,6 +427,11 @@ model OfficeSettings {
   geoFenceEnabled  Boolean @default(false)
 
   selfieRequired Boolean @default(false)
+
+  // Break timings
+  breakStartTime    String @default("14:00") // HH:mm
+  breakEndTime      String @default("15:00")
+  breakDurationMin  Int    @default(60)
 
   workingDaysPerWeek Int    @default(6) // Mon-Sat
   weekendDays        String @default("0") // 0=Sunday

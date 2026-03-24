@@ -18,7 +18,7 @@ export default async function EmployeeDetailPage({
 
   const { id } = await params;
   const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN" && role !== "HR_ADMIN" && id !== session.user.id) {
+  if (role !== "SUPER_ADMIN" && id !== session.user.id) {
     redirect("/dashboard");
   }
 

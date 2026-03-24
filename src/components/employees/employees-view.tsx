@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,31 +30,36 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Pencil } from "lucide-react";
 
 interface EmployeesViewProps {
   employees: any[];
   departments: any[];
 }
 
+const emptyForm = {
+  employeeId: "",
+  email: "",
+  password: "",
+  firstName: "",
+  lastName: "",
+  phone: "",
+  role: "EMPLOYEE",
+  designation: "",
+  departmentId: "",
+  joiningDate: "",
+  monthlySalary: 0,
+};
+
 export function EmployeesView({ employees, departments }: EmployeesViewProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState({
-    employeeId: "",
-    email: "",
-    password: "",
-    firstName: "",
-    lastName: "",
-    phone: "",
-    role: "EMPLOYEE",
-    designation: "",
-    departmentId: "",
-    joiningDate: "",
-    monthlySalary: 0,
-  });
+  const [form, setForm] = useState(emptyForm);
+  const [editForm, setEditForm] = useState<any>(null);
+  const [editId, setEditId] = useState("");
 
   const filtered = employees.filter(
     (emp) =>
@@ -64,7 +68,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
         .includes(search.toLowerCase())
   );
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
@@ -79,7 +83,8 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success("Employee added!");
-      setOpen(false);
+      setAddOpen(false);
+      setForm(emptyForm);
       router.refresh();
     } catch (err: any) {
       toast.error(err.message);
@@ -88,12 +93,43 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
     }
   }
 
-  const roleColors: Record<string, "default" | "secondary" | "outline"> = {
-    SUPER_ADMIN: "default",
-    HR_ADMIN: "default",
-    MANAGER: "secondary",
-    EMPLOYEE: "outline",
-  };
+  function openEdit(emp: any) {
+    setEditId(emp.id);
+    setEditForm({
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      phone: emp.phone || "",
+      role: emp.role,
+      designation: emp.designation || "",
+      departmentId: emp.department?.id || "",
+      monthlySalary: emp.salaryStructure?.monthlySalary || 0,
+    });
+    setEditOpen(true);
+  }
+
+  async function handleEdit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/employees/${editId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editForm,
+          departmentId: editForm.departmentId || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Employee updated!");
+      setEditOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -107,7 +143,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
             className="pl-9"
           />
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger render={<Button size="sm" />}>
               <Plus className="size-4 mr-1" /> Add Employee
           </DialogTrigger>
@@ -115,7 +151,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
             <DialogHeader>
               <DialogTitle>Add New Employee</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleAdd} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Employee ID</Label>
@@ -175,23 +211,6 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Role</Label>
-                  <Select
-                    value={form.role}
-                    onValueChange={(v) => v && setForm({ ...form, role: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                      <SelectItem value="MANAGER">Manager</SelectItem>
-                      <SelectItem value="HR_ADMIN">HR Admin</SelectItem>
-                      <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label>Department</Label>
                   <Select
                     value={form.departmentId}
@@ -209,8 +228,6 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Designation</Label>
                   <Input
@@ -218,6 +235,8 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     onChange={(e) => setForm({ ...form, designation: e.target.value })}
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Joining Date</Label>
                   <Input
@@ -227,18 +246,18 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     required
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Monthly Salary (PKR)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={form.monthlySalary}
-                  onChange={(e) =>
-                    setForm({ ...form, monthlySalary: parseFloat(e.target.value) || 0 })
-                  }
-                  required
-                />
+                <div className="space-y-2">
+                  <Label>Monthly Salary (PKR)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.monthlySalary}
+                    onChange={(e) =>
+                      setForm({ ...form, monthlySalary: parseFloat(e.target.value) || 0 })
+                    }
+                    required
+                  />
+                </div>
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Adding..." : "Add Employee"}
@@ -248,6 +267,88 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
         </Dialog>
       </div>
 
+      {/* Edit Employee Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Employee</DialogTitle>
+          </DialogHeader>
+          {editForm && (
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>First Name</Label>
+                  <Input
+                    value={editForm.firstName}
+                    onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Name</Label>
+                  <Input
+                    value={editForm.lastName}
+                    onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Designation</Label>
+                  <Input
+                    value={editForm.designation}
+                    onChange={(e) => setEditForm({ ...editForm, designation: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Department</Label>
+                  <Select
+                    value={editForm.departmentId}
+                    onValueChange={(v) => v && setEditForm({ ...editForm, departmentId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id}>
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Monthly Salary (PKR)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={editForm.monthlySalary}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Saving..." : "Save Changes"}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Card>
         <CardContent className="pt-4">
           <Table>
@@ -256,30 +357,21 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                 <TableHead>ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Designation</TableHead>
                 <TableHead>Salary</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((emp) => (
-                <TableRow
-                  key={emp.id}
-                  className="cursor-pointer"
-                  onClick={() => router.push(`/employees/${emp.id}`)}
-                >
+                <TableRow key={emp.id}>
                   <TableCell className="text-sm font-mono">{emp.employeeId}</TableCell>
                   <TableCell className="text-sm font-medium">
                     {emp.firstName} {emp.lastName}
                   </TableCell>
                   <TableCell className="text-sm">{emp.email}</TableCell>
-                  <TableCell>
-                    <Badge variant={roleColors[emp.role] || "outline"} className="text-xs">
-                      {emp.role}
-                    </Badge>
-                  </TableCell>
                   <TableCell className="text-sm">
                     {emp.department?.name || "—"}
                   </TableCell>
@@ -296,6 +388,15 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     >
                       {emp.status}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => openEdit(emp)}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
