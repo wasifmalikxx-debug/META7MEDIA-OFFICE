@@ -15,6 +15,7 @@ import {
   User,
   LogOut,
   ShieldCheck,
+  HelpCircle,
 } from "lucide-react";
 import {
   Sidebar,
@@ -65,6 +66,7 @@ const financeNav = [
 
 const settingsNav = [
   { title: "Settings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
+  { title: "How It Works", href: "/how-it-works", icon: HelpCircle, roles: ["all"] },
 ];
 
 function hasAccess(roles: string[], userRole: string) {
