@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { useState, useEffect } from "react";
+import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard,
   Users,
@@ -71,6 +73,24 @@ function hasAccess(roles: string[], userRole: string) {
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
+  const [pendingDevices, setPendingDevices] = useState(0);
+
+  // Poll for pending device approvals every 30 seconds (CEO only)
+  useEffect(() => {
+    if (user.role !== "SUPER_ADMIN") return;
+    async function fetchPending() {
+      try {
+        const res = await fetch("/api/device-approval");
+        if (res.ok) {
+          const devices = await res.json();
+          setPendingDevices(devices.filter((d: any) => d.status === "PENDING").length);
+        }
+      } catch {}
+    }
+    fetchPending();
+    const interval = setInterval(fetchPending, 30000);
+    return () => clearInterval(interval);
+  }, [user.role]);
 
   const renderNavItems = (items: typeof mainNav) =>
     items
@@ -80,6 +100,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
           <SidebarMenuButton render={<Link href={item.href} />} isActive={pathname === item.href}>
               <item.icon className="size-4" />
               <span>{item.title}</span>
+              {item.href === "/login-approvals" && pendingDevices > 0 && (
+                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
+                  {pendingDevices}
+                </Badge>
+              )}
           </SidebarMenuButton>
         </SidebarMenuItem>
       ));

@@ -132,7 +132,6 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-2xl">META7MEDIA</CardTitle>
           <CardDescription>
-            Sign in to your office management account
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -141,10 +140,10 @@ export default function LoginPage() {
               <Clock className="size-10 mx-auto text-yellow-600" />
               <h3 className="font-semibold text-yellow-800 dark:text-yellow-400">Device Approval Required</h3>
               <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                This is your first login from this device. Your admin has been notified and needs to approve this device before you can access the system.
+                This is your first login from this device. Your CEO has been notified and needs to approve this device before you can access the system.
               </p>
               <p className="text-xs text-muted-foreground">
-                Please wait or contact your admin.
+                Please wait or contact your CEO.
               </p>
               <Button variant="outline" size="sm" onClick={() => { setDeviceStatus(null); setError(""); }}>
                 Try Again
