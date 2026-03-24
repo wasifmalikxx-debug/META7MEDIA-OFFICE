@@ -127,6 +127,41 @@ export function EmployeeDashboard({
   const hasCheckedIn = !!attendance?.checkIn;
   const hasCheckedOut = !!attendance?.checkOut;
   const onBreak = !!attendance?.breakStart && !attendance?.breakEnd;
+
+  // Leave policy: 1 paid leave per month, 2 half days = 1 full leave
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const thisMonthLeaves = leaves.filter((l: any) => {
+    const d = new Date(l.startDate);
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear && l.status !== "REJECTED";
+  });
+  const fullDayLeaves = thisMonthLeaves.filter((l: any) => l.leaveType !== "HALF_DAY");
+  const halfDayLeaves = thisMonthLeaves.filter((l: any) => l.leaveType === "HALF_DAY");
+  const paidLeaveUsed = fullDayLeaves.length > 0 ? 1 : (halfDayLeaves.length >= 2 ? 1 : 0);
+  const paidLeaveRemaining = 1 - paidLeaveUsed;
+  const halfDaysUsed = halfDayLeaves.length;
+
+  // Check if leave already exists for selected date
+  function getLeaveBlockMessage(): string | null {
+    if (!leaveForm.date) return null;
+    const selectedDate = leaveForm.date;
+    const existingLeave = leaves.find((l: any) => {
+      const ld = l.startDate.split("T")[0];
+      return ld === selectedDate && l.status !== "REJECTED" && l.id !== editLeaveId;
+    });
+    if (!existingLeave) return null;
+    if (existingLeave.leaveType === "HALF_DAY" && leaveForm.type === "HALF") {
+      return "You already took a half day leave on this date.";
+    }
+    if (existingLeave.leaveType !== "HALF_DAY") {
+      return "You already have a full day leave on this date.";
+    }
+    if (leaveForm.type === "FULL" && existingLeave.leaveType === "HALF_DAY") {
+      return "You already have a half day leave on this date. Cancel it first to apply full day.";
+    }
+    return "You already have a leave on this date.";
+  }
+  const leaveBlockMsg = getLeaveBlockMessage();
   const breakDone = !!attendance?.breakEnd;
 
   async function handleCheckIn() {
@@ -340,6 +375,35 @@ export function EmployeeDashboard({
               <DialogTitle>Apply for Leave</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              {/* Leave Policy Summary */}
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Leave Policy — This Month</p>
+                <div className="flex justify-between text-sm">
+                  <span>Paid Leave</span>
+                  <span className={paidLeaveRemaining > 0 ? "text-green-600 font-medium" : "text-red-500 font-medium"}>
+                    {paidLeaveRemaining} of 1 remaining
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Half Days Used</span>
+                  <span className="font-medium">{halfDaysUsed}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Full Days Used</span>
+                  <span className="font-medium">{fullDayLeaves.length}</span>
+                </div>
+                {halfDaysUsed === 1 && fullDayLeaves.length === 0 && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    💡 1 more half day = your paid leave is used
+                  </p>
+                )}
+                {paidLeaveRemaining === 0 && (
+                  <p className="text-xs text-red-500 mt-1">
+                    ⚠️ Paid leave used. Further leaves will be unpaid (PKR deducted from salary).
+                  </p>
+                )}
+              </div>
+
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -374,7 +438,12 @@ export function EmployeeDashboard({
                   placeholder="e.g. Personal work"
                 />
               </div>
-              <Button onClick={handleApplyLeave} disabled={loading} className="w-full">
+              {leaveBlockMsg && (
+                <div className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-2.5 text-sm text-red-600 dark:text-red-400">
+                  {leaveBlockMsg}
+                </div>
+              )}
+              <Button onClick={handleApplyLeave} disabled={loading || !!leaveBlockMsg} className="w-full">
                 {loading ? "Applying..." : "Submit Leave"}
               </Button>
             </div>

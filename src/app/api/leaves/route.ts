@@ -55,6 +55,21 @@ export async function POST(request: NextRequest) {
       ) + 1;
     }
 
+    // Block duplicate leave for same date
+    const existingLeave = await prisma.leaveRequest.findFirst({
+      where: {
+        userId: session.user.id,
+        startDate,
+        status: { not: "REJECTED" },
+      },
+    });
+    if (existingLeave) {
+      if (existingLeave.leaveType === "HALF_DAY") {
+        return error("You already have a half day leave on this date.");
+      }
+      return error("You already have a leave on this date.");
+    }
+
     // Check leave balance for casual/sick
     if (parsed.leaveType === "CASUAL" || parsed.leaveType === "SICK") {
       const year = startDate.getFullYear();
