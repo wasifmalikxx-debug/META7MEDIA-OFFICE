@@ -36,7 +36,7 @@ export default async function FinesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Fines & Penalties" description="Manage employee fines and deductions" />
+      <PageHeader title="Fines & Penalties" />
       <FinesView
         fines={JSON.parse(JSON.stringify(fines))}
         employees={employees}

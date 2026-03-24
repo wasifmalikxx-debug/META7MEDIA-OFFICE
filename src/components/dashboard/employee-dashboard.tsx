@@ -20,6 +20,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { CalendarPlus } from "lucide-react";
 
 interface EmployeeDashboardProps {
   employeeName: string;
@@ -53,6 +63,34 @@ export function EmployeeDashboard({
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
   const [showSalary, setShowSalary] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({ type: "FULL", date: "", reason: "" });
+
+  async function handleApplyLeave() {
+    if (!leaveForm.date) { toast.error("Please select a date"); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/leaves", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leaveType: leaveForm.type === "HALF" ? "HALF_DAY" : "CASUAL",
+          startDate: leaveForm.date,
+          endDate: leaveForm.date,
+          reason: leaveForm.reason || (leaveForm.type === "HALF" ? "Half day leave" : "Full day leave"),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Leave applied successfully!");
+      setLeaveOpen(false);
+      setLeaveForm({ type: "FULL", date: "", reason: "" });
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const hasCheckedIn = !!attendance?.checkIn;
   const hasCheckedOut = !!attendance?.checkOut;
@@ -255,6 +293,59 @@ export function EmployeeDashboard({
           </div>
         </CardContent>
       </Card>
+
+      {/* Apply Leave */}
+      <div className="flex gap-2">
+        <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+          <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2" />}>
+            <CalendarPlus className="size-4" /> Apply Leave
+          </DialogTrigger>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Apply for Leave</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={leaveForm.type === "FULL" ? "default" : "outline"}
+                  onClick={() => setLeaveForm({ ...leaveForm, type: "FULL" })}
+                  className="flex-1"
+                >
+                  Full Day
+                </Button>
+                <Button
+                  size="sm"
+                  variant={leaveForm.type === "HALF" ? "default" : "outline"}
+                  onClick={() => setLeaveForm({ ...leaveForm, type: "HALF" })}
+                  className="flex-1"
+                >
+                  Half Day
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Date</Label>
+                <Input
+                  type="date"
+                  value={leaveForm.date}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Reason (optional)</Label>
+                <Input
+                  value={leaveForm.reason}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                  placeholder="e.g. Personal work"
+                />
+              </div>
+              <Button onClick={handleApplyLeave} disabled={loading} className="w-full">
+                {loading ? "Applying..." : "Submit Leave"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
 
       {/* Monthly stats */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">

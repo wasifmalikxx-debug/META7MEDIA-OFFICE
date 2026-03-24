@@ -44,26 +44,6 @@ export default async function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Work Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <InfoRow label="Department" value={user.department?.name || "—"} />
-            <InfoRow
-              label="Joining Date"
-              value={format(new Date(user.joiningDate), "MMM d, yyyy")}
-            />
-            <InfoRow
-              label="Monthly Salary"
-              value={
-                user.salaryStructure
-                  ? `PKR ${user.salaryStructure.monthlySalary.toLocaleString()}`
-                  : "—"
-              }
-            />
-          </CardContent>
-        </Card>
         <BankDetailsCard
           userId={user.id}
           bankName={user.bankName}
