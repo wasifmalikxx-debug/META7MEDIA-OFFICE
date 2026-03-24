@@ -35,9 +35,16 @@ export default async function BonusProgramPage() {
           lastName: true,
           employeeId: true,
         },
-        orderBy: { firstName: "asc" },
+        orderBy: { employeeId: "asc" },
       })
     : [];
+
+  // Sort by numeric part of employeeId (EM-2, EM-3, ... EM-10)
+  employees.sort((a, b) => {
+    const numA = parseInt(a.employeeId?.replace(/[^0-9]/g, "") || "0");
+    const numB = parseInt(b.employeeId?.replace(/[^0-9]/g, "") || "0");
+    return numA - numB;
+  });
 
   // Fetch bonus eligibilities for the current month
   const bonusEligibilities = await prisma.bonusEligibility.findMany({
