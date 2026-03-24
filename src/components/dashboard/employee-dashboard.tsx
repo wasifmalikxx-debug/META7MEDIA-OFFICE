@@ -152,12 +152,6 @@ export function EmployeeDashboard({
 
   const totalFinesAmount = recentFines.reduce((s, f) => s + f.amount, 0);
   const totalIncentivesAmount = recentIncentives.reduce((s, i) => s + i.amount, 0);
-  const casualRemaining = leaveBalance
-    ? leaveBalance.casualTotal - leaveBalance.casualUsed
-    : 0;
-  const sickRemaining = leaveBalance
-    ? leaveBalance.sickTotal - leaveBalance.sickUsed
-    : 0;
 
   return (
     <div className="space-y-6">
@@ -312,27 +306,22 @@ export function EmployeeDashboard({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Leave Balance */}
+        {/* Leave Policy */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Calendar className="size-4" /> Leave Balance
+              <Calendar className="size-4" /> Leave Policy
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Casual Leave</span>
-                <span className="font-medium">
-                  {casualRemaining} / {leaveBalance?.casualTotal || 12} remaining
-                </span>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center text-sm">
+                <span>Paid Leave</span>
+                <Badge variant="secondary" className="text-xs">1 / month</Badge>
               </div>
-              <div className="flex justify-between text-sm">
-                <span>Sick Leave</span>
-                <span className="font-medium">
-                  {sickRemaining} / {leaveBalance?.sickTotal || 10} remaining
-                </span>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                1 paid leave per month is auto-applied to your first absence. No application needed. 2 half days = 1 paid leave.
+              </p>
             </div>
           </CardContent>
         </Card>
