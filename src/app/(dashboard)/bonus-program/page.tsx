@@ -28,6 +28,7 @@ export default async function BonusProgramPage() {
         where: {
           departmentId: etsyDept.id,
           status: { in: ["HIRED", "PROBATION"] },
+          employeeId: { not: "EM-4" }, // Exclude team lead Izaan
         },
         select: {
           id: true,
