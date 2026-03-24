@@ -528,8 +528,8 @@ export function EmployeeDashboard({
                 const isFuture = leaveDate > today;
                 const createdAt = new Date(leave.createdAt);
                 const minutesSinceCreated = Math.floor((Date.now() - createdAt.getTime()) / 60000);
-                // Future leaves: always editable. Today's leaves: only within 15 min of applying
-                const canEdit = leave.status === "PENDING" && (isFuture || (isToday && minutesSinceCreated <= 15));
+                // 15-minute edit window from creation time
+                const canEdit = minutesSinceCreated <= 15;
                 const cancelTimeLeft = isToday && canEdit ? Math.max(0, 15 - minutesSinceCreated) : null;
                 return (
                   <div key={leave.id} className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-muted/50 border-b last:border-0">
@@ -538,15 +538,8 @@ export function EmployeeDashboard({
                         <span className="text-sm font-medium">
                           {leave.leaveType === "HALF_DAY" ? "Half Day" : "Full Day"}
                         </span>
-                        <Badge
-                          variant={
-                            leave.status === "APPROVED" ? "default"
-                              : leave.status === "PENDING" ? "secondary"
-                              : "destructive"
-                          }
-                          className="text-xs"
-                        >
-                          {leave.status}
+                        <Badge variant="default" className="text-xs bg-green-600">
+                          Approved
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">

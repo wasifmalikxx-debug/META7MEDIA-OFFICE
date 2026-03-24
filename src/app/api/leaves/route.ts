@@ -103,6 +103,8 @@ export async function POST(request: NextRequest) {
         endDate,
         totalDays,
         reason: parsed.reason,
+        status: "APPROVED",
+        approvedBy: session.user.id,
       },
     });
 
