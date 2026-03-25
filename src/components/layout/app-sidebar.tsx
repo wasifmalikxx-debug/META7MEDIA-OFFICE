@@ -192,7 +192,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {getEtsyNav(user.role).some((item) => hasAccess(item.roles, user.role)) && (
+        {/* Etsy Program — only for Etsy employees (EM-), Manager (EM-4), and CEO */}
+        {(user.role === "SUPER_ADMIN" || user.role === "MANAGER" || user.employeeId?.startsWith("EM")) &&
+          getEtsyNav(user.role).some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
             <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>
             <SidebarGroupContent>
