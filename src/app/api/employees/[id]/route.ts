@@ -60,6 +60,8 @@ export async function PATCH(
     const updateData: any = { ...parsed };
     if (parsed.joiningDate) updateData.joiningDate = new Date(parsed.joiningDate);
     delete updateData.monthlySalary;
+    // Handle employee ID
+    if (body.employeeId) updateData.employeeId = body.employeeId;
     // Handle email
     if (body.email) updateData.email = body.email;
     // Handle password reset

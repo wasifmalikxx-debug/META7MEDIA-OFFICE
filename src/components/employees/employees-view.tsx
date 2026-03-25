@@ -100,6 +100,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
   function openEdit(emp: any) {
     setEditId(emp.id);
     setEditForm({
+      employeeId: emp.employeeId || "",
       email: emp.email,
       newPassword: "",
       firstName: emp.firstName,
@@ -329,6 +330,16 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
           </DialogHeader>
           {editForm && (
             <form onSubmit={handleEdit} className="space-y-5">
+              {/* Employee ID */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Employee ID</Label>
+                <Input
+                  value={editForm.employeeId}
+                  onChange={(e) => setEditForm({ ...editForm, employeeId: e.target.value })}
+                  placeholder="e.g. EM-1, SMM-1"
+                />
+              </div>
+
               {/* Login Credentials */}
               <div className="space-y-3">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Login Credentials</p>
