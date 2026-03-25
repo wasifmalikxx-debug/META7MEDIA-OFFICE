@@ -221,23 +221,43 @@ export async function fetchSheetAnalytics(
     const orderRows = valueRanges[0]?.values || [];
     const analyticsRows = valueRanges[1]?.values || [];
 
+    // Detect column indices from header row
+    const headerRow = orderRows[0] || [];
+    const colIndex: Record<string, number> = {};
+    for (let c = 0; c < headerRow.length; c++) {
+      const h = String(headerRow[c] || "").trim().toUpperCase();
+      if (h.includes("SHOP") || h.includes("STORE")) colIndex.shop = colIndex.shop ?? c;
+      if (h.includes("ORDER DATE") || h === "DATE") colIndex.date = colIndex.date ?? c;
+      if (h.includes("PRICE") || h.includes("SALE")) colIndex.price = colIndex.price ?? c;
+      if (h.includes("AFTER TAX")) colIndex.afterTax = colIndex.afterTax ?? c;
+      if (h === "COST" || h.includes("COST")) colIndex.cost = colIndex.cost ?? c;
+      if (h === "PROFIT" || h.includes("PROFIT")) colIndex.profit = colIndex.profit ?? c;
+    }
+    // Fallbacks if headers not found
+    const shopCol = colIndex.shop ?? 0;
+    const dateCol = colIndex.date ?? 3;
+    const priceCol = colIndex.price ?? 6;
+    const afterTaxCol = colIndex.afterTax ?? 7;
+    const costCol = colIndex.cost ?? 8;
+    const profitCol = colIndex.profit ?? 9;
+
     // Parse order rows (skip header row)
     const orders: SheetOrderRow[] = [];
     for (let i = 1; i < orderRows.length; i++) {
       const row = orderRows[i];
-      if (!row || row.length < 10) continue;
+      if (!row || row.length < 5) continue;
 
-      const shopName = String(row[0] || "").trim();
-      const orderDate = String(row[3] || "").trim(); // Column D
-      const price = parseFloat(String(row[6] || "0").replace(/[$,\s]/g, "")) || 0; // Column G
-      const afterTax = parseFloat(String(row[7] || "0").replace(/[$,\s]/g, "")) || 0; // Column H
-      const cost = parseFloat(String(row[8] || "0").replace(/[$,\s]/g, "")) || 0; // Column I
-      const profit = parseFloat(String(row[9] || "0").replace(/[$,\s]/g, "")) || 0; // Column J
+      const shopName = String(row[shopCol] || "").trim();
+      const orderDate = String(row[dateCol] || "").trim();
+      const price = parseFloat(String(row[priceCol] || "0").replace(/[$,\s]/g, "")) || 0;
+      const afterTax = parseFloat(String(row[afterTaxCol] || "0").replace(/[$,\s]/g, "")) || 0;
+      const cost = parseFloat(String(row[costCol] || "0").replace(/[$,\s]/g, "")) || 0;
+      const profit = parseFloat(String(row[profitCol] || "0").replace(/[$,\s]/g, "")) || 0;
 
       // Skip rows without a shop name or date (likely empty/totals)
       if (!shopName || !orderDate) continue;
       // Skip header-like rows
-      if (shopName.toUpperCase() === "SHOP NAME" || shopName.toUpperCase() === "SHOP") continue;
+      if (shopName.toUpperCase().includes("SHOP") || shopName.toUpperCase().includes("STORE NAME")) continue;
 
       orders.push({ shopName, orderDate, price, afterTax, cost, profit });
     }
