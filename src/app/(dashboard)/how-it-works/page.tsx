@@ -195,6 +195,11 @@ export default async function HowItWorksPage() {
             <li>Payroll shows: gross salary, present days, absences, fines, incentives, and net payable</li>
             <li>You can view payroll history for any month</li>
           </ul>
+          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 p-4 mt-3">
+            <p className="font-semibold text-red-700 dark:text-red-400 text-xs">
+              Important: If your bank details are not updated or are incorrect, the payment will still be processed automatically. META7MEDIA will not be responsible for payments sent to wrong accounts. Please ensure your bank details are correct before the 5th of every month.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
