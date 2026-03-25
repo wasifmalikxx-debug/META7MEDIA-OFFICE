@@ -417,17 +417,17 @@ export function BonusProgramView({
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs py-2">Employee</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">DL</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">OP</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">MC</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">ZWO</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">LR</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">4*</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">Profit</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Daily Listings</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Orders Processed</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Messages Cleared</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Zero Wrong Orders</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Listings Removed</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Stores Above 4*</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Profit ($)</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Eligible</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">Bonus</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">Review</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">Total</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Profit Bonus</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Review Bonus</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Total (PKR)</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Sync</TableHead>
                 </TableRow>
               </TableHeader>
@@ -534,20 +534,7 @@ export function BonusProgramView({
                                 Need ${(1000 - state.totalProfit).toLocaleString()} more
                               </span>
                             )}
-                            {state.totalProfit >= 1000 && (() => {
-                              const tiers = Math.floor(state.totalProfit / 500);
-                              const tierUSD = tiers * 500;
-                              const bonusPKR = tiers * 5000;
-                              const nextTier = (tiers + 1) * 500;
-                              const gap = nextTier - state.totalProfit;
-                              return (
-                                <div>
-                                  <span className="text-xs text-muted-foreground">
-                                    ${gap.toLocaleString()} to next tier (PKR {((tiers + 1) * 5000).toLocaleString()})
-                                  </span>
-                                </div>
-                              );
-                            })()}
+                            {/* No "next tier" text for eligible employees — keep it clean */}
                           </div>
                         </TableCell>
 
