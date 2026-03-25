@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
         await prisma.incentive.create({
           data: {
             userId: parsed.userId,
-            type: "PERFORMANCE",
+            type: "TARGET_BASED",
             amount: bonusAmount,
             reason: `Profit Bonus - $${parsed.totalProfit.toFixed(0)} profit → PKR ${bonusAmount.toLocaleString()}`,
             month: parsed.month,
