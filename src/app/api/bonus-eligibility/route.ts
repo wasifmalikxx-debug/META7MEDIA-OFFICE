@@ -144,13 +144,35 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      // If not eligible, remove any existing profit bonus
+      // If not eligible, remove ALL bonuses — profit AND review
       await prisma.incentive.deleteMany({
         where: {
           userId: parsed.userId,
           month: parsed.month,
           year: parsed.year,
           reason: { startsWith: "Profit Bonus" },
+        },
+      });
+      // Also zero out review bonuses — reject all pending, remove incentives
+      await prisma.incentive.deleteMany({
+        where: {
+          userId: parsed.userId,
+          month: parsed.month,
+          year: parsed.year,
+          reason: { startsWith: "Bad Review Fix Bonus" },
+        },
+      });
+      // Reject any pending review submissions
+      await prisma.reviewBonus.updateMany({
+        where: {
+          userId: parsed.userId,
+          month: parsed.month,
+          year: parsed.year,
+          status: "PENDING",
+        },
+        data: {
+          status: "REJECTED",
+          rejectionReason: "Not eligible — failed bonus criteria",
         },
       });
     }
