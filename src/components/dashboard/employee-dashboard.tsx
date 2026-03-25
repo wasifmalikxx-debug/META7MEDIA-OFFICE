@@ -46,6 +46,7 @@ interface EmployeeDashboardProps {
   totalWorkedHours: number;
   monthlySalary: number;
   leaveRequests: any[];
+  workStartTime: string;
   breakStartTime: string;
   breakEndTime: string;
   workEndTime: string;
@@ -65,6 +66,7 @@ export function EmployeeDashboard({
   totalWorkedHours,
   monthlySalary,
   leaveRequests: initialLeaveRequests,
+  workStartTime,
   breakStartTime,
   breakEndTime,
   workEndTime,

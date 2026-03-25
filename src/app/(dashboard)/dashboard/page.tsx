@@ -151,6 +151,7 @@ export default async function DashboardPage() {
       totalWorkedHours={totalWorkedHours}
       monthlySalary={salaryStructure?.monthlySalary || 0}
       leaveRequests={JSON.parse(JSON.stringify(leaveRequests))}
+      workStartTime={officeSettings?.workStartTime || "11:00"}
       breakStartTime={officeSettings?.breakStartTime || "14:00"}
       breakEndTime={officeSettings?.breakEndTime || "15:00"}
       workEndTime={officeSettings?.workEndTime || "19:00"}
