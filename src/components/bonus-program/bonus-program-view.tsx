@@ -170,10 +170,8 @@ export function BonusProgramView({
   }, [employees, bonusEligibilities]);
 
   const [rowStates, setRowStates] = useState<Record<string, RowState>>(buildInitialStates);
-  // Fetch profits on page load only (hourly cron handles background sync)
-  useEffect(() => {
-    handleFetchProfits();
-  }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
+  // No auto-fetch on page load — hourly cron handles background sync
+  // Use "Fetch Profits from Sheets" button for manual refresh
 
   const autoSaveTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
