@@ -21,6 +21,7 @@ import {
   BookOpen,
   Rocket,
   MessageSquare,
+  BarChart3,
 } from "lucide-react";
 import {
   Sidebar,
@@ -72,6 +73,7 @@ const financeNav = [
 function getEtsyNav(userRole: string) {
   return [
     { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER"] },
+    { title: "Analytics", href: "/etsy-analytics", icon: BarChart3, roles: ["SUPER_ADMIN"] },
     {
       title: userRole === "SUPER_ADMIN" || userRole === "MANAGER" ? "Review Approvals" : "Submit Review",
       href: "/review-bonus",
