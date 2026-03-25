@@ -59,7 +59,8 @@ export async function PATCH(
   const record = await prisma.payrollRecord.findUnique({ where: { id } });
   if (!record) return error("Not found", 404);
 
-  if (record.status === "PAID") {
+  // Allow CEO to unpay (PAID -> DRAFT) or update proof on paid records
+  if (record.status === "PAID" && body.status !== "DRAFT" && body.status !== "PAID") {
     return error("Cannot modify a paid payroll record");
   }
 
@@ -68,8 +69,8 @@ export async function PATCH(
     data: {
       status: body.status,
       notes: body.notes,
-      paymentProof: body.paymentProof || undefined,
-      paidAt: body.status === "PAID" ? new Date() : undefined,
+      paymentProof: body.paymentProof !== undefined ? body.paymentProof : undefined,
+      paidAt: body.status === "PAID" ? new Date() : body.status === "DRAFT" ? null : undefined,
     },
   });
 
