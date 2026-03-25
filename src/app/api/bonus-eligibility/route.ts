@@ -111,12 +111,56 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Create or update Incentive record for profit bonus
+    if (isEligible && bonusAmount > 0) {
+      // Check if profit bonus incentive already exists for this month
+      const existingIncentive = await prisma.incentive.findFirst({
+        where: {
+          userId: parsed.userId,
+          month: parsed.month,
+          year: parsed.year,
+          reason: { startsWith: "Profit Bonus" },
+        },
+      });
+
+      if (existingIncentive) {
+        // Update existing incentive amount
+        await prisma.incentive.update({
+          where: { id: existingIncentive.id },
+          data: { amount: bonusAmount },
+        });
+      } else {
+        // Create new incentive
+        await prisma.incentive.create({
+          data: {
+            userId: parsed.userId,
+            type: "PERFORMANCE",
+            amount: bonusAmount,
+            reason: `Profit Bonus - $${parsed.totalProfit.toFixed(0)} profit → PKR ${bonusAmount.toLocaleString()}`,
+            month: parsed.month,
+            year: parsed.year,
+            givenById: session.user.id,
+          },
+        });
+      }
+    } else {
+      // If not eligible, remove any existing profit bonus
+      await prisma.incentive.deleteMany({
+        where: {
+          userId: parsed.userId,
+          month: parsed.month,
+          year: parsed.year,
+          reason: { startsWith: "Profit Bonus" },
+        },
+      });
+    }
+
     // Notify the employee
     await createNotification(
       parsed.userId,
       "BONUS_ELIGIBILITY_UPDATED",
       "Bonus Eligibility Updated",
-      `Your bonus eligibility for ${parsed.month}/${parsed.year} has been updated. ${isEligible ? "You are eligible!" : "You are not yet eligible."}`,
+      `Your bonus eligibility for ${parsed.month}/${parsed.year} has been updated. ${isEligible ? `You are eligible! PKR ${bonusAmount.toLocaleString()} bonus.` : "You are not yet eligible."}`,
       "/bonus"
     );
 

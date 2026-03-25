@@ -380,14 +380,16 @@ export function BonusProgramView({
                   <TableHead className="text-center min-w-[80px]">Stores Above 4*</TableHead>
                   <TableHead className="text-center min-w-[120px]">Profit ($)</TableHead>
                   <TableHead className="text-center min-w-[100px]">Eligible</TableHead>
-                  <TableHead className="text-center min-w-[100px]">Bonus (PKR)</TableHead>
+                  <TableHead className="text-center min-w-[100px]">Profit Bonus</TableHead>
+                  <TableHead className="text-center min-w-[100px]">Review Bonus</TableHead>
+                  <TableHead className="text-center min-w-[100px]">Total (PKR)</TableHead>
                   <TableHead className="text-center min-w-[80px]">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {employees.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
                       No Etsy department employees found.
                     </TableCell>
                   </TableRow>
@@ -517,13 +519,42 @@ export function BonusProgramView({
                           )}
                         </TableCell>
 
-                        {/* Bonus Amount */}
+                        {/* Profit Bonus */}
                         <TableCell className="text-center font-medium">
                           {bonusAmount > 0 ? (
                             <span className="text-green-600">PKR {bonusAmount.toLocaleString()}</span>
                           ) : (
                             <span className="text-red-500">PKR 0</span>
                           )}
+                        </TableCell>
+
+                        {/* Review Bonus */}
+                        <TableCell className="text-center font-medium">
+                          {(() => {
+                            const empReviewTotal = reviewBonuses
+                              .filter((rb) => rb.userId === emp.id)
+                              .reduce((sum, rb) => sum + rb.amount, 0);
+                            return empReviewTotal > 0 ? (
+                              <span className="text-blue-600">PKR {empReviewTotal.toLocaleString()}</span>
+                            ) : (
+                              <span className="text-muted-foreground">PKR 0</span>
+                            );
+                          })()}
+                        </TableCell>
+
+                        {/* Total */}
+                        <TableCell className="text-center font-bold">
+                          {(() => {
+                            const empReviewTotal = reviewBonuses
+                              .filter((rb) => rb.userId === emp.id)
+                              .reduce((sum, rb) => sum + rb.amount, 0);
+                            const total = bonusAmount + empReviewTotal;
+                            return total > 0 ? (
+                              <span className="text-green-700">PKR {total.toLocaleString()}</span>
+                            ) : (
+                              <span className="text-red-500">PKR 0</span>
+                            );
+                          })()}
                         </TableCell>
 
                         {/* Save Button */}
