@@ -416,19 +416,19 @@ export function BonusProgramView({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[150px]">Employee</TableHead>
-                  <TableHead className="text-center min-w-[80px]">Daily Listings</TableHead>
-                  <TableHead className="text-center min-w-[80px]">Orders Processed</TableHead>
-                  <TableHead className="text-center min-w-[80px]">Messages Cleared</TableHead>
-                  <TableHead className="text-center min-w-[80px]">Zero Wrong Orders</TableHead>
-                  <TableHead className="text-center min-w-[100px]">Listings Removed</TableHead>
-                  <TableHead className="text-center min-w-[80px]">Stores Above 4*</TableHead>
-                  <TableHead className="text-center min-w-[120px]">Profit ($)</TableHead>
-                  <TableHead className="text-center min-w-[100px]">Eligible</TableHead>
-                  <TableHead className="text-center min-w-[100px]">Profit Bonus</TableHead>
-                  <TableHead className="text-center min-w-[100px]">Review Bonus</TableHead>
-                  <TableHead className="text-center min-w-[100px]">Total (PKR)</TableHead>
-                  <TableHead className="text-center min-w-[60px]">Status</TableHead>
+                  <TableHead className="text-xs py-2">Employee</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">DL</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">OP</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">MC</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">ZWO</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">LR</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">4*</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Profit</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Eligible</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Bonus</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Review</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Total</TableHead>
+                  <TableHead className="text-center text-xs py-2 px-1">Sync</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -622,84 +622,9 @@ export function BonusProgramView({
         </CardContent>
       </Card>
 
-      {/* Team Lead Bonus Card */}
-      <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
-        <CardContent className="pt-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Team Lead Bonus — Izaan Kashif (EM-4)</p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                PKR 5,000 × {eligibleCount} eligible employee{eligibleCount !== 1 ? "s" : ""} = <span className="font-bold text-lg">PKR {teamLeadBonus.toLocaleString()}</span>
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">PKR {teamLeadBonus.toLocaleString()}</p>
-              <p className="text-xs text-amber-600 dark:text-amber-400">+ Basic Salary</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Team lead bonus is shown on Izaan's dashboard, not here */}
 
-      {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-green-100">
-                <DollarSign className="size-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Performance Bonuses</p>
-                <p className="text-xl font-bold text-green-600">PKR {totalBonuses.toLocaleString()}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-amber-100">
-                <Trophy className="size-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Team Lead Bonus</p>
-                <p className="text-xl font-bold text-amber-600">PKR {teamLeadBonus.toLocaleString()}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-blue-100">
-                <Trophy className="size-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Review Bonuses</p>
-                <p className="text-xl font-bold text-blue-600">PKR {totalReviewBonuses.toLocaleString()}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-purple-100">
-                <Users className="size-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Grand Total</p>
-                <p className="text-xl font-bold text-purple-600">
-                  PKR {(totalBonuses + teamLeadBonus + totalReviewBonuses).toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Summary cards removed — team lead bonus shown on Izaan's dashboard */}
     </div>
   );
 }
