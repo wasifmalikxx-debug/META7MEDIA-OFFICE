@@ -226,6 +226,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
         {settingsNav.some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
+            <SidebarGroupLabel>Settings</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>{renderNavItems(settingsNav)}</SidebarMenu>
             </SidebarGroupContent>
