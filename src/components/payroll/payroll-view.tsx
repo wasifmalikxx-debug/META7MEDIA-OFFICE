@@ -294,13 +294,13 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
         )}
       </div>
 
-      {/* Summary Strip */}
+      {/* Summary Strip — CEO only sees fines/bonuses breakdown */}
       {records.length > 0 && (
         <div className="flex gap-6 text-sm bg-muted/30 rounded-lg px-4 py-2.5">
           <div>Total Payable: <span className="font-bold">PKR {totalNet.toLocaleString()}</span></div>
-          <div className="text-red-600">Fines: PKR {totalFines.toLocaleString()}</div>
-          <div className="text-green-600">Bonuses: PKR {totalIncentives.toLocaleString()}</div>
-          <div className="ml-auto text-muted-foreground">{records.length} employees</div>
+          {isAdmin && <div className="text-red-600">Fines: PKR {totalFines.toLocaleString()}</div>}
+          {isAdmin && <div className="text-green-600">Bonuses: PKR {totalIncentives.toLocaleString()}</div>}
+          {isAdmin && <div className="ml-auto text-muted-foreground">{records.length} employees</div>}
         </div>
       )}
 

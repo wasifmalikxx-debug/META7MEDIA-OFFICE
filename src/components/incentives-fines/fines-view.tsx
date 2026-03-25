@@ -19,7 +19,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 
 interface FinesViewProps {
   fines: any[];
@@ -69,6 +69,21 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
       toast.error(err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDeleteFine(id: string) {
+    if (!confirm("Remove this fine? This cannot be undone.")) return;
+    try {
+      const res = await fetch(`/api/fines/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const text = await res.text();
+        try { throw new Error(JSON.parse(text).error); } catch { throw new Error(text || "Failed"); }
+      }
+      toast.success("Fine removed");
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
     }
   }
 
@@ -245,6 +260,7 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                       <TableHead className="text-xs py-2 text-right">Amount</TableHead>
                       <TableHead className="text-xs py-2">Reason</TableHead>
                       <TableHead className="text-xs py-2 text-right">Issued By</TableHead>
+                      {isAdmin && <TableHead className="text-xs py-2 text-center w-10"></TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -276,6 +292,13 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                               : `${fine.issuedBy?.firstName || ""} ${fine.issuedBy?.lastName || ""}`}
                           </span>
                         </TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-center py-2.5">
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-400 hover:text-red-600" onClick={() => handleDeleteFine(fine.id)}>
+                              <Trash2 className="size-3" />
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
