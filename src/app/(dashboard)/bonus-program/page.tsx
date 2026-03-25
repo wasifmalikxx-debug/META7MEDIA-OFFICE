@@ -40,18 +40,11 @@ export default async function BonusProgramPage() {
       })
     : [];
 
-  // Sort by employeeId: EM-2, EM-3, EM-4, EM-4B, EM-6, EM-7, EM-8, EM-9, EM-10
-  employees.sort((a, b) => {
-    const parseId = (id: string | null) => {
-      if (!id) return { num: 999, suffix: "" };
-      const match = id.match(/EM-(\d+)(.*)/i);
-      return match ? { num: parseInt(match[1]), suffix: match[2] || "" } : { num: 999, suffix: "" };
-    };
-    const pa = parseId(a.employeeId);
-    const pb = parseId(b.employeeId);
-    if (pa.num !== pb.num) return pa.num - pb.num;
-    return pa.suffix.localeCompare(pb.suffix);
-  });
+  // Sort by employee ID: EM-1, EM-2, ..., EM-10, EM-4 (Manager last)
+  const { sortByEmployeeId } = await import("@/lib/utils/sort-employees");
+  const sortedEmployees = sortByEmployeeId(employees);
+  employees.length = 0;
+  employees.push(...sortedEmployees);
 
   // Fetch bonus eligibilities for the current month
   const bonusEligibilities = await prisma.bonusEligibility.findMany({

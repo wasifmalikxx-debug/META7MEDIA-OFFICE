@@ -5,17 +5,17 @@ import { PageHeader } from "@/components/common/page-header";
 import { ReviewBonusSubmit } from "@/components/review-bonus/review-bonus-submit";
 import { ReviewBonusManager } from "@/components/review-bonus/review-bonus-manager";
 
-export default async function ReviewBonusPage() {
+export default async function ReviewBonusPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const params = await searchParams;
   const role = (session.user as any).role;
   const userId = session.user.id;
   const isManagerOrAdmin = role === "SUPER_ADMIN" || role === "MANAGER";
 
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
+  const month = params.month ? parseInt(params.month) : new Date().getMonth() + 1;
+  const year = params.year ? parseInt(params.year) : new Date().getFullYear();
 
   if (isManagerOrAdmin) {
     // Managers/Admins see all submissions

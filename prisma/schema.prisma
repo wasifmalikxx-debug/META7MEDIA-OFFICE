@@ -99,6 +99,7 @@ enum ReviewBonusStatus {
   PENDING
   APPROVED
   REJECTED
+  REMOVED
 }
 
 // ─── Models ──────────────────────────────────────────

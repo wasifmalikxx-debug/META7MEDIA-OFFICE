@@ -11,6 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight, Upload, Image as ImageIcon } from "lucide-react";
+import { sortByNestedEmployeeId } from "@/lib/utils/sort-employees";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -101,13 +102,17 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
     }
   }
 
-  // Group records by department
+  // Group records by department, sorted by employee ID
   const grouped: Record<string, any[]> = {};
   records.forEach((rec: any) => {
     const dept = rec.user.department?.name || "Other";
     if (!grouped[dept]) grouped[dept] = [];
     grouped[dept].push(rec);
   });
+  // Sort each department's records by employee ID
+  for (const dept of Object.keys(grouped)) {
+    grouped[dept] = sortByNestedEmployeeId(grouped[dept]);
+  }
   const deptOrder = Object.keys(grouped).sort((a, b) => {
     if (a === "Etsy") return -1;
     if (b === "Etsy") return 1;
