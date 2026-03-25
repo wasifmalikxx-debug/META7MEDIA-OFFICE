@@ -118,6 +118,7 @@ export default async function DashboardPage() {
   return (
     <EmployeeDashboard
       employeeName={currentUser ? `${currentUser.firstName} ${currentUser.lastName || ""}`.trim() : ""}
+      employeeId={currentUser?.employeeId || ""}
       todayAttendance={todayAttendance}
       leaveBalance={leaveBalance}
       currentPayroll={currentPayroll}

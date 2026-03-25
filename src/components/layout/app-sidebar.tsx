@@ -19,6 +19,7 @@ import {
   Target,
   Star,
   BookOpen,
+  Rocket,
 } from "lucide-react";
 import {
   Sidebar,
@@ -201,6 +202,23 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>{renderNavItems(getEtsyNav(user.role))}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* FB Program — only for FB employees (SMM-) and CEO */}
+        {(user.role === "SUPER_ADMIN" || user.employeeId?.startsWith("SMM")) && (
+          <SidebarGroup>
+            <SidebarGroupLabel>FB Program</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton isActive={pathname === "/fb-program"} render={<Link href="/fb-program" />}>
+                    <Rocket className="size-4" />
+                    <span>FB Program</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         )}
