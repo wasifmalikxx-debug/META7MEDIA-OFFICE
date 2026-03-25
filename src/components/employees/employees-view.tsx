@@ -425,7 +425,6 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                       <SelectContent>
                         <SelectItem value="HIRED">Hired</SelectItem>
                         <SelectItem value="PROBATION">Probation</SelectItem>
-                        <SelectItem value="RESIGNED">Resigned</SelectItem>
                         <SelectItem value="TERMINATED">Terminated</SelectItem>
                       </SelectContent>
                     </Select>
@@ -614,7 +613,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
           sections.push(
             <div key="inactive" className="space-y-2 mt-4">
               <div className="flex items-center gap-3 px-1">
-                <h3 className="text-lg font-semibold text-muted-foreground">Resigned / Fired</h3>
+                <h3 className="text-lg font-semibold text-muted-foreground">Terminated</h3>
                 <Badge variant="outline" className="text-xs text-muted-foreground">
                   {inactive.length} employees
                 </Badge>
