@@ -283,7 +283,17 @@ export function BonusProgramView({
 
       setRowStates(newStates);
 
-      if (updated > 0) toast.success(`Fetched profits for ${updated} employees from Google Sheets`);
+      // Auto-save all employees to sync incentives to database
+      if (updated > 0) {
+        toast.success(`Fetched profits for ${updated} employees — syncing to database...`);
+        for (const emp of employees) {
+          const state = newStates[emp.id];
+          if (state) {
+            await autoSaveRow(emp.id, state);
+          }
+        }
+        toast.success("All employee bonuses synced!");
+      }
       if (errors > 0) toast.error(`${errors} sheets had errors — check if sheets are shared`);
       if (updated === 0 && errors === 0) toast.info("No Google Sheet URLs configured for employees");
     } catch (err: any) {
