@@ -177,6 +177,30 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Sync Team Lead bonus for Izaan (EM-4)
+    const izaan = await prisma.user.findFirst({ where: { employeeId: "EM-4" } });
+    if (izaan) {
+      const allEligible = await prisma.bonusEligibility.findMany({
+        where: { month: parsed.month, year: parsed.year, isEligible: true },
+        include: { user: { select: { employeeId: true } } },
+      });
+      const eligibleCount = allEligible.filter(e => e.user.employeeId !== "EM-4").length;
+      const teamLeadBonus = eligibleCount * 5000;
+
+      const existingTL = await prisma.incentive.findFirst({
+        where: { userId: izaan.id, month: parsed.month, year: parsed.year, reason: { startsWith: "Team Lead Bonus" } },
+      });
+      if (teamLeadBonus > 0) {
+        if (existingTL) {
+          await prisma.incentive.update({ where: { id: existingTL.id }, data: { amount: teamLeadBonus, reason: `Team Lead Bonus - ${eligibleCount} eligible employees × PKR 5,000` } });
+        } else {
+          await prisma.incentive.create({ data: { userId: izaan.id, type: "TARGET_BASED", amount: teamLeadBonus, reason: `Team Lead Bonus - ${eligibleCount} eligible employees × PKR 5,000`, month: parsed.month, year: parsed.year, givenById: session.user.id } });
+        }
+      } else if (existingTL) {
+        await prisma.incentive.delete({ where: { id: existingTL.id } });
+      }
+    }
+
     // Notify the employee
     await createNotification(
       parsed.userId,
