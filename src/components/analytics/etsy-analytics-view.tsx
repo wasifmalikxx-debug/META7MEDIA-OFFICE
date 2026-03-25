@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import {
   DollarSign,
   TrendingUp,
@@ -36,6 +37,9 @@ import {
   Loader2,
   AlertCircle,
   BarChart3,
+  RefreshCw,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────
@@ -136,18 +140,22 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showValues, setShowValues] = useState(false);
+  const [lastFetched, setLastFetched] = useState<Date | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/etsy-analytics?month=${month}&year=${year}`);
+      const url = `/api/etsy-analytics?month=${month}&year=${year}${force ? "&bust=" + Date.now() : ""}`;
+      const res = await fetch(url);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `Failed to fetch (${res.status})`);
       }
       const json = await res.json();
       setData(json);
+      setLastFetched(new Date());
     } catch (err: any) {
       setError(err.message || "Failed to load analytics");
     } finally {
@@ -158,6 +166,14 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-refresh every hour
+  useEffect(() => {
+    const interval = setInterval(() => fetchData(true), 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  const mask = (val: string) => showValues ? val : "****";
 
   // Year options: current year and 2 prior
   const currentYear = new Date().getFullYear();
@@ -193,12 +209,32 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
           </SelectContent>
         </Select>
 
-        {loading && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Loading...
-          </div>
-        )}
+        <div className="flex items-center gap-2 ml-auto">
+          {lastFetched && (
+            <span className="text-xs text-muted-foreground">
+              Last updated: {lastFetched.toLocaleTimeString()}
+            </span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowValues(!showValues)}
+            className="gap-1"
+          >
+            {showValues ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            {showValues ? "Hide" : "Show"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchData(true)}
+            disabled={loading}
+            className="gap-1"
+          >
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+            {loading ? "Fetching..." : "Refresh"}
+          </Button>
+        </div>
       </div>
 
       {/* Error State */}
@@ -214,16 +250,16 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
       {data && !loading && (
         <>
           {/* Section 1: Overview Cards */}
-          <OverviewCards overview={data.overview} />
+          <OverviewCards overview={data.overview} show={showValues} />
 
           {/* Section 2: Employee Performance Table */}
-          <EmployeeTable employees={data.employees} />
+          <EmployeeTable employees={data.employees} show={showValues} />
 
           {/* Section 3: Daily Sales Chart */}
-          <DailySalesChart dailySales={data.dailySales} month={month} year={year} />
+          <DailySalesChart dailySales={data.dailySales} month={month} year={year} show={showValues} />
 
           {/* Section 4: Shop Performance */}
-          <ShopPerformance shops={data.shops} />
+          <ShopPerformance shops={data.shops} show={showValues} />
 
           {/* Section 5: Quick Stats */}
           {data.quickStats && <QuickStats stats={data.quickStats} />}
@@ -243,19 +279,19 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
 
 // ─── Section 1: Overview Cards ─────────────────────────────────────
 
-function OverviewCards({ overview }: { overview: AnalyticsData["overview"] }) {
+function OverviewCards({ overview, show }: { overview: AnalyticsData["overview"]; show: boolean }) {
   const cards = [
     { title: "Total Sales", value: usd(overview.totalSales), icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10" },
     { title: "Total Cost", value: usd(overview.totalCost), icon: TrendingDown, color: "text-red-500", bg: "bg-red-500/10" },
     { title: "Gross Profit", value: usd(overview.grossProfit), icon: TrendingUp, color: "text-blue-500", bg: "bg-blue-500/10" },
     { title: "After Tax Profit", value: usd(overview.afterTax), icon: DollarSign, color: "text-purple-500", bg: "bg-purple-500/10" },
-    { title: "Total Orders", value: overview.totalOrders.toLocaleString(), icon: ShoppingCart, color: "text-orange-500", bg: "bg-orange-500/10" },
+    { title: "Total Orders", value: overview.totalOrders.toLocaleString(), icon: ShoppingCart, color: "text-orange-500", bg: "bg-orange-500/10", noMask: true },
     { title: "Avg Order Value", value: usd(overview.avgOrderValue), icon: BarChart3, color: "text-teal-500", bg: "bg-teal-500/10" },
   ];
 
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-      {cards.map((card) => (
+      {cards.map((card: any) => (
         <Card key={card.title}>
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
@@ -264,7 +300,9 @@ function OverviewCards({ overview }: { overview: AnalyticsData["overview"] }) {
                 <card.icon className={`size-3.5 ${card.color}`} />
               </div>
             </div>
-            <p className={`mt-2 text-lg font-bold ${card.color}`}>{card.value}</p>
+            <p className={`mt-2 text-lg font-bold ${card.color}`}>
+              {show || card.noMask ? card.value : "****"}
+            </p>
           </CardContent>
         </Card>
       ))}
@@ -274,7 +312,8 @@ function OverviewCards({ overview }: { overview: AnalyticsData["overview"] }) {
 
 // ─── Section 2: Employee Performance Table ─────────────────────────
 
-function EmployeeTable({ employees }: { employees: EmployeeData[] }) {
+function EmployeeTable({ employees, show }: { employees: EmployeeData[]; show: boolean }) {
+  const m = (v: string) => show ? v : "****";
   const totals = employees.reduce(
     (acc, e) => ({
       totalSales: acc.totalSales + e.totalSales,
@@ -330,14 +369,14 @@ function EmployeeTable({ employees }: { employees: EmployeeData[] }) {
                     </div>
                   </TableCell>
                   <TableCell className="text-center">{emp.shopNames.length}</TableCell>
-                  <TableCell className="text-right font-mono text-emerald-600 dark:text-emerald-400">{usd(emp.totalSales)}</TableCell>
-                  <TableCell className="text-right font-mono text-red-600 dark:text-red-400">{usd(emp.totalCost)}</TableCell>
+                  <TableCell className="text-right font-mono text-emerald-600 dark:text-emerald-400">{m(usd(emp.totalSales))}</TableCell>
+                  <TableCell className="text-right font-mono text-red-600 dark:text-red-400">{m(usd(emp.totalCost))}</TableCell>
                   <TableCell className={`text-right font-mono font-semibold ${emp.profit >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-600 dark:text-red-400"}`}>
-                    {usd(emp.profit)}
+                    {m(usd(emp.profit))}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-purple-600 dark:text-purple-400">{usd(emp.afterTax)}</TableCell>
+                  <TableCell className="text-right font-mono text-purple-600 dark:text-purple-400">{m(usd(emp.afterTax))}</TableCell>
                   <TableCell className="text-center">{emp.orders}</TableCell>
-                  <TableCell className="text-right font-mono">{usd(emp.avgOrderValue)}</TableCell>
+                  <TableCell className="text-right font-mono">{m(usd(emp.avgOrderValue))}</TableCell>
                 </TableRow>
               ))
             )}
@@ -347,13 +386,13 @@ function EmployeeTable({ employees }: { employees: EmployeeData[] }) {
               <TableRow className="font-bold">
                 <TableCell>TOTAL</TableCell>
                 <TableCell className="text-center">{totals.shops}</TableCell>
-                <TableCell className="text-right font-mono">{usd(totals.totalSales)}</TableCell>
-                <TableCell className="text-right font-mono">{usd(totals.totalCost)}</TableCell>
-                <TableCell className="text-right font-mono">{usd(totals.profit)}</TableCell>
-                <TableCell className="text-right font-mono">{usd(totals.afterTax)}</TableCell>
+                <TableCell className="text-right font-mono">{m(usd(totals.totalSales))}</TableCell>
+                <TableCell className="text-right font-mono">{m(usd(totals.totalCost))}</TableCell>
+                <TableCell className="text-right font-mono">{m(usd(totals.profit))}</TableCell>
+                <TableCell className="text-right font-mono">{m(usd(totals.afterTax))}</TableCell>
                 <TableCell className="text-center">{totals.orders}</TableCell>
                 <TableCell className="text-right font-mono">
-                  {totals.orders > 0 ? usd(totals.totalSales / totals.orders) : "$0.00"}
+                  {m(totals.orders > 0 ? usd(totals.totalSales / totals.orders) : "$0.00")}
                 </TableCell>
               </TableRow>
             </TableFooter>
@@ -367,13 +406,14 @@ function EmployeeTable({ employees }: { employees: EmployeeData[] }) {
 // ─── Section 3: Daily Sales Chart (CSS-based) ─────────────────────
 
 function DailySalesChart({
-  dailySales,
+  dailySales, show,
   month,
   year,
 }: {
   dailySales: DailySalesData[];
   month: number;
   year: number;
+  show: boolean;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
@@ -488,7 +528,8 @@ function DailySalesChart({
 
 // ─── Section 4: Shop Performance ───────────────────────────────────
 
-function ShopPerformance({ shops }: { shops: ShopData[] }) {
+function ShopPerformance({ shops, show }: { shops: ShopData[]; show: boolean }) {
+  const m = (v: string) => show ? v : "****";
   return (
     <Card>
       <CardHeader>
@@ -523,10 +564,10 @@ function ShopPerformance({ shops }: { shops: ShopData[] }) {
                   <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                   <TableCell className="font-medium">{shop.shopName}</TableCell>
                   <TableCell className="text-center">{shop.orders}</TableCell>
-                  <TableCell className="text-right font-mono text-emerald-600 dark:text-emerald-400">{usd(shop.totalSales)}</TableCell>
-                  <TableCell className="text-right font-mono text-red-600 dark:text-red-400">{usd(shop.totalCost)}</TableCell>
+                  <TableCell className="text-right font-mono text-emerald-600 dark:text-emerald-400">{m(usd(shop.totalSales))}</TableCell>
+                  <TableCell className="text-right font-mono text-red-600 dark:text-red-400">{m(usd(shop.totalCost))}</TableCell>
                   <TableCell className={`text-right font-mono font-semibold ${shop.profit >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-600 dark:text-red-400"}`}>
-                    {usd(shop.profit)}
+                    {m(usd(shop.profit))}
                   </TableCell>
                 </TableRow>
               ))
