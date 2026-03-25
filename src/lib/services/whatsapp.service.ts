@@ -69,117 +69,173 @@ export async function notifyAdmin(message: string): Promise<boolean> {
   return sendWhatsApp(phone, message);
 }
 
-// ─── FINE MESSAGES (System Generated) ───
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🚨 FINE MESSAGES (System Generated — Cannot Be Modified)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function lateFineMsg(name: string, minutes: number, amount: number): string {
   return [
-    `META7MEDIA — Fine Notice`,
+    `🚨 *META7MEDIA — FINE ALERT*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `Dear ${name},`,
+    `Hi ${name},`,
     ``,
-    `A late arrival fine of *PKR ${amount.toLocaleString()}* has been applied to your account.`,
-    `You arrived *${minutes} minutes* after the allowed grace period.`,
+    `⏰ You arrived *${minutes} minutes late* today.`,
+    `💸 A fine of *PKR ${amount.toLocaleString()}* has been applied.`,
     ``,
-    `This deduction will be reflected in your monthly salary.`,
+    `📊 This will be deducted from your monthly salary.`,
     ``,
-    `_This is a system-generated notification and cannot be modified._`,
-    `— META7 AI`,
+    `💡 _Tip: Arrive before 11:10 AM to avoid fines._`,
+    ``,
+    `⚙️ _System-generated alert — cannot be modified._`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `META7 AI | Office Manager`,
   ].join("\n");
 }
 
 export function breakFineMsg(name: string, minutes: number, amount: number): string {
   return [
-    `META7MEDIA — Fine Notice`,
+    `🚨 *META7MEDIA — BREAK FINE*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `Dear ${name},`,
+    `Hi ${name},`,
     ``,
-    `A break violation fine of *PKR ${amount.toLocaleString()}* has been applied.`,
-    `You returned *${minutes} minutes* late from your scheduled break.`,
+    `☕ You returned *${minutes} minutes late* from break.`,
+    `💸 A fine of *PKR ${amount.toLocaleString()}* has been applied.`,
     ``,
-    `This deduction will be reflected in your monthly salary.`,
+    `📊 This will be deducted from your monthly salary.`,
     ``,
-    `_This is a system-generated notification and cannot be modified._`,
-    `— META7 AI`,
+    `💡 _Tip: Break ends at 4:00 PM — return within 5 min grace._`,
+    ``,
+    `⚙️ _System-generated alert — cannot be modified._`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `META7 AI | Office Manager`,
   ].join("\n");
 }
 
 export function manualFineMsg(name: string, amount: number, reason: string): string {
   return [
-    `META7MEDIA — Fine Notice`,
+    `🚨 *META7MEDIA — FINE NOTICE*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `Dear ${name},`,
+    `Hi ${name},`,
     ``,
-    `A fine of *PKR ${amount.toLocaleString()}* has been added to your account.`,
-    `Reason: ${reason}`,
+    `📋 A fine has been added to your account:`,
+    `💸 Amount: *PKR ${amount.toLocaleString()}*`,
+    `📝 Reason: _${reason}_`,
     ``,
-    `This deduction will be reflected in your monthly salary.`,
+    `📊 This will be deducted from your monthly salary.`,
     ``,
-    `_This is a system-generated notification and cannot be modified._`,
-    `— META7 AI`,
+    `⚙️ _System-generated alert — cannot be modified._`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `META7 AI | Office Manager`,
   ].join("\n");
 }
 
-// ─── BONUS MESSAGES (Motivational) ───
+export function absentFineMsg(name: string, amount: number): string {
+  return [
+    `🔴 *META7MEDIA — ABSENT NOTICE*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    ``,
+    `Hi ${name},`,
+    ``,
+    `❌ You were marked *ABSENT* today.`,
+    `💸 Deduction: *PKR ${amount.toLocaleString()}* (daily rate)`,
+    ``,
+    `📊 This will be reflected in your monthly salary.`,
+    ``,
+    `📌 _If this is incorrect, please contact the CEO immediately._`,
+    ``,
+    `⚙️ _System-generated alert — cannot be modified._`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `META7 AI | Office Manager`,
+  ].join("\n");
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🎉 BONUS MESSAGES (Motivational)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function bonusEligibleMsg(name: string, profit: number, bonus: number): string {
   return [
-    `META7MEDIA — Bonus Alert`,
+    `🎉 *META7MEDIA — BONUS ACHIEVED!*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `Congratulations ${name}! 🎉`,
+    `Congratulations, *${name}*! 🏆`,
     ``,
-    `You have achieved a total profit of *$${profit.toLocaleString()}* this month.`,
-    `Your performance bonus of *PKR ${bonus.toLocaleString()}* has been credited!`,
+    `🚀 Monthly Profit: *$${profit.toLocaleString()}*`,
+    `💰 Bonus Earned: *PKR ${bonus.toLocaleString()}*`,
     ``,
-    `Keep up the amazing work — your dedication makes a difference!`,
+    `🌟 Your hard work is paying off!`,
+    `Keep pushing — every dollar counts towards`,
+    `your next bonus tier! 📈`,
     ``,
-    `— META7MEDIA Management`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `META7MEDIA Management 🏢`,
   ].join("\n");
 }
 
 export function reviewBonusApprovedMsg(name: string, storeName: string, amount: number): string {
   return [
-    `META7MEDIA — Review Bonus Approved`,
+    `⭐ *META7MEDIA — REVIEW BONUS APPROVED!*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `Great job ${name}!`,
+    `Great work, *${name}*! 👏`,
     ``,
-    `Your review fix for store *${storeName}* has been approved.`,
-    `*PKR ${amount.toLocaleString()}* has been added to your incentives.`,
+    `🏪 Store: *${storeName}*`,
+    `💰 Bonus: *PKR ${amount.toLocaleString()}*`,
+    `✅ Status: *APPROVED*`,
     ``,
-    `Every positive review counts — keep delivering excellence!`,
+    `🌟 Every positive review strengthens our brand.`,
+    `Keep delivering excellence! 💪`,
     ``,
-    `— META7MEDIA Management`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `META7MEDIA Management 🏢`,
   ].join("\n");
 }
 
 export function teamLeadBonusMsg(name: string, eligibleCount: number, bonus: number): string {
   return [
-    `META7MEDIA — Team Lead Bonus`,
+    `👑 *META7MEDIA — TEAM LEAD BONUS!*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `Well done ${name}!`,
+    `Outstanding, *${name}*! 🎯`,
     ``,
-    `*${eligibleCount} team member${eligibleCount !== 1 ? "s" : ""}* achieved their bonus targets this month.`,
-    `Your team lead bonus of *PKR ${bonus.toLocaleString()}* has been credited!`,
+    `👥 Eligible Members: *${eligibleCount}*`,
+    `💰 Your Bonus: *PKR ${bonus.toLocaleString()}*`,
     ``,
-    `Your leadership is making the team stronger every day.`,
+    `🏆 Your leadership helped ${eligibleCount} team`,
+    `member${eligibleCount !== 1 ? "s" : ""} hit their targets this month!`,
     ``,
-    `— META7MEDIA Management`,
+    `Keep leading by example — the team follows`,
+    `your energy! 🔥`,
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `META7MEDIA Management 🏢`,
   ].join("\n");
 }
 
-// ─── SALARY MESSAGES ───
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 💰 SALARY MESSAGES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function salaryPaidMsg(name: string, amount: number, monthName: string): string {
   return [
-    `META7MEDIA — Salary Confirmation`,
+    `💰 *META7MEDIA — SALARY CREDITED!*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `Dear ${name},`,
+    `Hi *${name}*,`,
     ``,
-    `Your salary for *${monthName}* has been processed and marked as *PAID*.`,
+    `📅 Month: *${monthName}*`,
+    `💵 Net Salary: *PKR ${amount.toLocaleString()}*`,
+    `✅ Status: *PAID*`,
     ``,
-    `Net Amount: *PKR ${amount.toLocaleString()}*`,
+    `🏦 Payment processed via Bank Alfalah.`,
+    `Check your payroll for full breakdown.`,
     ``,
-    `Thank you for your hard work and commitment.`,
+    `🙏 Thank you for your dedication!`,
     ``,
-    `— META7MEDIA Management`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `META7MEDIA Management 🏢`,
   ].join("\n");
 }
