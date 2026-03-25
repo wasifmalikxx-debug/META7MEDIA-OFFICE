@@ -60,6 +60,7 @@ export function ReviewBonusSubmit({
 }: ReviewBonusSubmitProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     storeName: "",
     customerName: "",
@@ -120,7 +121,7 @@ export function ReviewBonusSubmit({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!beforeFile || !afterFile) {
+    if (!editingId && (!beforeFile || !afterFile)) {
       toast.error("Please upload both before and after screenshots");
       return;
     }
@@ -132,38 +133,53 @@ export function ReviewBonusSubmit({
 
     setLoading(true);
     try {
-      // Upload before screenshot
-      const beforeFormData = new FormData();
-      beforeFormData.append("file", beforeFile);
-      const beforeRes = await fetch("/api/upload", { method: "POST", body: beforeFormData });
-      const beforeData = await beforeRes.json();
-      if (!beforeRes.ok) throw new Error(beforeData.error || "Failed to upload before screenshot");
+      let beforeUrl = "";
+      let afterUrl = "";
 
-      // Upload after screenshot
-      const afterFormData = new FormData();
-      afterFormData.append("file", afterFile);
-      const afterRes = await fetch("/api/upload", { method: "POST", body: afterFormData });
-      const afterData = await afterRes.json();
-      if (!afterRes.ok) throw new Error(afterData.error || "Failed to upload after screenshot");
+      // Upload before screenshot if provided
+      if (beforeFile) {
+        const beforeFormData = new FormData();
+        beforeFormData.append("file", beforeFile);
+        const beforeRes = await fetch("/api/upload", { method: "POST", body: beforeFormData });
+        const beforeData = await beforeRes.json();
+        if (!beforeRes.ok) throw new Error(beforeData.error || "Failed to upload before screenshot");
+        beforeUrl = beforeData.url;
+      }
 
-      // Submit review bonus with uploaded URLs
-      const res = await fetch("/api/review-bonus", {
-        method: "POST",
+      // Upload after screenshot if provided
+      if (afterFile) {
+        const afterFormData = new FormData();
+        afterFormData.append("file", afterFile);
+        const afterRes = await fetch("/api/upload", { method: "POST", body: afterFormData });
+        const afterData = await afterRes.json();
+        if (!afterRes.ok) throw new Error(afterData.error || "Failed to upload after screenshot");
+        afterUrl = afterData.url;
+      }
+
+      const payload: any = {
+        storeName: form.storeName,
+        customerName: form.customerName,
+        originalRating: parseInt(form.originalRating),
+        newRating: parseInt(form.newRating),
+      };
+      if (beforeUrl) payload.beforeScreenshot = beforeUrl;
+      if (afterUrl) payload.afterScreenshot = afterUrl;
+
+      // Edit or create
+      const url = editingId ? `/api/review-bonus/${editingId}` : "/api/review-bonus";
+      const method = editingId ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          storeName: form.storeName,
-          customerName: form.customerName,
-          originalRating: parseInt(form.originalRating),
-          newRating: parseInt(form.newRating),
-          beforeScreenshot: beforeData.url,
-          afterScreenshot: afterData.url,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to submit");
 
-      toast.success("Review bonus submitted for approval!");
+      toast.success(editingId ? "Submission updated!" : "Review bonus submitted for approval!");
       setForm({ storeName: "", customerName: "", originalRating: "", newRating: "" });
+      setEditingId(null);
       removeFile("before");
       removeFile("after");
       router.refresh();
@@ -349,7 +365,7 @@ export function ReviewBonusSubmit({
 
             <Button type="submit" className="w-full" disabled={loading}>
               <Send className="size-4 mr-2" />
-              {loading ? "Submitting..." : "Submit Review Bonus"}
+              {loading ? "Submitting..." : editingId ? "Update Submission" : "Submit Review Bonus"}
             </Button>
           </form>
         </CardContent>
@@ -412,6 +428,24 @@ export function ReviewBonusSubmit({
                       {canEdit && (
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">{timeLeft}m left</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-blue-500 h-7 px-2"
+                            onClick={() => {
+                              setForm({
+                                storeName: sub.storeName,
+                                customerName: sub.customerName || "",
+                                originalRating: String(sub.originalRating),
+                                newRating: String(sub.newRating),
+                              });
+                              setEditingId(sub.id);
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                              toast.info("Editing submission — update and re-submit");
+                            }}
+                          >
+                            Edit
+                          </Button>
                           <Button
                             size="sm"
                             variant="ghost"
