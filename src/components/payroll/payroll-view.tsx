@@ -129,14 +129,14 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
             <TableHeader>
               <TableRow className="bg-muted/20">
                 <TableHead className="text-xs font-semibold py-2">Employee</TableHead>
-                <TableHead className="text-xs font-semibold py-2 text-center">Status</TableHead>
+                {isAdmin && <TableHead className="text-xs font-semibold py-2 text-center">Status</TableHead>}
                 <TableHead className="text-xs font-semibold py-2 text-right">Salary</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-center">Absents</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-right">Fine</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-right">After Fine</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-right">Bonus</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-right">Final Salary</TableHead>
-                <TableHead className="text-xs font-semibold py-2">Account</TableHead>
+                {isAdmin && <TableHead className="text-xs font-semibold py-2">Account</TableHead>}
                 <TableHead className="text-xs font-semibold py-2 text-center">Proof</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-center">Payment</TableHead>
               </TableRow>
@@ -152,12 +152,14 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
                       <div className="text-sm font-medium">{rec.user.firstName} {rec.user.lastName}</div>
                       <div className="text-xs text-muted-foreground">{rec.user.employeeId}</div>
                     </TableCell>
-                    {/* HIRED/PROBATION Status */}
-                    <TableCell className="text-center py-2.5">
-                      <Badge className={`text-[10px] px-1.5 ${rec.user.status === "HIRED" ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}`}>
-                        {rec.user.status}
-                      </Badge>
-                    </TableCell>
+                    {/* HIRED/PROBATION Status — CEO only */}
+                    {isAdmin && (
+                      <TableCell className="text-center py-2.5">
+                        <Badge className={`text-[10px] px-1.5 ${rec.user.status === "HIRED" ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}`}>
+                          {rec.user.status}
+                        </Badge>
+                      </TableCell>
+                    )}
                     {/* Salary */}
                     <TableCell className="text-right text-sm py-2.5">
                       Rs{rec.monthlySalary.toLocaleString()}
@@ -194,18 +196,20 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
                     <TableCell className="text-right py-2.5">
                       <span className="text-sm font-bold">Rs{rec.netSalary.toLocaleString()}</span>
                     </TableCell>
-                    {/* Account Details */}
-                    <TableCell className="py-2.5">
-                      {rec.user.bankName ? (
-                        <div className="max-w-[180px]">
-                          <div className="text-xs font-medium truncate">{rec.user.bankName}</div>
-                          <div className="text-[10px] text-muted-foreground truncate">{rec.user.accountNumber}</div>
-                          <div className="text-[10px] text-muted-foreground truncate">{rec.user.accountTitle}</div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Not provided</span>
-                      )}
-                    </TableCell>
+                    {/* Account Details — CEO only */}
+                    {isAdmin && (
+                      <TableCell className="py-2.5">
+                        {rec.user.bankName ? (
+                          <div className="max-w-[180px]">
+                            <div className="text-xs font-medium truncate">{rec.user.bankName}</div>
+                            <div className="text-[10px] text-muted-foreground truncate">{rec.user.accountNumber}</div>
+                            <div className="text-[10px] text-muted-foreground truncate">{rec.user.accountTitle}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Not provided</span>
+                        )}
+                      </TableCell>
+                    )}
                     {/* Proof */}
                     <TableCell className="text-center py-2.5">
                       {rec.paymentProof ? (
