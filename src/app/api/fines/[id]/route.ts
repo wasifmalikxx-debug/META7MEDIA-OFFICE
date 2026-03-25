@@ -14,5 +14,12 @@ export async function DELETE(
   if (!fine) return error("Fine not found", 404);
 
   await prisma.fine.delete({ where: { id } });
+
+  // Sync payroll record after fine removal
+  try {
+    const { syncPayrollRecord } = await import("@/lib/services/payroll-sync.service");
+    await syncPayrollRecord(fine.userId, fine.month, fine.year);
+  } catch {}
+
   return json({ success: true });
 }

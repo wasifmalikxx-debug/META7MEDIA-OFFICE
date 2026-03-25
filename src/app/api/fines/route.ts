@@ -73,6 +73,12 @@ export async function POST(request: NextRequest) {
       notifyEmployee(parsed.userId, manualFineMsg(empName, parsed.amount, parsed.reason)).catch(() => {});
     } catch {}
 
+    // Sync payroll record
+    try {
+      const { syncPayrollRecord } = await import("@/lib/services/payroll-sync.service");
+      await syncPayrollRecord(parsed.userId, fineDate.getMonth() + 1, fineDate.getFullYear());
+    } catch {}
+
     return json(fine, 201);
   } catch (err: any) {
     return error(err.message);
