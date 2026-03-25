@@ -346,7 +346,6 @@ function KeyMetrics({
         <MetricCard
           label="Total Orders"
           value={overview.totalOrders.toLocaleString()}
-          noMask
           show={show}
           subtitle="this month"
         />
@@ -358,19 +357,19 @@ function KeyMetrics({
           <MetricCard
             label="Today's Sales"
             value={usd(quickStats.todaySales)}
-            subtitle={`${quickStats.todayOrders} order${quickStats.todayOrders !== 1 ? "s" : ""}`}
+            subtitle={show ? `${quickStats.todayOrders} order${quickStats.todayOrders !== 1 ? "s" : ""}` : ""}
             show={show}
           />
           <MetricCard
             label="Yesterday's Sales"
             value={usd(quickStats.yesterdaySales)}
-            subtitle={`${quickStats.yesterdayOrders} order${quickStats.yesterdayOrders !== 1 ? "s" : ""}`}
+            subtitle={show ? `${quickStats.yesterdayOrders} order${quickStats.yesterdayOrders !== 1 ? "s" : ""}` : ""}
             show={show}
           />
           <MetricCard
             label="This Week's Sales"
             value={usd(quickStats.weekSales)}
-            subtitle={`${quickStats.weekOrders} order${quickStats.weekOrders !== 1 ? "s" : ""}`}
+            subtitle={show ? `${quickStats.weekOrders} order${quickStats.weekOrders !== 1 ? "s" : ""}` : ""}
             show={show}
           />
           <MetricCard
@@ -452,8 +451,8 @@ function EmployeeTable({ employees, show }: { employees: EmployeeData[]; show: b
                       <p className="text-xs text-muted-foreground">{emp.employeeId}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-center text-sm text-foreground">{emp.shopNames.length}</TableCell>
-                  <TableCell className="text-center text-sm text-foreground">{emp.orders}</TableCell>
+                  <TableCell className="text-center text-sm text-foreground">{show ? emp.shopNames.length : "**"}</TableCell>
+                  <TableCell className="text-center text-sm text-foreground">{show ? emp.orders : "**"}</TableCell>
                   <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(emp.totalSales))}</TableCell>
                   <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(emp.totalCost))}</TableCell>
                   <TableCell className="text-right text-sm font-mono font-semibold text-foreground">
@@ -472,8 +471,8 @@ function EmployeeTable({ employees, show }: { employees: EmployeeData[]; show: b
               <TableRow className="font-bold bg-muted/50">
                 <TableCell className="text-sm" />
                 <TableCell className="text-sm text-foreground">TOTAL</TableCell>
-                <TableCell className="text-center text-sm text-foreground">{totals.shops}</TableCell>
-                <TableCell className="text-center text-sm text-foreground">{totals.orders}</TableCell>
+                <TableCell className="text-center text-sm text-foreground">{show ? totals.shops : "**"}</TableCell>
+                <TableCell className="text-center text-sm text-foreground">{show ? totals.orders : "**"}</TableCell>
                 <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(totals.totalSales))}</TableCell>
                 <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(totals.totalCost))}</TableCell>
                 <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(totals.profit))}</TableCell>
@@ -656,7 +655,7 @@ function ShopPerformance({ shops, show }: { shops: ShopData[]; show: boolean }) 
                 <TableRow key={shop.shopName} className={idx % 2 === 0 ? "bg-muted/30" : ""}>
                   <TableCell className="text-sm text-muted-foreground">{idx + 1}</TableCell>
                   <TableCell className="text-sm font-medium text-foreground">{shop.shopName}</TableCell>
-                  <TableCell className="text-center text-sm text-foreground">{shop.orders}</TableCell>
+                  <TableCell className="text-center text-sm text-foreground">{show ? shop.orders : "**"}</TableCell>
                   <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(shop.totalSales))}</TableCell>
                   <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(shop.totalCost))}</TableCell>
                   <TableCell className="text-right text-sm font-mono font-semibold text-foreground">
