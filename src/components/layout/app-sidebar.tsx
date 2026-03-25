@@ -66,10 +66,17 @@ const financeNav = [
   { title: "Fines", href: "/fines", icon: AlertTriangle, roles: ["all"] },
 ];
 
-const etsyNav = [
-  { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER"] },
-  { title: "Review Bonus", href: "/review-bonus", icon: Star, roles: ["all"] },
-];
+function getEtsyNav(userRole: string) {
+  return [
+    { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER"] },
+    {
+      title: userRole === "SUPER_ADMIN" || userRole === "MANAGER" ? "Review Approvals" : "Submit Review",
+      href: "/review-bonus",
+      icon: Star,
+      roles: ["all"],
+    },
+  ];
+}
 
 const settingsNav = [
   { title: "Settings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
@@ -83,6 +90,7 @@ function hasAccess(roles: string[], userRole: string) {
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
   const [pendingDevices, setPendingDevices] = useState(0);
+  const [pendingReviews, setPendingReviews] = useState(0);
 
   // Poll for pending device approvals every 30 seconds (CEO only)
   useEffect(() => {
@@ -101,6 +109,23 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role]);
 
+  // Poll for pending review bonus submissions every 30 seconds (CEO/Manager only)
+  useEffect(() => {
+    if (user.role !== "SUPER_ADMIN" && user.role !== "MANAGER") return;
+    async function fetchPendingReviews() {
+      try {
+        const res = await fetch("/api/review-bonus?status=PENDING&count=true");
+        if (res.ok) {
+          const data = await res.json();
+          setPendingReviews(typeof data.count === "number" ? data.count : 0);
+        }
+      } catch {}
+    }
+    fetchPendingReviews();
+    const interval = setInterval(fetchPendingReviews, 30000);
+    return () => clearInterval(interval);
+  }, [user.role]);
+
   const renderNavItems = (items: typeof mainNav) =>
     items
       .filter((item) => hasAccess(item.roles, user.role))
@@ -112,6 +137,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
               {item.href === "/login-approvals" && pendingDevices > 0 && (
                 <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
                   {pendingDevices}
+                </Badge>
+              )}
+              {item.href === "/review-bonus" && pendingReviews > 0 && (
+                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
+                  {pendingReviews}
                 </Badge>
               )}
           </SidebarMenuButton>
@@ -162,11 +192,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {etsyNav.some((item) => hasAccess(item.roles, user.role)) && (
+        {getEtsyNav(user.role).some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
             <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>{renderNavItems(etsyNav)}</SidebarMenu>
+              <SidebarMenu>{renderNavItems(getEtsyNav(user.role))}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         )}

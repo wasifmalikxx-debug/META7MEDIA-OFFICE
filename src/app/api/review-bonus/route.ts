@@ -24,6 +24,13 @@ export async function GET(request: NextRequest) {
     where.status = status;
   }
 
+  // If count=true, return just the count (used for sidebar badge)
+  const countOnly = searchParams.get("count") === "true";
+  if (countOnly) {
+    const count = await prisma.reviewBonus.count({ where });
+    return json({ count });
+  }
+
   const submissions = await prisma.reviewBonus.findMany({
     where,
     include: {

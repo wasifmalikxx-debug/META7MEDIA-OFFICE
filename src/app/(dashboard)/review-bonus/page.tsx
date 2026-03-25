@@ -31,7 +31,7 @@ export default async function ReviewBonusPage() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Review Bonus Management"
+          title="Review Approvals"
           description="Approve or reject employee review bonus submissions"
         />
         <ReviewBonusManager
@@ -55,7 +55,7 @@ export default async function ReviewBonusPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Review Bonus"
+        title="Submit Review"
         description="Submit fixed reviews for Rs. 500 bonus per review"
       />
       <ReviewBonusSubmit
