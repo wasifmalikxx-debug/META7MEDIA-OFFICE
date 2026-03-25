@@ -246,6 +246,24 @@ export function ReviewBonusManager({
                 </Button>
               </div>
             )}
+            {/* Remove button — always visible for CEO/Manager */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-red-400 hover:text-red-600 text-xs mt-1"
+              onClick={async () => {
+                if (!confirm(`Remove this submission${sub.status === "APPROVED" ? " and reverse the incentive" : ""}? This cannot be undone.`)) return;
+                try {
+                  const res = await fetch(`/api/review-bonus/${sub.id}`, { method: "DELETE" });
+                  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
+                  toast.success("Submission removed" + (sub.status === "APPROVED" ? " & incentive reversed" : ""));
+                  router.refresh();
+                } catch (err: any) { toast.error(err.message); }
+              }}
+              disabled={isLoading}
+            >
+              Remove
+            </Button>
           </div>
         </CardContent>
       </Card>

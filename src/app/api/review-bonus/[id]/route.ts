@@ -141,10 +141,35 @@ export async function DELETE(
   if (!session) return error("Unauthorized", 401);
 
   const { id } = await params;
+  const role = (session.user as any).role;
   const submission = await prisma.reviewBonus.findUnique({ where: { id } });
   if (!submission) return error("Not found", 404);
 
-  // Only the submitter can delete, and only within 2 minutes
+  const isAdminOrManager = role === "SUPER_ADMIN" || role === "MANAGER";
+
+  if (isAdminOrManager) {
+    // CEO/Manager can delete any submission and reverse incentive
+    if (submission.status === "APPROVED") {
+      // Remove the associated incentive
+      await prisma.incentive.deleteMany({
+        where: {
+          userId: submission.userId,
+          month: submission.month,
+          year: submission.year,
+          reason: { contains: submission.storeName },
+        },
+      });
+      // Sync payroll after incentive removal
+      try {
+        const { syncPayrollRecord } = await import("@/lib/services/payroll-sync.service");
+        await syncPayrollRecord(submission.userId, submission.month, submission.year);
+      } catch {}
+    }
+    await prisma.reviewBonus.delete({ where: { id } });
+    return json({ success: true });
+  }
+
+  // Employee: can only delete own pending submissions within 2 minutes
   if (submission.userId !== session.user.id) {
     return error("You can only delete your own submissions", 403);
   }
