@@ -170,9 +170,13 @@ export function BonusProgramView({
   }, [employees, bonusEligibilities]);
 
   const [rowStates, setRowStates] = useState<Record<string, RowState>>(buildInitialStates);
-  // Fetch profits on page load only (also triggered by Fetch button)
+  // Fetch profits on page load + every 30 seconds
   useEffect(() => {
     handleFetchProfits();
+    const interval = setInterval(() => {
+      handleFetchProfits();
+    }, 30000);
+    return () => clearInterval(interval);
   }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const autoSaveTimers = useRef<Record<string, NodeJS.Timeout>>({});
