@@ -256,12 +256,10 @@ export function PayrollView({
                                         e.target.value = "";
                                       }}
                                     />
-                                    <Button size="sm" variant="outline" className="gap-1" asChild disabled={uploadingId === rec.id}>
-                                      <span>
-                                        <Upload className="size-3" />
-                                        {uploadingId === rec.id ? "..." : "Proof"}
-                                      </span>
-                                    </Button>
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs border rounded-md hover:bg-muted cursor-pointer">
+                                      <Upload className="size-3" />
+                                      {uploadingId === rec.id ? "..." : "Proof"}
+                                    </span>
                                   </label>
                                 </>
                               )}
