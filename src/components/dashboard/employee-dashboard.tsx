@@ -386,14 +386,8 @@ export function EmployeeDashboard({
   const liveWorkedHours = Math.floor(liveTotalMinutes / 60);
   const liveWorkedMins = liveTotalMinutes % 60;
 
-  // Estimated Salary = Total hours worked × hourly rate - fines + incentives
-  // Shows actual earned amount based on real working hours from 1st till now
-  const dailyRate = Math.round(monthlySalary / 30);
-  const hourlyRate = Math.round(dailyRate / 8); // 8 hour work day
-
-  // liveTotalMinutes already includes all completed days + today's live hours
-  const earnedFromHours = Math.round((liveTotalMinutes / 60) * hourlyRate);
-  const salaryTillNow = Math.round(earnedFromHours + totalIncentivesAmount - totalFinesAmount);
+  // Estimated Salary = Monthly Salary + Incentives - Fines
+  const salaryTillNow = Math.round(monthlySalary + totalIncentivesAmount - totalFinesAmount);
 
   return (
     <div className="space-y-6">
