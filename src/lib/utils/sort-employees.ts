@@ -1,38 +1,35 @@
 /**
- * Sort employees by ID: EM-1, EM-2, EM-3, EM-4B, EM-5, EM-6, EM-7, EM-8, EM-9, EM-10
- * Manager (EM-4) always goes last.
+ * Sort employees by ID: EM-1, EM-2, ..., EM-10, EM-4 (Manager last)
+ * Also handles SMM-1, SMM-2, ..., SMM-10
+ * Groups by prefix (EM first, then SMM), sorted numerically within each group.
  */
+
+function parseEmployeeId(id: string | null | undefined) {
+  if (!id) return { prefix: "ZZZ", num: 998, suffix: "" };
+  // EM-4 (Manager) goes to the very end of EM group
+  if (id === "EM-4") return { prefix: "EM", num: 999, suffix: "" };
+  // Match patterns like EM-1, EM-4B, SMM-1, SMM-10
+  const match = id.match(/^([A-Z]+)-(\d+)(.*)/i);
+  if (!match) return { prefix: "ZZZ", num: 998, suffix: "" };
+  return { prefix: match[1].toUpperCase(), num: parseInt(match[2]), suffix: match[3] || "" };
+}
+
 export function sortByEmployeeId<T extends { employeeId?: string | null }>(items: T[]): T[] {
   return [...items].sort((a, b) => {
-    const parseId = (id: string | null | undefined) => {
-      if (!id) return { num: 998, suffix: "", isManager: false };
-      // EM-4 (Manager) goes to the end
-      if (id === "EM-4") return { num: 999, suffix: "", isManager: true };
-      const match = id.match(/EM-(\d+)(.*)/i);
-      if (!match) return { num: 998, suffix: "", isManager: false };
-      return { num: parseInt(match[1]), suffix: match[2] || "", isManager: false };
-    };
-    const pa = parseId(a.employeeId);
-    const pb = parseId(b.employeeId);
+    const pa = parseEmployeeId(a.employeeId);
+    const pb = parseEmployeeId(b.employeeId);
+    // Sort by prefix first (EM before SMM)
+    if (pa.prefix !== pb.prefix) return pa.prefix.localeCompare(pb.prefix);
     if (pa.num !== pb.num) return pa.num - pb.num;
     return pa.suffix.localeCompare(pb.suffix);
   });
 }
 
-/**
- * Sort nested employee data (e.g., records with user.employeeId)
- */
 export function sortByNestedEmployeeId<T extends { user?: { employeeId?: string | null } }>(items: T[]): T[] {
   return [...items].sort((a, b) => {
-    const parseId = (id: string | null | undefined) => {
-      if (!id) return { num: 998, suffix: "" };
-      if (id === "EM-4") return { num: 999, suffix: "" };
-      const match = id.match(/EM-(\d+)(.*)/i);
-      if (!match) return { num: 998, suffix: "" };
-      return { num: parseInt(match[1]), suffix: match[2] || "" };
-    };
-    const pa = parseId(a.user?.employeeId);
-    const pb = parseId(b.user?.employeeId);
+    const pa = parseEmployeeId(a.user?.employeeId);
+    const pb = parseEmployeeId(b.user?.employeeId);
+    if (pa.prefix !== pb.prefix) return pa.prefix.localeCompare(pb.prefix);
     if (pa.num !== pb.num) return pa.num - pb.num;
     return pa.suffix.localeCompare(pb.suffix);
   });
