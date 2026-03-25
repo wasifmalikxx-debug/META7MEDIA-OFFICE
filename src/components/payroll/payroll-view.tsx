@@ -215,20 +215,24 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
                         )}
                       </TableCell>
                     )}
-                    {/* Proof */}
+                    {/* Proof — only visible after paid */}
                     <TableCell className="text-center py-2.5">
-                      {rec.paymentProof ? (
-                        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-blue-600 gap-1" onClick={() => setProofPreview(rec.paymentProof)}>
-                          <ImageIcon className="size-3" /> View
-                        </Button>
+                      {rec.status === "PAID" ? (
+                        <>
+                          {rec.paymentProof ? (
+                            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-blue-600 gap-1" onClick={() => setProofPreview(rec.paymentProof)}>
+                              <ImageIcon className="size-3" /> View
+                            </Button>
+                          ) : null}
+                          {isAdmin && (
+                            <label className="cursor-pointer block mt-0.5">
+                              <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadProof(rec.id, f); e.target.value = ""; }} />
+                              <span className="text-[10px] text-blue-500 hover:underline">{uploadingId === rec.id ? "..." : (rec.paymentProof ? "Update" : "+ Add")}</span>
+                            </label>
+                          )}
+                        </>
                       ) : (
                         <span className="text-[10px] text-muted-foreground">—</span>
-                      )}
-                      {isAdmin && rec.status === "PAID" && (
-                        <label className="cursor-pointer block mt-0.5">
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadProof(rec.id, f); e.target.value = ""; }} />
-                          <span className="text-[10px] text-blue-500 hover:underline">{uploadingId === rec.id ? "..." : (rec.paymentProof ? "Update" : "+ Add")}</span>
-                        </label>
                       )}
                     </TableCell>
                     {/* Payment */}
