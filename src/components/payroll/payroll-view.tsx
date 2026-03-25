@@ -15,7 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight, Upload, Image as ImageIcon } from "lucide-react";
+import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight, Upload, Image as ImageIcon, Pencil, Save, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,38 @@ export function PayrollView({
   const [generating, setGenerating] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<any>({});
+
+  function startEdit(rec: any) {
+    setEditingId(rec.id);
+    setEditValues({
+      monthlySalary: rec.monthlySalary,
+      absentDays: rec.absentDays,
+      totalFines: rec.totalFines,
+      totalIncentives: rec.totalIncentives,
+      netSalary: rec.netSalary,
+    });
+  }
+
+  async function saveEdit(id: string) {
+    try {
+      const res = await fetch(`/api/payroll/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editValues),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error);
+      }
+      toast.success("Payroll updated");
+      setEditingId(null);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
 
   async function handleGenerate() {
     setGenerating(true);
@@ -186,104 +219,94 @@ export function PayrollView({
                   </TableRow>
                 ) : (
                   records.map((rec) => {
+                    const isEditing = editingId === rec.id;
                     const absentFine = rec.totalDeductions - rec.totalFines;
                     const afterFine = rec.monthlySalary - (absentFine > 0 ? absentFine : 0);
                     return (
                       <TableRow key={rec.id}>
                         <TableCell className="whitespace-nowrap">
-                          <div>
-                            <span className="text-sm font-medium">
-                              {rec.user.firstName} {rec.user.lastName}
-                            </span>
-                          </div>
+                          <span className="text-sm font-medium">
+                            {rec.user.firstName} {rec.user.lastName}
+                          </span>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            className={`text-xs ${
-                              rec.status === "PAID"
-                                ? "bg-green-100 text-green-700 hover:bg-green-100"
-                                : "bg-amber-100 text-amber-700 hover:bg-amber-100"
-                            }`}
-                          >
+                          <Badge className={`text-xs ${rec.status === "PAID" ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}`}>
                             {rec.status === "PAID" ? "Paid" : "Pending"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-sm">
-                          Rs{rec.monthlySalary.toLocaleString()}
+                          {isEditing ? (
+                            <Input type="number" className="w-24 text-right h-7 text-sm" value={editValues.monthlySalary} onChange={(e) => setEditValues({ ...editValues, monthlySalary: parseFloat(e.target.value) || 0 })} />
+                          ) : `Rs${rec.monthlySalary.toLocaleString()}`}
                         </TableCell>
                         <TableCell className="text-center text-sm">
-                          {rec.absentDays}
+                          {isEditing ? (
+                            <Input type="number" className="w-16 text-center h-7 text-sm" value={editValues.absentDays} onChange={(e) => setEditValues({ ...editValues, absentDays: parseInt(e.target.value) || 0 })} />
+                          ) : rec.absentDays}
                         </TableCell>
                         <TableCell className="text-right text-sm text-red-600">
-                          {absentFine > 0 ? `Rs${Math.round(absentFine).toLocaleString()}` : "Rs0"}
+                          {isEditing ? (
+                            <Input type="number" className="w-24 text-right h-7 text-sm" value={editValues.totalFines} onChange={(e) => setEditValues({ ...editValues, totalFines: parseFloat(e.target.value) || 0 })} />
+                          ) : (absentFine > 0 ? `Rs${Math.round(absentFine).toLocaleString()}` : "Rs0")}
                         </TableCell>
                         <TableCell className="text-right text-sm">
                           Rs{Math.round(afterFine > 0 ? afterFine : rec.earnedSalary).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right text-sm text-green-600">
-                          {rec.totalIncentives > 0
-                            ? `Rs${rec.totalIncentives.toLocaleString()}`
-                            : "Rs0"}
+                          {isEditing ? (
+                            <Input type="number" className="w-24 text-right h-7 text-sm" value={editValues.totalIncentives} onChange={(e) => setEditValues({ ...editValues, totalIncentives: parseFloat(e.target.value) || 0 })} />
+                          ) : (rec.totalIncentives > 0 ? `Rs${rec.totalIncentives.toLocaleString()}` : "Rs0")}
                         </TableCell>
                         <TableCell className="text-right text-sm font-bold">
-                          Rs{rec.netSalary.toLocaleString()}
+                          {isEditing ? (
+                            <Input type="number" className="w-24 text-right h-7 text-sm font-bold" value={editValues.netSalary} onChange={(e) => setEditValues({ ...editValues, netSalary: parseFloat(e.target.value) || 0 })} />
+                          ) : `Rs${rec.netSalary.toLocaleString()}`}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                          {rec.user.bankName
-                            ? `${rec.user.bankName} | ${rec.user.accountNumber || ""} | ${rec.user.accountTitle || ""}`
-                            : "—"}
+                          {rec.user.bankName ? `${rec.user.bankName} | ${rec.user.accountNumber || ""} | ${rec.user.accountTitle || ""}` : "—"}
                         </TableCell>
                         {isAdmin && (
                           <TableCell>
-                            <div className="flex gap-1 items-center flex-wrap" onClick={(e) => e.stopPropagation()}>
-                              {rec.status !== "PAID" && (
-                                <Button
-                                  size="sm"
-                                  className="bg-green-600 hover:bg-green-700 text-white gap-1"
-                                  onClick={() => handleStatusUpdate(rec.id, "PAID")}
-                                >
-                                  <Wallet className="size-3" /> Mark Paid
-                                </Button>
-                              )}
-                              {rec.status === "PAID" && (
+                            <div className="flex gap-1.5 items-center" onClick={(e) => e.stopPropagation()}>
+                              {/* Edit / Save */}
+                              {isEditing ? (
                                 <>
-                                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                                    <CheckCircle className="size-3" /> Paid
-                                  </span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="text-xs text-red-500 h-6 px-1"
-                                    onClick={() => handleStatusUpdate(rec.id, "DRAFT")}
-                                  >
-                                    Unpay
+                                  <Button size="sm" variant="outline" className="h-7 px-2 gap-1" onClick={() => saveEdit(rec.id)}>
+                                    <Save className="size-3" /> Save
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingId(null)}>
+                                    <X className="size-3" />
                                   </Button>
                                 </>
+                              ) : (
+                                <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => startEdit(rec)}>
+                                  <Pencil className="size-3" />
+                                </Button>
                               )}
-                              {/* Proof: only after paid */}
-                              {rec.status === "PAID" && (
-                                <div className="flex items-center gap-1">
+                              {/* Pay / Unpay */}
+                              {!isEditing && rec.status !== "PAID" && (
+                                <Button size="sm" className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white gap-1" onClick={() => handleStatusUpdate(rec.id, "PAID")}>
+                                  <Wallet className="size-3" /> Paid
+                                </Button>
+                              )}
+                              {!isEditing && rec.status === "PAID" && (
+                                <Button size="sm" variant="ghost" className="h-7 px-2 text-red-500 text-xs" onClick={() => handleStatusUpdate(rec.id, "DRAFT")}>
+                                  Unpay
+                                </Button>
+                              )}
+                              {/* Proof — only after paid */}
+                              {!isEditing && rec.status === "PAID" && (
+                                <>
                                   {rec.paymentProof && (
-                                    <Button size="sm" variant="ghost" className="size-6 p-0" onClick={() => setProofPreview(rec.paymentProof)}>
+                                    <Button size="sm" variant="ghost" className="h-7 px-1" onClick={() => setProofPreview(rec.paymentProof)}>
                                       <ImageIcon className="size-3 text-blue-500" />
                                     </Button>
                                   )}
                                   <label className="cursor-pointer">
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      className="hidden"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) handleUploadProof(rec.id, file);
-                                        e.target.value = "";
-                                      }}
-                                    />
-                                    <span className="text-xs text-blue-500 cursor-pointer hover:underline">
-                                      {rec.paymentProof ? "Update" : "+ Proof"}
-                                    </span>
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadProof(rec.id, f); e.target.value = ""; }} />
+                                    <span className="text-xs text-blue-500 hover:underline">{rec.paymentProof ? "Update" : "+ Proof"}</span>
                                   </label>
-                                </div>
+                                </>
                               )}
                             </div>
                           </TableCell>
