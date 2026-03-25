@@ -72,12 +72,6 @@ export async function POST(request: NextRequest) {
       "/incentives"
     );
 
-    // WhatsApp notification
-    const { notifyEmployee, incentiveAwardedMsg } = await import("@/lib/services/whatsapp.service");
-    const user = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { firstName: true, lastName: true } });
-    const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
-    notifyEmployee(parsed.userId, incentiveAwardedMsg(empName, amount, parsed.reason));
-
     return json(incentive, 201);
   } catch (err: any) {
     return error(err.message);

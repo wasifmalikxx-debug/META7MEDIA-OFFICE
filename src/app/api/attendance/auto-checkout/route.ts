@@ -1,6 +1,5 @@
 import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
-import { sendWhatsApp, autoCheckoutMsg, checkoutReminderMsg } from "@/lib/services/whatsapp.service";
 
 // POST /api/attendance/auto-checkout
 // Called by a cron job or manually by admin
@@ -38,15 +37,10 @@ export async function POST(request: Request) {
     const results: any[] = [];
 
     if (mode === "remind") {
-      // Send reminder — don't checkout yet
+      // Reminder mode — no WhatsApp for non-critical notifications
       for (const att of openAttendances) {
         const name = `${att.user.firstName} ${att.user.lastName || ""}`.trim();
-        if (att.user.phone) {
-          const sent = await sendWhatsApp(att.user.phone, checkoutReminderMsg(name));
-          results.push({ name, phone: att.user.phone, reminded: sent });
-        } else {
-          results.push({ name, phone: null, reminded: false, reason: "No phone number" });
-        }
+        results.push({ name, reminded: false, reason: "WhatsApp reminders disabled" });
       }
       return json({ mode: "remind", count: results.length, results });
     }
@@ -78,12 +72,6 @@ export async function POST(request: Request) {
           notes: "Auto-checkout: employee forgot to check out",
         },
       });
-
-      // Send WhatsApp notification
-      const timeStr = checkoutTime.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" });
-      if (att.user.phone) {
-        await sendWhatsApp(att.user.phone, autoCheckoutMsg(name, timeStr));
-      }
 
       results.push({ name, workedMinutes, autoCheckout: true });
     }
