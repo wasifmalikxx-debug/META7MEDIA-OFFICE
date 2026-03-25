@@ -215,7 +215,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 <SidebarMenuItem>
                   <SidebarMenuButton isActive={pathname === "/fb-program"} render={<Link href="/fb-program" />}>
                     <Rocket className="size-4" />
-                    <span>FB Program</span>
+                    <span>Bonus Program</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
