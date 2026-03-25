@@ -14,7 +14,7 @@ export const bonusEligibilitySchema = z.object({
   zeroWrongOrders: z.boolean(),
   listingsRemovedCount: z.number().min(0),
   allStoresAbove4Stars: z.boolean(),
-  totalProfit: z.number().min(0),
+  totalProfit: z.number(),
 
   notes: z.string().optional(),
 });
