@@ -141,21 +141,6 @@ export default async function EtsyBonusGuidePage() {
         </CardContent>
       </Card>
 
-      {/* Team Lead Bonus */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Users className="size-5" /> Team Lead Bonus
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Team Lead (Izaan, EM-4) receives <strong>PKR 5,000</strong> for each eligible team member</li>
-            <li>A team member is &quot;eligible&quot; when they meet all 7 criteria and qualify for a profit bonus</li>
-          </ul>
-        </CardContent>
-      </Card>
-
       {/* Probation Rule */}
       <Card>
         <CardHeader>
@@ -189,22 +174,6 @@ export default async function EtsyBonusGuidePage() {
             <li>Profit bonus = <strong>zero</strong></li>
             <li>Review bonus = <strong>zero</strong></li>
             <li>No partial credit — it is all or nothing</li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Google Sheets */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <FileSpreadsheet className="size-5" /> Google Sheets Integration
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Profits are auto-fetched from individual order Google Sheets</li>
-            <li>The <strong>AFTER TAX</strong> value is used for profit calculations</li>
-            <li>Each store has its own sheet — combined profit is summed automatically</li>
           </ul>
         </CardContent>
       </Card>
