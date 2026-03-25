@@ -75,7 +75,8 @@ export default async function BonusProgramPage() {
         reviewBonuses={JSON.parse(JSON.stringify(reviewBonuses))}
         currentMonth={month}
         currentYear={year}
-        userRole={role as string}
+        userRole={role}
+        canToggleProfit={role === "SUPER_ADMIN"}
       />
     </div>
   );

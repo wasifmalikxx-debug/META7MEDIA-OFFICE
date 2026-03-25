@@ -65,6 +65,7 @@ interface BonusProgramViewProps {
   currentMonth: number;
   currentYear: number;
   userRole: string;
+  canToggleProfit?: boolean;
 }
 
 interface RowState {
@@ -134,6 +135,7 @@ export function BonusProgramView({
   currentMonth,
   currentYear,
   userRole,
+  canToggleProfit = false,
 }: BonusProgramViewProps) {
   const router = useRouter();
   const [month, setMonth] = useState(String(currentMonth));
@@ -429,11 +431,11 @@ export function BonusProgramView({
                   <TableHead className="text-center text-xs py-2 px-1">
                     <div className="flex items-center justify-center gap-1">
                       Profit ($)
-                      {userRole === "SUPER_ADMIN" ? (
+                      {canToggleProfit && (
                         <button onClick={() => setShowProfit(p => !p)} className="text-muted-foreground hover:text-foreground ml-1 inline-flex">
                           {showProfit ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                         </button>
-                      ) : null}
+                      )}
                     </div>
                   </TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Eligible</TableHead>
