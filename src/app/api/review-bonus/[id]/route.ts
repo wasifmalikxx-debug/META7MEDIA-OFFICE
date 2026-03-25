@@ -165,7 +165,11 @@ export async function DELETE(
         await syncPayrollRecord(submission.userId, submission.month, submission.year);
       } catch {}
     }
-    await prisma.reviewBonus.delete({ where: { id } });
+    // Soft-delete: mark as REMOVED (keeps audit trail)
+    await prisma.reviewBonus.update({
+      where: { id },
+      data: { status: "REMOVED", rejectionReason: `Removed by ${role === "SUPER_ADMIN" ? "CEO" : "Manager"} on ${new Date().toLocaleDateString()}` },
+    });
     return json({ success: true });
   }
 

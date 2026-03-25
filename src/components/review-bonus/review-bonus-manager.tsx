@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Check, X, Eye, Star } from "lucide-react";
+import { Check, X, Eye, Star, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Submission {
   id: string;
@@ -64,6 +64,7 @@ export function ReviewBonusManager({
   const pending = submissions.filter((s) => s.status === "PENDING");
   const approved = submissions.filter((s) => s.status === "APPROVED");
   const rejected = submissions.filter((s) => s.status === "REJECTED");
+  const removed = submissions.filter((s) => s.status === "REMOVED");
 
   async function handleApprove(id: string) {
     setActionLoading(id);
@@ -270,11 +271,28 @@ export function ReviewBonusManager({
     );
   }
 
+  function goMonth(offset: number) {
+    let m = currentMonth + offset;
+    let y = currentYear;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1) { m = 12; y--; }
+    router.push(`/review-bonus?month=${m}&year=${y}`);
+  }
+
+  const monthName = `${MONTHS[currentMonth - 1]} ${currentYear}`;
+
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Showing submissions for {MONTHS[currentMonth - 1]} {currentYear}
-      </p>
+      {/* Month Navigation */}
+      <div className="flex items-center gap-3">
+        <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-8">
+          <ChevronLeft className="size-4" />
+        </Button>
+        <h2 className="text-lg font-bold min-w-[180px] text-center">{monthName}</h2>
+        <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-8">
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
 
       <Tabs defaultValue="pending">
         <TabsList>
@@ -286,6 +304,9 @@ export function ReviewBonusManager({
           </TabsTrigger>
           <TabsTrigger value="rejected">
             Rejected {rejected.length > 0 && `(${rejected.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="removed">
+            Removed {removed.length > 0 && `(${removed.length})`}
           </TabsTrigger>
         </TabsList>
 
@@ -327,6 +348,20 @@ export function ReviewBonusManager({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {rejected.map((sub) => renderSubmissionCard(sub, false))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="removed">
+          {removed.length === 0 ? (
+            <Card>
+              <CardContent className="pt-4 text-center text-muted-foreground py-8">
+                No removed submissions.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {removed.map((sub) => renderSubmissionCard(sub, false))}
             </div>
           )}
         </TabsContent>
