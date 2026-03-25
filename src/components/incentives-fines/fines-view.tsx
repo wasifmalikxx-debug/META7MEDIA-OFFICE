@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { format, isToday, isYesterday } from "date-fns";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,15 +19,17 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface FinesViewProps {
   fines: any[];
   employees: any[];
   isAdmin: boolean;
+  currentMonth: number;
+  currentYear: number;
 }
 
-export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
+export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear }: FinesViewProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -38,6 +40,16 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
     reason: "",
     date: new Date().toISOString().split("T")[0],
   });
+
+  const monthName = format(new Date(currentYear, currentMonth - 1), "MMMM yyyy");
+
+  function goMonth(offset: number) {
+    let m = currentMonth + offset;
+    let y = currentYear;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1) { m = 12; y--; }
+    router.push(`/fines?month=${m}&year=${y}`);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,6 +90,11 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
     OTHER: "bg-gray-100 text-gray-700 hover:bg-gray-100",
   };
 
+  // Group employees by department for dropdown
+  const etsyEmployees = employees.filter((e: any) => e.department?.name === "Etsy");
+  const fbEmployees = employees.filter((e: any) => e.department?.name === "Facebook");
+  const otherEmployees = employees.filter((e: any) => !e.department?.name || (e.department.name !== "Etsy" && e.department.name !== "Facebook"));
+
   // Group fines by date
   const grouped: Record<string, any[]> = {};
   fines.forEach((fine: any) => {
@@ -85,37 +102,27 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
     if (!grouped[dateKey]) grouped[dateKey] = [];
     grouped[dateKey].push(fine);
   });
-
-  // Sort dates descending (most recent first)
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-
-  function getDateLabel(dateStr: string): string {
-    const date = new Date(dateStr + "T00:00:00");
-    if (isToday(date)) return "Today";
-    if (isYesterday(date)) return "Yesterday";
-    return format(date, "EEEE, MMM d, yyyy");
-  }
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Month Navigation */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2">
-            <span className="text-xs text-muted-foreground">Total Fines</span>
-            <p className="text-lg font-bold text-red-600">PKR {total.toLocaleString()}</p>
-          </div>
-          <div className="bg-muted/30 rounded-lg px-4 py-2">
-            <span className="text-xs text-muted-foreground">This Month</span>
-            <p className="text-lg font-bold">{fines.length} fines</p>
-          </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-8">
+            <ChevronLeft className="size-4" />
+          </Button>
+          <h2 className="text-lg font-bold min-w-[180px] text-center">{monthName}</h2>
+          <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-8">
+            <ChevronRight className="size-4" />
+          </Button>
         </div>
         {isAdmin && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger render={<Button size="sm" variant="destructive" />}>
               <Plus className="size-4 mr-1" /> Add Fine
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>Add Fine</DialogTitle>
               </DialogHeader>
@@ -123,13 +130,38 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
                 <div className="space-y-2">
                   <Label>Employee</Label>
                   <Select value={form.userId} onValueChange={(v) => v && setForm({ ...form, userId: v })}>
-                    <SelectTrigger><SelectValue placeholder="Select employee..." /></SelectTrigger>
-                    <SelectContent>
-                      {employees.map((emp: any) => (
-                        <SelectItem key={emp.id} value={emp.id}>
-                          {emp.firstName} {emp.lastName} ({emp.employeeId})
-                        </SelectItem>
-                      ))}
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Select employee..." /></SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      {etsyEmployees.length > 0 && (
+                        <>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50">Etsy Team</div>
+                          {etsyEmployees.map((emp: any) => (
+                            <SelectItem key={emp.id} value={emp.id}>
+                              {emp.firstName} {emp.lastName} ({emp.employeeId})
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                      {fbEmployees.length > 0 && (
+                        <>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 mt-1">Facebook Team</div>
+                          {fbEmployees.map((emp: any) => (
+                            <SelectItem key={emp.id} value={emp.id}>
+                              {emp.firstName} {emp.lastName} ({emp.employeeId})
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                      {otherEmployees.length > 0 && (
+                        <>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 mt-1">Other</div>
+                          {otherEmployees.map((emp: any) => (
+                            <SelectItem key={emp.id} value={emp.id}>
+                              {emp.firstName} {emp.lastName} ({emp.employeeId})
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -149,32 +181,16 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
                   </div>
                   <div className="space-y-2">
                     <Label>Amount (PKR)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={form.amount}
-                      onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })}
-                      required
-                    />
+                    <Input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })} required />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <Input
-                    type="date"
-                    value={form.date}
-                    onChange={(e) => setForm({ ...form, date: e.target.value })}
-                    required
-                  />
+                  <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
                 </div>
                 <div className="space-y-2">
                   <Label>Reason</Label>
-                  <Textarea
-                    value={form.reason}
-                    onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                    placeholder="Reason for fine..."
-                    required
-                  />
+                  <Textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="Reason for fine..." required />
                 </div>
                 <Button type="submit" variant="destructive" className="w-full" disabled={loading}>
                   {loading ? "Adding..." : "Add Fine"}
@@ -185,22 +201,35 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
         )}
       </div>
 
+      {/* Summary */}
+      <div className="flex gap-4">
+        <div className="bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2">
+          <span className="text-xs text-muted-foreground">Total Fines</span>
+          <p className="text-lg font-bold text-red-600">PKR {total.toLocaleString()}</p>
+        </div>
+        <div className="bg-muted/30 rounded-lg px-4 py-2">
+          <span className="text-xs text-muted-foreground">Total Entries</span>
+          <p className="text-lg font-bold">{fines.length}</p>
+        </div>
+      </div>
+
       {/* Fines grouped by date */}
       {sortedDates.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            No fines this month.
+            No fines for {monthName}.
           </CardContent>
         </Card>
       ) : (
         sortedDates.map((dateStr) => {
           const dateFines = grouped[dateStr];
           const dayTotal = dateFines.reduce((s: number, f: any) => s + f.amount, 0);
+          const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d, yyyy");
           return (
             <Card key={dateStr}>
               <CardHeader className="pb-2 bg-muted/20">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold">{getDateLabel(dateStr)}</CardTitle>
+                  <CardTitle className="text-sm font-semibold">{dateLabel}</CardTitle>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-muted-foreground">{dateFines.length} fine{dateFines.length !== 1 ? "s" : ""}</span>
                     <span className="text-xs font-semibold text-red-600">PKR {dayTotal.toLocaleString()}</span>
@@ -238,7 +267,7 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
                           )}
                         </TableCell>
                         <TableCell className="py-2.5">
-                          <span className="text-xs text-muted-foreground max-w-[250px] block truncate">{fine.reason}</span>
+                          <span className="text-xs text-muted-foreground">{fine.reason}</span>
                         </TableCell>
                         <TableCell className="text-right py-2.5">
                           <span className="text-xs text-muted-foreground">

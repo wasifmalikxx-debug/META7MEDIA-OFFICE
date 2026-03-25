@@ -250,16 +250,18 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
                   </TableRow>
                 );
               })}
-              {/* Department Total Row */}
-              <TableRow className="bg-muted/20 border-t-2">
-                <TableCell colSpan={7} className="text-right text-xs font-semibold py-2">
-                  {deptName} Total:
-                </TableCell>
-                <TableCell className="text-right py-2">
-                  <span className="text-sm font-bold">Rs{deptTotal.toLocaleString()}</span>
-                </TableCell>
-                <TableCell colSpan={3} />
-              </TableRow>
+              {/* Department Total Row — CEO only */}
+              {isAdmin && (
+                <TableRow className="bg-muted/20 border-t-2">
+                  <TableCell colSpan={7} className="text-right text-xs font-semibold py-2">
+                    {deptName} Total:
+                  </TableCell>
+                  <TableCell className="text-right py-2">
+                    <span className="text-sm font-bold">Rs{deptTotal.toLocaleString()}</span>
+                  </TableCell>
+                  <TableCell colSpan={3} />
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
