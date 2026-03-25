@@ -111,15 +111,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // WhatsApp: notify employee about bonus eligibility (fire-and-forget)
-    if (isEligible && bonusAmount > 0) {
-      try {
-        const { notifyEmployee, bonusEligibleMsg } = await import("@/lib/services/whatsapp.service");
-        const empUser = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { firstName: true, lastName: true } });
-        const empName = empUser ? `${empUser.firstName} ${empUser.lastName || ""}`.trim() : "Employee";
-        notifyEmployee(parsed.userId, bonusEligibleMsg(empName, parsed.totalProfit, bonusAmount)).catch(() => {});
-      } catch {}
-    }
+    // WhatsApp removed — only fines & salary paid get WhatsApp notifications
 
     // Create or update Incentive record for profit bonus
     if (isEligible && bonusAmount > 0) {
@@ -207,12 +199,7 @@ export async function POST(request: NextRequest) {
           await prisma.incentive.create({ data: { userId: izaan.id, type: "TARGET_BASED", amount: teamLeadBonus, reason: `Team Lead Bonus - ${eligibleCount} eligible employees × PKR 5,000`, month: parsed.month, year: parsed.year, givenById: session.user.id } });
         }
 
-        // WhatsApp: notify Izaan about team lead bonus (fire-and-forget)
-        try {
-          const { notifyEmployee, teamLeadBonusMsg } = await import("@/lib/services/whatsapp.service");
-          const izaanName = `${izaan.firstName} ${izaan.lastName || ""}`.trim();
-          notifyEmployee(izaan.id, teamLeadBonusMsg(izaanName, eligibleCount, teamLeadBonus)).catch(() => {});
-        } catch {}
+        // WhatsApp removed — only fines & salary paid get notifications
       } else if (existingTL) {
         await prisma.incentive.delete({ where: { id: existingTL.id } });
       }

@@ -74,16 +74,7 @@ export async function PATCH(
         "/review-bonus"
       );
 
-      // WhatsApp notification (fire-and-forget)
-      try {
-        const { notifyEmployee, reviewBonusApprovedMsg } = await import(
-          "@/lib/services/whatsapp.service"
-        );
-        notifyEmployee(
-          submission.userId,
-          reviewBonusApprovedMsg(empName, submission.storeName, submission.amount)
-        ).catch(() => {});
-      } catch {}
+      // WhatsApp removed — only fines & salary paid get notifications
     } else {
       await createNotification(
         submission.userId,
