@@ -132,19 +132,32 @@ export function ReviewBonusSubmit({
 
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.append("storeName", form.storeName);
-      formData.append("customerName", form.customerName);
-      formData.append("originalRating", form.originalRating);
-      formData.append("newRating", form.newRating);
-      formData.append("month", String(currentMonth));
-      formData.append("year", String(currentYear));
-      formData.append("beforeScreenshot", beforeFile);
-      formData.append("afterScreenshot", afterFile);
+      // Upload before screenshot
+      const beforeFormData = new FormData();
+      beforeFormData.append("file", beforeFile);
+      const beforeRes = await fetch("/api/upload", { method: "POST", body: beforeFormData });
+      const beforeData = await beforeRes.json();
+      if (!beforeRes.ok) throw new Error(beforeData.error || "Failed to upload before screenshot");
 
+      // Upload after screenshot
+      const afterFormData = new FormData();
+      afterFormData.append("file", afterFile);
+      const afterRes = await fetch("/api/upload", { method: "POST", body: afterFormData });
+      const afterData = await afterRes.json();
+      if (!afterRes.ok) throw new Error(afterData.error || "Failed to upload after screenshot");
+
+      // Submit review bonus with uploaded URLs
       const res = await fetch("/api/review-bonus", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storeName: form.storeName,
+          customerName: form.customerName,
+          originalRating: parseInt(form.originalRating),
+          newRating: parseInt(form.newRating),
+          beforeScreenshot: beforeData.url,
+          afterScreenshot: afterData.url,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to submit");
