@@ -68,6 +68,7 @@ export async function PATCH(
     data: {
       status: body.status,
       notes: body.notes,
+      paymentProof: body.paymentProof || undefined,
       paidAt: body.status === "PAID" ? new Date() : undefined,
     },
   });
