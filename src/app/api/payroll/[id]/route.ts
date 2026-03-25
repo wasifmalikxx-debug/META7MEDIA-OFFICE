@@ -81,16 +81,18 @@ export async function PATCH(
       `/payroll/${id}`
     );
 
-    // WhatsApp: detailed salary notification
-    const { notifyEmployee, payrollDetailMsg } = await import("@/lib/services/whatsapp.service");
-    const user = await prisma.user.findUnique({ where: { id: record.userId }, select: { firstName: true, lastName: true } });
-    const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const monthStr = `${months[record.month - 1]} ${record.year}`;
-    notifyEmployee(
-      record.userId,
-      payrollDetailMsg(empName, monthStr, record.monthlySalary, record.totalFines, record.totalIncentives, record.netSalary)
-    );
+    // WhatsApp: salary paid notification (fire-and-forget)
+    try {
+      const { notifyEmployee, salaryPaidMsg } = await import("@/lib/services/whatsapp.service");
+      const user = await prisma.user.findUnique({ where: { id: record.userId }, select: { firstName: true, lastName: true } });
+      const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const monthStr = `${months[record.month - 1]} ${record.year}`;
+      notifyEmployee(
+        record.userId,
+        salaryPaidMsg(empName, record.netSalary, monthStr)
+      ).catch(() => {});
+    } catch {}
   }
 
   return json(updated);

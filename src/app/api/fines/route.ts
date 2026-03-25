@@ -65,11 +65,13 @@ export async function POST(request: NextRequest) {
       "/fines"
     );
 
-    // WhatsApp notification
-    const { notifyEmployee, fineAddedMsg } = await import("@/lib/services/whatsapp.service");
-    const user = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { firstName: true, lastName: true } });
-    const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
-    notifyEmployee(parsed.userId, fineAddedMsg(empName, parsed.amount, parsed.reason));
+    // WhatsApp notification (fire-and-forget)
+    try {
+      const { notifyEmployee, manualFineMsg } = await import("@/lib/services/whatsapp.service");
+      const user = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { firstName: true, lastName: true } });
+      const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
+      notifyEmployee(parsed.userId, manualFineMsg(empName, parsed.amount, parsed.reason)).catch(() => {});
+    } catch {}
 
     return json(fine, 201);
   } catch (err: any) {
