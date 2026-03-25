@@ -71,7 +71,7 @@ export function ReviewBonusManager({
       const res = await fetch(`/api/review-bonus/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve" }),
+        body: JSON.stringify({ action: "APPROVED" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to approve");
@@ -102,7 +102,7 @@ export function ReviewBonusManager({
       const res = await fetch(`/api/review-bonus/${rejectingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reject", rejectionReason: rejectReason }),
+        body: JSON.stringify({ action: "REJECTED", rejectionReason: rejectReason }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to reject");

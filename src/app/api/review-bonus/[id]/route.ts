@@ -92,6 +92,48 @@ export async function PATCH(
   }
 }
 
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await requireAuth();
+  if (!session) return error("Unauthorized", 401);
+
+  const { id } = await params;
+  const submission = await prisma.reviewBonus.findUnique({ where: { id } });
+  if (!submission) return error("Not found", 404);
+
+  if (submission.userId !== session.user.id) {
+    return error("You can only edit your own submissions", 403);
+  }
+  if (submission.status !== "PENDING") {
+    return error("Can only edit pending submissions", 400);
+  }
+  const minutesSinceCreated = Math.floor((Date.now() - submission.createdAt.getTime()) / 60000);
+  if (minutesSinceCreated > 2) {
+    return error("Submissions can only be edited within 2 minutes", 400);
+  }
+
+  try {
+    const body = await request.json();
+    const updateData: any = {};
+    if (body.storeName) updateData.storeName = body.storeName;
+    if (body.customerName !== undefined) updateData.customerName = body.customerName || null;
+    if (body.originalRating) updateData.originalRating = body.originalRating;
+    if (body.newRating) updateData.newRating = body.newRating;
+    if (body.beforeScreenshot) updateData.beforeScreenshot = body.beforeScreenshot;
+    if (body.afterScreenshot) updateData.afterScreenshot = body.afterScreenshot;
+
+    const updated = await prisma.reviewBonus.update({
+      where: { id },
+      data: updateData,
+    });
+    return json(updated);
+  } catch (err: any) {
+    return error(err.message);
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
