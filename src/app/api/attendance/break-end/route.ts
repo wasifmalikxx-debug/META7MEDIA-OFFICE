@@ -59,11 +59,13 @@ export async function POST() {
           },
         });
 
-        // WhatsApp: notify employee about break late fine
-        const { notifyEmployee, breakLateMsg } = await import("@/lib/services/whatsapp.service");
-        const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { firstName: true, lastName: true } });
-        const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
-        notifyEmployee(session.user.id, breakLateMsg(empName, lateMinutes, settings.breakLateFineAmt));
+        // WhatsApp: notify employee about break late fine (fire-and-forget)
+        try {
+          const { notifyEmployee, breakFineMsg } = await import("@/lib/services/whatsapp.service");
+          const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { firstName: true, lastName: true } });
+          const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
+          notifyEmployee(session.user.id, breakFineMsg(empName, lateMinutes, settings.breakLateFineAmt)).catch(() => {});
+        } catch {}
       }
     }
   }

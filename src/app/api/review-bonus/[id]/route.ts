@@ -68,14 +68,16 @@ export async function PATCH(
         "/review-bonus"
       );
 
-      // WhatsApp notification
-      const { notifyEmployee, incentiveAwardedMsg } = await import(
-        "@/lib/services/whatsapp.service"
-      );
-      notifyEmployee(
-        submission.userId,
-        incentiveAwardedMsg(empName, submission.amount, `Bad Review Fix Bonus - ${submission.storeName}`)
-      );
+      // WhatsApp notification (fire-and-forget)
+      try {
+        const { notifyEmployee, reviewBonusApprovedMsg } = await import(
+          "@/lib/services/whatsapp.service"
+        );
+        notifyEmployee(
+          submission.userId,
+          reviewBonusApprovedMsg(empName, submission.storeName, submission.amount)
+        ).catch(() => {});
+      } catch {}
     } else {
       await createNotification(
         submission.userId,

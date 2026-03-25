@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { AttendanceStatus } from "@prisma/client";
+import { notifyEmployee, lateFineMsg } from "@/lib/services/whatsapp.service";
 
 function parseTime(timeStr: string): { hours: number; minutes: number } {
   const [hours, minutes] = timeStr.split(":").map(Number);
@@ -119,6 +120,11 @@ export async function checkIn(
             linkedAttendanceId: attendance.id,
           },
         });
+
+        // WhatsApp: notify employee about late fine (fire-and-forget)
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } });
+        const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
+        notifyEmployee(userId, lateFineMsg(empName, lateMinutes, fineAmount)).catch(() => {});
       }
     }
   }
