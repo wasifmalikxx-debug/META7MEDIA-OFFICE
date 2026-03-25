@@ -94,7 +94,7 @@ export function PayrollView({
             <ChevronLeft className="size-4" />
           </Button>
           <h2 className="text-lg font-semibold min-w-[160px] text-center">{monthName}</h2>
-          <Button variant="outline" size="icon" onClick={() => goMonth(1)} disabled={isCurrentMonth} className="size-8">
+          <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-8">
             <ChevronRight className="size-4" />
           </Button>
         </div>

@@ -192,47 +192,42 @@ export async function generatePayrollForEmployee(
     Math.max(0, salary.monthlySalary + totalIncentives - totalDeductions)
   );
 
-  // Upsert payroll record
+  // Check if record already exists and is PAID — don't overwrite paid status
+  const existing = await prisma.payrollRecord.findUnique({
+    where: { userId_month_year: { userId, month, year } },
+  });
+
+  const payrollData = {
+    monthlySalary: salary.monthlySalary,
+    workingDays,
+    presentDays,
+    paidLeaveDays,
+    unpaidLeaveDays,
+    lateDays,
+    absentDays,
+    halfDays,
+    dailyRate,
+    earnedSalary,
+    totalIncentives,
+    totalFines,
+    totalDeductions,
+    netSalary,
+    generatedBy,
+  };
+
   return prisma.payrollRecord.upsert({
     where: { userId_month_year: { userId, month, year } },
     create: {
       userId,
       month,
       year,
-      monthlySalary: salary.monthlySalary,
-      workingDays,
-      presentDays,
-      paidLeaveDays,
-      unpaidLeaveDays,
-      lateDays,
-      absentDays,
-      halfDays,
-      dailyRate,
-      earnedSalary,
-      totalIncentives,
-      totalFines,
-      totalDeductions,
-      netSalary,
-      generatedBy,
+      ...payrollData,
       status: "DRAFT",
     },
     update: {
-      monthlySalary: salary.monthlySalary,
-      workingDays,
-      presentDays,
-      paidLeaveDays,
-      unpaidLeaveDays,
-      lateDays,
-      absentDays,
-      halfDays,
-      dailyRate,
-      earnedSalary,
-      totalIncentives,
-      totalFines,
-      totalDeductions,
-      netSalary,
-      generatedBy,
-      status: "DRAFT",
+      ...payrollData,
+      // Preserve PAID status — only set DRAFT if not already paid
+      ...(existing?.status !== "PAID" ? { status: "DRAFT" } : {}),
     },
   });
 }
