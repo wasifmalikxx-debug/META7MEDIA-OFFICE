@@ -154,9 +154,16 @@ export function EmployeeDashboard({
   const hasCheckedOut = !!attendance?.checkOut;
   const onBreak = !!attendance?.breakStart && !attendance?.breakEnd;
 
-  // Break window check
+  // Check-in window: 30 minutes before office start time
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const [wsH, wsM] = (workStartTime || "11:00").split(":").map(Number);
+  const workStartMin = wsH * 60 + wsM;
+  const checkInWindowStart = workStartMin - 30; // 30 min before office start
+  const canCheckIn = currentMinutes >= checkInWindowStart;
+  const checkInOpensAt = `${String(Math.floor(checkInWindowStart / 60)).padStart(2, "0")}:${String(checkInWindowStart % 60).padStart(2, "0")}`;
+
+  // Break window check
   const [bsH, bsM] = (breakStartTime || "14:00").split(":").map(Number);
   const [beH, beM] = (breakEndTime || "15:00").split(":").map(Number);
   const breakStartMin = bsH * 60 + bsM;
@@ -437,10 +444,16 @@ export function EmployeeDashboard({
           </div>
           <div className="flex gap-2 flex-wrap">
             {!hasCheckedIn && (
-              <Button onClick={handleCheckIn} disabled={loading} className="gap-2">
-                <CheckCircle className="size-4" />
-                {loading ? "..." : "Check In"}
-              </Button>
+              canCheckIn ? (
+                <Button onClick={handleCheckIn} disabled={loading} className="gap-2">
+                  <CheckCircle className="size-4" />
+                  {loading ? "..." : "Check In"}
+                </Button>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  Check-in opens at {checkInOpensAt} (30 min before office hours)
+                </span>
+              )
             )}
             {hasCheckedIn && !hasCheckedOut && !onBreak && !breakDone && (
               <>
