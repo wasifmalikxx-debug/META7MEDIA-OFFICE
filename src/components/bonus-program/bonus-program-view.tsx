@@ -532,8 +532,10 @@ export function BonusProgramView({
                         <TableCell className="text-center font-medium">
                           {bonusAmount > 0 ? (
                             <span className="text-green-600">PKR {bonusAmount.toLocaleString()}</span>
+                          ) : state.totalProfit < 0 ? (
+                            <span className="text-red-600 font-bold">-PKR {Math.abs(Math.floor(state.totalProfit * 10)).toLocaleString()}</span>
                           ) : (
-                            <span className="text-muted-foreground">-</span>
+                            <span className="text-red-500">PKR 0</span>
                           )}
                         </TableCell>
 
