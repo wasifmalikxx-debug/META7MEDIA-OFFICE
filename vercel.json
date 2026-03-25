@@ -5,8 +5,12 @@
       "schedule": "7 * * * *"
     },
     {
-      "path": "/api/cron/daily-absent",
+      "path": "/api/attendance/auto-checkout",
       "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/cron/daily-absent",
+      "schedule": "33 14 * * *"
     },
     {
       "path": "/api/cron/cleanup",
