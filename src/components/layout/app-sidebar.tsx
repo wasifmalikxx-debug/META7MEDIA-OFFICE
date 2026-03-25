@@ -20,6 +20,7 @@ import {
   Star,
   BookOpen,
   Rocket,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -84,6 +85,7 @@ function getEtsyNav(userRole: string) {
 const settingsNav = [
   { title: "Office Timings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
   { title: "How It Works", href: "/how-it-works", icon: HelpCircle, roles: ["all"] },
+  { title: "Automated Messages", href: "/automated-messages", icon: MessageSquare, roles: ["SUPER_ADMIN"] },
 ];
 
 function hasAccess(roles: string[], userRole: string) {
