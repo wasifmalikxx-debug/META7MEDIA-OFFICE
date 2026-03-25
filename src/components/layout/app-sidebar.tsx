@@ -161,12 +161,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
     <Sidebar>
       <SidebarHeader className="border-b px-4 py-3">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
-            M7
-          </div>
+          <img src="/logo.png" alt="META7MEDIA" className="h-8 w-auto" />
           <div className="flex flex-col">
-            <span className="text-sm font-semibold">META7MEDIA</span>
-            <span className="text-xs text-muted-foreground">Office Manager</span>
+            <span className="text-sm font-bold">META7MEDIA AI</span>
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Office Manager</span>
+            <span className="text-[8px] text-muted-foreground/60">Powered By: Google</span>
           </div>
         </Link>
       </SidebarHeader>
@@ -240,7 +239,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuButton className="w-full" />}>
                   <Avatar className="size-6">
-                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                    {(user as any).role === "SUPER_ADMIN" ? (
+                      <img src="/logo.png" alt="CEO" className="size-6 object-contain" />
+                    ) : (
+                      <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                    )}
                   </Avatar>
                   <div className="flex flex-col items-start text-left">
                     <span className="text-sm">{user.name}</span>

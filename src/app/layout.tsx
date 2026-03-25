@@ -15,8 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "META7MEDIA Office Manager",
-  description: "Office attendance, payroll, and employee management system",
+  title: "META7MEDIA AI — Office Manager",
+  description: "Office attendance, payroll, and employee management system — Powered by Google",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
