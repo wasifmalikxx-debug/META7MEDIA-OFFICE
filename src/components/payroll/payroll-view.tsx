@@ -15,7 +15,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight, Upload, Image as ImageIcon } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface PayrollViewProps {
   records: any[];
@@ -32,6 +38,8 @@ export function PayrollView({
 }: PayrollViewProps) {
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
 
   async function handleGenerate() {
     setGenerating(true);
@@ -49,6 +57,34 @@ export function PayrollView({
       toast.error(err.message);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleUploadProof(id: string, file: File) {
+    setUploadingId(id);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error || "Upload failed");
+
+      // Update payroll with proof and mark as paid
+      const res = await fetch(`/api/payroll/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "PAID", paymentProof: uploadData.url }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error);
+      }
+      toast.success("Payment proof uploaded & marked as paid");
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUploadingId(null);
     }
   }
 
@@ -135,6 +171,7 @@ export function PayrollView({
                   <TableHead className="whitespace-nowrap text-right font-bold">Final Salary</TableHead>
                   <TableHead className="whitespace-nowrap">Account Details</TableHead>
                   {isAdmin && <TableHead>Actions</TableHead>}
+                  {!isAdmin && <TableHead>Proof</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -198,22 +235,88 @@ export function PayrollView({
                         </TableCell>
                         {isAdmin && (
                           <TableCell>
-                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex gap-1 items-center" onClick={(e) => e.stopPropagation()}>
                               {(rec.status === "DRAFT" || rec.status === "CALCULATED" || rec.status === "APPROVED") && (
-                                <Button
-                                  size="sm"
-                                  className="bg-green-600 hover:bg-green-700 text-white gap-1"
-                                  onClick={() => handleStatusUpdate(rec.id, "PAID")}
-                                >
-                                  <Wallet className="size-3" /> Mark Paid
-                                </Button>
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700 text-white gap-1"
+                                    onClick={() => handleStatusUpdate(rec.id, "PAID")}
+                                  >
+                                    <Wallet className="size-3" /> Mark Paid
+                                  </Button>
+                                  <label className="cursor-pointer">
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleUploadProof(rec.id, file);
+                                        e.target.value = "";
+                                      }}
+                                    />
+                                    <Button size="sm" variant="outline" className="gap-1" asChild disabled={uploadingId === rec.id}>
+                                      <span>
+                                        <Upload className="size-3" />
+                                        {uploadingId === rec.id ? "..." : "Proof"}
+                                      </span>
+                                    </Button>
+                                  </label>
+                                </>
                               )}
                               {rec.status === "PAID" && (
-                                <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                                  <CheckCircle className="size-3" /> Paid
-                                </span>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                                    <CheckCircle className="size-3" /> Paid
+                                  </span>
+                                  {rec.paymentProof && (
+                                    <Button size="sm" variant="ghost" className="size-6 p-0" onClick={() => setProofPreview(rec.paymentProof)}>
+                                      <ImageIcon className="size-3 text-blue-500" />
+                                    </Button>
+                                  )}
+                                  {!rec.paymentProof && (
+                                    <label className="cursor-pointer">
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={async (e) => {
+                                          const file = e.target.files?.[0];
+                                          if (!file) return;
+                                          setUploadingId(rec.id);
+                                          try {
+                                            const fd = new FormData();
+                                            fd.append("file", file);
+                                            const up = await fetch("/api/upload", { method: "POST", body: fd });
+                                            const upData = await up.json();
+                                            if (!up.ok) throw new Error(upData.error);
+                                            await fetch(`/api/payroll/${rec.id}`, {
+                                              method: "PATCH",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ status: "PAID", paymentProof: upData.url }),
+                                            });
+                                            toast.success("Proof uploaded");
+                                            router.refresh();
+                                          } catch (err: any) { toast.error(err.message); }
+                                          finally { setUploadingId(null); }
+                                          e.target.value = "";
+                                        }}
+                                      />
+                                      <span className="text-xs text-blue-500 cursor-pointer hover:underline">+ Add Proof</span>
+                                    </label>
+                                  )}
+                                </div>
                               )}
                             </div>
+                          </TableCell>
+                        )}
+                        {/* Employee: show proof if available */}
+                        {!isAdmin && rec.paymentProof && (
+                          <TableCell>
+                            <Button size="sm" variant="ghost" className="gap-1 text-blue-500" onClick={() => setProofPreview(rec.paymentProof)}>
+                              <ImageIcon className="size-3" /> View Proof
+                            </Button>
                           </TableCell>
                         )}
                       </TableRow>
@@ -225,6 +328,17 @@ export function PayrollView({
           </div>
         </CardContent>
       </Card>
+      {/* Payment Proof Preview Dialog */}
+      <Dialog open={!!proofPreview} onOpenChange={() => setProofPreview(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Payment Proof</DialogTitle>
+          </DialogHeader>
+          {proofPreview && (
+            <img src={proofPreview} alt="Payment proof" className="w-full rounded-lg" />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
