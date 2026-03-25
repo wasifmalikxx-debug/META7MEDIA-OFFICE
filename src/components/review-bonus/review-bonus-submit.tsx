@@ -435,7 +435,7 @@ export function ReviewBonusSubmit({
                     </TableCell>
                   </TableRow>
                   );
-                }))
+                })
               )}
             </TableBody>
           </Table>
