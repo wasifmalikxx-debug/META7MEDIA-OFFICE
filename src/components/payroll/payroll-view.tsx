@@ -109,8 +109,8 @@ export function PayrollView({
         body: JSON.stringify({ status: "PAID", paymentProof: uploadData.url }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
+        const text = await res.text();
+        try { throw new Error(JSON.parse(text).error); } catch { throw new Error(text || "Upload failed"); }
       }
       toast.success("Payment proof uploaded & marked as paid");
       router.refresh();
@@ -129,10 +129,10 @@ export function PayrollView({
         body: JSON.stringify({ status }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
+        const text = await res.text();
+        try { throw new Error(JSON.parse(text).error); } catch { throw new Error(text || "Failed"); }
       }
-      toast.success(`Payroll ${status.toLowerCase()}`);
+      toast.success(status === "PAID" ? "Marked as paid" : "Marked as pending");
       router.refresh();
     } catch (err: any) {
       toast.error(err.message);
@@ -199,13 +199,13 @@ export function PayrollView({
           if (b === "Facebook") return 1;
           return a.localeCompare(b);
         });
-        return sortedDepts.map((dept) => (
-      <Card key={dept}>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">
-            {dept} Team — {monthName}
-          </CardTitle>
-        </CardHeader>
+        return (<>{sortedDepts.map((dept) => (
+          <Card key={dept}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                {dept} Team — {monthName}
+              </CardTitle>
+            </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
@@ -348,8 +348,8 @@ export function PayrollView({
             </Table>
           </div>
         </CardContent>
-      </Card>
-        ));
+          </Card>
+        ))}</>);
       })()}
       {records.length === 0 && (
         <Card>
