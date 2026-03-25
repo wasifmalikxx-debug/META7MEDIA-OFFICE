@@ -64,6 +64,7 @@ interface BonusProgramViewProps {
   reviewBonuses: ReviewBonus[];
   currentMonth: number;
   currentYear: number;
+  userRole: string;
 }
 
 interface RowState {
@@ -132,13 +133,15 @@ export function BonusProgramView({
   reviewBonuses,
   currentMonth,
   currentYear,
+  userRole,
 }: BonusProgramViewProps) {
   const router = useRouter();
   const [month, setMonth] = useState(String(currentMonth));
   const [year, setYear] = useState(String(currentYear));
   const [savingRows, setSavingRows] = useState<Record<string, boolean>>({});
   const [fetchingProfits, setFetchingProfits] = useState(false);
-  const [showProfit, setShowProfit] = useState(true);
+  const isCEO = userRole === "SUPER_ADMIN";
+  const [showProfit, setShowProfit] = useState(isCEO);
 
   // Build row states from existing data
   const buildInitialStates = useCallback(() => {
@@ -427,9 +430,11 @@ export function BonusProgramView({
                   <TableHead className="text-center text-xs py-2 px-1">
                     <div className="flex items-center justify-center gap-1">
                       Profit ($)
-                      <button onClick={() => setShowProfit(!showProfit)} className="text-muted-foreground hover:text-foreground">
-                        {showProfit ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-                      </button>
+                      {isCEO && (
+                        <button onClick={() => setShowProfit(!showProfit)} className="text-muted-foreground hover:text-foreground">
+                          {showProfit ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                        </button>
+                      )}
                     </div>
                   </TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Eligible</TableHead>
