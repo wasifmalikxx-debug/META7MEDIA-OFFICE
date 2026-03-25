@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Clock,
   Calendar,
@@ -80,13 +81,16 @@ export function EmployeeDashboard({
   const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
-  // Real-time salary ticker — updates every 30 seconds for smooth animation
+  const router = useRouter();
+
+  // Auto-refresh dashboard data every 30 seconds
   useEffect(() => {
-    if (attendance?.checkIn && !attendance?.checkOut) {
-      const interval = setInterval(() => setTick((t) => t + 1), 30000);
-      return () => clearInterval(interval);
-    }
-  }, [attendance?.checkIn, attendance?.checkOut]);
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+      router.refresh(); // Re-fetch server data
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleApplyLeave() {
     if (!leaveForm.date) { toast.error("Please select a date"); return; }
