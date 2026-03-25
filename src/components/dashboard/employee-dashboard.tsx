@@ -631,7 +631,10 @@ export function EmployeeDashboard({
                     Live — updating every minute
                   </span>
                 ) : (
-                  "Earned so far"
+                  <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                    <span className="inline-block size-1.5 rounded-full bg-green-500 animate-pulse" />
+                    Live — updating every minute
+                  </span>
                 )}
               </p>
             </CardContent>
