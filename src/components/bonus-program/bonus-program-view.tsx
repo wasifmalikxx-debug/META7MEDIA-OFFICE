@@ -534,7 +534,16 @@ export function BonusProgramView({
                                 Need ${(1000 - state.totalProfit).toLocaleString()} more
                               </span>
                             )}
-                            {/* No "next tier" text for eligible employees — keep it clean */}
+                            {state.totalProfit >= 1000 && (() => {
+                              const tiers = Math.floor(state.totalProfit / 500);
+                              const nextTier = (tiers + 1) * 500;
+                              const gap = nextTier - state.totalProfit;
+                              return (
+                                <span className="text-xs text-muted-foreground">
+                                  ${gap.toFixed(2)} to next tier (PKR {((tiers + 1) * 5000).toLocaleString()})
+                                </span>
+                              );
+                            })()}
                           </div>
                         </TableCell>
 
