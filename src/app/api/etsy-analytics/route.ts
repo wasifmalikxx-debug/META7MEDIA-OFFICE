@@ -282,43 +282,67 @@ export async function GET(request: NextRequest) {
 
 // ─── Date parsing helper ───────────────────────────────────────────
 
+const MONTH_NAMES: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+  apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+  aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10,
+  nov: 11, november: 11, dec: 12, december: 12,
+};
+
 function normalizeDate(dateStr: string, expectedMonth: number, expectedYear: number): string | null {
   if (!dateStr) return null;
-
-  // Try parsing various formats
   const cleaned = dateStr.trim();
 
-  // Try direct Date parse
-  const parsed = new Date(cleaned);
-  if (!isNaN(parsed.getTime())) {
-    const m = parsed.getMonth() + 1;
-    const y = parsed.getFullYear();
-    // Only accept dates in the expected month
-    if (m === expectedMonth && (y === expectedYear || y === 0)) {
-      return `${expectedYear}-${String(expectedMonth).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
-    }
-    // If year is way off (like 1900s from Excel serial dates), still use it if month matches
-    if (m === expectedMonth) {
-      return `${expectedYear}-${String(expectedMonth).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+  // Format: "1 Mar", "25 Mar", "3 March" (day + month abbreviation, no year)
+  const dayMonthMatch = cleaned.match(/^(\d{1,2})\s+([A-Za-z]+)$/);
+  if (dayMonthMatch) {
+    const day = parseInt(dayMonthMatch[1]);
+    const monthNum = MONTH_NAMES[dayMonthMatch[2].toLowerCase()];
+    if (monthNum === expectedMonth && day >= 1 && day <= 31) {
+      return `${expectedYear}-${String(expectedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
   }
 
-  // Try MM/DD/YYYY or M/D/YYYY
+  // Format: "Mar 1", "March 25" (month + day)
+  const monthDayMatch = cleaned.match(/^([A-Za-z]+)\s+(\d{1,2})$/);
+  if (monthDayMatch) {
+    const monthNum = MONTH_NAMES[monthDayMatch[1].toLowerCase()];
+    const day = parseInt(monthDayMatch[2]);
+    if (monthNum === expectedMonth && day >= 1 && day <= 31) {
+      return `${expectedYear}-${String(expectedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  // Format: "1 Mar 2026", "25 March 2026"
+  const dayMonthYearMatch = cleaned.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (dayMonthYearMatch) {
+    const day = parseInt(dayMonthYearMatch[1]);
+    const monthNum = MONTH_NAMES[dayMonthYearMatch[2].toLowerCase()];
+    const yr = parseInt(dayMonthYearMatch[3]);
+    if (monthNum === expectedMonth && yr === expectedYear) {
+      return `${expectedYear}-${String(expectedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  // Format: MM/DD/YYYY or DD/MM/YYYY
   const slashMatch = cleaned.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (slashMatch) {
     const p1 = parseInt(slashMatch[1]);
     const p2 = parseInt(slashMatch[2]);
     const p3 = parseInt(slashMatch[3]);
     const fullYear = p3 < 100 ? 2000 + p3 : p3;
-
-    // Try MM/DD/YYYY
     if (p1 === expectedMonth && fullYear === expectedYear) {
       return `${expectedYear}-${String(p1).padStart(2, "0")}-${String(p2).padStart(2, "0")}`;
     }
-    // Try DD/MM/YYYY
     if (p2 === expectedMonth && fullYear === expectedYear) {
       return `${expectedYear}-${String(p2).padStart(2, "0")}-${String(p1).padStart(2, "0")}`;
     }
+  }
+
+  // Try direct Date parse as fallback
+  const parsed = new Date(cleaned);
+  if (!isNaN(parsed.getTime()) && parsed.getMonth() + 1 === expectedMonth) {
+    return `${expectedYear}-${String(expectedMonth).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
   }
 
   return null;
