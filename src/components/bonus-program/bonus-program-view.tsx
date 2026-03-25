@@ -495,10 +495,6 @@ export function BonusProgramView({
                               const gap = nextTier - state.totalProfit;
                               return (
                                 <div>
-                                  <span className="text-xs text-green-600 font-semibold">
-                                    ${tierUSD.toLocaleString()} tier → PKR {bonusPKR.toLocaleString()}
-                                  </span>
-                                  <br />
                                   <span className="text-xs text-muted-foreground">
                                     ${gap.toLocaleString()} to next tier (PKR {((tiers + 1) * 5000).toLocaleString()})
                                   </span>
