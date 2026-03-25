@@ -2,35 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 
@@ -73,7 +60,7 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
     }
   }
 
-  const total = fines.reduce((s, f) => s + f.amount, 0);
+  const total = fines.reduce((s: number, f: any) => s + f.amount, 0);
 
   const typeLabels: Record<string, string> = {
     LATE_ARRIVAL: "Late",
@@ -83,17 +70,50 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
     OTHER: "Other",
   };
 
+  const typeColors: Record<string, string> = {
+    LATE_ARRIVAL: "bg-amber-100 text-amber-700 hover:bg-amber-100",
+    EARLY_DEPARTURE: "bg-orange-100 text-orange-700 hover:bg-orange-100",
+    ABSENT_WITHOUT_LEAVE: "bg-red-100 text-red-700 hover:bg-red-100",
+    POLICY_VIOLATION: "bg-purple-100 text-purple-700 hover:bg-purple-100",
+    OTHER: "bg-gray-100 text-gray-700 hover:bg-gray-100",
+  };
+
+  // Group fines by date
+  const grouped: Record<string, any[]> = {};
+  fines.forEach((fine: any) => {
+    const dateKey = format(new Date(fine.date || fine.createdAt), "yyyy-MM-dd");
+    if (!grouped[dateKey]) grouped[dateKey] = [];
+    grouped[dateKey].push(fine);
+  });
+
+  // Sort dates descending (most recent first)
+  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  function getDateLabel(dateStr: string): string {
+    const date = new Date(dateStr + "T00:00:00");
+    if (isToday(date)) return "Today";
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "EEEE, MMM d, yyyy");
+  }
+
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Total fines this month:{" "}
-          <span className="font-bold text-red-600">PKR {total.toLocaleString()}</span>
-        </p>
+        <div className="flex items-center gap-4">
+          <div className="bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2">
+            <span className="text-xs text-muted-foreground">Total Fines</span>
+            <p className="text-lg font-bold text-red-600">PKR {total.toLocaleString()}</p>
+          </div>
+          <div className="bg-muted/30 rounded-lg px-4 py-2">
+            <span className="text-xs text-muted-foreground">This Month</span>
+            <p className="text-lg font-bold">{fines.length} fines</p>
+          </div>
+        </div>
         {isAdmin && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger render={<Button size="sm" variant="destructive" />}>
-                <Plus className="size-4 mr-1" /> Add Fine
+              <Plus className="size-4 mr-1" /> Add Fine
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -105,7 +125,7 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
                   <Select value={form.userId} onValueChange={(v) => v && setForm({ ...form, userId: v })}>
                     <SelectTrigger><SelectValue placeholder="Select employee..." /></SelectTrigger>
                     <SelectContent>
-                      {employees.map((emp) => (
+                      {employees.map((emp: any) => (
                         <SelectItem key={emp.id} value={emp.id}>
                           {emp.firstName} {emp.lastName} ({emp.employeeId})
                         </SelectItem>
@@ -121,7 +141,7 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
                       <SelectContent>
                         <SelectItem value="LATE_ARRIVAL">Late Arrival</SelectItem>
                         <SelectItem value="EARLY_DEPARTURE">Early Departure</SelectItem>
-                        <SelectItem value="ABSENT_WITHOUT_LEAVE">Absent Without Leave</SelectItem>
+                        <SelectItem value="ABSENT_WITHOUT_LEAVE">Absent</SelectItem>
                         <SelectItem value="POLICY_VIOLATION">Policy Violation</SelectItem>
                         <SelectItem value="OTHER">Other</SelectItem>
                       </SelectContent>
@@ -165,58 +185,77 @@ export function FinesView({ fines, employees, isAdmin }: FinesViewProps) {
         )}
       </div>
 
-      <Card>
-        <CardContent className="pt-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Issued By</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {fines.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    No fines this month.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                fines.map((fine) => (
-                  <TableRow key={fine.id}>
-                    <TableCell className="text-sm">
-                      {fine.user.firstName} {fine.user.lastName}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="destructive" className="text-xs">
-                        {typeLabels[fine.type] || fine.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm font-medium text-red-600">
-                      PKR {fine.amount.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-sm max-w-[200px] truncate">
-                      {fine.reason}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {format(new Date(fine.date), "MMM d, yyyy")}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {fine.reason?.startsWith("Auto-generated") || fine.reason?.startsWith("Late from break")
-                        ? "META7 AI"
-                        : `${fine.issuedBy.firstName} ${fine.issuedBy.lastName}`}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* Fines grouped by date */}
+      {sortedDates.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No fines this month.
+          </CardContent>
+        </Card>
+      ) : (
+        sortedDates.map((dateStr) => {
+          const dateFines = grouped[dateStr];
+          const dayTotal = dateFines.reduce((s: number, f: any) => s + f.amount, 0);
+          return (
+            <Card key={dateStr}>
+              <CardHeader className="pb-2 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold">{getDateLabel(dateStr)}</CardTitle>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground">{dateFines.length} fine{dateFines.length !== 1 ? "s" : ""}</span>
+                    <span className="text-xs font-semibold text-red-600">PKR {dayTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/10">
+                      <TableHead className="text-xs py-2">Employee</TableHead>
+                      <TableHead className="text-xs py-2">Type</TableHead>
+                      <TableHead className="text-xs py-2 text-right">Amount</TableHead>
+                      <TableHead className="text-xs py-2">Reason</TableHead>
+                      <TableHead className="text-xs py-2 text-right">Issued By</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dateFines.map((fine: any) => (
+                      <TableRow key={fine.id} className="hover:bg-muted/5">
+                        <TableCell className="py-2.5">
+                          <span className="text-sm font-medium">{fine.user.firstName} {fine.user.lastName}</span>
+                          <span className="text-xs text-muted-foreground ml-1">({fine.user.employeeId})</span>
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <Badge className={`text-[10px] ${typeColors[fine.type] || typeColors.OTHER}`}>
+                            {typeLabels[fine.type] || fine.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right py-2.5">
+                          {fine.amount > 0 ? (
+                            <span className="text-sm font-semibold text-red-600">PKR {fine.amount.toLocaleString()}</span>
+                          ) : (
+                            <span className="text-sm text-green-600">Covered</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <span className="text-xs text-muted-foreground max-w-[250px] block truncate">{fine.reason}</span>
+                        </TableCell>
+                        <TableCell className="text-right py-2.5">
+                          <span className="text-xs text-muted-foreground">
+                            {fine.isAutoGenerated || fine.reason?.startsWith("Auto-generated") || fine.reason?.startsWith("Late from break")
+                              ? "META7 AI"
+                              : `${fine.issuedBy?.firstName || ""} ${fine.issuedBy?.lastName || ""}`}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
     </div>
   );
 }
