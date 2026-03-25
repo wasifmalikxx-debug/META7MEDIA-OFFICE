@@ -140,7 +140,7 @@ export function BonusProgramView({
   const [year, setYear] = useState(String(currentYear));
   const [savingRows, setSavingRows] = useState<Record<string, boolean>>({});
   const [fetchingProfits, setFetchingProfits] = useState(false);
-  const [showProfit, setShowProfit] = useState(userRole === "SUPER_ADMIN");
+  const [showProfit, setShowProfit] = useState(false);
 
   // Build row states from existing data
   const buildInitialStates = useCallback(() => {
