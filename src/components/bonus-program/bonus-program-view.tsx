@@ -280,6 +280,29 @@ export function BonusProgramView({
 
   return (
     <div className="space-y-6">
+      {/* AI Fetching Overlay */}
+      {fetchingProfits && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 max-w-sm mx-4 border">
+            <div className="relative">
+              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center animate-pulse">
+                <Cloud className="size-8 text-primary animate-bounce" />
+              </div>
+              <div className="absolute -top-1 -right-1 size-5 bg-green-500 rounded-full animate-ping" />
+            </div>
+            <h3 className="text-lg font-bold text-center">AI is Fetching Details</h3>
+            <p className="text-sm text-muted-foreground text-center">
+              Pulling latest profit data from Google Sheets for all employees...
+            </p>
+            <div className="flex gap-1">
+              <div className="size-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+              <div className="size-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+              <div className="size-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Month/Year Selector */}
       <Card>
         <CardContent className="pt-4">
