@@ -126,7 +126,7 @@ export function PayrollView({
               <TableHeader>
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Employee</TableHead>
-                  <TableHead className="whitespace-nowrap">Status</TableHead>
+                  <TableHead className="whitespace-nowrap">Payment</TableHead>
                   <TableHead className="whitespace-nowrap text-right">Salary</TableHead>
                   <TableHead className="whitespace-nowrap text-center">Absents</TableHead>
                   <TableHead className="whitespace-nowrap text-right">Absent Fine</TableHead>
@@ -162,16 +162,13 @@ export function PayrollView({
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant={
+                            className={`text-xs ${
                               rec.status === "PAID"
-                                ? "default"
-                                : rec.status === "APPROVED"
-                                ? "default"
-                                : "outline"
-                            }
-                            className="text-xs"
+                                ? "bg-green-100 text-green-700 hover:bg-green-100"
+                                : "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                            }`}
                           >
-                            {rec.status}
+                            {rec.status === "PAID" ? "Paid" : "Pending"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-sm">
@@ -202,22 +199,19 @@ export function PayrollView({
                         {isAdmin && (
                           <TableCell>
                             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                              {rec.status === "DRAFT" && (
+                              {(rec.status === "DRAFT" || rec.status === "CALCULATED" || rec.status === "APPROVED") && (
                                 <Button
                                   size="sm"
-                                  variant="outline"
-                                  onClick={() => handleStatusUpdate(rec.id, "APPROVED")}
-                                >
-                                  <CheckCircle className="size-3 mr-1" /> Approve
-                                </Button>
-                              )}
-                              {rec.status === "APPROVED" && (
-                                <Button
-                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white gap-1"
                                   onClick={() => handleStatusUpdate(rec.id, "PAID")}
                                 >
-                                  <Wallet className="size-3 mr-1" /> Paid
+                                  <Wallet className="size-3" /> Mark Paid
                                 </Button>
+                              )}
+                              {rec.status === "PAID" && (
+                                <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                                  <CheckCircle className="size-3" /> Paid
+                                </span>
                               )}
                             </div>
                           </TableCell>
