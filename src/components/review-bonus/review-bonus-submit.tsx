@@ -370,6 +370,7 @@ export function ReviewBonusSubmit({
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -380,14 +381,18 @@ export function ReviewBonusSubmit({
                   </TableCell>
                 </TableRow>
               ) : (
-                submissions.map((sub) => (
+                submissions.map((sub) => {
+                  const minutesSinceCreated = Math.floor((Date.now() - new Date(sub.createdAt).getTime()) / 60000);
+                  const canEdit = sub.status === "PENDING" && minutesSinceCreated <= 2;
+                  const timeLeft = canEdit ? Math.max(0, 2 - minutesSinceCreated) : 0;
+                  return (
                   <TableRow key={sub.id}>
                     <TableCell className="text-sm font-medium">{sub.storeName}</TableCell>
                     <TableCell className="text-sm">{sub.customerName || "-"}</TableCell>
                     <TableCell className="text-sm">
-                      <span className="text-red-500">{sub.originalRating}*</span>
-                      {" -> "}
-                      <span className="text-green-500">{sub.newRating}*</span>
+                      <span className="text-red-500">{sub.originalRating}★</span>
+                      {" → "}
+                      <span className="text-green-500">{sub.newRating}★</span>
                     </TableCell>
                     <TableCell className="text-sm font-medium text-green-600">
                       Rs. {sub.amount.toLocaleString()}
@@ -403,8 +408,34 @@ export function ReviewBonusSubmit({
                     <TableCell className="text-sm">
                       {format(new Date(sub.createdAt), "MMM d, yyyy")}
                     </TableCell>
+                    <TableCell>
+                      {canEdit && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{timeLeft}m left</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-500 h-7 px-2"
+                            onClick={async () => {
+                              if (!confirm("Delete this submission?")) return;
+                              const res = await fetch(`/api/review-bonus/${sub.id}`, { method: "DELETE" });
+                              if (res.ok) {
+                                toast.success("Submission deleted");
+                                router.refresh();
+                              } else {
+                                const data = await res.json();
+                                toast.error(data.error || "Failed to delete");
+                              }
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
                   </TableRow>
-                ))
+                  );
+                }))
               )}
             </TableBody>
           </Table>
