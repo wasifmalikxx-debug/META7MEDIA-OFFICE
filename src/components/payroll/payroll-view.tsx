@@ -183,10 +183,27 @@ export function PayrollView({
         </div>
       )}
 
-      <Card>
+      {/* Group by department */}
+      {(() => {
+        const departments: Record<string, any[]> = {};
+        records.forEach((rec) => {
+          const dept = rec.user.department?.name || "Other";
+          if (!departments[dept]) departments[dept] = [];
+          departments[dept].push(rec);
+        });
+        // Sort: Etsy first, then Facebook, then others
+        const sortedDepts = Object.keys(departments).sort((a, b) => {
+          if (a === "Etsy") return -1;
+          if (b === "Etsy") return 1;
+          if (a === "Facebook") return -1;
+          if (b === "Facebook") return 1;
+          return a.localeCompare(b);
+        });
+        return sortedDepts.map((dept) => (
+      <Card key={dept}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">
-            Salary Sheet — {monthName}
+            {dept} Team — {monthName}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -208,7 +225,7 @@ export function PayrollView({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {records.length === 0 ? (
+                {departments[dept].length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={isAdmin ? 10 : 9}
@@ -218,7 +235,7 @@ export function PayrollView({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  records.map((rec) => {
+                  departments[dept].map((rec) => {
                     const isEditing = editingId === rec.id;
                     const absentFine = rec.totalDeductions - rec.totalFines;
                     const afterFine = rec.monthlySalary - (absentFine > 0 ? absentFine : 0);
@@ -332,6 +349,15 @@ export function PayrollView({
           </div>
         </CardContent>
       </Card>
+        ));
+      })()}
+      {records.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            No payroll records. {isAdmin && "Click 'Generate Payroll' to start."}
+          </CardContent>
+        </Card>
+      )}
       {/* Payment Proof Preview Dialog */}
       <Dialog open={!!proofPreview} onOpenChange={() => setProofPreview(null)}>
         <DialogContent className="max-w-lg">
