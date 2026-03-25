@@ -82,7 +82,7 @@ function getEtsyNav(userRole: string) {
 }
 
 const settingsNav = [
-  { title: "Settings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
+  { title: "Office Timings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
   { title: "How It Works", href: "/how-it-works", icon: HelpCircle, roles: ["all"] },
 ];
 
