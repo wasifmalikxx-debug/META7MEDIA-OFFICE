@@ -5,10 +5,8 @@ import {
   UserCheck,
   UserX,
   Clock,
-  CalendarOff,
   Wallet,
   AlertTriangle,
-  TrendingUp,
 } from "lucide-react";
 import { StatCard } from "@/components/common/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,12 +18,8 @@ interface AdminDashboardProps {
   presentToday: number;
   lateToday: number;
   absentToday: number;
-  onLeaveToday: number;
-  pendingLeaves: number;
   totalPayable: number;
   totalFines: number;
-  totalIncentives: number;
-  announcements: any[];
   recentAttendances: any[];
 }
 
@@ -34,12 +28,8 @@ export function AdminDashboard({
   presentToday,
   lateToday,
   absentToday,
-  onLeaveToday,
-  pendingLeaves,
   totalPayable,
   totalFines,
-  totalIncentives,
-  announcements,
   recentAttendances,
 }: AdminDashboardProps) {
   const attendanceRate = totalEmployees > 0 ? Math.round((presentToday / totalEmployees) * 100) : 0;
@@ -54,8 +44,8 @@ export function AdminDashboard({
         </p>
       </div>
 
-      {/* Top Stats Row */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      {/* Stats Row */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Total Employees"
           value={totalEmployees}
@@ -82,21 +72,12 @@ export function AdminDashboard({
           icon={UserX}
           description={absentToday === 0 ? "Full attendance" : "Not checked in"}
         />
-      </div>
-
-      {/* Finance Stats */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="On Leave"
-          value={onLeaveToday}
-          icon={CalendarOff}
-        />
-        <StatCard
-          title="Pending Leaves"
-          value={pendingLeaves}
-          icon={CalendarOff}
-          description="Awaiting approval"
-          variant={pendingLeaves > 0 ? "warning" : "default"}
+          title="Fines"
+          value={`PKR ${totalFines.toLocaleString()}`}
+          icon={AlertTriangle}
+          variant={totalFines > 0 ? "danger" : "default"}
+          description="This month"
         />
         <StatCard
           title="Total Payable"
@@ -104,123 +85,71 @@ export function AdminDashboard({
           icon={Wallet}
           description="This month"
         />
-        <StatCard
-          title="Fines / Incentives"
-          value={`${totalFines.toLocaleString()} / ${totalIncentives.toLocaleString()}`}
-          icon={TrendingUp}
-          description="This month"
-        />
       </div>
 
-      {/* Bottom Section */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Today's Attendance */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold">Today&apos;s Attendance</CardTitle>
-              <Badge variant="outline" className="text-xs font-normal">
-                {recentAttendances.length} check-ins
-              </Badge>
+      {/* Today's Attendance */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold">Today&apos;s Attendance</CardTitle>
+            <Badge variant="outline" className="text-xs font-normal">
+              {recentAttendances.length} check-ins
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {recentAttendances.length === 0 ? (
+            <div className="text-center py-8">
+              <Clock className="size-8 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">
+                No attendance records for today yet.
+              </p>
             </div>
-          </CardHeader>
-          <CardContent>
-            {recentAttendances.length === 0 ? (
-              <div className="text-center py-8">
-                <Clock className="size-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  No attendance records for today yet.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {recentAttendances.slice(0, 10).map((att: any) => (
-                  <div
-                    key={att.id}
-                    className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                        {att.user.firstName[0]}{att.user.lastName?.[0] || ""}
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium">
-                          {att.user.firstName} {att.user.lastName}
-                        </span>
-                        <span className="text-xs text-muted-foreground ml-1.5">
-                          {att.user.employeeId}
-                        </span>
-                      </div>
+          ) : (
+            <div className="space-y-1">
+              {recentAttendances.map((att: any) => (
+                <div
+                  key={att.id}
+                  className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                      {att.user.firstName[0]}{att.user.lastName?.[0] || ""}
                     </div>
-                    <div className="flex items-center gap-2">
-                      {att.checkIn && (
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {format(new Date(att.checkIn), "hh:mm a")}
-                        </span>
-                      )}
-                      <Badge
-                        variant={
-                          att.status === "PRESENT"
-                            ? "default"
-                            : att.status === "LATE"
-                            ? "secondary"
-                            : "destructive"
-                        }
-                        className="text-xs min-w-[60px] justify-center"
-                      >
-                        {att.status}
-                      </Badge>
+                    <div>
+                      <span className="text-sm font-medium">
+                        {att.user.firstName} {att.user.lastName}
+                      </span>
+                      <span className="text-xs text-muted-foreground ml-1.5">
+                        {att.user.employeeId}
+                      </span>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Announcements */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold">Announcements</CardTitle>
-              <Badge variant="outline" className="text-xs font-normal">
-                {announcements.length} active
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {announcements.length === 0 ? (
-              <div className="text-center py-8">
-                <AlertTriangle className="size-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  No announcements yet.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {announcements.map((ann: any) => (
-                  <div key={ann.id} className="py-2.5 px-2 rounded-md hover:bg-muted/50 transition-colors border-b last:border-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{ann.title}</span>
-                      {ann.priority >= 2 && (
-                        <Badge variant="destructive" className="text-xs">
-                          Urgent
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                      {ann.content}
-                    </p>
-                    <span className="text-xs text-muted-foreground">
-                      {format(new Date(ann.createdAt), "MMM d, yyyy")} — {ann.author.firstName}
-                    </span>
+                  <div className="flex items-center gap-2">
+                    {att.checkIn && (
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {format(new Date(att.checkIn), "hh:mm a")}
+                      </span>
+                    )}
+                    <Badge
+                      variant={
+                        att.status === "PRESENT"
+                          ? "default"
+                          : att.status === "LATE"
+                          ? "secondary"
+                          : "destructive"
+                      }
+                      className="text-xs min-w-[60px] justify-center"
+                    >
+                      {att.status}
+                    </Badge>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

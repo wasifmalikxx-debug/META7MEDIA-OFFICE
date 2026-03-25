@@ -18,23 +18,11 @@ export default async function DashboardPage() {
 
   if (userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN") {
     // Admin dashboard data
-    const [
-      totalEmployees,
-      todayAttendances,
-      pendingLeaves,
-      announcements,
-    ] = await Promise.all([
+    const [totalEmployees, todayAttendances] = await Promise.all([
       prisma.user.count({ where: { status: { in: ["HIRED", "PROBATION"] } } }),
       prisma.attendance.findMany({
         where: { date: today },
         include: { user: { select: { firstName: true, lastName: true, employeeId: true } } },
-      }),
-      prisma.leaveRequest.count({ where: { status: "PENDING" } }),
-      prisma.announcement.findMany({
-        where: { isActive: true },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        include: { author: { select: { firstName: true, lastName: true } } },
       }),
     ]);
 
@@ -45,17 +33,12 @@ export default async function DashboardPage() {
     const absentToday = totalEmployees - todayAttendances.filter(
       (a) => a.status !== "ABSENT"
     ).length;
-    const onLeaveToday = todayAttendances.filter(
-      (a) => a.status === "ON_LEAVE"
-    ).length;
 
-    // Payroll summary for current month
-    const payrollRecords = await prisma.payrollRecord.findMany({
-      where: { month, year },
-    });
+    // Payroll + fines summary for current month
+    const payrollRecords = await prisma.payrollRecord.findMany({ where: { month, year } });
     const totalPayable = payrollRecords.reduce((sum, p) => sum + p.netSalary, 0);
-    const totalFines = payrollRecords.reduce((sum, p) => sum + p.totalFines, 0);
-    const totalIncentives = payrollRecords.reduce((sum, p) => sum + p.totalIncentives, 0);
+    const fines = await prisma.fine.findMany({ where: { month, year } });
+    const totalFines = fines.reduce((sum, f) => sum + f.amount, 0);
 
     return (
       <AdminDashboard
@@ -63,12 +46,8 @@ export default async function DashboardPage() {
         presentToday={presentToday}
         lateToday={lateToday}
         absentToday={absentToday}
-        onLeaveToday={onLeaveToday}
-        pendingLeaves={pendingLeaves}
         totalPayable={totalPayable}
         totalFines={totalFines}
-        totalIncentives={totalIncentives}
-        announcements={announcements}
         recentAttendances={todayAttendances}
       />
     );
