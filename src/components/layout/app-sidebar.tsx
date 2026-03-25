@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Target,
   Star,
+  BookOpen,
 } from "lucide-react";
 import {
   Sidebar,
@@ -75,6 +76,7 @@ function getEtsyNav(userRole: string) {
       icon: Star,
       roles: ["all"],
     },
+    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] },
   ];
 }
 
