@@ -91,3 +91,30 @@ export async function PATCH(
     return error(err.message);
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await requireAuth();
+  if (!session) return error("Unauthorized", 401);
+
+  const { id } = await params;
+  const submission = await prisma.reviewBonus.findUnique({ where: { id } });
+  if (!submission) return error("Not found", 404);
+
+  // Only the submitter can delete, and only within 2 minutes
+  if (submission.userId !== session.user.id) {
+    return error("You can only delete your own submissions", 403);
+  }
+  if (submission.status !== "PENDING") {
+    return error("Can only delete pending submissions", 400);
+  }
+  const minutesSinceCreated = Math.floor((Date.now() - submission.createdAt.getTime()) / 60000);
+  if (minutesSinceCreated > 2) {
+    return error("Submissions can only be deleted within 2 minutes of submitting", 400);
+  }
+
+  await prisma.reviewBonus.delete({ where: { id } });
+  return json({ success: true });
+}
