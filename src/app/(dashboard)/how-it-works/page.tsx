@@ -181,12 +181,19 @@ export default async function HowItWorksPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm">
+          <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 p-4 mb-3">
+            <p className="font-semibold text-green-700 dark:text-green-400">
+              Salaries are automated through our banking partner — Bank Alfalah
+            </p>
+          </div>
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Payroll is generated monthly by the CEO</li>
-            <li>Status shows <strong>Pending</strong> until the CEO marks it as <strong>Paid</strong></li>
-            <li>Payment proof is uploaded by the CEO</li>
-            <li>You can view payroll history for any month</li>
+            <li>Salaries are paid between the <strong>5th - 10th of every month</strong></li>
+            <li>Payments are processed automatically through <strong>Bank Alfalah</strong></li>
+            <li>Payment proofs are automatically added from our banking partner</li>
+            <li>Make sure your <strong>bank details are updated</strong> before the payment timeline</li>
+            <li>You can update your bank details from your profile at any time</li>
             <li>Payroll shows: gross salary, present days, absences, fines, incentives, and net payable</li>
+            <li>You can view payroll history for any month</li>
           </ul>
         </CardContent>
       </Card>
