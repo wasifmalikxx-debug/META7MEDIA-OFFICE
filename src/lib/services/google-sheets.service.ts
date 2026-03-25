@@ -144,6 +144,163 @@ export async function fetchProfitFromSheet(
   }
 }
 
+// ─── Analytics Types ───────────────────────────────────────────────
+
+export interface SheetOrderRow {
+  shopName: string;
+  orderDate: string; // raw date string from column D
+  price: number;     // column G (USD)
+  afterTax: number;  // column H
+  cost: number;      // column I
+  profit: number;    // column J
+}
+
+export interface SheetAnalyticsSummary {
+  totalSale: number;
+  totalCost: number;
+  grossProfit: number;
+  afterTax: number;
+}
+
+export interface EmployeeSheetData {
+  orders: SheetOrderRow[];
+  summary: SheetAnalyticsSummary;
+  error: string | null;
+  tabName: string | null;
+}
+
+/**
+ * Fetch ALL order rows + analytics summary from an employee's sheet for a month.
+ * Reads columns A-J for order data and the analytics area (W-Y) for summary totals.
+ */
+export async function fetchSheetAnalytics(
+  sheetUrl: string,
+  month: number,
+  year: number
+): Promise<EmployeeSheetData> {
+  const empty: EmployeeSheetData = {
+    orders: [],
+    summary: { totalSale: 0, totalCost: 0, grossProfit: 0, afterTax: 0 },
+    error: null,
+    tabName: null,
+  };
+
+  try {
+    const sheetId = extractSheetId(sheetUrl);
+    if (!sheetId) return { ...empty, error: "Invalid Google Sheet URL" };
+
+    const authClient = await getAuthClient();
+    const sheets = google.sheets({ version: "v4", auth: authClient as any });
+
+    // Get tab names
+    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+    const sheetTabs = spreadsheet.data.sheets?.map((s) => s.properties?.title || "") || [];
+
+    const tabNames = getAlternativeTabNames(month, year);
+    let matchedTab: string | null = null;
+    for (const tabName of tabNames) {
+      const found = sheetTabs.find((t) => t.trim().toUpperCase() === tabName.toUpperCase());
+      if (found) { matchedTab = found; break; }
+    }
+    if (!matchedTab) {
+      return { ...empty, error: `Tab not found. Tried: ${tabNames[0]}` };
+    }
+
+    // Batch read: order data (A:J) and analytics area (V:AD rows 1-15)
+    const ranges = [
+      `'${matchedTab}'!A:J`,
+      `'${matchedTab}'!V1:AD15`,
+    ];
+
+    const batchResponse = await sheets.spreadsheets.values.batchGet({
+      spreadsheetId: sheetId,
+      ranges,
+    });
+
+    const valueRanges = batchResponse.data.valueRanges || [];
+    const orderRows = valueRanges[0]?.values || [];
+    const analyticsRows = valueRanges[1]?.values || [];
+
+    // Parse order rows (skip header row)
+    const orders: SheetOrderRow[] = [];
+    for (let i = 1; i < orderRows.length; i++) {
+      const row = orderRows[i];
+      if (!row || row.length < 10) continue;
+
+      const shopName = String(row[0] || "").trim();
+      const orderDate = String(row[3] || "").trim(); // Column D
+      const price = parseFloat(String(row[6] || "0").replace(/[$,\s]/g, "")) || 0; // Column G
+      const afterTax = parseFloat(String(row[7] || "0").replace(/[$,\s]/g, "")) || 0; // Column H
+      const cost = parseFloat(String(row[8] || "0").replace(/[$,\s]/g, "")) || 0; // Column I
+      const profit = parseFloat(String(row[9] || "0").replace(/[$,\s]/g, "")) || 0; // Column J
+
+      // Skip rows without a shop name or date (likely empty/totals)
+      if (!shopName || !orderDate) continue;
+      // Skip header-like rows
+      if (shopName.toUpperCase() === "SHOP NAME" || shopName.toUpperCase() === "SHOP") continue;
+
+      orders.push({ shopName, orderDate, price, afterTax, cost, profit });
+    }
+
+    // Parse analytics summary — search for labels in analytics area
+    const summary: SheetAnalyticsSummary = { totalSale: 0, totalCost: 0, grossProfit: 0, afterTax: 0 };
+    const labelMap: Record<string, keyof SheetAnalyticsSummary> = {
+      "TOTAL SALE": "totalSale",
+      "TOTAL SALES": "totalSale",
+      "TOTAL COST": "totalCost",
+      "GROSS PROFIT": "grossProfit",
+      "AFTER TAX": "afterTax",
+    };
+
+    for (const row of analyticsRows) {
+      for (let col = 0; col < (row?.length || 0); col++) {
+        const cellValue = String(row[col] || "").trim().toUpperCase();
+        const key = labelMap[cellValue];
+        if (key) {
+          const rawValue = row[col + 1];
+          if (rawValue) {
+            const num = parseFloat(String(rawValue).replace(/[$,\s]/g, ""));
+            if (!isNaN(num)) summary[key] = num;
+          }
+        }
+      }
+    }
+
+    return { orders, summary, error: null, tabName: matchedTab };
+  } catch (err: any) {
+    const msg = err.message || String(err);
+    if (msg.includes("not found")) {
+      return { ...empty, error: "Sheet not found or not shared with service account" };
+    }
+    if (msg.includes("permission")) {
+      return { ...empty, error: "No permission. Share sheet with service account." };
+    }
+    return { ...empty, error: msg };
+  }
+}
+
+/**
+ * Fetch analytics for ALL employees in parallel (max 3 concurrent to respect rate limits)
+ */
+export async function fetchAllSheetAnalytics(
+  employeeSheets: { userId: string; sheetUrl: string }[],
+  month: number,
+  year: number
+): Promise<Record<string, EmployeeSheetData>> {
+  const results: Record<string, EmployeeSheetData> = {};
+  const batchSize = 3;
+
+  for (let i = 0; i < employeeSheets.length; i += batchSize) {
+    const batch = employeeSheets.slice(i, i + batchSize);
+    const promises = batch.map(async ({ userId, sheetUrl }) => {
+      results[userId] = await fetchSheetAnalytics(sheetUrl, month, year);
+    });
+    await Promise.all(promises);
+  }
+
+  return results;
+}
+
 /**
  * Fetch profits for multiple employees at once
  */
