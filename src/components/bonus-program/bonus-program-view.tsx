@@ -407,21 +407,10 @@ export function BonusProgramView({
       {/* Bonus Table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Trophy className="size-4" />
-              Etsy Employee Bonus Eligibility - {MONTHS[parseInt(month) - 1]} {year}
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowProfit(!showProfit)}
-              className="text-xs gap-1"
-            >
-              {showProfit ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-              {showProfit ? "Hide Profit" : "Show Profit"}
-            </Button>
-          </div>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Trophy className="size-4" />
+            Etsy Employee Bonus Eligibility - {MONTHS[parseInt(month) - 1]} {year}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -435,7 +424,14 @@ export function BonusProgramView({
                   <TableHead className="text-center text-xs py-2 px-1">Zero Wrong Orders</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Listings Removed</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Stores Above 4*</TableHead>
-                  {showProfit && <TableHead className="text-center text-xs py-2 px-1">Profit ($)</TableHead>}
+                  <TableHead className="text-center text-xs py-2 px-1">
+                    <div className="flex items-center justify-center gap-1">
+                      Profit ($)
+                      <button onClick={() => setShowProfit(!showProfit)} className="text-muted-foreground hover:text-foreground">
+                        {showProfit ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                      </button>
+                    </div>
+                  </TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Eligible</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Profit Bonus</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Review Bonus</TableHead>
@@ -532,15 +528,15 @@ export function BonusProgramView({
                         </TableCell>
 
                         {/* Profit */}
-                        {showProfit && (
                         <TableCell className="text-center">
+                          {showProfit ? (
+                          <>
                           <div className="flex items-center justify-center gap-1">
                             <span className="text-muted-foreground text-xs">$</span>
                             <span className={`font-semibold text-sm ${state.totalProfit < 0 ? 'text-red-600' : state.totalProfit >= 1000 ? 'text-green-600' : 'text-foreground'}`}>
                               {state.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
-                          {/* Profit tier indicator */}
                           <div className="mt-1">
                             {state.totalProfit < 1000 && state.totalProfit > 0 && (
                               <span className="text-xs text-red-500 font-medium">
@@ -558,8 +554,11 @@ export function BonusProgramView({
                               );
                             })()}
                           </div>
+                          </>
+                          ) : (
+                            <span className="font-semibold text-sm text-muted-foreground">$ ****</span>
+                          )}
                         </TableCell>
-                        )}
 
                         {/* Eligible Badge */}
                         <TableCell className="text-center">
