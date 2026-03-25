@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Save, DollarSign, Users, Trophy, RefreshCw, Cloud } from "lucide-react";
+import { Save, DollarSign, Users, Trophy, RefreshCw, Cloud, Eye, EyeOff } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -138,6 +138,7 @@ export function BonusProgramView({
   const [year, setYear] = useState(String(currentYear));
   const [savingRows, setSavingRows] = useState<Record<string, boolean>>({});
   const [fetchingProfits, setFetchingProfits] = useState(false);
+  const [showProfit, setShowProfit] = useState(true);
 
   // Build row states from existing data
   const buildInitialStates = useCallback(() => {
@@ -406,10 +407,21 @@ export function BonusProgramView({
       {/* Bonus Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Trophy className="size-4" />
-            Etsy Employee Bonus Eligibility - {MONTHS[parseInt(month) - 1]} {year}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Trophy className="size-4" />
+              Etsy Employee Bonus Eligibility - {MONTHS[parseInt(month) - 1]} {year}
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowProfit(!showProfit)}
+              className="text-xs gap-1"
+            >
+              {showProfit ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+              {showProfit ? "Hide Profit" : "Show Profit"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -423,7 +435,7 @@ export function BonusProgramView({
                   <TableHead className="text-center text-xs py-2 px-1">Zero Wrong Orders</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Listings Removed</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Stores Above 4*</TableHead>
-                  <TableHead className="text-center text-xs py-2 px-1">Profit ($)</TableHead>
+                  {showProfit && <TableHead className="text-center text-xs py-2 px-1">Profit ($)</TableHead>}
                   <TableHead className="text-center text-xs py-2 px-1">Eligible</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Profit Bonus</TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Review Bonus</TableHead>
@@ -520,6 +532,7 @@ export function BonusProgramView({
                         </TableCell>
 
                         {/* Profit */}
+                        {showProfit && (
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-1">
                             <span className="text-muted-foreground text-xs">$</span>
@@ -546,6 +559,7 @@ export function BonusProgramView({
                             })()}
                           </div>
                         </TableCell>
+                        )}
 
                         {/* Eligible Badge */}
                         <TableCell className="text-center">
