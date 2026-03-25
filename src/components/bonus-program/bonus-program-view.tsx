@@ -175,11 +175,48 @@ export function BonusProgramView({
     handleFetchProfits();
   }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const autoSaveTimers = useRef<Record<string, NodeJS.Timeout>>({});
+
   function updateRow(userId: string, field: keyof RowState, value: boolean | number) {
-    setRowStates((prev) => ({
-      ...prev,
-      [userId]: { ...prev[userId], [field]: value },
-    }));
+    setRowStates((prev) => {
+      const newState = { ...prev[userId], [field]: value };
+      // Auto-save after 500ms debounce
+      if (autoSaveTimers.current[userId]) {
+        clearTimeout(autoSaveTimers.current[userId]);
+      }
+      autoSaveTimers.current[userId] = setTimeout(() => {
+        autoSaveRow(userId, newState);
+      }, 500);
+      return { ...prev, [userId]: newState };
+    });
+  }
+
+  async function autoSaveRow(userId: string, state: RowState) {
+    const { isEligible, bonusAmount } = calculateBonus(state);
+    setSavingRows((prev) => ({ ...prev, [userId]: true }));
+    try {
+      const res = await fetch("/api/bonus-eligibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          month: parseInt(month),
+          year: parseInt(year),
+          ...state,
+          isEligible,
+          bonusAmount,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to save");
+      }
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSavingRows((prev) => ({ ...prev, [userId]: false }));
+    }
   }
 
   async function handleSave(userId: string) {
@@ -383,7 +420,7 @@ export function BonusProgramView({
                   <TableHead className="text-center min-w-[100px]">Profit Bonus</TableHead>
                   <TableHead className="text-center min-w-[100px]">Review Bonus</TableHead>
                   <TableHead className="text-center min-w-[100px]">Total (PKR)</TableHead>
-                  <TableHead className="text-center min-w-[80px]">Action</TableHead>
+                  <TableHead className="text-center min-w-[60px]">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -559,17 +596,13 @@ export function BonusProgramView({
                           })()}
                         </TableCell>
 
-                        {/* Save Button */}
+                        {/* Auto-save status */}
                         <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleSave(emp.id)}
-                            disabled={isSaving}
-                          >
-                            <Save className="size-3.5 mr-1" />
-                            {isSaving ? "..." : "Save"}
-                          </Button>
+                          {isSaving ? (
+                            <span className="text-xs text-amber-500 animate-pulse">Saving...</span>
+                          ) : (
+                            <span className="text-xs text-green-500">✓</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
