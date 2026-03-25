@@ -568,3 +568,22 @@ model ReviewBonus {
   @@index([userId, month, year])
   @@index([status])
 }
+
+// ─── Automated Messages ────────────────────────────
+
+model MessageTemplate {
+  id        String   @id @default(cuid())
+  type      String   @unique // e.g., "LATE_FINE_10", "BREAK_FINE", "ABSENT", "SALARY_PAID"
+  title     String
+  template  String   // message with {name}, {amount}, {minutes}, {month} placeholders
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model CustomMessage {
+  id      String   @id @default(cuid())
+  message String
+  sentTo  String   // "ALL" or employee ID
+  sentBy  String
+  sentAt  DateTime @default(now())
+}
