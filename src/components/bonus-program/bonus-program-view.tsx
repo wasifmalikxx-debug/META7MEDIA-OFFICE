@@ -429,11 +429,11 @@ export function BonusProgramView({
                   <TableHead className="text-center text-xs py-2 px-1">
                     <div className="flex items-center justify-center gap-1">
                       Profit ($)
-                      {userRole === "SUPER_ADMIN" && (
-                        <button onClick={() => setShowProfit(!showProfit)} className="text-muted-foreground hover:text-foreground ml-1">
-                          {showProfit ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                      {userRole === "SUPER_ADMIN" ? (
+                        <button onClick={() => setShowProfit(p => !p)} className="text-muted-foreground hover:text-foreground ml-1 inline-flex">
+                          {showProfit ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Eligible</TableHead>

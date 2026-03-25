@@ -75,7 +75,7 @@ export default async function BonusProgramPage() {
         reviewBonuses={JSON.parse(JSON.stringify(reviewBonuses))}
         currentMonth={month}
         currentYear={year}
-        userRole={role}
+        userRole={role as string}
       />
     </div>
   );
