@@ -140,8 +140,7 @@ export function BonusProgramView({
   const [year, setYear] = useState(String(currentYear));
   const [savingRows, setSavingRows] = useState<Record<string, boolean>>({});
   const [fetchingProfits, setFetchingProfits] = useState(false);
-  const isCEO = userRole === "SUPER_ADMIN";
-  const [showProfit, setShowProfit] = useState(isCEO);
+  const [showProfit, setShowProfit] = useState(userRole === "SUPER_ADMIN");
 
   // Build row states from existing data
   const buildInitialStates = useCallback(() => {
@@ -430,11 +429,9 @@ export function BonusProgramView({
                   <TableHead className="text-center text-xs py-2 px-1">
                     <div className="flex items-center justify-center gap-1">
                       Profit ($)
-                      {isCEO && (
-                        <button onClick={() => setShowProfit(!showProfit)} className="text-muted-foreground hover:text-foreground">
-                          {showProfit ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-                        </button>
-                      )}
+                      <button onClick={() => setShowProfit(!showProfit)} className="text-muted-foreground hover:text-foreground ml-1">
+                        {showProfit ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                      </button>
                     </div>
                   </TableHead>
                   <TableHead className="text-center text-xs py-2 px-1">Eligible</TableHead>
