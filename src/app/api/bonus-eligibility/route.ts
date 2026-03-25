@@ -218,6 +218,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sync payroll record with updated incentives
+    try {
+      const { syncPayrollRecord } = await import("@/lib/services/payroll-sync.service");
+      await syncPayrollRecord(parsed.userId, parsed.month, parsed.year);
+      // Also sync Izaan's payroll if team lead bonus changed
+      if (izaan) await syncPayrollRecord(izaan.id, parsed.month, parsed.year);
+    } catch {}
+
     // Notify the employee
     await createNotification(
       parsed.userId,

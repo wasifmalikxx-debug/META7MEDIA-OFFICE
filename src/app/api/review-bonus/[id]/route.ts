@@ -60,6 +60,12 @@ export async function PATCH(
         },
       });
 
+      // Sync payroll with new incentive
+      try {
+        const { syncPayrollRecord } = await import("@/lib/services/payroll-sync.service");
+        await syncPayrollRecord(submission.userId, now.getMonth() + 1, now.getFullYear());
+      } catch {}
+
       await createNotification(
         submission.userId,
         "REVIEW_BONUS_APPROVED",
