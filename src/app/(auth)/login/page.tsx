@@ -127,11 +127,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground text-lg font-bold">
-            M7
-          </div>
-          <CardTitle className="text-2xl">META7MEDIA</CardTitle>
-          <CardDescription>
+          <img src="/logo.png" alt="META7MEDIA" className="mx-auto mb-4 h-14 w-auto" />
+          <CardTitle className="text-2xl">META7MEDIA AI</CardTitle>
+          <CardDescription className="text-xs text-muted-foreground">
+            Office Manager — Powered By: Google
           </CardDescription>
         </CardHeader>
         <CardContent>
