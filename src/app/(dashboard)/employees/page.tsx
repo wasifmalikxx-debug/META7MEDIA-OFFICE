@@ -33,7 +33,10 @@ export default async function EmployeesPage() {
         department: { select: { id: true, name: true } },
         salaryStructure: { select: { monthlySalary: true } },
       },
-      orderBy: { firstName: "asc" },
+      orderBy: { employeeId: "asc" },
+    }).then(async (emps) => {
+      const { sortByEmployeeId } = await import("@/lib/utils/sort-employees");
+      return sortByEmployeeId(emps);
     }),
     prisma.department.findMany({ orderBy: { name: "asc" } }),
   ]);
