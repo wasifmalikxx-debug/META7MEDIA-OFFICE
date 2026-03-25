@@ -170,11 +170,9 @@ export function BonusProgramView({
   }, [employees, bonusEligibilities]);
 
   const [rowStates, setRowStates] = useState<Record<string, RowState>>(buildInitialStates);
-  // Auto-fetch profits from Google Sheets on page load + every 30 seconds
+  // Fetch profits on page load only (also triggered by Fetch button)
   useEffect(() => {
     handleFetchProfits();
-    const interval = setInterval(handleFetchProfits, 30000);
-    return () => clearInterval(interval);
   }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateRow(userId: string, field: keyof RowState, value: boolean | number) {
