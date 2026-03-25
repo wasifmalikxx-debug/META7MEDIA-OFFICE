@@ -59,19 +59,27 @@ export async function PATCH(
   const record = await prisma.payrollRecord.findUnique({ where: { id } });
   if (!record) return error("Not found", 404);
 
-  // Allow CEO to unpay (PAID -> DRAFT) or update proof on paid records
-  if (record.status === "PAID" && body.status !== "DRAFT" && body.status !== "PAID") {
-    return error("Cannot modify a paid payroll record");
+  // CEO can override anything
+  const updateData: any = {};
+  if (body.status !== undefined) {
+    updateData.status = body.status;
+    if (body.status === "PAID") updateData.paidAt = new Date();
+    if (body.status === "DRAFT") updateData.paidAt = null;
   }
+  if (body.notes !== undefined) updateData.notes = body.notes;
+  if (body.paymentProof !== undefined) updateData.paymentProof = body.paymentProof;
+  // CEO can edit all salary fields
+  if (body.monthlySalary !== undefined) updateData.monthlySalary = body.monthlySalary;
+  if (body.absentDays !== undefined) updateData.absentDays = body.absentDays;
+  if (body.totalFines !== undefined) updateData.totalFines = body.totalFines;
+  if (body.totalDeductions !== undefined) updateData.totalDeductions = body.totalDeductions;
+  if (body.totalIncentives !== undefined) updateData.totalIncentives = body.totalIncentives;
+  if (body.netSalary !== undefined) updateData.netSalary = body.netSalary;
+  if (body.earnedSalary !== undefined) updateData.earnedSalary = body.earnedSalary;
 
   const updated = await prisma.payrollRecord.update({
     where: { id },
-    data: {
-      status: body.status,
-      notes: body.notes,
-      paymentProof: body.paymentProof !== undefined ? body.paymentProof : undefined,
-      paidAt: body.status === "PAID" ? new Date() : body.status === "DRAFT" ? null : undefined,
-    },
+    data: updateData,
   });
 
   if (body.status === "PAID") {
