@@ -132,7 +132,7 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
                 <TableHead className="text-xs font-semibold py-2 text-center">Status</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-right">Salary</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-center">Absents</TableHead>
-                <TableHead className="text-xs font-semibold py-2 text-right">Absent Fine</TableHead>
+                <TableHead className="text-xs font-semibold py-2 text-right">Fine</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-right">After Fine</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-right">Bonus</TableHead>
                 <TableHead className="text-xs font-semibold py-2 text-right">Final Salary</TableHead>
@@ -170,7 +170,7 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
                         <span className="text-green-600">0</span>
                       )}
                     </TableCell>
-                    {/* Absent Fine */}
+                    {/* Fine */}
                     <TableCell className="text-right text-sm py-2.5">
                       {rec.totalDeductions > 0 ? (
                         <span className="text-red-600">Rs{Math.round(rec.totalDeductions).toLocaleString()}</span>
