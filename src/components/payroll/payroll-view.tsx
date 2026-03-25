@@ -212,7 +212,6 @@ export function PayrollView({
               <TableHeader>
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Employee</TableHead>
-                  <TableHead className="whitespace-nowrap">Payment</TableHead>
                   <TableHead className="whitespace-nowrap text-right">Salary</TableHead>
                   <TableHead className="whitespace-nowrap text-center">Absents</TableHead>
                   <TableHead className="whitespace-nowrap text-right">Absent Fine</TableHead>
@@ -220,8 +219,8 @@ export function PayrollView({
                   <TableHead className="whitespace-nowrap text-right">Extra Bonus</TableHead>
                   <TableHead className="whitespace-nowrap text-right font-bold">Final Salary</TableHead>
                   <TableHead className="whitespace-nowrap">Account Details</TableHead>
-                  {isAdmin && <TableHead>Actions</TableHead>}
-                  {!isAdmin && <TableHead>Proof</TableHead>}
+                  <TableHead className="whitespace-nowrap text-center">Proof</TableHead>
+                  <TableHead className="whitespace-nowrap text-center">{isAdmin ? "Actions" : "Payment"}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -245,11 +244,6 @@ export function PayrollView({
                           <span className="text-sm font-medium">
                             {rec.user.firstName} {rec.user.lastName}
                           </span>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={`text-xs ${rec.status === "PAID" ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}`}>
-                            {rec.status === "PAID" ? "Paid" : "Pending"}
-                          </Badge>
                         </TableCell>
                         <TableCell className="text-right text-sm">
                           {isEditing ? (
@@ -282,64 +276,58 @@ export function PayrollView({
                         <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                           {rec.user.bankName ? `${rec.user.bankName} | ${rec.user.accountNumber || ""} | ${rec.user.accountTitle || ""}` : "—"}
                         </TableCell>
-                        {isAdmin && (
-                          <TableCell>
-                            <div className="flex gap-1.5 items-center" onClick={(e) => e.stopPropagation()}>
-                              {/* Edit / Save */}
+                        {/* Proof column */}
+                        <TableCell className="text-center">
+                          {rec.paymentProof ? (
+                            <Button size="sm" variant="ghost" className="gap-1 text-blue-500 h-7" onClick={() => setProofPreview(rec.paymentProof)}>
+                              <ImageIcon className="size-3" /> View
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                          {isAdmin && rec.status === "PAID" && (
+                            <label className="cursor-pointer block">
+                              <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadProof(rec.id, f); e.target.value = ""; }} />
+                              <span className="text-xs text-blue-500 hover:underline">{rec.paymentProof ? "Update" : "+ Add"}</span>
+                            </label>
+                          )}
+                        </TableCell>
+                        {/* Payment / Actions column */}
+                        <TableCell className="text-center">
+                          {isAdmin ? (
+                            <div className="flex gap-1 items-center justify-center" onClick={(e) => e.stopPropagation()}>
                               {isEditing ? (
                                 <>
                                   <Button size="sm" variant="outline" className="h-7 px-2 gap-1" onClick={() => saveEdit(rec.id)}>
                                     <Save className="size-3" /> Save
                                   </Button>
-                                  <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingId(null)}>
+                                  <Button size="sm" variant="ghost" className="h-7 px-1" onClick={() => setEditingId(null)}>
                                     <X className="size-3" />
                                   </Button>
                                 </>
                               ) : (
-                                <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => startEdit(rec)}>
-                                  <Pencil className="size-3" />
-                                </Button>
-                              )}
-                              {/* Pay / Unpay */}
-                              {!isEditing && rec.status !== "PAID" && (
-                                <Button size="sm" className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white gap-1" onClick={() => handleStatusUpdate(rec.id, "PAID")}>
-                                  <Wallet className="size-3" /> Paid
-                                </Button>
-                              )}
-                              {!isEditing && rec.status === "PAID" && (
-                                <Button size="sm" variant="ghost" className="h-7 px-2 text-red-500 text-xs" onClick={() => handleStatusUpdate(rec.id, "DRAFT")}>
-                                  Unpay
-                                </Button>
-                              )}
-                              {/* Proof — only after paid */}
-                              {!isEditing && rec.status === "PAID" && (
                                 <>
-                                  {rec.paymentProof && (
-                                    <Button size="sm" variant="ghost" className="h-7 px-1" onClick={() => setProofPreview(rec.paymentProof)}>
-                                      <ImageIcon className="size-3 text-blue-500" />
+                                  <Button size="sm" variant="ghost" className="h-7 px-1" onClick={() => startEdit(rec)}>
+                                    <Pencil className="size-3" />
+                                  </Button>
+                                  {rec.status !== "PAID" ? (
+                                    <Button size="sm" className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white gap-1" onClick={() => handleStatusUpdate(rec.id, "PAID")}>
+                                      <Wallet className="size-3" /> Paid
+                                    </Button>
+                                  ) : (
+                                    <Button size="sm" variant="ghost" className="h-7 px-1 text-red-500 text-xs" onClick={() => handleStatusUpdate(rec.id, "DRAFT")}>
+                                      Unpay
                                     </Button>
                                   )}
-                                  <label className="cursor-pointer">
-                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadProof(rec.id, f); e.target.value = ""; }} />
-                                    <span className="text-xs text-blue-500 hover:underline">{rec.paymentProof ? "Update" : "+ Proof"}</span>
-                                  </label>
                                 </>
                               )}
                             </div>
-                          </TableCell>
-                        )}
-                        {/* Employee: show proof if available */}
-                        {!isAdmin && (
-                          <TableCell>
-                            {rec.paymentProof ? (
-                              <Button size="sm" variant="ghost" className="gap-1 text-blue-500" onClick={() => setProofPreview(rec.paymentProof)}>
-                                <ImageIcon className="size-3" /> View Proof
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                        )}
+                          ) : (
+                            <Badge className={`text-xs ${rec.status === "PAID" ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}`}>
+                              {rec.status === "PAID" ? "Paid" : "Pending"}
+                            </Badge>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })
