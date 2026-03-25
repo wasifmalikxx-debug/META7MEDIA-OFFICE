@@ -476,16 +476,9 @@ export function BonusProgramView({
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-1">
                             <span className="text-muted-foreground text-xs">$</span>
-                            <Input
-                              type="number"
-                              min={0}
-                              step={0.01}
-                              className="w-24 text-center"
-                              value={state.totalProfit}
-                              onChange={(e) =>
-                                updateRow(emp.id, "totalProfit", parseFloat(e.target.value) || 0)
-                              }
-                            />
+                            <span className={`font-semibold text-sm ${state.totalProfit < 0 ? 'text-red-600' : state.totalProfit >= 1000 ? 'text-green-600' : 'text-foreground'}`}>
+                              {state.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
                           </div>
                           {/* Profit tier indicator */}
                           <div className="mt-1">
