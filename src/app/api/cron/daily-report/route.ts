@@ -3,6 +3,7 @@ import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
 import path from "path";
+import fs from "fs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -58,10 +59,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const auth = new google.auth.GoogleAuth({
-      keyFile: path.join(process.cwd(), "google-credentials.json"),
-      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
-    });
+    let auth: InstanceType<typeof google.auth.GoogleAuth>;
+    if (process.env.GOOGLE_CREDENTIALS) {
+      auth = new google.auth.GoogleAuth({
+        credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+        scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+      });
+    } else {
+      auth = new google.auth.GoogleAuth({
+        keyFile: path.join(process.cwd(), "google-credentials.json"),
+        scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+      });
+    }
     const client = await auth.getClient();
     const sheets = google.sheets({ version: "v4", auth: client as any });
     const tabName = getMonthTabName();
