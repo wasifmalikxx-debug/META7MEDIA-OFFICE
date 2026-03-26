@@ -1,8 +1,16 @@
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, getCachedSettings } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
+
+// Get today in PKT (UTC+5)
+function getTodayPKT() {
+  const now = new Date();
+  const pktMs = now.getTime() + 5 * 60 * 60_000;
+  const pkt = new Date(pktMs);
+  return new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth(), pkt.getUTCDate()));
+}
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -11,18 +19,29 @@ export default async function DashboardPage() {
   const userRole = (session.user as any).role;
   const userId = session.user.id;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const month = today.getMonth() + 1;
-  const year = today.getFullYear();
+  const today = getTodayPKT();
+  const pktNow = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = pktNow.getUTCMonth() + 1;
+  const year = pktNow.getUTCFullYear();
 
   if (userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN") {
-    // Admin dashboard data
-    const [totalEmployees, todayAttendances] = await Promise.all([
+    // Admin dashboard — all queries in ONE batch
+    const [totalEmployees, todayAttendances, payrollRecords, fines] = await Promise.all([
       prisma.user.count({ where: { status: { in: ["HIRED", "PROBATION"] } } }),
       prisma.attendance.findMany({
         where: { date: today },
-        include: { user: { select: { firstName: true, lastName: true, employeeId: true } } },
+        select: {
+          id: true, status: true, checkIn: true, checkOut: true, lateMinutes: true,
+          user: { select: { firstName: true, lastName: true, employeeId: true } },
+        },
+      }),
+      prisma.payrollRecord.findMany({
+        where: { month, year },
+        select: { netSalary: true },
+      }),
+      prisma.fine.findMany({
+        where: { month, year },
+        select: { amount: true },
       }),
     ]);
 
@@ -33,11 +52,7 @@ export default async function DashboardPage() {
     const absentToday = totalEmployees - todayAttendances.filter(
       (a) => a.status !== "ABSENT"
     ).length;
-
-    // Payroll + fines summary for current month
-    const payrollRecords = await prisma.payrollRecord.findMany({ where: { month, year } });
     const totalPayable = payrollRecords.reduce((sum, p) => sum + p.netSalary, 0);
-    const fines = await prisma.fine.findMany({ where: { month, year } });
     const totalFines = fines.reduce((sum, f) => sum + f.amount, 0);
 
     return (
@@ -53,7 +68,10 @@ export default async function DashboardPage() {
     );
   }
 
-  // Employee dashboard data
+  // Employee dashboard — ALL queries in ONE batch (no sequential queries)
+  const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
+  const endOfMonth = new Date(Date.UTC(year, month, 0));
+
   const [
     todayAttendance,
     leaveBalance,
@@ -62,6 +80,10 @@ export default async function DashboardPage() {
     recentIncentives,
     announcements,
     leaveRequests,
+    monthAttendances,
+    salaryStructure,
+    currentUser,
+    officeSettings,
   ] = await Promise.all([
     prisma.attendance.findUnique({
       where: { userId_date: { userId, date: today } },
@@ -84,22 +106,29 @@ export default async function DashboardPage() {
       where: { isActive: true },
       orderBy: { createdAt: "desc" },
       take: 5,
-      include: { author: { select: { firstName: true, lastName: true } } },
+      select: {
+        id: true, title: true, content: true, priority: true, createdAt: true,
+        author: { select: { firstName: true, lastName: true } },
+      },
     }),
     prisma.leaveRequest.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
+    // Monthly attendance — fetched in SAME batch instead of sequentially
+    prisma.attendance.findMany({
+      where: { userId, date: { gte: startOfMonth, lte: endOfMonth } },
+      select: { status: true, workedMinutes: true },
+    }),
+    prisma.salaryStructure.findUnique({ where: { userId } }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, status: true, employeeId: true },
+    }),
+    getCachedSettings(),
   ]);
 
-  // Get attendance summary for this month
-  const monthAttendances = await prisma.attendance.findMany({
-    where: {
-      userId,
-      date: { gte: new Date(year, month - 1, 1), lte: new Date(year, month, 0) },
-    },
-  });
   const monthPresent = monthAttendances.filter(
     (a) => a.status === "PRESENT" || a.status === "LATE"
   ).length;
@@ -108,12 +137,6 @@ export default async function DashboardPage() {
   const totalWorkedHours = Math.round(
     monthAttendances.reduce((sum, a) => sum + (a.workedMinutes || 0), 0) / 60
   );
-
-  const [salaryStructure, currentUser, officeSettings] = await Promise.all([
-    prisma.salaryStructure.findUnique({ where: { userId } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, status: true, employeeId: true } }),
-    prisma.officeSettings.findUnique({ where: { id: "default" } }),
-  ]);
 
   return (
     <EmployeeDashboard

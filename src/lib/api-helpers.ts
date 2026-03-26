@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { Role } from "@prisma/client";
 
-export function json(data: any, status = 200) {
-  return NextResponse.json(data, { status });
+export function json(data: any, status = 200, cacheSeconds = 0) {
+  const headers: Record<string, string> = {};
+  if (cacheSeconds > 0) {
+    headers["Cache-Control"] = `s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 2}`;
+  }
+  return NextResponse.json(data, { status, headers });
 }
 
 export function error(message: string, status = 400) {
