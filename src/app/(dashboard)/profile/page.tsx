@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
 import { BankDetailsCard } from "@/components/profile/bank-details-card";
+import { CEOProfileEditor } from "@/components/profile/ceo-profile-editor";
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -15,13 +15,30 @@ export default async function ProfilePage() {
     where: { id: session.user.id },
     include: {
       department: { select: { name: true } },
-      team: { select: { name: true } },
-      manager: { select: { firstName: true, lastName: true } },
       salaryStructure: true,
     },
   });
 
   if (!user) redirect("/login");
+
+  const isCEO = user.role === "SUPER_ADMIN";
+
+  if (isCEO) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="My Profile" />
+        <CEOProfileEditor
+          firstName={user.firstName}
+          lastName={user.lastName}
+          email={user.email}
+          phone={user.phone || ""}
+          phone2={(user as any).phone2 || ""}
+          employeeId={user.employeeId}
+          role={user.role}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
