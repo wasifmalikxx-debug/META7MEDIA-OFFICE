@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json } from "@/lib/api-helpers";
+import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
 import path from "path";
@@ -201,6 +201,6 @@ export async function GET(request: NextRequest) {
       employees: reports,
     });
   } catch (err: any) {
-    return json({ error: err.message }, { status: 500 });
+    return error(err.message, 500);
   }
 }
