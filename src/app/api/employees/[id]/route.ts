@@ -36,7 +36,7 @@ export async function GET(
       team: { select: { id: true, name: true } },
       manager: { select: { id: true, firstName: true, lastName: true } },
       salaryStructure: true,
-      leaveBalances: { where: { year: new Date().getFullYear() } },
+      leaveBalances: { where: { year: new Date(Date.now() + 5 * 60 * 60_000).getUTCFullYear() } },
     },
   });
 

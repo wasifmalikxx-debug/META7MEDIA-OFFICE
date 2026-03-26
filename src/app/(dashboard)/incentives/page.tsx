@@ -10,8 +10,9 @@ export default async function IncentivesPage() {
 
   const role = (session.user as any).role;
   const isAdmin = role === "SUPER_ADMIN";
-  const month = new Date().getMonth() + 1;
-  const year = new Date().getFullYear();
+  const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = _pkt.getUTCMonth() + 1;
+  const year = _pkt.getUTCFullYear();
 
   const where: any = { month, year };
   if (!isAdmin) where.userId = session.user.id;

@@ -27,7 +27,7 @@ export default async function LeavesPage() {
     }),
     prisma.leaveBalance.findUnique({
       where: {
-        userId_year: { userId: session.user.id, year: new Date().getFullYear() },
+        userId_year: { userId: session.user.id, year: new Date(Date.now() + 5 * 60 * 60_000).getUTCFullYear() },
       },
     }),
   ]);

@@ -29,15 +29,15 @@ export default async function EmployeeDetailPage({
       team: { select: { name: true } },
       manager: { select: { firstName: true, lastName: true } },
       salaryStructure: true,
-      leaveBalances: { where: { year: new Date().getFullYear() } },
+      leaveBalances: { where: { year: new Date(Date.now() + 5 * 60 * 60_000).getUTCFullYear() } },
     },
   });
 
   if (!employee) notFound();
 
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
+  const now = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = now.getUTCMonth() + 1;
+  const year = now.getUTCFullYear();
   const startDate = new Date(year, month - 1, 1);
   const endDate = new Date(year, month, 0);
 

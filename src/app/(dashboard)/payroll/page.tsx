@@ -11,8 +11,9 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   const params = await searchParams;
   const role = (session.user as any).role;
   const isAdmin = role === "SUPER_ADMIN";
-  const month = params.month ? parseInt(params.month) : new Date().getMonth() + 1;
-  const year = params.year ? parseInt(params.year) : new Date().getFullYear();
+  const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;
+  const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
 
   const where: any = { month, year };
   if (!isAdmin) {

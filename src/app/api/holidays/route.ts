@@ -7,7 +7,8 @@ export async function GET(request: NextRequest) {
   if (!session) return error("Unauthorized", 401);
 
   const { searchParams } = new URL(request.url);
-  const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+  const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const year = parseInt(searchParams.get("year") || String(_pkt.getUTCFullYear()));
 
   const holidays = await prisma.holiday.findMany({
     where: { year },
