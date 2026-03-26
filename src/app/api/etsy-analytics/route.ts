@@ -81,8 +81,10 @@ export async function GET(request: NextRequest) {
   if (!session) return error("Forbidden", 403);
 
   const { searchParams } = new URL(request.url);
-  const month = parseInt(searchParams.get("month") || String(new Date().getMonth() + 1));
-  const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+  // Default to PKT month/year
+  const pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = parseInt(searchParams.get("month") || String(pkt.getUTCMonth() + 1));
+  const year = parseInt(searchParams.get("year") || String(pkt.getUTCFullYear()));
 
   if (month < 1 || month > 12 || year < 2020 || year > 2100) {
     return error("Invalid month or year");
@@ -208,15 +210,14 @@ export async function GET(request: NextRequest) {
   }
   const dailySales = [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date));
 
-  // Quick stats
-  const today = new Date();
-  const todayStr = `${year}-${String(month).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+  // Quick stats — use PKT date
+  const todayPkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const todayStr = `${year}-${String(month).padStart(2, "0")}-${String(todayPkt.getUTCDate()).padStart(2, "0")}`;
+  const yesterdayPkt = new Date(todayPkt.getTime() - 24 * 60 * 60_000);
+  const yesterdayStr = `${yesterdayPkt.getUTCFullYear()}-${String(yesterdayPkt.getUTCMonth() + 1).padStart(2, "0")}-${String(yesterdayPkt.getUTCDate()).padStart(2, "0")}`;
 
   // Week: last 7 days
-  const weekStart = new Date(today);
+  const weekStart = new Date(todayPkt);
   weekStart.setDate(weekStart.getDate() - 6);
 
   const todayData = dailyMap.get(todayStr);
@@ -226,7 +227,7 @@ export async function GET(request: NextRequest) {
   let weekSales = 0;
   for (const [dateStr, data] of dailyMap) {
     const d = new Date(dateStr);
-    if (d >= weekStart && d <= today) {
+    if (d >= weekStart && d <= todayPkt) {
       weekOrders += data.orders;
       weekSales += data.sales;
     }

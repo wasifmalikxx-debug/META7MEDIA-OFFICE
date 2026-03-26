@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { AttendanceView } from "@/components/attendance/attendance-view";
+import { pktMonth, pktYear, startOfMonthPKT, endOfMonthPKT } from "@/lib/pkt";
 
 export default async function AttendancePage() {
   const session = await auth();
@@ -11,11 +12,10 @@ export default async function AttendancePage() {
   const role = (session.user as any).role;
   const isAdmin = role === "SUPER_ADMIN";
 
-  const today = new Date();
-  const month = today.getMonth() + 1;
-  const year = today.getFullYear();
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0);
+  const month = pktMonth();
+  const year = pktYear();
+  const startDate = startOfMonthPKT();
+  const endDate = endOfMonthPKT();
 
   let attendances;
   let employees: any[] = [];
