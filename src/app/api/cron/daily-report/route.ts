@@ -190,15 +190,22 @@ export async function GET(request: NextRequest) {
       select: { phone: true, phone2: true },
     });
 
-    const { sendWhatsApp } = await import("@/lib/services/whatsapp.service");
+    const { sendDailyReportTemplate } = await import("@/lib/services/whatsapp.service");
     const sent: string[] = [];
 
+    // Build breakdown string for template
+    let breakdown = "";
+    for (const r of reports) {
+      const emoji = r.profit > 0 ? "🟢" : r.profit < 0 ? "🔴" : "⚪";
+      breakdown += `${emoji} ${r.empId} ${r.name}: ${r.orders} orders, $${r.profit.toFixed(2)}\n`;
+    }
+
     if (ceo?.phone) {
-      await sendWhatsApp(ceo.phone, msg);
+      await sendDailyReportTemplate(ceo.phone, dateFormatted, String(allOrders), `$${allSale.toFixed(2)}`, `$${allProfit.toFixed(2)}`, breakdown.trim());
       sent.push(ceo.phone);
     }
     if (ceo?.phone2) {
-      await sendWhatsApp(ceo.phone2, msg);
+      await sendDailyReportTemplate(ceo.phone2, dateFormatted, String(allOrders), `$${allSale.toFixed(2)}`, `$${allProfit.toFixed(2)}`, breakdown.trim());
       sent.push(ceo.phone2);
     }
 

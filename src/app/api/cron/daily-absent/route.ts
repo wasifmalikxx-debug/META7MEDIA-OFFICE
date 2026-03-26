@@ -146,12 +146,14 @@ export async function GET(request: NextRequest) {
           },
         });
 
-        // WhatsApp notification (only if actual deduction)
+        // WhatsApp notification via template (only if actual deduction)
         if (fineAmount > 0) {
           try {
-            const { notifyEmployee, manualFineMsg } = await import("@/lib/services/whatsapp.service");
+            const { sendAbsentTemplate } = await import("@/lib/services/whatsapp.service");
             const empName = `${emp.firstName} ${emp.lastName || ""}`.trim();
-            notifyEmployee(emp.id, manualFineMsg(empName, fineAmount, fineReason)).catch(() => {});
+            if (emp.phone) {
+              sendAbsentTemplate(emp.phone, empName, fineAmount).catch(() => {});
+            }
           } catch {}
         }
 
