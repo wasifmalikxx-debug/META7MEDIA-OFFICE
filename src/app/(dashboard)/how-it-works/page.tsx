@@ -237,7 +237,7 @@ export default async function HowItWorksPage() {
       </Card>
 
       <p className="text-xs text-center text-muted-foreground/50 pb-4">
-        META7MEDIA Office Manager — Built for META7MEDIA
+        DEVELOPED BY: WASIF MALIK - CEO META7MEDIA
       </p>
     </div>
   );
