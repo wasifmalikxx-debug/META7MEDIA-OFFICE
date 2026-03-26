@@ -112,11 +112,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
       } catch {}
     }
     fetchPending();
-    const interval = setInterval(fetchPending, 30000);
+    const interval = setInterval(fetchPending, 120_000);
     return () => clearInterval(interval);
   }, [user.role]);
 
-  // Poll for pending review bonus submissions every 30 seconds (CEO/Manager only)
+  // Poll for pending review bonus submissions every 2 minutes (CEO/Manager only)
   useEffect(() => {
     if (user.role !== "SUPER_ADMIN" && user.role !== "MANAGER") return;
     async function fetchPendingReviews() {
@@ -129,7 +129,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
       } catch {}
     }
     fetchPendingReviews();
-    const interval = setInterval(fetchPendingReviews, 30000);
+    const interval = setInterval(fetchPendingReviews, 120_000);
     return () => clearInterval(interval);
   }, [user.role]);
 

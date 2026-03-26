@@ -87,12 +87,12 @@ export function EmployeeDashboard({
 
   const router = useRouter();
 
-  // Auto-refresh dashboard data every 30 seconds
+  // Auto-refresh dashboard data every 2 minutes (reduced from 30s for performance)
   useEffect(() => {
     const interval = setInterval(() => {
       setTick((t) => t + 1);
-      router.refresh(); // Re-fetch server data
-    }, 30000);
+      router.refresh();
+    }, 120_000);
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
