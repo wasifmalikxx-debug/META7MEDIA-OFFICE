@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth, getClientIp } from "@/lib/api-helpers";
 import { checkIn, validateIp, getOfficeSettings } from "@/lib/services/attendance.service";
+import { pktMinutesSinceMidnight } from "@/lib/pkt";
 
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
@@ -16,10 +17,7 @@ export async function POST(request: NextRequest) {
   const settings = await getOfficeSettings();
   const [wsH, wsM] = (settings?.workStartTime || "11:00").split(":").map(Number);
   const workStartMin = wsH * 60 + wsM;
-  const now = new Date();
-  // Convert to Pakistan time (UTC+5)
-  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const currentMin = (utcMin + 300) % 1440; // 300 = 5 hours in minutes
+  const currentMin = pktMinutesSinceMidnight();
   if (currentMin < workStartMin - 30) {
     return error(`Check-in opens 30 minutes before office hours (${settings?.workStartTime || "11:00"})`, 400);
   }

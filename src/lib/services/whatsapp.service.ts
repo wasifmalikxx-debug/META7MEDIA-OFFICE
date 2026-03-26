@@ -1,5 +1,6 @@
 import twilio from "twilio";
 import { prisma } from "@/lib/prisma";
+import { normalizePhone } from "@/lib/pkt";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -43,6 +44,9 @@ export async function getAdminPhone(): Promise<string | null> {
 }
 
 export async function sendWhatsApp(to: string, message: string): Promise<boolean> {
+  const normalized = normalizePhone(to);
+  if (!normalized) { console.warn("Invalid phone:", to); return false; }
+
   const enabled = await isWhatsAppEnabledCached();
   if (!enabled) return false;
 
@@ -53,12 +57,12 @@ export async function sendWhatsApp(to: string, message: string): Promise<boolean
   }
 
   try {
-    const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+    const toNumber = normalized.startsWith("whatsapp:") ? normalized : `whatsapp:${normalized}`;
     await twilioClient.messages.create({ body: message, from: fromNumber, to: toNumber });
-    console.log(`WhatsApp sent to ${to}`);
+    console.log(`WhatsApp sent to ${normalized}`);
     return true;
   } catch (err: any) {
-    console.error(`WhatsApp failed to ${to}:`, err.message);
+    console.error(`WhatsApp failed to ${normalized}:`, err.message);
     return false;
   }
 }
@@ -82,6 +86,9 @@ export async function sendWhatsAppTemplate(
   templateSid: string,
   variables: Record<string, string>
 ): Promise<boolean> {
+  const normalized = normalizePhone(to);
+  if (!normalized) { console.warn("Invalid phone:", to); return false; }
+
   const enabled = await isWhatsAppEnabledCached();
   if (!enabled) return false;
 
@@ -92,17 +99,17 @@ export async function sendWhatsAppTemplate(
   }
 
   try {
-    const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+    const toNumber = normalized.startsWith("whatsapp:") ? normalized : `whatsapp:${normalized}`;
     await twilioClient.messages.create({
       contentSid: templateSid,
       contentVariables: JSON.stringify(variables),
       from: fromNumber,
       to: toNumber,
     });
-    console.log(`WhatsApp template sent to ${to}`);
+    console.log(`WhatsApp template sent to ${normalized}`);
     return true;
   } catch (err: any) {
-    console.error(`WhatsApp template failed to ${to}:`, err.message);
+    console.error(`WhatsApp template failed to ${normalized}:`, err.message);
     return false;
   }
 }

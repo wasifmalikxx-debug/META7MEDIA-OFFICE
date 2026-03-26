@@ -1,26 +1,11 @@
 import { prisma, getCachedSettings } from "@/lib/prisma";
 import { AttendanceStatus } from "@prisma/client";
 import { sendLateFineTemplate } from "@/lib/services/whatsapp.service";
-
-const PKT_OFFSET = 5 * 60; // Pakistan is UTC+5 (in minutes)
+import { todayPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
 
 function parseTime(timeStr: string): { hours: number; minutes: number } {
   const [hours, minutes] = timeStr.split(":").map(Number);
   return { hours, minutes };
-}
-
-/** Convert a UTC Date to Pakistan local minutes since midnight */
-function getPKTMinutesSinceMidnight(date: Date): number {
-  const utcMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
-  return (utcMinutes + PKT_OFFSET) % (24 * 60);
-}
-
-/** Get today's date at midnight in PKT as a UTC Date (for DB queries) */
-function getTodayPKT(now: Date): Date {
-  const utcMs = now.getTime();
-  const pktMs = utcMs + PKT_OFFSET * 60_000;
-  const pktDate = new Date(pktMs);
-  return new Date(Date.UTC(pktDate.getUTCFullYear(), pktDate.getUTCMonth(), pktDate.getUTCDate()));
 }
 
 export async function getOfficeSettings() {
@@ -49,7 +34,7 @@ export async function checkIn(
 ) {
   const settings = await getOfficeSettings();
   const now = new Date();
-  const today = getTodayPKT(now);
+  const today = todayPKT();
 
   // Check if already checked in today
   const existing = await prisma.attendance.findUnique({
@@ -62,7 +47,7 @@ export async function checkIn(
   // Calculate late status using Pakistan time (UTC+5)
   const startTime = parseTime(settings.workStartTime);
   const startMinutes = startTime.hours * 60 + startTime.minutes;
-  const currentMinutes = getPKTMinutesSinceMidnight(now);
+  const currentMinutes = pktMinutesSinceMidnight();
   const lateMinutes = Math.max(0, currentMinutes - startMinutes - settings.graceMinutes);
 
   // If employee physically checks in, they are PRESENT or LATE — never ABSENT
@@ -140,7 +125,7 @@ export async function checkIn(
 
 export async function checkOut(userId: string, ip: string, lat?: number, lng?: number) {
   const now = new Date();
-  const today = getTodayPKT(now);
+  const today = todayPKT();
   const settings = await getOfficeSettings();
 
   const attendance = await prisma.attendance.findUnique({

@@ -1,5 +1,6 @@
 import { json, error } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
+import { todayPKT } from "@/lib/pkt";
 
 // GET /api/attendance/auto-checkout — called by Vercel cron
 export async function GET() {
@@ -13,11 +14,7 @@ export async function POST() {
 
 async function handleAutoCheckout() {
   try {
-    // Use PKT (UTC+5) for today's date
-    const now = new Date();
-    const pktMs = now.getTime() + 5 * 60 * 60_000;
-    const pktDate = new Date(pktMs);
-    const today = new Date(Date.UTC(pktDate.getUTCFullYear(), pktDate.getUTCMonth(), pktDate.getUTCDate()));
+    const today = todayPKT();
 
     // Find employees who checked in but didn't check out
     const openAttendances = await prisma.attendance.findMany({
