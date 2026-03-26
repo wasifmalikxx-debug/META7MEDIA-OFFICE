@@ -193,12 +193,15 @@ export async function GET(request: NextRequest) {
     const { sendDailyReportTemplate } = await import("@/lib/services/whatsapp.service");
     const sent: string[] = [];
 
-    // Build breakdown string for template
-    let breakdown = "";
+    // Build breakdown string for template (no newlines — templates don't allow them in variables)
+    const breakdownParts: string[] = [];
     for (const r of reports) {
-      const emoji = r.profit > 0 ? "🟢" : r.profit < 0 ? "🔴" : "⚪";
-      breakdown += `${emoji} ${r.empId} ${r.name}: ${r.orders} orders, $${r.profit.toFixed(2)}\n`;
+      if (r.orders > 0) {
+        const emoji = r.profit > 0 ? "🟢" : r.profit < 0 ? "🔴" : "⚪";
+        breakdownParts.push(`${emoji} ${r.empId} ${r.name}: ${r.orders} orders $${r.profit.toFixed(2)}`);
+      }
     }
+    const breakdown = breakdownParts.join(" | ");
 
     if (ceo?.phone) {
       await sendDailyReportTemplate(ceo.phone, dateFormatted, String(allOrders), `$${allSale.toFixed(2)}`, `$${allProfit.toFixed(2)}`, breakdown.trim());
