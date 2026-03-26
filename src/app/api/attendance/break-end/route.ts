@@ -1,5 +1,5 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
-import { prisma } from "@/lib/prisma";
+import { prisma, getCachedSettings } from "@/lib/prisma";
 
 export async function POST() {
   const session = await requireAuth();
@@ -7,7 +7,10 @@ export async function POST() {
 
   try {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Use PKT (UTC+5) for date calculation
+    const pktMs = now.getTime() + 5 * 60 * 60_000;
+    const pktDate = new Date(pktMs);
+    const today = new Date(Date.UTC(pktDate.getUTCFullYear(), pktDate.getUTCMonth(), pktDate.getUTCDate()));
 
     const attendance = await prisma.attendance.findUnique({
       where: { userId_date: { userId: session.user.id, date: today } },
@@ -34,17 +37,17 @@ export async function POST() {
       data: { breakEnd: now, breakMinutes },
     });
 
-    // Check if late from break → auto-fine
-    const settings = await prisma.officeSettings.findUnique({
-      where: { id: "default" },
-    });
+    // Check if late from break → auto-fine (using PKT time)
+    const settings = await getCachedSettings();
     if (settings && settings.breakLateFineAmt > 0) {
       const [breakEndHour, breakEndMin] = settings.breakEndTime.split(":").map(Number);
-      const scheduledBreakEnd = new Date(today);
-      scheduledBreakEnd.setHours(breakEndHour, breakEndMin + (settings.breakGraceMinutes || 0), 0, 0);
+      // Compare in PKT minutes
+      const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+      const currentPKTMin = (utcMin + 300) % 1440;
+      const scheduledEndMin = breakEndHour * 60 + breakEndMin + (settings.breakGraceMinutes || 0);
 
-      if (now > scheduledBreakEnd) {
-        const lateMinutes = Math.floor((now.getTime() - scheduledBreakEnd.getTime()) / (1000 * 60));
+      if (currentPKTMin > scheduledEndMin) {
+        const lateMinutes = currentPKTMin - scheduledEndMin;
         const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
         if (admin) {
           await prisma.fine.create({
@@ -54,13 +57,13 @@ export async function POST() {
               amount: settings.breakLateFineAmt,
               reason: `Late from break by ${lateMinutes} min`,
               date: today,
-              month: now.getMonth() + 1,
-              year: now.getFullYear(),
+              month: pktDate.getUTCMonth() + 1,
+              year: pktDate.getUTCFullYear(),
               issuedById: admin.id,
             },
           });
 
-          // WhatsApp: notify employee about break late fine via template (fire-and-forget)
+          // WhatsApp: notify employee about break late fine via template
           try {
             const { sendBreakFineTemplate } = await import("@/lib/services/whatsapp.service");
             const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { firstName: true, lastName: true, phone: true } });
