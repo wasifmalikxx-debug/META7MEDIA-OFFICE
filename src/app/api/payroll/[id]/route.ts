@@ -91,17 +91,16 @@ export async function PATCH(
       `/payroll/${id}`
     );
 
-    // WhatsApp: salary paid notification (fire-and-forget)
+    // WhatsApp: salary paid notification via template (fire-and-forget)
     try {
-      const { notifyEmployee, salaryPaidMsg } = await import("@/lib/services/whatsapp.service");
-      const user = await prisma.user.findUnique({ where: { id: record.userId }, select: { firstName: true, lastName: true } });
+      const { sendSalaryPaidTemplate } = await import("@/lib/services/whatsapp.service");
+      const user = await prisma.user.findUnique({ where: { id: record.userId }, select: { firstName: true, lastName: true, phone: true } });
       const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       const monthStr = `${months[record.month - 1]} ${record.year}`;
-      notifyEmployee(
-        record.userId,
-        salaryPaidMsg(empName, record.netSalary, monthStr)
-      ).catch(() => {});
+      if (user?.phone) {
+        sendSalaryPaidTemplate(user.phone, empName, record.netSalary, monthStr).catch(() => {});
+      }
     } catch {}
   }
 

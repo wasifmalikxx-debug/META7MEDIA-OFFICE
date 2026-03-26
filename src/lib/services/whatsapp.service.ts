@@ -11,6 +11,8 @@ const TEMPLATE_SIDS = {
   BREAK_FINE: "HXf41493217eeb444c2f0464d5050a7ddc",
   ABSENT_NOTICE: "HX4eff0dadd07b2f8bc12db6382a371273",
   DAILY_REPORT: "HX218eb0b8d4bf1e215052490f138a8547",
+  SALARY_PAID: "HX81c37b6f4ead2fe7a42a1be56c0b1630",
+  MANUAL_FINE: "HX0eb29332a3268de88d94fac0e34c477f",
 };
 
 let client: ReturnType<typeof twilio> | null = null;
@@ -211,6 +213,18 @@ export async function sendAbsentTemplate(to: string, name: string, amount: numbe
 export async function sendDailyReportTemplate(to: string, date: string, orders: string, sale: string, profit: string, breakdown: string): Promise<boolean> {
   return sendWhatsAppTemplate(to, TEMPLATE_SIDS.DAILY_REPORT, {
     "1": date, "2": orders, "3": sale, "4": profit, "5": breakdown,
+  });
+}
+
+export async function sendManualFineTemplate(to: string, name: string, amount: number, reason: string): Promise<boolean> {
+  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.MANUAL_FINE, {
+    "1": name, "2": String(amount), "3": reason,
+  });
+}
+
+export async function sendSalaryPaidTemplate(to: string, name: string, amount: number, monthName: string): Promise<boolean> {
+  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.SALARY_PAID, {
+    "1": name, "2": String(amount), "3": monthName,
   });
 }
 

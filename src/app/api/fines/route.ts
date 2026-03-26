@@ -65,12 +65,14 @@ export async function POST(request: NextRequest) {
       "/fines"
     );
 
-    // WhatsApp notification (fire-and-forget)
+    // WhatsApp notification via template (fire-and-forget)
     try {
-      const { notifyEmployee, manualFineMsg } = await import("@/lib/services/whatsapp.service");
-      const user = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { firstName: true, lastName: true } });
+      const { sendManualFineTemplate } = await import("@/lib/services/whatsapp.service");
+      const user = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { firstName: true, lastName: true, phone: true } });
       const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
-      notifyEmployee(parsed.userId, manualFineMsg(empName, parsed.amount, parsed.reason)).catch(() => {});
+      if (user?.phone) {
+        sendManualFineTemplate(user.phone, empName, parsed.amount, parsed.reason).catch(() => {});
+      }
     } catch {}
 
     // Sync payroll record
