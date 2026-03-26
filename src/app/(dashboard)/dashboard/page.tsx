@@ -119,7 +119,7 @@ export default async function DashboardPage() {
     <EmployeeDashboard
       employeeName={currentUser ? `${currentUser.firstName} ${currentUser.lastName || ""}`.trim() : ""}
       employeeId={currentUser?.employeeId || ""}
-      employeeStatus={currentUser?.status || "HIRED"}
+      employeeStatus={String(currentUser?.status || "HIRED")}
       todayAttendance={todayAttendance}
       leaveBalance={leaveBalance}
       currentPayroll={currentPayroll}
