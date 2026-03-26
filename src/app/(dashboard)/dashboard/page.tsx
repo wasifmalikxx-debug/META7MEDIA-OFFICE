@@ -3,14 +3,7 @@ import { prisma, getCachedSettings } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
-
-// Get today in PKT (UTC+5)
-function getTodayPKT() {
-  const now = new Date();
-  const pktMs = now.getTime() + 5 * 60 * 60_000;
-  const pkt = new Date(pktMs);
-  return new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth(), pkt.getUTCDate()));
-}
+import { todayPKT, pktMonth, pktYear } from "@/lib/pkt";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -19,10 +12,9 @@ export default async function DashboardPage() {
   const userRole = (session.user as any).role;
   const userId = session.user.id;
 
-  const today = getTodayPKT();
-  const pktNow = new Date(Date.now() + 5 * 60 * 60_000);
-  const month = pktNow.getUTCMonth() + 1;
-  const year = pktNow.getUTCFullYear();
+  const today = todayPKT();
+  const month = pktMonth();
+  const year = pktYear();
 
   if (userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN") {
     // Admin dashboard — all queries in ONE batch

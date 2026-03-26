@@ -1,5 +1,6 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
+import { todayPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
 
 export async function POST() {
   const session = await requireAuth();
@@ -7,10 +8,7 @@ export async function POST() {
 
   try {
     const now = new Date();
-    // Use PKT (UTC+5) for date calculation
-    const pktMs = now.getTime() + 5 * 60 * 60_000;
-    const pktDate = new Date(pktMs);
-    const today = new Date(Date.UTC(pktDate.getUTCFullYear(), pktDate.getUTCMonth(), pktDate.getUTCDate()));
+    const today = todayPKT();
 
     const attendance = await prisma.attendance.findUnique({
       where: { userId_date: { userId: session.user.id, date: today } },
@@ -29,8 +27,7 @@ export async function POST() {
     // Enforce break window using PKT time
     const settings = await getCachedSettings();
     if (settings) {
-      const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
-      const currentMin = (utcMin + 300) % 1440;
+      const currentMin = pktMinutesSinceMidnight();
       const [bsH, bsM] = settings.breakStartTime.split(":").map(Number);
       const [beH, beM] = settings.breakEndTime.split(":").map(Number);
       if (currentMin < bsH * 60 + bsM || currentMin > beH * 60 + beM) {

@@ -1,5 +1,6 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
+import { todayPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
 
 export async function POST() {
   const session = await requireAuth();
@@ -7,10 +8,7 @@ export async function POST() {
 
   try {
     const now = new Date();
-    // Use PKT (UTC+5) for date calculation
-    const pktMs = now.getTime() + 5 * 60 * 60_000;
-    const pktDate = new Date(pktMs);
-    const today = new Date(Date.UTC(pktDate.getUTCFullYear(), pktDate.getUTCMonth(), pktDate.getUTCDate()));
+    const today = todayPKT();
 
     const attendance = await prisma.attendance.findUnique({
       where: { userId_date: { userId: session.user.id, date: today } },
@@ -42,8 +40,7 @@ export async function POST() {
     if (settings && settings.breakLateFineAmt > 0) {
       const [breakEndHour, breakEndMin] = settings.breakEndTime.split(":").map(Number);
       // Compare in PKT minutes
-      const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
-      const currentPKTMin = (utcMin + 300) % 1440;
+      const currentPKTMin = pktMinutesSinceMidnight();
       const scheduledEndMin = breakEndHour * 60 + breakEndMin + (settings.breakGraceMinutes || 0);
 
       if (currentPKTMin > scheduledEndMin) {
@@ -57,8 +54,8 @@ export async function POST() {
               amount: settings.breakLateFineAmt,
               reason: `Late from break by ${lateMinutes} min`,
               date: today,
-              month: pktDate.getUTCMonth() + 1,
-              year: pktDate.getUTCFullYear(),
+              month: today.getUTCMonth() + 1,
+              year: today.getUTCFullYear(),
               issuedById: admin.id,
             },
           });

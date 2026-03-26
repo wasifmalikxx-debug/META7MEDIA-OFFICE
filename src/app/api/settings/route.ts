@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
-import { prisma } from "@/lib/prisma";
+import { prisma, invalidateSettingsCache } from "@/lib/prisma";
 
 export async function GET() {
   const session = await requireAuth();
@@ -35,6 +35,8 @@ export async function PATCH(request: NextRequest) {
       create: { id: "default", ...body },
       update: body,
     });
+
+    invalidateSettingsCache();
 
     return json(settings);
   } catch (err: any) {

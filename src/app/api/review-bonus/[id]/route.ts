@@ -47,15 +47,14 @@ export async function PATCH(
 
     if (parsed.action === "APPROVED") {
       // Create an Incentive record so it flows into payroll
-      const now = new Date();
       await prisma.incentive.create({
         data: {
           userId: submission.userId,
           type: "MANUAL",
           amount: submission.amount, // Rs. 500
           reason: `Bad Review Fix Bonus - ${submission.storeName}`,
-          month: now.getMonth() + 1,
-          year: now.getFullYear(),
+          month: submission.month,
+          year: submission.year,
           givenById: session.user.id,
         },
       });
@@ -63,7 +62,7 @@ export async function PATCH(
       // Sync payroll with new incentive
       try {
         const { syncPayrollRecord } = await import("@/lib/services/payroll-sync.service");
-        await syncPayrollRecord(submission.userId, now.getMonth() + 1, now.getFullYear());
+        await syncPayrollRecord(submission.userId, submission.month, submission.year);
       } catch {}
 
       await createNotification(
