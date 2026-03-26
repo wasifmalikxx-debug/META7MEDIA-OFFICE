@@ -71,10 +71,16 @@ export async function POST(request: NextRequest) {
       const { sendManualFineTemplate } = await import("@/lib/services/whatsapp.service");
       const user = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { firstName: true, lastName: true, phone: true } });
       const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
+      console.log(`[FINE] Sending manual fine WhatsApp to ${user?.phone} for ${empName}, amount: ${parsed.amount}, reason: ${parsed.reason}`);
       if (user?.phone) {
-        sendManualFineTemplate(user.phone, empName, parsed.amount, parsed.reason).catch(() => {});
+        const sent = await sendManualFineTemplate(user.phone, empName, parsed.amount, parsed.reason);
+        console.log(`[FINE] WhatsApp result: ${sent ? "SENT" : "FAILED"}`);
+      } else {
+        console.log(`[FINE] No phone number for user ${parsed.userId}`);
       }
-    } catch {}
+    } catch (err: any) {
+      console.error("[FINE] WhatsApp error:", err.message);
+    }
 
     // Sync payroll record
     try {
