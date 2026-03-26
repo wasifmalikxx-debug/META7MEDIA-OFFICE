@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/sync-profits",
-      "schedule": "0 14 * * 1-6"
+      "schedule": "45 14 * * 1-6"
     },
     {
       "path": "/api/attendance/auto-checkout",
