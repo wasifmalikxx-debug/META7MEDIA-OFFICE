@@ -1,16 +1,8 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth } from "@/lib/api-helpers";
-import path from "path";
-import { writeFile, mkdir } from "fs/promises";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
-
-const EXT_MAP: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-};
 
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
@@ -28,19 +20,12 @@ export async function POST(request: NextRequest) {
       return error("File size must be under 5 MB");
     }
 
-    const ext = EXT_MAP[file.type] || "jpg";
-    const userId = session.user.id;
-    const timestamp = Date.now();
-    const filename = `${timestamp}.${ext}`;
-
-    const relDir = `uploads/review-bonus/${userId}`;
-    const absDir = path.join(process.cwd(), "public", relDir);
-    await mkdir(absDir, { recursive: true });
-
+    // Convert to base64 data URL (works on Vercel — no filesystem needed)
     const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(path.join(absDir, filename), buffer);
+    const base64 = buffer.toString("base64");
+    const dataUrl = `data:${file.type};base64,${base64}`;
 
-    return json({ url: `/${relDir}/${filename}` }, 201);
+    return json({ url: dataUrl }, 201);
   } catch (err: any) {
     return error(err.message || "Upload failed", 500);
   }
