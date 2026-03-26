@@ -36,6 +36,7 @@ import { AnimatedNumber } from "@/components/common/animated-number";
 interface EmployeeDashboardProps {
   employeeName: string;
   employeeId: string;
+  employeeStatus: string;
   todayAttendance: any;
   leaveBalance: any;
   currentPayroll: any;
@@ -57,6 +58,7 @@ interface EmployeeDashboardProps {
 export function EmployeeDashboard({
   employeeName,
   employeeId,
+  employeeStatus,
   todayAttendance,
   leaveBalance,
   currentPayroll,
@@ -398,10 +400,19 @@ export function EmployeeDashboard({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`Welcome Back, ${employeeName}`}
-        description={format(new Date(), "EEEE, MMMM d, yyyy")}
-      />
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
+          Welcome Back, {employeeName}
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            employeeStatus === "PROBATION" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+            employeeStatus === "HIRED" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+            "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+          }`}>
+            {employeeStatus}
+          </span>
+        </h1>
+        <p className="text-muted-foreground">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
+      </div>
 
       {/* Check-in/out card */}
       <Card>
