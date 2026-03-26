@@ -14,8 +14,9 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
   const userId = session.user.id;
   const isManagerOrAdmin = role === "SUPER_ADMIN" || role === "MANAGER";
 
-  const month = params.month ? parseInt(params.month) : new Date().getMonth() + 1;
-  const year = params.year ? parseInt(params.year) : new Date().getFullYear();
+  const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;
+  const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
 
   if (isManagerOrAdmin) {
     // Managers/Admins see all submissions

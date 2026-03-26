@@ -9,8 +9,9 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get("userId") || session.user.id;
-  const month = parseInt(searchParams.get("month") || String(new Date().getMonth() + 1));
-  const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+  const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = parseInt(searchParams.get("month") || String(_pkt.getUTCMonth() + 1));
+  const year = parseInt(searchParams.get("year") || String(_pkt.getUTCFullYear()));
   const role = (session.user as any).role;
 
   // Employees can only see their own

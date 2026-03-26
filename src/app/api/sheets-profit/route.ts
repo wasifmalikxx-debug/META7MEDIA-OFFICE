@@ -10,8 +10,9 @@ export async function GET(request: NextRequest) {
   if (!session) return error("Forbidden", 403);
 
   const { searchParams } = new URL(request.url);
-  const month = parseInt(searchParams.get("month") || String(new Date().getMonth() + 1));
-  const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+  const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = parseInt(searchParams.get("month") || String(_pkt.getUTCMonth() + 1));
+  const year = parseInt(searchParams.get("year") || String(_pkt.getUTCFullYear()));
 
   // Get Etsy employees with Google Sheet URLs
   const etsyDept = await prisma.department.findFirst({ where: { name: "Etsy" } });

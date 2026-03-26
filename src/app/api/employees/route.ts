@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     const hashedPassword = await bcrypt.hash(parsed.password, 12);
-    const year = new Date().getFullYear();
+    const year = new Date(Date.now() + 5 * 60 * 60_000).getUTCFullYear();
 
     const employee = await prisma.user.create({
       data: {

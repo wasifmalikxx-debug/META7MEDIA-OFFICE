@@ -3,6 +3,7 @@ import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { leaveRequestSchema } from "@/lib/validations/leave";
 import { createNotification, notifyAdmins } from "@/lib/services/notification.service";
+import { todayPKT } from "@/lib/pkt";
 
 export async function GET(request: NextRequest) {
   const session = await requireAuth();
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Block past dates
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = todayPKT();
     if (startDate < today) {
       return error("Cannot apply leave for past dates.");
     }
@@ -151,9 +152,8 @@ export async function POST(request: NextRequest) {
 
     // Auto-checkout if half-day leave is for today and employee is checked in
     if (parsed.leaveType === "HALF_DAY") {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (startDate.getTime() === today.getTime()) {
+      const todayHD = todayPKT();
+      if (startDate.getTime() === todayHD.getTime()) {
         const activeAttendance = await prisma.attendance.findFirst({
           where: {
             userId: session.user.id,

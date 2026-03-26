@@ -11,8 +11,9 @@ export async function GET(request: NextRequest) {
 
   const role = (session.user as any).role;
   const { searchParams } = new URL(request.url);
-  const month = parseInt(searchParams.get("month") || String(new Date().getMonth() + 1));
-  const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+  const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = parseInt(searchParams.get("month") || String(_pkt.getUTCMonth() + 1));
+  const year = parseInt(searchParams.get("year") || String(_pkt.getUTCFullYear()));
 
   const where: any = { month, year };
 
