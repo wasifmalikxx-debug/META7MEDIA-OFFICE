@@ -1,5 +1,5 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
-import { prisma } from "@/lib/prisma";
+import { prisma, getCachedSettings } from "@/lib/prisma";
 
 export async function POST() {
   const session = await requireAuth();
@@ -7,7 +7,10 @@ export async function POST() {
 
   try {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Use PKT (UTC+5) for date calculation
+    const pktMs = now.getTime() + 5 * 60 * 60_000;
+    const pktDate = new Date(pktMs);
+    const today = new Date(Date.UTC(pktDate.getUTCFullYear(), pktDate.getUTCMonth(), pktDate.getUTCDate()));
 
     const attendance = await prisma.attendance.findUnique({
       where: { userId_date: { userId: session.user.id, date: today } },
@@ -23,10 +26,11 @@ export async function POST() {
       return error("Already checked out for the day");
     }
 
-    // Enforce break window
-    const settings = await prisma.officeSettings.findUnique({ where: { id: "default" } });
+    // Enforce break window using PKT time
+    const settings = await getCachedSettings();
     if (settings) {
-      const currentMin = now.getHours() * 60 + now.getMinutes();
+      const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+      const currentMin = (utcMin + 300) % 1440;
       const [bsH, bsM] = settings.breakStartTime.split(":").map(Number);
       const [beH, beM] = settings.breakEndTime.split(":").map(Number);
       if (currentMin < bsH * 60 + bsM || currentMin > beH * 60 + beM) {

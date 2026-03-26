@@ -43,7 +43,7 @@ export async function getAdminPhone(): Promise<string | null> {
 }
 
 export async function sendWhatsApp(to: string, message: string): Promise<boolean> {
-  const enabled = await isWhatsAppEnabled();
+  const enabled = await isWhatsAppEnabledCached();
   if (!enabled) return false;
 
   const twilioClient = getClient();
@@ -63,12 +63,26 @@ export async function sendWhatsApp(to: string, message: string): Promise<boolean
   }
 }
 
+// Cache WhatsApp enabled status for 60s to avoid DB hit on every message
+let whatsappEnabledCache: boolean | null = null;
+let whatsappCacheTime = 0;
+
+async function isWhatsAppEnabledCached(): Promise<boolean> {
+  const now = Date.now();
+  if (whatsappEnabledCache !== null && now - whatsappCacheTime < 60_000) {
+    return whatsappEnabledCache;
+  }
+  whatsappEnabledCache = await isWhatsAppEnabled();
+  whatsappCacheTime = now;
+  return whatsappEnabledCache;
+}
+
 export async function sendWhatsAppTemplate(
   to: string,
   templateSid: string,
   variables: Record<string, string>
 ): Promise<boolean> {
-  const enabled = await isWhatsAppEnabled();
+  const enabled = await isWhatsAppEnabledCached();
   if (!enabled) return false;
 
   const twilioClient = getClient();
