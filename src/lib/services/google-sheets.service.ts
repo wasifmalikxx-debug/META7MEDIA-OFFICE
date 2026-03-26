@@ -8,6 +8,7 @@
 
 import { google } from "googleapis";
 import path from "path";
+import fs from "fs";
 
 // Month tab name format: "MARCH - 2K26" for March 2026
 const MONTH_NAMES = [
@@ -40,7 +41,20 @@ function getAlternativeTabNames(month: number, year: number): string[] {
 }
 
 async function getAuthClient() {
+  // Support env var (Vercel) or file (local dev)
+  if (process.env.GOOGLE_CREDENTIALS) {
+    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    return auth.getClient();
+  }
+
   const credPath = path.join(process.cwd(), "google-credentials.json");
+  if (!fs.existsSync(credPath)) {
+    throw new Error("Google credentials not found. Set GOOGLE_CREDENTIALS env var or add google-credentials.json");
+  }
   const auth = new google.auth.GoogleAuth({
     keyFile: credPath,
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
