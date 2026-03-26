@@ -60,12 +60,14 @@ export async function POST() {
             },
           });
 
-          // WhatsApp: notify employee about break late fine (fire-and-forget)
+          // WhatsApp: notify employee about break late fine via template (fire-and-forget)
           try {
-            const { notifyEmployee, breakFineMsg } = await import("@/lib/services/whatsapp.service");
-            const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { firstName: true, lastName: true } });
+            const { sendBreakFineTemplate } = await import("@/lib/services/whatsapp.service");
+            const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { firstName: true, lastName: true, phone: true } });
             const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
-            notifyEmployee(session.user.id, breakFineMsg(empName, lateMinutes, settings.breakLateFineAmt)).catch(() => {});
+            if (user?.phone) {
+              sendBreakFineTemplate(user.phone, empName, lateMinutes, settings.breakLateFineAmt).catch(() => {});
+            }
           } catch {}
         }
       }

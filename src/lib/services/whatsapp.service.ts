@@ -5,6 +5,14 @@ const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const fromNumber = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
 
+// WhatsApp Content Template SIDs (approved templates for business-initiated messages)
+const TEMPLATE_SIDS = {
+  LATE_FINE: "HXfce39a3569ffad47b22625cc16b116c4",
+  BREAK_FINE: "HXf41493217eeb444c2f0464d5050a7ddc",
+  ABSENT_NOTICE: "HX4eff0dadd07b2f8bc12db6382a371273",
+  DAILY_REPORT: "HX218eb0b8d4bf1e215052490f138a8547",
+};
+
 let client: ReturnType<typeof twilio> | null = null;
 
 function getClient() {
@@ -53,6 +61,36 @@ export async function sendWhatsApp(to: string, message: string): Promise<boolean
   }
 }
 
+export async function sendWhatsAppTemplate(
+  to: string,
+  templateSid: string,
+  variables: Record<string, string>
+): Promise<boolean> {
+  const enabled = await isWhatsAppEnabled();
+  if (!enabled) return false;
+
+  const twilioClient = getClient();
+  if (!twilioClient) {
+    console.warn("Twilio not configured, skipping WhatsApp template");
+    return false;
+  }
+
+  try {
+    const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+    await twilioClient.messages.create({
+      contentSid: templateSid,
+      contentVariables: JSON.stringify(variables),
+      from: fromNumber,
+      to: toNumber,
+    });
+    console.log(`WhatsApp template sent to ${to}`);
+    return true;
+  } catch (err: any) {
+    console.error(`WhatsApp template failed to ${to}:`, err.message);
+    return false;
+  }
+}
+
 export async function notifyEmployee(userId: string, message: string): Promise<boolean> {
   try {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
@@ -93,6 +131,12 @@ export function lateFineMsg(name: string, minutes: number, amount: number): stri
   ].join("\n");
 }
 
+export async function sendLateFineTemplate(to: string, name: string, minutes: number, amount: number): Promise<boolean> {
+  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.LATE_FINE, {
+    "1": name, "2": String(minutes), "3": String(amount),
+  });
+}
+
 export function breakFineMsg(name: string, minutes: number, amount: number): string {
   return [
     `🚨 *META7MEDIA — BREAK FINE*`,
@@ -111,6 +155,12 @@ export function breakFineMsg(name: string, minutes: number, amount: number): str
     `━━━━━━━━━━━━━━━━━━━━`,
     `META7 AI | Office Manager`,
   ].join("\n");
+}
+
+export async function sendBreakFineTemplate(to: string, name: string, minutes: number, amount: number): Promise<boolean> {
+  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.BREAK_FINE, {
+    "1": name, "2": String(minutes), "3": String(amount),
+  });
 }
 
 export function manualFineMsg(name: string, amount: number, reason: string): string {
@@ -150,6 +200,18 @@ export function absentFineMsg(name: string, amount: number): string {
     `━━━━━━━━━━━━━━━━━━━━`,
     `META7 AI | Office Manager`,
   ].join("\n");
+}
+
+export async function sendAbsentTemplate(to: string, name: string, amount: number): Promise<boolean> {
+  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.ABSENT_NOTICE, {
+    "1": name, "2": String(amount),
+  });
+}
+
+export async function sendDailyReportTemplate(to: string, date: string, orders: string, sale: string, profit: string, breakdown: string): Promise<boolean> {
+  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.DAILY_REPORT, {
+    "1": date, "2": orders, "3": sale, "4": profit, "5": breakdown,
+  });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
