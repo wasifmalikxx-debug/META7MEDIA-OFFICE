@@ -6,17 +6,21 @@ export async function GET() {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
-  let settings = await prisma.officeSettings.findUnique({
-    where: { id: "default" },
-  });
-
-  if (!settings) {
-    settings = await prisma.officeSettings.create({
-      data: { id: "default" },
+  try {
+    let settings = await prisma.officeSettings.findUnique({
+      where: { id: "default" },
     });
-  }
 
-  return json(settings);
+    if (!settings) {
+      settings = await prisma.officeSettings.create({
+        data: { id: "default" },
+      });
+    }
+
+    return json(settings);
+  } catch (err: any) {
+    return error(err.message || "Failed to fetch settings", 500);
+  }
 }
 
 export async function PATCH(request: NextRequest) {
