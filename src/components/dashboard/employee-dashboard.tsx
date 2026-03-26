@@ -374,7 +374,7 @@ export function EmployeeDashboard({
 
   const isEtsy = employeeId?.startsWith("EM");
   const totalFinesAmount = recentFines.reduce((s, f) => s + f.amount, 0);
-  const totalIncentivesAmount = isEtsy ? recentIncentives.reduce((s, i) => s + i.amount, 0) : 0;
+  const totalIncentivesAmount = recentIncentives.reduce((s: number, i: any) => s + i.amount, 0);
 
   // Live hours worked: server total + today's live hours
   let liveTotalMinutes = totalWorkedHours * 60;
@@ -596,14 +596,12 @@ export function EmployeeDashboard({
             icon={AlertTriangle}
             description="This month"
           />
-          {isEtsy && (
-            <StatCard
-              title="Incentives"
-              value={showSalary ? `PKR ${totalIncentivesAmount.toLocaleString()}` : "PKR ****"}
-              icon={Gift}
-              description="This month"
-            />
-          )}
+          <StatCard
+            title="Incentives"
+            value={showSalary ? `PKR ${totalIncentivesAmount.toLocaleString()}` : "PKR ****"}
+            icon={Gift}
+            description="This month"
+          />
           <Card>
             <CardContent className="pt-5 pb-4">
               <div className="flex items-start justify-between">
