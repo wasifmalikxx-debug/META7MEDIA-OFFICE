@@ -28,18 +28,20 @@ function parseDollar(val: string | undefined): number {
 }
 
 function getMonthTabName(): string {
-  const now = new Date();
+  // Use PKT time for correct month/year
+  const pkt = new Date(Date.now() + 5 * 60 * 60_000);
   const months = ["JAN", "FEB", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  const month = months[now.getMonth()];
-  const year = now.getFullYear().toString().slice(-2);
+  const month = months[pkt.getUTCMonth()];
+  const year = pkt.getUTCFullYear().toString().slice(-2);
   return `${month} - 2K${year}`;
 }
 
 function getTodayDateStr(): string {
-  const now = new Date();
-  const day = now.getDate();
+  // Use PKT time for correct date
+  const pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const day = pkt.getUTCDate();
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${day} ${months[now.getMonth()]}`;
+  return `${day} ${months[pkt.getUTCMonth()]}`;
 }
 
 interface EmployeeReport {
@@ -52,8 +54,9 @@ interface EmployeeReport {
 }
 
 export async function GET(request: NextRequest) {
-  // Check if today is Sunday — skip
-  const dayOfWeek = new Date().getDay();
+  // Check if today is Sunday in PKT — skip
+  const pktNow = new Date(Date.now() + 5 * 60 * 60_000);
+  const dayOfWeek = pktNow.getUTCDay();
   if (dayOfWeek === 0) {
     return json({ message: "Sunday — no report sent" });
   }

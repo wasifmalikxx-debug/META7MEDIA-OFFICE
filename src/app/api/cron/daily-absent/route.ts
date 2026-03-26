@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { todayPKT, pktMonth, pktYear, nowPKT } from "@/lib/pkt";
 
 /**
- * Daily cron — runs at 7:30 PM
+ * Daily cron — runs at 7:33 PM PKT
  * Marks employees who didn't check in today as ABSENT
  * Creates an absent fine (salary/30) for each absent employee
- * Respects paid leave budget (1 per month)
+ * Respects paid leave budget (configurable per month)
  */
 export async function GET(request: NextRequest) {
   // Verify cron secret in production
@@ -17,11 +18,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const month = today.getMonth() + 1;
-    const year = today.getFullYear();
-    const dayOfWeek = today.getDay();
+    const today = todayPKT();
+    const month = pktMonth();
+    const year = pktYear();
+    const dayOfWeek = nowPKT().getUTCDay();
 
     // Check if today is a weekend
     const settings = await prisma.officeSettings.findUnique({ where: { id: "default" } });
