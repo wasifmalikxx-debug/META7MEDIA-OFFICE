@@ -529,6 +529,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     <TableRow>
                       <TableHead>ID</TableHead>
                       <TableHead>Name</TableHead>
+                      <TableHead>Phone</TableHead>
                       <TableHead>Salary</TableHead>
                       <TableHead>Bank Details</TableHead>
                       <TableHead>Status</TableHead>
@@ -545,6 +546,9 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                             {emp.firstName} {emp.lastName}
                           </div>
                           <div className="text-xs text-muted-foreground">{emp.email}</div>
+                        </TableCell>
+                        <TableCell className="text-sm font-mono">
+                          {emp.phone || <span className="text-xs text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell className="text-sm font-medium">
                           {emp.salaryStructure
