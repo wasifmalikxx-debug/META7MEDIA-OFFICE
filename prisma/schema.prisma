@@ -112,6 +112,7 @@ model User {
   firstName    String
   lastName     String
   phone        String?
+  phone2       String?
   profilePhoto String?
   role         Role           @default(EMPLOYEE)
   status       EmployeeStatus @default(HIRED)
