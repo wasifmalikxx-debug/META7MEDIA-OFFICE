@@ -2,19 +2,19 @@
   "crons": [
     {
       "path": "/api/cron/sync-profits",
-      "schedule": "7 * * * *"
+      "schedule": "0 14 * * 1-6"
     },
     {
       "path": "/api/attendance/auto-checkout",
-      "schedule": "30 14 * * *"
+      "schedule": "30 14 * * 1-6"
     },
     {
       "path": "/api/cron/daily-absent",
-      "schedule": "33 14 * * *"
+      "schedule": "33 14 * * 1-6"
     },
     {
       "path": "/api/cron/cleanup",
-      "schedule": "13 0 1 * *"
+      "schedule": "0 0 1 * *"
     },
     {
       "path": "/api/cron/daily-report",
