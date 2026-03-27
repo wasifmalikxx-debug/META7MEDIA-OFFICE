@@ -83,6 +83,8 @@ function HighlightedTemplate({ text }: { text: string }) {
   );
 }
 
+export const dynamic = "force-dynamic";
+
 export default function AutomatedMessagesPage() {
   // Twilio status
   const [twilioStatus, setTwilioStatus] = useState<TwilioStatus | null>(null);

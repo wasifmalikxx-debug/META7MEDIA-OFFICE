@@ -7,6 +7,8 @@ import {
   Smartphone, Ban, CreditCard, Timer,
 } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function HowItWorksPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

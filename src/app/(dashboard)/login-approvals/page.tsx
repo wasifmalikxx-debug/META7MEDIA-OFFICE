@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { LoginApprovalsView } from "@/components/login-approvals/login-approvals-view";
 
+export const dynamic = "force-dynamic";
+
 export default async function LoginApprovalsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

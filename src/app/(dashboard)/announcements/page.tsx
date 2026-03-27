@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { AnnouncementsView } from "@/components/announcements/announcements-view";
 
+export const dynamic = "force-dynamic";
+
 export default async function AnnouncementsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

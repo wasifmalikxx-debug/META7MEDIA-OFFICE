@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { PayrollView } from "@/components/payroll/payroll-view";
 
+export const dynamic = "force-dynamic";
+
 export default async function PayrollPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");

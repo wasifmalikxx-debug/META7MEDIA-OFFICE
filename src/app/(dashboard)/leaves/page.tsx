@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { LeavesView } from "@/components/leaves/leaves-view";
 
+export const dynamic = "force-dynamic";
+
 export default async function LeavesPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

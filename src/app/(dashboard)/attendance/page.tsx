@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/common/page-header";
 import { AttendanceView } from "@/components/attendance/attendance-view";
 import { pktMonth, pktYear, startOfMonthPKT, endOfMonthPKT } from "@/lib/pkt";
 
+export const dynamic = "force-dynamic";
+
 export default async function AttendancePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { IncentivesView } from "@/components/incentives-fines/incentives-view";
 
+export const dynamic = "force-dynamic";
+
 export default async function IncentivesPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

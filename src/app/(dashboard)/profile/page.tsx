@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { BankDetailsCard } from "@/components/profile/bank-details-card";
 import { CEOProfileEditor } from "@/components/profile/ceo-profile-editor";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProfilePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

@@ -7,6 +7,8 @@ import {
   FileSpreadsheet, CheckCircle, XCircle, Camera,
 } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function EtsyBonusGuidePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

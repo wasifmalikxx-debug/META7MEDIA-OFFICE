@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { EmployeesView } from "@/components/employees/employees-view";
 
+export const dynamic = "force-dynamic";
+
 export default async function EmployeesPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
