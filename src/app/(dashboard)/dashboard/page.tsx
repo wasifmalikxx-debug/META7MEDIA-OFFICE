@@ -20,12 +20,17 @@ export default async function DashboardPage() {
 
   if (userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN") {
     // Admin dashboard — all queries in ONE batch
-    const [totalEmployees, todayAttendances, payrollRecords, fines] = await Promise.all([
-      prisma.user.count({ where: { status: { in: ["HIRED", "PROBATION"] } } }),
+    const [allEmployees, todayAttendances, payrollRecords, fines, todayLeaves] = await Promise.all([
+      prisma.user.findMany({
+        where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
+        select: { id: true, firstName: true, lastName: true, employeeId: true, status: true },
+        orderBy: { employeeId: "asc" },
+      }),
       prisma.attendance.findMany({
         where: { date: today },
         select: {
-          id: true, status: true, checkIn: true, checkOut: true, lateMinutes: true,
+          id: true, userId: true, status: true, checkIn: true, checkOut: true,
+          breakStart: true, breakEnd: true, lateMinutes: true,
           user: { select: { firstName: true, lastName: true, employeeId: true } },
         },
       }),
@@ -37,8 +42,13 @@ export default async function DashboardPage() {
         where: { month, year },
         select: { amount: true },
       }),
+      prisma.leaveRequest.findMany({
+        where: { startDate: { lte: today }, endDate: { gte: today }, status: "APPROVED" },
+        select: { userId: true, leaveType: true },
+      }),
     ]);
 
+    const totalEmployees = allEmployees.length;
     const presentToday = todayAttendances.filter(
       (a) => a.status === "PRESENT" || a.status === "LATE"
     ).length;
@@ -49,6 +59,63 @@ export default async function DashboardPage() {
     const totalPayable = payrollRecords.reduce((sum, p) => sum + p.netSalary, 0);
     const totalFines = fines.reduce((sum, f) => sum + f.amount, 0);
 
+    // Build attendance map for quick lookup
+    const attendanceMap: Record<string, any> = {};
+    for (const att of todayAttendances) {
+      attendanceMap[att.userId] = att;
+    }
+    const leaveMap: Record<string, string> = {};
+    for (const lv of todayLeaves) {
+      leaveMap[lv.userId] = lv.leaveType;
+    }
+
+    // Build full employee list with live status
+    const employeeStatuses = allEmployees.map((emp) => {
+      const att = attendanceMap[emp.id];
+      const leave = leaveMap[emp.id];
+      let liveStatus = "NOT_CHECKED_IN";
+      let checkInTime = null;
+      let checkOutTime = null;
+
+      if (att) {
+        if (att.checkOut) {
+          liveStatus = "CHECKED_OUT";
+          checkInTime = att.checkIn;
+          checkOutTime = att.checkOut;
+        } else if (att.breakStart && !att.breakEnd) {
+          liveStatus = "ON_BREAK";
+          checkInTime = att.checkIn;
+        } else if (att.status === "PRESENT" || att.status === "LATE") {
+          liveStatus = att.status === "LATE" ? "LATE" : "PRESENT";
+          checkInTime = att.checkIn;
+        } else if (att.status === "ABSENT") {
+          liveStatus = "ABSENT";
+        } else if (att.status === "HALF_DAY") {
+          liveStatus = "HALF_DAY";
+          checkInTime = att.checkIn;
+        }
+      }
+
+      if (leave) {
+        if (leave === "HALF_DAY" && liveStatus !== "CHECKED_OUT" && liveStatus !== "PRESENT" && liveStatus !== "LATE") {
+          liveStatus = "HALF_DAY_LEAVE";
+        } else if (leave === "FULL_DAY") {
+          liveStatus = "ON_LEAVE";
+        }
+      }
+
+      return {
+        id: emp.id,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        employeeId: emp.employeeId,
+        empStatus: emp.status,
+        liveStatus,
+        checkIn: checkInTime,
+        checkOut: checkOutTime,
+      };
+    });
+
     return (
       <AdminDashboard
         totalEmployees={totalEmployees}
@@ -58,6 +125,7 @@ export default async function DashboardPage() {
         totalPayable={totalPayable}
         totalFines={totalFines}
         recentAttendances={todayAttendances}
+        employeeStatuses={JSON.parse(JSON.stringify(employeeStatuses))}
       />
     );
   }
