@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/table";
 import { format } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 export default async function WarningsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

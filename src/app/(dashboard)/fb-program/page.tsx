@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Rocket } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function FBProgramPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

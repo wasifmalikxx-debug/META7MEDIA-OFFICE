@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2, Plus } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default function SettingsPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<any>(null);

@@ -5,6 +5,8 @@ import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
 import { todayPKT, pktMonth, pktYear } from "@/lib/pkt";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");

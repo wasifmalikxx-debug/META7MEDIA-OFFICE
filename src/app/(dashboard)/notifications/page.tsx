@@ -10,6 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Bell, CheckCheck } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default function NotificationsPage() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<any[]>([]);

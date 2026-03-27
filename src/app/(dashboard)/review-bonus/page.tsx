@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/common/page-header";
 import { ReviewBonusSubmit } from "@/components/review-bonus/review-bonus-submit";
 import { ReviewBonusManager } from "@/components/review-bonus/review-bonus-manager";
 
+export const dynamic = "force-dynamic";
+
 export default async function ReviewBonusPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");

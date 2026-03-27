@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { DepartmentsView } from "@/components/departments/departments-view";
 
+export const dynamic = "force-dynamic";
+
 export default async function DepartmentsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
