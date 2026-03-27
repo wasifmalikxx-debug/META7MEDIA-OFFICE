@@ -458,16 +458,10 @@ export function EmployeeDashboard({
           </div>
           <div className="flex gap-2 flex-wrap">
             {!hasCheckedIn && (
-              canCheckIn ? (
                 <Button onClick={handleCheckIn} disabled={loading} className="gap-2">
                   <CheckCircle className="size-4" />
                   {loading ? "..." : "Check In"}
                 </Button>
-              ) : (
-                <span className="text-sm text-muted-foreground">
-                  Check-in opens at {checkInOpensAt} (30 min before office hours)
-                </span>
-              )
             )}
             {hasCheckedIn && !hasCheckedOut && !onBreak && !breakDone && (
               <>
