@@ -40,7 +40,7 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Fines & Penalties" />
+      <PageHeader title="Fines / Penalties / Covered Leaves / Half Days" />
       <FinesView
         fines={JSON.parse(JSON.stringify(fines))}
         employees={JSON.parse(JSON.stringify(employees))}
