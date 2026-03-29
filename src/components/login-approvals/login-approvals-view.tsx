@@ -67,7 +67,7 @@ export function LoginApprovalsView({ devices: initialDevices }: LoginApprovalsVi
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex gap-3 text-sm">
         <Badge variant={pendingCount > 0 ? "destructive" : "secondary"}>
           {pendingCount} Pending

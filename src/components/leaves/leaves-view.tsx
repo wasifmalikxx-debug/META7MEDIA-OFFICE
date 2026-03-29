@@ -111,22 +111,22 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Leave Balance */}
       {balance && (
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-          <Card>
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+          <Card className="border-0 shadow-sm">
             <CardContent className="pt-4 pb-3">
-              <p className="text-xs text-muted-foreground">Casual Leave</p>
-              <p className="text-lg font-bold">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Casual Leave</p>
+              <p className="text-2xl font-bold mt-1">
                 {balance.casualTotal - balance.casualUsed} / {balance.casualTotal}
               </p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-0 shadow-sm">
             <CardContent className="pt-4 pb-3">
-              <p className="text-xs text-muted-foreground">Sick Leave</p>
-              <p className="text-lg font-bold">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sick Leave</p>
+              <p className="text-2xl font-bold mt-1">
                 {balance.sickTotal - balance.sickUsed} / {balance.sickTotal}
               </p>
             </CardContent>

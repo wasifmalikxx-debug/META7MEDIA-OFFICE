@@ -46,9 +46,9 @@ export default async function ProfilePage() {
     <div className="space-y-6">
       <PageHeader title="My Profile" />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Personal Information</CardTitle>
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="border-b bg-muted/20">
+            <CardTitle className="text-sm font-bold">Personal Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <InfoRow label="Employee ID" value={user.employeeId} />
@@ -82,9 +82,9 @@ function InfoRow({
   value: React.ReactNode;
 }) {
   return (
-    <div className="flex justify-between items-center text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+    <div className="flex justify-between items-center text-sm py-1">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className="font-semibold">{value}</span>
     </div>
   );
 }

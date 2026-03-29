@@ -13,10 +13,10 @@ interface StatCardProps {
 }
 
 const variantStyles = {
-  default: "bg-card",
-  success: "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800",
-  warning: "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800",
-  danger: "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800",
+  default: "border-0 shadow-sm",
+  success: "border-0 shadow-sm bg-emerald-50/50 dark:bg-emerald-950/20",
+  warning: "border-0 shadow-sm bg-amber-50/50 dark:bg-amber-950/20",
+  danger: "border-0 shadow-sm bg-rose-50/50 dark:bg-rose-950/20",
 };
 
 export function StatCard({
@@ -32,12 +32,12 @@ export function StatCard({
     <Card className={cn(variantStyles[variant])}>
       <CardContent className="pt-5 pb-4">
         <div className="flex items-start justify-between">
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground font-medium">{title}</p>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
             <p className="text-2xl font-bold tracking-tight whitespace-nowrap">{value}</p>
           </div>
           {Icon && (
-            <div className="rounded-lg bg-muted/50 p-2.5">
+            <div className="rounded-xl bg-muted/60 dark:bg-muted/30 p-2.5">
               <Icon className="size-5 text-muted-foreground" />
             </div>
           )}
@@ -47,8 +47,8 @@ export function StatCard({
             {trend && trend !== "neutral" && (
               <span
                 className={cn(
-                  "flex items-center gap-0.5 text-xs font-medium",
-                  trend === "up" ? "text-emerald-600" : "text-red-600"
+                  "flex items-center gap-0.5 text-xs font-semibold",
+                  trend === "up" ? "text-emerald-600" : "text-rose-600"
                 )}
               >
                 {trend === "up" ? (
@@ -60,7 +60,7 @@ export function StatCard({
               </span>
             )}
             {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
+              <p className="text-[11px] text-muted-foreground">{description}</p>
             )}
           </div>
         )}

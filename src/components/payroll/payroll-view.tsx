@@ -122,11 +122,11 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
   function renderTable(deptRecords: any[], deptName: string) {
     const deptTotal = deptRecords.reduce((s: number, r: any) => s + r.netSalary, 0);
     return (
-      <Card key={deptName} className="overflow-hidden">
-        <CardHeader className="pb-2 bg-muted/30">
+      <Card key={deptName} className="overflow-hidden border-0 shadow-sm">
+        <CardHeader className="pb-2 bg-muted/30 border-b">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">{deptName} Team</CardTitle>
-            <span className="text-xs text-muted-foreground">{deptRecords.length} employees</span>
+            <CardTitle className="text-sm font-bold">{deptName} Team</CardTitle>
+            <Badge variant="outline" className="text-[10px] font-normal">{deptRecords.length} employees</Badge>
           </div>
         </CardHeader>
         <CardContent className="p-0">
