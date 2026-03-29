@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { nowPKT, formatPKTDate } from "@/lib/pkt";
 import { reviewBonusActionSchema } from "@/lib/validations/bonus";
 import { createNotification } from "@/lib/services/notification.service";
 
@@ -36,7 +37,7 @@ export async function PATCH(
       data: {
         status: parsed.action,
         approvedById: session.user.id,
-        approvedAt: new Date(),
+        approvedAt: nowPKT(),
         rejectionReason: parsed.rejectionReason || null,
       },
     });
@@ -46,6 +47,12 @@ export async function PATCH(
       : "Employee";
 
     if (parsed.action === "APPROVED") {
+      // Block PROBATION employees from receiving incentives
+      const emp = await prisma.user.findUnique({ where: { id: submission.userId }, select: { status: true } });
+      if (emp?.status === "PROBATION") {
+        return error("Probation employees are not eligible for incentives. Approve the review but no bonus will be paid.");
+      }
+
       // Create an Incentive record so it flows into payroll
       await prisma.incentive.create({
         data: {
@@ -167,7 +174,7 @@ export async function DELETE(
     // Soft-delete: mark as REMOVED (keeps audit trail)
     await prisma.reviewBonus.update({
       where: { id },
-      data: { status: "REMOVED", rejectionReason: `Removed by ${role === "SUPER_ADMIN" ? "CEO" : "Manager"} on ${new Date().toLocaleDateString()}` },
+      data: { status: "REMOVED", rejectionReason: `Removed by ${role === "SUPER_ADMIN" ? "CEO" : "Manager"} on ${formatPKTDate(nowPKT())}` },
     });
     return json({ success: true });
   }

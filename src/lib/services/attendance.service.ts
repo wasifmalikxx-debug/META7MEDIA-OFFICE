@@ -1,7 +1,7 @@
 import { prisma, getCachedSettings } from "@/lib/prisma";
 import { AttendanceStatus } from "@prisma/client";
 import { sendLateFineTemplate } from "@/lib/services/whatsapp.service";
-import { todayPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
+import { todayPKT, nowPKT, pktMinutesSinceMidnight, pktMonth, pktYear } from "@/lib/pkt";
 
 function parseTime(timeStr: string): { hours: number; minutes: number } {
   const [hours, minutes] = timeStr.split(":").map(Number);
@@ -33,7 +33,7 @@ export async function checkIn(
   lng?: number
 ) {
   const settings = await getOfficeSettings();
-  const now = new Date();
+  const now = nowPKT();
   const today = todayPKT();
 
   // Check if already checked in today
@@ -103,8 +103,8 @@ export async function checkIn(
             amount: fineAmount,
             reason: `Auto-generated: ${lateMinutes} minutes late`,
             date: today,
-            month: now.getMonth() + 1,
-            year: now.getFullYear(),
+            month: pktMonth(),
+            year: pktYear(),
             issuedById: adminUser.id,
             linkedAttendanceId: attendance.id,
           },
@@ -124,7 +124,7 @@ export async function checkIn(
 }
 
 export async function checkOut(userId: string, ip: string, lat?: number, lng?: number) {
-  const now = new Date();
+  const now = nowPKT();
   const today = todayPKT();
   const settings = await getOfficeSettings();
 
@@ -198,8 +198,8 @@ export async function getAttendanceSummary(
   month: number,
   year: number
 ) {
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0);
+  const startDate = new Date(Date.UTC(year, month - 1, 1));
+  const endDate = new Date(Date.UTC(year, month, 0));
 
   const attendances = await prisma.attendance.findMany({
     where: {

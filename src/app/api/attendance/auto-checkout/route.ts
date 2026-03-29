@@ -1,9 +1,15 @@
+import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
 import { todayPKT } from "@/lib/pkt";
 
 // GET /api/attendance/auto-checkout — called by Vercel cron
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}` && process.env.NODE_ENV === "production") {
+    return error("Unauthorized", 401);
+  }
   return handleAutoCheckout();
 }
 
