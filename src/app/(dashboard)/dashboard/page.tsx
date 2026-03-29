@@ -3,7 +3,7 @@ import { prisma, getCachedSettings } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
-import { todayPKT, pktMonth, pktYear } from "@/lib/pkt";
+import { todayPKT, nowPKT, pktMonth, pktYear } from "@/lib/pkt";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export default async function DashboardPage() {
 
   if (userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN") {
     // Admin dashboard — all queries in ONE batch
-    const [allEmployees, todayAttendances, payrollRecords, fines, todayLeaves] = await Promise.all([
+    const [allEmployees, todayAttendances, payrollRecords, fines, todayLeaves, officeSettings, todayHoliday] = await Promise.all([
       prisma.user.findMany({
         where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
         select: { id: true, firstName: true, lastName: true, employeeId: true, status: true },
@@ -46,6 +46,8 @@ export default async function DashboardPage() {
         where: { startDate: { lte: today }, endDate: { gte: today }, status: "APPROVED" },
         select: { userId: true, leaveType: true },
       }),
+      prisma.officeSettings.findUnique({ where: { id: "default" }, select: { weekendDays: true } }),
+      prisma.holiday.findFirst({ where: { date: today } }),
     ]);
 
     const totalEmployees = allEmployees.length;
@@ -69,11 +71,18 @@ export default async function DashboardPage() {
       leaveMap[lv.userId] = lv.leaveType;
     }
 
+    // Detect weekend / holiday
+    const pktDayOfWeek = nowPKT().getUTCDay(); // 0=Sun, 6=Sat
+    const weekendDays = (officeSettings?.weekendDays || "0").split(",").map((d: string) => parseInt(d.trim()));
+    const isWeekend = weekendDays.includes(pktDayOfWeek);
+    const holidayName = todayHoliday?.name || null;
+    const isDayOff = isWeekend || !!holidayName;
+
     // Build full employee list with live status
     const employeeStatuses = allEmployees.map((emp) => {
       const att = attendanceMap[emp.id];
       const leave = leaveMap[emp.id];
-      let liveStatus = "NOT_CHECKED_IN";
+      let liveStatus = isDayOff ? "DAY_OFF" : "NOT_CHECKED_IN";
       let checkInTime = null;
       let checkOutTime = null;
 
@@ -126,6 +135,7 @@ export default async function DashboardPage() {
         totalFines={totalFines}
         recentAttendances={todayAttendances}
         employeeStatuses={JSON.parse(JSON.stringify(employeeStatuses))}
+        dayOffLabel={holidayName ? `Holiday — ${holidayName}` : isWeekend ? "Sunday" : null}
       />
     );
   }
