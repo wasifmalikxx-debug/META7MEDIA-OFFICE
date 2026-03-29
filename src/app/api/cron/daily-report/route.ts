@@ -55,6 +55,12 @@ interface EmployeeReport {
 }
 
 export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}` && process.env.NODE_ENV === "production") {
+    return error("Unauthorized", 401);
+  }
+
   // Check if today is Sunday in PKT — skip
   const pktNow = new Date(Date.now() + 5 * 60 * 60_000);
   const dayOfWeek = pktNow.getUTCDay();

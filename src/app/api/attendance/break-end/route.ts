@@ -1,6 +1,6 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
-import { todayPKT, nowPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
+import { todayPKT, nowPKT, pktMinutesSinceMidnight, pktMonth, pktYear } from "@/lib/pkt";
 
 export async function POST() {
   const session = await requireAuth();
@@ -54,8 +54,8 @@ export async function POST() {
               amount: settings.breakLateFineAmt,
               reason: `Late from break by ${lateMinutes} min`,
               date: today,
-              month: today.getUTCMonth() + 1,
-              year: today.getUTCFullYear(),
+              month: pktMonth(),
+              year: pktYear(),
               issuedById: admin.id,
             },
           });

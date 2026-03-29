@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { AttendanceCalendarView } from "@/components/attendance/attendance-calendar-view";
-import { getAccumulatedLeaveBudget } from "@/lib/services/leave-budget.service";
 
 export const dynamic = "force-dynamic";
 
@@ -45,11 +44,48 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
     }),
   ]);
 
-  // Calculate accumulated leave budget per employee
+  // Calculate accumulated leave budget per employee (batched — 3 queries total, not per employee)
+  const empIds = employees.map((e) => e.id);
+  const paidLeavesPerMonth = settings?.paidLeavesPerMonth ?? 1;
+
+  const [firstAttendances, coveredFines, halfDayAttendances] = await Promise.all([
+    // First attendance per employee (for monthsActive calculation)
+    prisma.attendance.findMany({
+      where: { userId: { in: empIds } },
+      orderBy: { date: "asc" },
+      distinct: ["userId"],
+      select: { userId: true, date: true },
+    }),
+    // Covered absences (fines with amount=0)
+    prisma.fine.groupBy({
+      by: ["userId"],
+      where: { userId: { in: empIds }, amount: 0, reason: { contains: "Covered by paid leave" } },
+      _count: true,
+    }),
+    // Half-day attendance count per employee
+    prisma.attendance.groupBy({
+      by: ["userId"],
+      where: { userId: { in: empIds }, status: "HALF_DAY" },
+      _count: true,
+    }),
+  ]);
+
+  const firstAttMap: Record<string, Date> = {};
+  firstAttendances.forEach((a) => { firstAttMap[a.userId] = a.date; });
+  const coveredMap: Record<string, number> = {};
+  coveredFines.forEach((f: any) => { coveredMap[f.userId] = f._count; });
+  const halfDayMap: Record<string, number> = {};
+  halfDayAttendances.forEach((a: any) => { halfDayMap[a.userId] = a._count; });
+
+  const now = new Date(Date.now() + 5 * 60 * 60_000); // PKT
   const leaveBudgets: Record<string, number> = {};
   for (const emp of employees) {
-    const budget = await getAccumulatedLeaveBudget(emp.id, settings?.paidLeavesPerMonth ?? 1);
-    leaveBudgets[emp.id] = budget.available;
+    const startDate = firstAttMap[emp.id];
+    if (!startDate) { leaveBudgets[emp.id] = paidLeavesPerMonth; continue; }
+    const monthsActive = Math.max(1, (now.getUTCFullYear() - startDate.getUTCFullYear()) * 12 + (now.getUTCMonth() - startDate.getUTCMonth()) + 1);
+    const totalEarned = monthsActive * paidLeavesPerMonth;
+    const totalUsed = (coveredMap[emp.id] || 0) + (halfDayMap[emp.id] || 0) * 0.5;
+    leaveBudgets[emp.id] = Math.max(0, totalEarned - totalUsed);
   }
 
   // Build attendance map: userId -> { "YYYY-MM-DD": status data }
