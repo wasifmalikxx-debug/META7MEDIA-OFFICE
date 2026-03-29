@@ -106,18 +106,17 @@ export async function GET(request: NextRequest) {
       const dailyRate = Math.round(monthlySalary / 30);
 
       if (dailyRate > 0) {
-        const usedBudget = (monthHalfDayCount[emp.id] || 0) * 0.5;
-        const remainingBudget = paidLeaveBudget - usedBudget;
-        const coveredCount = paidLeaveUsed[emp.id] || 0;
-        const totalAbsents = (monthAbsentCount[emp.id] || 0); // doesn't include current (not in DB yet during batch load)
+        // Use accumulated leave budget (rollover from unused months)
+        const { getAccumulatedLeaveBudget } = await import("@/lib/services/leave-budget.service");
+        const { available: accumulatedBudget } = await getAccumulatedLeaveBudget(emp.id, paidLeaveBudget);
 
         let fineAmount = dailyRate;
         let fineReason = `Absent on ${dateStr} — PKR ${dailyRate.toLocaleString()} (salary/30) deducted`;
         let isCoveredByPaidLeave = false;
 
-        if (remainingBudget > 0 && totalAbsents - coveredCount < remainingBudget) {
+        if (accumulatedBudget >= 1) {
           fineAmount = 0;
-          fineReason = `Absent on ${dateStr} — Covered by paid leave (${coveredCount + 1}/${paidLeaveBudget} used)`;
+          fineReason = `Absent on ${dateStr} — Covered by paid leave (${accumulatedBudget.toFixed(1)} days remaining)`;
           isCoveredByPaidLeave = true;
         }
 

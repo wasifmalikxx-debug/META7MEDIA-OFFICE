@@ -28,8 +28,8 @@ export async function POST() {
     const settings = await getCachedSettings();
     if (settings) {
       const currentMin = pktMinutesSinceMidnight();
-      const [bsH, bsM] = (settings.breakStartTime || "14:00").split(":").map(Number);
-      const [beH, beM] = (settings.breakEndTime || "15:00").split(":").map(Number);
+      const [bsH, bsM] = (settings.breakStartTime || "15:00").split(":").map(Number);
+      const [beH, beM] = (settings.breakEndTime || "16:00").split(":").map(Number);
       if (currentMin < bsH * 60 + bsM || currentMin > beH * 60 + beM) {
         return error(`Break can only be started between ${settings.breakStartTime} and ${settings.breakEndTime}`);
       }
