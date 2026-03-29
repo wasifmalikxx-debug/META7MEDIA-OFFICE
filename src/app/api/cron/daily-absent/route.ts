@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
         let fineReason = `Absent on ${dateStr} — PKR ${dailyRate.toLocaleString()} (salary/30) deducted`;
         let isCoveredByPaidLeave = false;
 
-        if (remainingBudget >= 1 && totalAbsents - coveredCount < Math.floor(remainingBudget)) {
+        if (remainingBudget > 0 && totalAbsents - coveredCount < remainingBudget) {
           fineAmount = 0;
           fineReason = `Absent on ${dateStr} — Covered by paid leave (${coveredCount + 1}/${paidLeaveBudget} used)`;
           isCoveredByPaidLeave = true;
