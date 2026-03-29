@@ -238,11 +238,12 @@ model LeaveRequest {
   id        String      @id @default(cuid())
   userId    String
   user      User        @relation("LeaveRequester", fields: [userId], references: [id])
-  leaveType LeaveType
-  startDate DateTime    @db.Date
-  endDate   DateTime    @db.Date
-  totalDays Float // supports 0.5 for half-day
-  reason    String
+  leaveType     LeaveType
+  halfDayPeriod String?   // "FIRST_HALF" or "SECOND_HALF" — only for HALF_DAY leave type
+  startDate     DateTime  @db.Date
+  endDate       DateTime  @db.Date
+  totalDays     Float     // supports 0.5 for half-day
+  reason        String
   status    LeaveStatus @default(PENDING)
 
   approverId      String?

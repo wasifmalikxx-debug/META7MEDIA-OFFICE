@@ -55,6 +55,7 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     leaveType: "CASUAL",
+    halfDayPeriod: "" as string,
     startDate: "",
     endDate: "",
     reason: "",
@@ -65,18 +66,24 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (form.leaveType === "HALF_DAY" && !form.halfDayPeriod) {
+      toast.error("Please select First Half or Second Half");
+      return;
+    }
     setLoading(true);
     try {
+      const payload = { ...form };
+      if (form.leaveType !== "HALF_DAY") delete (payload as any).halfDayPeriod;
       const res = await fetch("/api/leaves", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success("Leave request submitted!");
       setOpen(false);
-      setForm({ leaveType: "CASUAL", startDate: "", endDate: "", reason: "" });
+      setForm({ leaveType: "CASUAL", halfDayPeriod: "", startDate: "", endDate: "", reason: "" });
       router.refresh();
     } catch (err: any) {
       toast.error(err.message);
@@ -155,6 +162,30 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
                   </SelectContent>
                 </Select>
               </div>
+              {form.leaveType === "HALF_DAY" && (
+                <div className="space-y-2">
+                  <Label>Half Day Period</Label>
+                  <Select
+                    value={form.halfDayPeriod}
+                    onValueChange={(v) => v && setForm({ ...form, halfDayPeriod: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select period" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* If date is today, only allow second half (must check in first) */}
+                      {form.startDate && form.startDate === new Date().toISOString().split("T")[0] ? (
+                        <SelectItem value="SECOND_HALF">Second Half (leave after break)</SelectItem>
+                      ) : (
+                        <>
+                          <SelectItem value="FIRST_HALF">First Half (arrive after break)</SelectItem>
+                          <SelectItem value="SECOND_HALF">Second Half (leave after break)</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Start Date</Label>
@@ -232,7 +263,9 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs">
-                              {leave.leaveType}
+                              {leave.leaveType === "HALF_DAY" && leave.halfDayPeriod
+                                ? leave.halfDayPeriod === "FIRST_HALF" ? "Half Day (1st)" : "Half Day (2nd)"
+                                : leave.leaveType}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-sm">

@@ -67,8 +67,8 @@ export async function POST(request: NextRequest) {
       return error("Cannot apply leave for past dates.");
     }
 
-    // For today's half day: must have checked in and completed 4h threshold
-    if (parsed.leaveType === "HALF_DAY" && startDate.getTime() === today.getTime()) {
+    // For today's half day (second half only): must have checked in and completed 4h threshold
+    if (parsed.leaveType === "HALF_DAY" && startDate.getTime() === today.getTime() && parsed.halfDayPeriod !== "FIRST_HALF") {
       const todayAttendance = await prisma.attendance.findUnique({
         where: { userId_date: { userId: session.user.id, date: today } },
       });
@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
       data: {
         userId: session.user.id,
         leaveType: parsed.leaveType as any,
+        halfDayPeriod: parsed.leaveType === "HALF_DAY" ? (parsed.halfDayPeriod || "SECOND_HALF") : null,
         startDate,
         endDate,
         totalDays,
