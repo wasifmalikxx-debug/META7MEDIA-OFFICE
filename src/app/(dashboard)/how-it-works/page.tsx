@@ -1,245 +1,189 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Clock, Calendar, Wallet, AlertTriangle, Coffee, ShieldCheck,
-  Smartphone, Ban, CreditCard, Timer,
+  Smartphone, Ban, CreditCard, Timer, FileText, CalendarDays,
+  Target, Star, TrendingUp,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+function PolicyCard({ icon: Icon, title, color, children }: { icon: any; title: string; color: string; children: React.ReactNode }) {
+  return (
+    <Card className="border-0 shadow-sm overflow-hidden">
+      <CardContent className="p-0">
+        <div className={`flex items-center gap-3 px-5 py-3.5 border-b ${color}`}>
+          <div className="rounded-lg bg-white/80 dark:bg-black/20 p-2">
+            <Icon className="size-4" />
+          </div>
+          <h3 className="font-bold text-sm">{title}</h3>
+        </div>
+        <div className="px-5 py-4 text-sm space-y-2">
+          {children}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Rule({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 text-muted-foreground">
+      <div className="size-1.5 rounded-full bg-current mt-2 shrink-0" />
+      <span>{children}</span>
+    </div>
+  );
+}
 
 export default async function HowItWorksPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-5 max-w-4xl">
       <PageHeader
-        title="Office Policies"
-        description="Complete guide to META7MEDIA office rules, attendance, fines, leaves, and payroll"
+        title="How It Works"
+        description="Complete guide to META7MEDIA office policies, rules, and system behavior"
       />
 
-      {/* Working Hours */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Clock className="size-5" /> Working Hours
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Office hours: <strong>11:00 AM - 7:00 PM</strong></li>
-            <li>Check-in available from <strong>10:30 AM</strong></li>
-            <li>Full work day = <strong>8 hours</strong></li>
-          </ul>
-        </CardContent>
-      </Card>
+      <PolicyCard icon={Clock} title="Working Hours" color="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400">
+        <Rule>Office hours: <strong>11:00 AM - 7:00 PM PKT</strong> (8-hour work day)</Rule>
+        <Rule>Check-in opens at <strong>10:30 AM</strong> (30 minutes before office start)</Rule>
+        <Rule>Check-out available from <strong>6:30 PM</strong> (30 minutes before office end)</Rule>
+        <Rule>Auto check-out at <strong>7:30 PM</strong> if you forget (forced by system)</Rule>
+        <Rule>Working days: <strong>Monday - Saturday</strong>. Sunday is a day off</Rule>
+        <Rule>Official holidays are added by CEO — no attendance or fines on those days</Rule>
+      </PolicyCard>
 
-      {/* Attendance Rules */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Calendar className="size-5" /> Attendance Rules
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Daily check-in is <strong>required</strong></li>
-            <li>Check-out is only allowed <strong>at or after 7:00 PM</strong></li>
-            <li>Hours are tracked from check-in to check-out (minus break time)</li>
-          </ul>
-        </CardContent>
-      </Card>
+      <PolicyCard icon={Calendar} title="Attendance Rules" color="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400">
+        <Rule>Daily check-in is <strong>mandatory</strong>. No check-in = marked absent at 7:33 PM</Rule>
+        <Rule>Hours tracked = check-out time - check-in time - break time</Rule>
+        <Rule>If you work less than <strong>75% of full day</strong> (less than 6 hours), it counts as half day</Rule>
+        <Rule>Minimum <strong>4 hours</strong> required before you can check out</Rule>
+        <Rule><strong>Daily work report must be submitted</strong> before checking out</Rule>
+        <Rule>Grace period: <strong>10 minutes</strong> after 11:00 AM before late fine applies</Rule>
+      </PolicyCard>
 
-      {/* Late Arrival Fines */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <AlertTriangle className="size-5" /> Late Arrival Fines
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <p className="text-muted-foreground">
-            Fines are auto-applied based on how late you arrive. Only the <strong>highest matching tier</strong> applies (not cumulative).
+      <PolicyCard icon={AlertTriangle} title="Late Arrival Fines" color="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
+        <Rule>Fines are <strong>auto-applied</strong> based on how late you arrive (after 10 min grace)</Rule>
+        <Rule>Only the <strong>highest matching tier</strong> applies (not cumulative)</Rule>
+        <Rule>Fine tiers are configured by the CEO in Settings</Rule>
+        <Rule>WhatsApp notification sent when a late fine is issued</Rule>
+        <Rule>Fines are deducted from your monthly salary automatically</Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={Coffee} title="Break Policy" color="bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400">
+        <Rule>Break window: <strong>3:00 PM - 4:00 PM</strong></Rule>
+        <Rule>You must click <strong>Start Break</strong> and <strong>End Break</strong> buttons</Rule>
+        <Rule>Minimum break duration: <strong>15 minutes</strong></Rule>
+        <Rule>Grace period after 4:00 PM: <strong>5 minutes</strong></Rule>
+        <Rule>Late return from break (after 4:05 PM): <strong>PKR 100 fine</strong> (auto-applied)</Rule>
+        <Rule>Break time is <strong>not counted</strong> in your working hours</Rule>
+        <Rule>If you miss the break window, it shows as &quot;Break missed&quot;</Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={Ban} title="Absence Policy" color="bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400">
+        <Rule>If not checked in by <strong>7:33 PM</strong>, you are automatically marked <strong>absent</strong></Rule>
+        <Rule>Absent fine = <strong>Monthly Salary / 30</strong> per day</Rule>
+        <Rule>First absence is covered by <strong>paid leave budget</strong> (no deduction)</Rule>
+        <Rule>After budget is used, full daily rate is deducted from salary</Rule>
+        <Rule>Weekends (Sunday) and official holidays are <strong>never</strong> marked absent</Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={CalendarDays} title="Paid Leave (Rollover)" color="bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400">
+        <Rule><strong>1 paid leave per month</strong> — earned automatically</Rule>
+        <Rule>Unused leaves <strong>roll over</strong> to the next month (accumulate)</Rule>
+        <Rule>Example: If you don&apos;t use any leave for 3 months, you have <strong>3.0 days</strong> available</Rule>
+        <Rule>Half days consume <strong>0.5</strong> from your budget each</Rule>
+        <Rule>Auto-applied to absences — <strong>no application needed</strong> for full-day coverage</Rule>
+        <Rule>Your pending leave balance is shown on your dashboard</Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={Timer} title="Half Day Leave" color="bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400">
+        <Rule>Two types: <strong>First Half</strong> (arrive after break) or <strong>Second Half</strong> (leave after break)</Rule>
+        <Rule><strong>Today&apos;s date:</strong> only Second Half allowed (must check in and work 4 hours first)</Rule>
+        <Rule><strong>Future dates:</strong> both First Half and Second Half available</Rule>
+        <Rule>First Half leave: you check in after break time — <strong>no late fine</strong></Rule>
+        <Rule>Second Half leave: requires <strong>daily report submission</strong> before applying</Rule>
+        <Rule>Half day = <strong>0.5</strong> from your paid leave budget</Rule>
+        <Rule>When budget is exhausted, the &quot;Apply Half Day&quot; button is hidden</Rule>
+        <Rule><strong>15-minute cancel window</strong> for same-day leaves</Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={FileText} title="Daily Work Report" color="bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400">
+        <Rule>You <strong>must submit a daily report before checking out</strong></Rule>
+        <Rule><strong>Etsy team (EM-):</strong> How many listings, store name, listing links</Rule>
+        <Rule><strong>Facebook team (SMM-):</strong> How many posts, page names</Rule>
+        <Rule>Optional notes field available for both teams</Rule>
+        <Rule>One report per day — can be updated if submitted again</Rule>
+        <Rule>CEO sees all reports grouped by date and team</Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={Wallet} title="Salary Formula" color="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400">
+        <div className="rounded-lg bg-muted/50 p-4 font-mono text-xs space-y-1 border">
+          <p className="text-muted-foreground">Daily Rate = Monthly Salary / 30</p>
+          <p className="text-muted-foreground">Absent Deduction = Uncovered Absents x Daily Rate</p>
+          <p className="text-muted-foreground">Half Day Deduction = Uncovered Half Days x Daily Rate x 0.5</p>
+          <p className="font-bold mt-2 pt-2 border-t">Net Salary = Monthly Salary + Incentives - All Deductions - Fines</p>
+        </div>
+        <Rule>Estimated salary updates <strong>live</strong> on your dashboard</Rule>
+        <Rule>Covered absences (paid leave) have <strong>zero deduction</strong></Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={Target} title="E-Commerce Bonus (Etsy)" color="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400">
+        <Rule><strong>7 criteria must ALL pass</strong> to be eligible for bonus</Rule>
+        <Rule>Minimum monthly profit: <strong>$1,000 USD</strong></Rule>
+        <Rule>Formula: <strong>floor(profit / 500) x PKR 5,000</strong></Rule>
+        <Rule>Examples: $1,000 = PKR 10,000 | $2,000 = PKR 20,000 | $5,000 = PKR 50,000</Rule>
+        <Rule>If ANY criteria fails: <strong>ALL bonuses are zero</strong> (profit + review)</Rule>
+        <Rule>Team Lead bonus: <strong>PKR 5,000 per eligible employee</strong></Rule>
+        <Rule><strong>Probation employees</strong> are not eligible for any bonuses</Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={Star} title="Review Bonus" color="bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400">
+        <Rule><strong>PKR 500</strong> per approved bad review fix</Rule>
+        <Rule>Submit: store name, before/after screenshots, original/new rating</Rule>
+        <Rule>CEO or Manager reviews and approves/rejects</Rule>
+        <Rule><strong>2-minute edit/delete window</strong> after submission</Rule>
+        <Rule>Only awarded if main bonus eligibility is met</Rule>
+      </PolicyCard>
+
+      <PolicyCard icon={CreditCard} title="Payroll" color="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400">
+        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 mb-2">
+          <p className="font-semibold text-emerald-700 dark:text-emerald-400 text-xs">
+            Salaries are processed through Bank Alfalah between the 5th-10th of every month
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2 font-semibold">Late By</th>
-                  <th className="text-right py-2 font-semibold">Fine</th>
-                </tr>
-              </thead>
-              <tbody className="text-muted-foreground">
-                <tr className="border-b"><td className="py-2">Up to 10 minutes</td><td className="text-right">PKR 100</td></tr>
-                <tr className="border-b"><td className="py-2">Up to 30 minutes</td><td className="text-right">PKR 200</td></tr>
-                <tr><td className="py-2">Up to 60 minutes</td><td className="text-right">PKR 300</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p className="text-xs text-muted-foreground">Fines are issued automatically and deducted from your monthly salary.</p>
-        </CardContent>
-      </Card>
+        </div>
+        <Rule>Payment proofs are automatically added from banking partner</Rule>
+        <Rule>Make sure your <strong>bank details are updated</strong> before the 5th</Rule>
+        <Rule>You can update bank details from your Profile at any time</Rule>
+        <Rule>View payroll history for any month from the Payroll page</Rule>
+        <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 p-3 mt-2">
+          <p className="font-semibold text-rose-700 dark:text-rose-400 text-[11px]">
+            META7MEDIA is not responsible for payments sent to incorrect bank details. Ensure your details are correct before the 5th.
+          </p>
+        </div>
+      </PolicyCard>
 
-      {/* Break Policy */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Coffee className="size-5" /> Break Policy
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Break window: <strong>3:00 PM - 4:00 PM</strong></li>
-            <li>You must click <strong>Start Break</strong> and <strong>End Break</strong></li>
-            <li>Minimum break duration: <strong>15 minutes</strong></li>
-            <li>Grace period after break ends: <strong>5 minutes</strong></li>
-            <li>Late return from break: <strong>PKR 100 fine</strong> (auto-applied)</li>
-            <li>Break time is not counted in your working hours</li>
-          </ul>
-        </CardContent>
-      </Card>
+      <PolicyCard icon={ShieldCheck} title="Login Security" color="bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-400">
+        <Rule>First login requires <strong>one-time CEO approval</strong></Rule>
+        <Rule>Only <strong>one device</strong> per employee (browser fingerprint secured)</Rule>
+        <Rule>New device login is <strong>blocked</strong> until approved by CEO</Rule>
+        <Rule>CEO can revoke device access at any time</Rule>
+      </PolicyCard>
 
-      {/* Absence Policy */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Ban className="size-5" /> Absence Policy
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>If not checked in by <strong>7:30 PM</strong>, you are marked <strong>absent</strong></li>
-            <li>A daily cron job automatically marks absences</li>
-            <li>Absent fine = <strong>salary / 30</strong> per day (1 day&apos;s pay deducted)</li>
-            <li>First absence each month is covered by paid leave (see below)</li>
-          </ul>
-        </CardContent>
-      </Card>
+      <PolicyCard icon={Smartphone} title="WhatsApp Notifications" color="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400">
+        <Rule>Late arrival fine notification</Rule>
+        <Rule>Break late fine notification</Rule>
+        <Rule>Absence notification</Rule>
+        <Rule>Salary paid notification with breakdown</Rule>
+        <Rule>You must send &quot;hi&quot; to the business WhatsApp number first to receive messages</Rule>
+      </PolicyCard>
 
-      {/* Paid Leave */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Calendar className="size-5" /> Paid Leave
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li><strong>1 paid leave per month</strong></li>
-            <li>Auto-applied to your first absence — <strong>no application needed</strong></li>
-            <li>2 half days = 1 paid leave</li>
-            <li>Budget resets on 1st of every month</li>
-            <li>For a full day absence, no application is required — it is auto-detected</li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Half Day Leave */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Timer className="size-5" /> Half Day Leave
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Must complete <strong>minimum 4 hours</strong> before applying for today</li>
-            <li>Can apply for <strong>today or future dates</strong> only (not past dates)</li>
-            <li>A valid reason is required</li>
-            <li>Half day = <strong>0.5</strong> from your paid leave budget</li>
-            <li>System auto-checks you out when you apply half day for today</li>
-            <li><strong>15-minute cancel window</strong> for same-day half days — after that, it is locked</li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Salary Formula */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Wallet className="size-5" /> Salary Formula
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div className="rounded-lg bg-muted/50 p-4 font-mono text-xs space-y-1">
-            <p>Daily Rate = Monthly Salary / 30</p>
-            <p className="pt-2 font-semibold">Estimated Salary = Monthly Salary + Incentives - Fines - Absence Deductions</p>
-          </div>
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Your estimated salary is shown on the dashboard and updates <strong>live</strong></li>
-            <li>Deductions include unpaid absences, half days, and fines</li>
-            <li>Incentives are added on top of base salary</li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Payroll */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CreditCard className="size-5" /> Payroll
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 p-4 mb-3">
-            <p className="font-semibold text-green-700 dark:text-green-400">
-              Salaries are automated through our banking partner — Bank Alfalah
-            </p>
-          </div>
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Salaries are paid between the <strong>5th - 10th of every month</strong></li>
-            <li>Payments are processed automatically through <strong>Bank Alfalah</strong></li>
-            <li>Payment proofs are automatically added from our banking partner</li>
-            <li>Make sure your <strong>bank details are updated</strong> before the payment timeline</li>
-            <li>You can update your bank details from your profile at any time</li>
-            <li>Payroll shows: gross salary, present days, absences, fines, incentives, and net payable</li>
-            <li>You can view payroll history for any month</li>
-          </ul>
-          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 p-4 mt-3">
-            <p className="font-semibold text-red-700 dark:text-red-400 text-xs">
-              Important: If your bank details are not updated or are incorrect, the payment will still be processed automatically. META7MEDIA will not be responsible for payments sent to wrong accounts. Please ensure your bank details are correct before the 5th of every month.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Login Security */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <ShieldCheck className="size-5" /> Login Security
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>First login requires <strong>one-time CEO approval</strong></li>
-            <li>Only <strong>one device</strong> is allowed per employee</li>
-            <li>Logging in from a new device will be <strong>blocked</strong> until approved by the CEO</li>
-            <li>CEO can revoke device access at any time</li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* WhatsApp Notifications */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Smartphone className="size-5" /> WhatsApp Notifications
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <p className="text-muted-foreground mb-2">If your phone number is registered, you receive notifications for:</p>
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Fine notifications (late arrival, break overrun, manual fines)</li>
-            <li>Salary paid notification with full breakdown</li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      <p className="text-xs text-center text-muted-foreground/50 pb-4">
-        DEVELOPED BY: WASIF MALIK - CEO META7MEDIA
+      <p className="text-[10px] text-center text-muted-foreground/40 pb-4 pt-2">
+        META7MEDIA AI Office Manager — Developed by Wasif Malik, CEO
       </p>
     </div>
   );
