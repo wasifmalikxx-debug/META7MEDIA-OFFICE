@@ -84,14 +84,14 @@ export async function generatePayrollForEmployee(
     }
   }
 
-  // Paid leave budget: 1.0 day per month
-  // Half day = 0.5 from budget, absent = uses remaining budget, then deducted
+  // Paid leave budget: use accumulated rollover budget (unused months carry forward)
   const settings = await prisma.officeSettings.findUnique({
     where: { id: "default" },
   });
-  const paidLeaveBudget = settings?.paidLeavesPerMonth ?? 1; // 1.0 day
+  const { getAccumulatedLeaveBudget } = await import("@/lib/services/leave-budget.service");
+  const { available: accumulatedAvailable } = await getAccumulatedLeaveBudget(userId, settings?.paidLeavesPerMonth ?? 1);
 
-  let remainingBudget = paidLeaveBudget;
+  let remainingBudget = accumulatedAvailable;
 
   // Half days consume 0.5 each from budget
   const coveredHalfDays = Math.min(halfDays, Math.floor(remainingBudget / 0.5));
