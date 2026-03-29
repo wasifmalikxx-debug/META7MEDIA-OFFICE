@@ -59,6 +59,7 @@ interface AppSidebarProps {
 const mainNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
   { title: "Daily Activities", href: "/fines", icon: CalendarClock, roles: ["all"] },
+  { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
 ];
 
 const managementNav = [
