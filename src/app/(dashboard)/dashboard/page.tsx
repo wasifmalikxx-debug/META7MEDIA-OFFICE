@@ -158,6 +158,7 @@ export default async function DashboardPage() {
     officeSettings,
     empOfficeSettings,
     empHoliday,
+    todayReport,
   ] = await Promise.all([
     prisma.attendance.findUnique({
       where: { userId_date: { userId, date: today } },
@@ -203,6 +204,7 @@ export default async function DashboardPage() {
     getCachedSettings(),
     prisma.officeSettings.findUnique({ where: { id: "default" }, select: { weekendDays: true } }),
     prisma.holiday.findFirst({ where: { date: today } }),
+    prisma.dailyReport.findUnique({ where: { userId_date: { userId, date: today } } }),
   ]);
 
   // Detect weekend/holiday for employee
@@ -243,6 +245,7 @@ export default async function DashboardPage() {
       workEndTime={officeSettings?.workEndTime || "19:00"}
       isDayOff={empIsDayOff}
       dayOffLabel={empDayOffLabel}
+      hasSubmittedReport={!!todayReport}
     />
   );
 }

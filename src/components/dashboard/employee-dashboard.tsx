@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { CalendarPlus } from "lucide-react";
 import { AnimatedNumber } from "@/components/common/animated-number";
 
@@ -55,6 +56,7 @@ interface EmployeeDashboardProps {
   workEndTime: string;
   isDayOff?: boolean;
   dayOffLabel?: string | null;
+  hasSubmittedReport?: boolean;
 }
 
 export function EmployeeDashboard({
@@ -79,6 +81,7 @@ export function EmployeeDashboard({
   workEndTime,
   isDayOff,
   dayOffLabel,
+  hasSubmittedReport: initialHasReport,
 }: EmployeeDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
@@ -88,6 +91,14 @@ export function EmployeeDashboard({
   const [leaves, setLeaves] = useState(initialLeaveRequests);
   const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
   const [, setTick] = useState(0);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [hasReport, setHasReport] = useState(!!initialHasReport);
+  const [reportForm, setReportForm] = useState({
+    listingsCount: 0, storeName: "", listingLinks: "",
+    postsCount: 0, pageNames: "", notes: "",
+  });
+  const isEtsy = employeeId.startsWith("EM");
+  const isFB = employeeId.startsWith("SMM");
 
   const router = useRouter();
 
@@ -282,6 +293,27 @@ export function EmployeeDashboard({
   const leaveBlockMsg = getLeaveBlockMessage();
   const breakDone = !!attendance?.breakEnd;
 
+  async function handleSubmitReport() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/daily-work-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reportForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Daily report submitted!");
+      setHasReport(true);
+      setReportOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleCheckIn() {
     setLoading(true);
     try {
@@ -378,7 +410,6 @@ export function EmployeeDashboard({
     }
   }
 
-  const isEtsy = employeeId?.startsWith("EM");
   const totalFinesAmount = recentFines.reduce((s, f) => s + f.amount, 0);
   const totalIncentivesAmount = recentIncentives.reduce((s: number, i: any) => s + i.amount, 0);
 
@@ -523,6 +554,62 @@ export function EmployeeDashboard({
               <Badge variant="secondary" className="text-xs py-1.5 px-3 gap-1.5">
                 <Coffee className="size-3" />
                 Break ended at {format(new Date(attendance.breakEnd), "h:mm a")}
+              </Badge>
+            )}
+            {hasCheckedIn && !hasCheckedOut && !hasReport && (
+              <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+                <DialogTrigger render={<Button variant="default" size="sm" className="gap-2" />}>
+                  <CalendarPlus className="size-4" />
+                  Submit Report
+                </DialogTrigger>
+                <DialogContent className="max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>Daily Work Report</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    {isEtsy && (
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">How many listings did you do?</Label>
+                          <Input type="number" min="0" value={reportForm.listingsCount} onChange={(e) => setReportForm({ ...reportForm, listingsCount: parseInt(e.target.value) || 0 })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Which store did you work on today?</Label>
+                          <Input value={reportForm.storeName} onChange={(e) => setReportForm({ ...reportForm, storeName: e.target.value })} placeholder="Store name..." />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Listing links (one per line)</Label>
+                          <Textarea value={reportForm.listingLinks} onChange={(e) => setReportForm({ ...reportForm, listingLinks: e.target.value })} placeholder="Paste listing links..." rows={4} />
+                        </div>
+                      </div>
+                    )}
+                    {isFB && (
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">How many posts did you do?</Label>
+                          <Input type="number" min="0" value={reportForm.postsCount} onChange={(e) => setReportForm({ ...reportForm, postsCount: parseInt(e.target.value) || 0 })} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Page names you worked on</Label>
+                          <Textarea value={reportForm.pageNames} onChange={(e) => setReportForm({ ...reportForm, pageNames: e.target.value })} placeholder="Enter page names..." rows={3} />
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Notes (optional)</Label>
+                      <Input value={reportForm.notes} onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })} placeholder="Any additional notes..." />
+                    </div>
+                    <Button onClick={handleSubmitReport} disabled={loading} className="w-full">
+                      {loading ? "Submitting..." : "Submit Report"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+            {hasCheckedIn && !hasCheckedOut && hasReport && (
+              <Badge variant="secondary" className="text-xs py-1.5 px-3 gap-1.5 bg-green-100 text-green-700">
+                <CheckCircle className="size-3" />
+                Report Submitted
               </Badge>
             )}
             {hasCheckedIn && !hasCheckedOut && !onBreak && (

@@ -156,6 +156,7 @@ model User {
   bonusUpdatedBy     BonusEligibility[] @relation("BonusUpdater")
   reviewBonusesSubmitted ReviewBonus[]  @relation("ReviewBonusSubmitter")
   reviewBonusesApproved  ReviewBonus[]  @relation("ReviewBonusApprover")
+  dailyReports           DailyReport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -589,4 +590,29 @@ model CustomMessage {
   sentTo  String   // "ALL" or employee ID
   sentBy  String
   sentAt  DateTime @default(now())
+}
+
+model DailyReport {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id])
+  date   DateTime @db.Date
+
+  // Etsy fields (EM- employees)
+  listingsCount Int?
+  storeName     String?
+  listingLinks  String? // newline-separated links
+
+  // FB fields (SMM- employees)
+  postsCount Int?
+  pageNames  String?
+
+  // Common
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
 }
