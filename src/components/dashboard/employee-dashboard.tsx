@@ -427,23 +427,24 @@ export function EmployeeDashboard({
   const salaryTillNow = Math.round(monthlySalary + totalIncentivesAmount - totalFinesAmount);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-          Welcome Back, {employeeName}
-          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-            employeeStatus === "PROBATION" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-            employeeStatus === "HIRED" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-            "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-          }`}>
-            {employeeStatus}
-          </span>
-        </h1>
-        <p className="text-muted-foreground">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
+    <div className="space-y-8">
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            Welcome Back, {employeeName}
+            <Badge className={`text-[10px] font-bold border-0 ${
+              employeeStatus === "PROBATION" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" :
+              "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+            }`}>
+              {employeeStatus}
+            </Badge>
+          </h1>
+          <p className="text-muted-foreground mt-1">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
+        </div>
       </div>
 
       {/* Check-in/out card */}
-      <Card>
+      <Card className="border-0 shadow-sm">
         <CardContent className="flex flex-col sm:flex-row items-center gap-4 pt-6">
           {isDayOff ? (
             <div className="flex-1 space-y-1">
@@ -645,12 +646,12 @@ export function EmployeeDashboard({
       </Card>
 
       {/* Monthly stats */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-lg font-bold">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold">
             {new Date().toLocaleString("en-US", { month: "long", year: "numeric" })}
           </h2>
-          <p className="text-[10px] text-muted-foreground/60">Resets on 1st of every month</p>
+          <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Resets monthly</span>
         </div>
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           <StatCard
