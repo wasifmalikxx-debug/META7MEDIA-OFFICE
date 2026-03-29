@@ -11,6 +11,7 @@ import {
   Building2,
   Wallet,
   AlertTriangle,
+  CalendarClock,
   Settings,
   User,
   LogOut,
@@ -68,6 +69,7 @@ const managementNav = [
 const financeNav = [
   { title: "Payroll", href: "/payroll", icon: Wallet, roles: ["all"] },
   { title: "Fines", href: "/fines", icon: AlertTriangle, roles: ["all"] },
+  { title: "Leaves", href: "/leaves", icon: CalendarClock, roles: ["all"] },
 ];
 
 function getEtsyNav(userRole: string) {
@@ -98,6 +100,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
   const [pendingDevices, setPendingDevices] = useState(0);
   const [pendingReviews, setPendingReviews] = useState(0);
+  const [pendingLeaves, setPendingLeaves] = useState(0);
 
   // Poll for pending device approvals every 30 seconds (CEO only)
   useEffect(() => {
@@ -113,6 +116,28 @@ export function AppSidebar({ user }: AppSidebarProps) {
     }
     fetchPending();
     const interval = setInterval(fetchPending, 120_000);
+    return () => clearInterval(interval);
+  }, [user.role]);
+
+  // Poll for pending/recent half-day leaves (CEO only)
+  useEffect(() => {
+    if (user.role !== "SUPER_ADMIN") return;
+    async function fetchPendingLeaves() {
+      try {
+        const res = await fetch("/api/leaves?status=APPROVED");
+        if (res.ok) {
+          const leaves = await res.json();
+          // Count today's approved half-day leaves
+          const today = new Date().toISOString().split("T")[0];
+          const todayLeaves = leaves.filter((l: any) =>
+            l.leaveType === "HALF_DAY" && l.startDate?.startsWith(today)
+          );
+          setPendingLeaves(todayLeaves.length);
+        }
+      } catch {}
+    }
+    fetchPendingLeaves();
+    const interval = setInterval(fetchPendingLeaves, 120_000);
     return () => clearInterval(interval);
   }, [user.role]);
 
@@ -149,6 +174,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
               {item.href === "/review-bonus" && pendingReviews > 0 && (
                 <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
                   {pendingReviews}
+                </Badge>
+              )}
+              {item.href === "/leaves" && pendingLeaves > 0 && (
+                <Badge className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center bg-orange-500 text-white">
+                  {pendingLeaves}
                 </Badge>
               )}
           </SidebarMenuButton>

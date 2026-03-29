@@ -1,13 +1,13 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
-import { todayPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
+import { todayPKT, nowPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
 
 export async function POST() {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
   try {
-    const now = new Date();
+    const now = nowPKT();
     const today = todayPKT();
 
     const attendance = await prisma.attendance.findUnique({
@@ -38,7 +38,7 @@ export async function POST() {
     // Check if late from break → auto-fine (using PKT time)
     const settings = await getCachedSettings();
     if (settings && settings.breakLateFineAmt > 0) {
-      const [breakEndHour, breakEndMin] = settings.breakEndTime.split(":").map(Number);
+      const [breakEndHour, breakEndMin] = (settings.breakEndTime || "15:00").split(":").map(Number);
       // Compare in PKT minutes
       const currentPKTMin = pktMinutesSinceMidnight();
       const scheduledEndMin = breakEndHour * 60 + breakEndMin + (settings.breakGraceMinutes || 0);

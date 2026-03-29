@@ -44,11 +44,27 @@ export async function checkIn(
     throw new Error("Already checked in today");
   }
 
+  // Check if employee has a FIRST_HALF leave today — they'll arrive after break, no late fine
+  const firstHalfLeave = await prisma.leaveRequest.findFirst({
+    where: {
+      userId,
+      leaveType: "HALF_DAY",
+      halfDayPeriod: "FIRST_HALF",
+      startDate: today,
+      status: "APPROVED",
+    },
+  });
+
   // Calculate late status using Pakistan time (UTC+5)
   const startTime = parseTime(settings.workStartTime);
   const startMinutes = startTime.hours * 60 + startTime.minutes;
   const currentMinutes = pktMinutesSinceMidnight();
-  const lateMinutes = Math.max(0, currentMinutes - startMinutes - settings.graceMinutes);
+  let lateMinutes = Math.max(0, currentMinutes - startMinutes - settings.graceMinutes);
+
+  // If employee has first-half leave, they are NOT late — they're expected after break
+  if (firstHalfLeave) {
+    lateMinutes = 0;
+  }
 
   // If employee physically checks in, they are PRESENT or LATE — never ABSENT
   // ABSENT is only for employees who don't show up at all (end-of-day system marking)
