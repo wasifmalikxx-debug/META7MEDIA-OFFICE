@@ -40,6 +40,7 @@ interface AdminDashboardProps {
   totalFines: number;
   recentAttendances: any[];
   employeeStatuses: EmployeeStatus[];
+  dayOffLabel?: string | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -52,6 +53,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   HALF_DAY: { label: "Half Day", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", icon: CalendarCheck2 },
   HALF_DAY_LEAVE: { label: "Half Day Leave", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400", icon: CalendarOff },
   NOT_CHECKED_IN: { label: "Not Checked In", color: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400", icon: CircleDot },
+  DAY_OFF: { label: "Day Off", color: "bg-slate-100 text-slate-500 dark:bg-slate-800/50 dark:text-slate-400", icon: CalendarOff },
 };
 
 export function AdminDashboard({
@@ -63,6 +65,7 @@ export function AdminDashboard({
   totalFines,
   recentAttendances,
   employeeStatuses,
+  dayOffLabel,
 }: AdminDashboardProps) {
   const router = useRouter();
   const attendanceRate = totalEmployees > 0 ? Math.round((presentToday / totalEmployees) * 100) : 0;
@@ -78,7 +81,7 @@ export function AdminDashboard({
   // Sort: ON_BREAK first, then PRESENT, LATE, NOT_CHECKED_IN, ABSENT, ON_LEAVE, CHECKED_OUT
   const statusOrder: Record<string, number> = {
     ON_BREAK: 0, PRESENT: 1, LATE: 2, HALF_DAY: 3,
-    NOT_CHECKED_IN: 4, ABSENT: 5, HALF_DAY_LEAVE: 6, ON_LEAVE: 7, CHECKED_OUT: 8,
+    NOT_CHECKED_IN: 4, ABSENT: 5, HALF_DAY_LEAVE: 6, ON_LEAVE: 7, CHECKED_OUT: 8, DAY_OFF: 9,
   };
   const sorted = [...employeeStatuses].sort(
     (a, b) => (statusOrder[a.liveStatus] ?? 9) - (statusOrder[b.liveStatus] ?? 9)
@@ -117,10 +120,10 @@ export function AdminDashboard({
           description={lateToday === 0 ? "All on time" : "Arrived after grace"}
         />
         <StatCard
-          title="Absent Today"
-          value={absentToday}
-          icon={UserX}
-          description={absentToday === 0 ? "Full attendance" : "Not checked in"}
+          title={dayOffLabel ? "Day Off" : "Absent Today"}
+          value={dayOffLabel ? 0 : absentToday}
+          icon={dayOffLabel ? CalendarOff : UserX}
+          description={dayOffLabel || (absentToday === 0 ? "Full attendance" : "Not checked in")}
         />
         <StatCard
           title="Fines"
@@ -142,9 +145,16 @@ export function AdminDashboard({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold">Live Employee Status</CardTitle>
-            <div className="flex items-center gap-2">
-              <div className="size-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-xs text-muted-foreground">Auto-refreshing</span>
+            <div className="flex items-center gap-3">
+              {dayOffLabel && (
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  {dayOffLabel}
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <div className="size-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-xs text-muted-foreground">Auto-refreshing</span>
+              </div>
             </div>
           </div>
         </CardHeader>
