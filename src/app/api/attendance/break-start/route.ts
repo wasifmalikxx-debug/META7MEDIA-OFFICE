@@ -1,13 +1,13 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
-import { todayPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
+import { todayPKT, pktMinutesSinceMidnight, nowPKT } from "@/lib/pkt";
 
 export async function POST() {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
   try {
-    const now = new Date();
+    const now = nowPKT();
     const today = todayPKT();
 
     const attendance = await prisma.attendance.findUnique({
@@ -28,8 +28,8 @@ export async function POST() {
     const settings = await getCachedSettings();
     if (settings) {
       const currentMin = pktMinutesSinceMidnight();
-      const [bsH, bsM] = settings.breakStartTime.split(":").map(Number);
-      const [beH, beM] = settings.breakEndTime.split(":").map(Number);
+      const [bsH, bsM] = (settings.breakStartTime || "14:00").split(":").map(Number);
+      const [beH, beM] = (settings.breakEndTime || "15:00").split(":").map(Number);
       if (currentMin < bsH * 60 + bsM || currentMin > beH * 60 + beM) {
         return error(`Break can only be started between ${settings.breakStartTime} and ${settings.breakEndTime}`);
       }

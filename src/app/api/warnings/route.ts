@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { nowPKT } from "@/lib/pkt";
 import { createNotification } from "@/lib/services/notification.service";
 
 export async function GET(request: NextRequest) {
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
         level: level as any,
         reason,
         details,
-        date: new Date(),
+        date: nowPKT(),
         issuedById: session.user.id,
       },
     });

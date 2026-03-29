@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { nowPKT, formatPKTDate } from "@/lib/pkt";
 import { leaveActionSchema } from "@/lib/validations/leave";
 import { createNotification } from "@/lib/services/notification.service";
 
@@ -81,7 +82,7 @@ export async function PATCH(
       data: {
         status: parsed.action as any,
         approverId: session.user.id,
-        approvedAt: new Date(),
+        approvedAt: nowPKT(),
         rejectionReason: parsed.rejectionReason,
       },
     });
@@ -136,7 +137,7 @@ export async function PATCH(
         leave.userId,
         "LEAVE_APPROVED",
         "Leave Approved",
-        `Your ${leave.leaveType} leave from ${leave.startDate.toLocaleDateString()} to ${leave.endDate.toLocaleDateString()} has been approved.`,
+        `Your ${leave.leaveType} leave from ${formatPKTDate(leave.startDate)} to ${formatPKTDate(leave.endDate)} has been approved.`,
         "/leaves"
       );
     } else {

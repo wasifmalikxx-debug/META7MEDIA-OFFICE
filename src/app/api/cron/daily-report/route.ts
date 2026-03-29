@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { nowPKT } from "@/lib/pkt";
 import { google } from "googleapis";
 import path from "path";
 import fs from "fs";
@@ -157,8 +158,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Build the message
-    const now = new Date();
-    const dateFormatted = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+    const now = nowPKT();
+    const dateFormatted = `${now.getUTCDate()}/${now.getUTCMonth() + 1}/${now.getUTCFullYear()}`;
 
     let msg = `📊 *META7MEDIA — DAILY SALES REPORT*\n`;
     msg += `📅 Date: *${dateFormatted}*\n`;

@@ -3,7 +3,7 @@ import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { leaveRequestSchema } from "@/lib/validations/leave";
 import { createNotification, notifyAdmins } from "@/lib/services/notification.service";
-import { todayPKT } from "@/lib/pkt";
+import { todayPKT, nowPKT } from "@/lib/pkt";
 
 export async function GET(request: NextRequest) {
   const session = await requireAuth();
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       }
       const settings = await prisma.officeSettings.findUnique({ where: { id: "default" } });
       const threshold = settings?.halfDayThresholdMin ?? 240;
-      const now = new Date();
+      const now = nowPKT();
       const checkInMs = todayAttendance.checkIn.getTime();
       let workedMs = now.getTime() - checkInMs;
       if (todayAttendance.breakStart) {
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
         reason: parsed.reason,
         status: "APPROVED",
         approverId: session.user.id,
-        approvedAt: new Date(),
+        approvedAt: nowPKT(),
       },
     });
 
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
           },
         });
         if (activeAttendance) {
-          const now = new Date();
+          const now = nowPKT();
           const checkIn = activeAttendance.checkIn ? new Date(activeAttendance.checkIn) : now;
           const totalMinutes = Math.floor((now.getTime() - checkIn.getTime()) / 60000);
           // Subtract break time if applicable

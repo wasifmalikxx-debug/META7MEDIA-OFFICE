@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { pktMonth, pktYear } from "@/lib/pkt";
 import { reviewBonusSubmitSchema } from "@/lib/validations/bonus";
 import { createNotification, notifyAdmins } from "@/lib/services/notification.service";
 
@@ -63,13 +64,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = reviewBonusSubmitSchema.parse(body);
 
-    const now = new Date();
-
     const submission = await prisma.reviewBonus.create({
       data: {
         userId: session.user.id,
-        month: now.getMonth() + 1,
-        year: now.getFullYear(),
+        month: pktMonth(),
+        year: pktYear(),
         storeName: parsed.storeName,
         customerName: parsed.customerName || null,
         originalRating: parsed.originalRating,
