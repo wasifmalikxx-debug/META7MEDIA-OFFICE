@@ -134,6 +134,7 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
         </div>
       )}
 
+      {!isAdmin && (
       <div className="flex justify-end">
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger render={<Button size="sm" />}>
@@ -222,87 +223,12 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
           </DialogContent>
         </Dialog>
       </div>
+      )}
 
-      <Tabs defaultValue={isAdmin ? "pending" : "all"}>
+      <Tabs defaultValue="all">
         <TabsList>
-          {isAdmin && (
-            <TabsTrigger value="pending">
-              Pending ({pendingLeaves.length})
-            </TabsTrigger>
-          )}
           <TabsTrigger value="all">All Requests</TabsTrigger>
         </TabsList>
-
-        {isAdmin && (
-          <TabsContent value="pending">
-            <Card>
-              <CardContent className="pt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Dates</TableHead>
-                      <TableHead>Days</TableHead>
-                      <TableHead>Reason</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingLeaves.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground">
-                          No pending leave requests.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      pendingLeaves.map((leave) => (
-                        <TableRow key={leave.id}>
-                          <TableCell className="text-sm">
-                            {leave.user.firstName} {leave.user.lastName}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {leave.leaveType === "HALF_DAY" && leave.halfDayPeriod
-                                ? leave.halfDayPeriod === "FIRST_HALF" ? "Half Day (1st)" : "Half Day (2nd)"
-                                : leave.leaveType}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {format(new Date(leave.startDate), "MMM d")} —{" "}
-                            {format(new Date(leave.endDate), "MMM d")}
-                          </TableCell>
-                          <TableCell className="text-sm">{leave.totalDays}</TableCell>
-                          <TableCell className="text-sm max-w-[200px] truncate">
-                            {leave.reason}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-1">
-                              <Button
-                                size="sm"
-                                variant="default"
-                                onClick={() => handleAction(leave.id, "APPROVED")}
-                              >
-                                <Check className="size-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleAction(leave.id, "REJECTED")}
-                              >
-                                <X className="size-3" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
 
         <TabsContent value="all">
           <Card>
