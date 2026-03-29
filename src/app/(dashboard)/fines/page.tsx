@@ -20,7 +20,17 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
   const where: any = { month, year };
   if (!isAdmin) where.userId = session.user.id;
 
-  const [fines, employees] = await Promise.all([
+  const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
+  const endOfMonth = new Date(Date.UTC(year, month, 0));
+
+  const attWhere: any = { date: { gte: startOfMonth, lte: endOfMonth } };
+  const leaveWhere: any = { startDate: { gte: startOfMonth, lte: endOfMonth } };
+  if (!isAdmin) {
+    attWhere.userId = session.user.id;
+    leaveWhere.userId = session.user.id;
+  }
+
+  const [fines, employees, attendances, leaves] = await Promise.all([
     prisma.fine.findMany({
       where,
       include: {
@@ -36,17 +46,37 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
           orderBy: { employeeId: "asc" },
         })
       : Promise.resolve([]),
+    prisma.attendance.findMany({
+      where: attWhere,
+      select: {
+        id: true, userId: true, date: true, status: true, checkIn: true, checkOut: true,
+        workedMinutes: true, lateMinutes: true,
+        user: { select: { firstName: true, lastName: true, employeeId: true } },
+      },
+      orderBy: { date: "desc" },
+    }),
+    prisma.leaveRequest.findMany({
+      where: leaveWhere,
+      select: {
+        id: true, userId: true, leaveType: true, halfDayPeriod: true, startDate: true, endDate: true,
+        totalDays: true, reason: true, status: true,
+        user: { select: { firstName: true, lastName: true, employeeId: true } },
+      },
+      orderBy: { startDate: "desc" },
+    }),
   ]);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Fines / Penalties / Covered Leaves / Half Days" />
+      <PageHeader title="Daily Activities" />
       <FinesView
         fines={JSON.parse(JSON.stringify(fines))}
         employees={JSON.parse(JSON.stringify(employees))}
         isAdmin={isAdmin}
         currentMonth={month}
         currentYear={year}
+        attendances={JSON.parse(JSON.stringify(attendances))}
+        leaves={JSON.parse(JSON.stringify(leaves))}
       />
     </div>
   );

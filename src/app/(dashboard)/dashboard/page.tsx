@@ -156,6 +156,8 @@ export default async function DashboardPage() {
     salaryStructure,
     currentUser,
     officeSettings,
+    empOfficeSettings,
+    empHoliday,
   ] = await Promise.all([
     prisma.attendance.findUnique({
       where: { userId_date: { userId, date: today } },
@@ -199,7 +201,15 @@ export default async function DashboardPage() {
       select: { firstName: true, lastName: true, status: true, employeeId: true },
     }),
     getCachedSettings(),
+    prisma.officeSettings.findUnique({ where: { id: "default" }, select: { weekendDays: true } }),
+    prisma.holiday.findFirst({ where: { date: today } }),
   ]);
+
+  // Detect weekend/holiday for employee
+  const empDayOfWeek = nowPKT().getUTCDay();
+  const empWeekendDays = (empOfficeSettings?.weekendDays || "0").split(",").map((d: string) => parseInt(d.trim()));
+  const empIsDayOff = empWeekendDays.includes(empDayOfWeek) || !!empHoliday;
+  const empDayOffLabel = empHoliday?.name ? `Holiday — ${empHoliday.name}` : empWeekendDays.includes(empDayOfWeek) ? "Sunday — Day Off" : null;
 
   const monthPresent = monthAttendances.filter(
     (a) => a.status === "PRESENT" || a.status === "LATE"
@@ -231,6 +241,8 @@ export default async function DashboardPage() {
       breakStartTime={officeSettings?.breakStartTime || "14:00"}
       breakEndTime={officeSettings?.breakEndTime || "15:00"}
       workEndTime={officeSettings?.workEndTime || "19:00"}
+      isDayOff={empIsDayOff}
+      dayOffLabel={empDayOffLabel}
     />
   );
 }

@@ -19,6 +19,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 
 interface FinesViewProps {
@@ -27,9 +28,11 @@ interface FinesViewProps {
   isAdmin: boolean;
   currentMonth: number;
   currentYear: number;
+  attendances?: any[];
+  leaves?: any[];
 }
 
-export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear }: FinesViewProps) {
+export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear, attendances = [], leaves = [] }: FinesViewProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -88,12 +91,22 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
   }
 
   const total = fines.reduce((s: number, f: any) => s + f.amount, 0);
+  const coveredFines = fines.filter((f: any) => f.amount === 0);
+  const actualFines = fines.filter((f: any) => f.amount > 0);
+  const actualTotal = actualFines.reduce((s: number, f: any) => s + f.amount, 0);
+
+  // Attendance stats
+  const presentDays = attendances.filter((a: any) => a.status === "PRESENT" || a.status === "LATE").length;
+  const absentDays = attendances.filter((a: any) => a.status === "ABSENT").length;
+  const halfDays = attendances.filter((a: any) => a.status === "HALF_DAY").length;
+  const lateDays = attendances.filter((a: any) => a.status === "LATE").length;
+  const onLeaveDays = attendances.filter((a: any) => a.status === "ON_LEAVE").length;
 
   const typeLabels: Record<string, string> = {
     LATE_ARRIVAL: "Late",
     EARLY_DEPARTURE: "Early Leave",
     ABSENT_WITHOUT_LEAVE: "Absent",
-    POLICY_VIOLATION: "Policy",
+    POLICY_VIOLATION: "Policy Violation",
     OTHER: "Other",
   };
 
@@ -110,12 +123,17 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
   const fbEmployees = employees.filter((e: any) => e.department?.name === "Facebook");
   const otherEmployees = employees.filter((e: any) => !e.department?.name || (e.department.name !== "Etsy" && e.department.name !== "Facebook"));
 
-  // Group fines by date
+  // Group fines + leaves by date into unified feed
   const grouped: Record<string, any[]> = {};
   fines.forEach((fine: any) => {
     const dateKey = format(new Date(fine.date || fine.createdAt), "yyyy-MM-dd");
     if (!grouped[dateKey]) grouped[dateKey] = [];
-    grouped[dateKey].push(fine);
+    grouped[dateKey].push({ ...fine, _type: "fine" });
+  });
+  leaves.forEach((leave: any) => {
+    const dateKey = format(new Date(leave.startDate), "yyyy-MM-dd");
+    if (!grouped[dateKey]) grouped[dateKey] = [];
+    grouped[dateKey].push({ ...leave, _type: "leave" });
   });
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
@@ -216,18 +234,6 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
         )}
       </div>
 
-      {/* Summary */}
-      <div className="flex gap-4">
-        <div className="bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2">
-          <span className="text-xs text-muted-foreground">Total Fines</span>
-          <p className="text-lg font-bold text-red-600">PKR {total.toLocaleString()}</p>
-        </div>
-        <div className="bg-muted/30 rounded-lg px-4 py-2">
-          <span className="text-xs text-muted-foreground">Total Entries</span>
-          <p className="text-lg font-bold">{fines.length}</p>
-        </div>
-      </div>
-
       {/* Fines grouped by date */}
       {sortedDates.length === 0 ? (
         <Card>
@@ -237,8 +243,10 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
         </Card>
       ) : (
         sortedDates.map((dateStr) => {
-          const dateFines = grouped[dateStr];
-          const dayTotal = dateFines.reduce((s: number, f: any) => s + f.amount, 0);
+          const dayItems = grouped[dateStr];
+          const dayFines = dayItems.filter((i: any) => i._type === "fine");
+          const dayLeaves = dayItems.filter((i: any) => i._type === "leave");
+          const dayTotal = dayFines.reduce((s: number, f: any) => s + (f.amount || 0), 0);
           const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d, yyyy");
           return (
             <Card key={dateStr}>
@@ -246,8 +254,8 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm font-semibold">{dateLabel}</CardTitle>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">{dateFines.length} fine{dateFines.length !== 1 ? "s" : ""}</span>
-                    <span className="text-xs font-semibold text-red-600">PKR {dayTotal.toLocaleString()}</span>
+                    <span className="text-xs text-muted-foreground">{dayItems.length} entr{dayItems.length !== 1 ? "ies" : "y"}</span>
+                    {dayTotal > 0 && <span className="text-xs font-semibold text-red-600">PKR {dayTotal.toLocaleString()}</span>}
                   </div>
                 </div>
               </CardHeader>
@@ -258,13 +266,13 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                       <TableHead className="text-xs py-2">Employee</TableHead>
                       <TableHead className="text-xs py-2">Type</TableHead>
                       <TableHead className="text-xs py-2 text-right">Amount</TableHead>
-                      <TableHead className="text-xs py-2">Reason</TableHead>
-                      <TableHead className="text-xs py-2 text-right">Issued By</TableHead>
+                      <TableHead className="text-xs py-2">Details</TableHead>
+                      <TableHead className="text-xs py-2 text-right">Source</TableHead>
                       {isAdmin && <TableHead className="text-xs py-2 text-center w-10"></TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dateFines.map((fine: any) => (
+                    {dayFines.map((fine: any) => (
                       <TableRow key={fine.id} className="hover:bg-muted/5">
                         <TableCell className="py-2.5">
                           <span className="text-sm font-medium">{fine.user.firstName} {fine.user.lastName}</span>
@@ -299,6 +307,32 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                             </Button>
                           </TableCell>
                         )}
+                      </TableRow>
+                    ))}
+                    {dayLeaves.map((leave: any) => (
+                      <TableRow key={leave.id} className="hover:bg-purple-50/30 dark:hover:bg-purple-950/10">
+                        <TableCell className="py-2.5">
+                          <span className="text-sm font-medium">{leave.user.firstName} {leave.user.lastName}</span>
+                          <span className="text-xs text-muted-foreground ml-1">({leave.user.employeeId})</span>
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <Badge className="text-[10px] bg-purple-100 text-purple-700 hover:bg-purple-100">
+                            {leave.leaveType === "HALF_DAY" ? "Half Day" : leave.leaveType}
+                            {leave.halfDayPeriod === "FIRST_HALF" ? " (1st)" : leave.halfDayPeriod === "SECOND_HALF" ? " (2nd)" : ""}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right py-2.5">
+                          <Badge className={`text-[10px] ${leave.status === "APPROVED" ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-red-100 text-red-700 hover:bg-red-100"}`}>
+                            {leave.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <span className="text-xs text-muted-foreground">{leave.reason}</span>
+                        </TableCell>
+                        <TableCell className="text-right py-2.5">
+                          <span className="text-xs text-muted-foreground">META7 AI</span>
+                        </TableCell>
+                        {isAdmin && <TableCell className="py-2.5"></TableCell>}
                       </TableRow>
                     ))}
                   </TableBody>

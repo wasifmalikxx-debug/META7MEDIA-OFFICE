@@ -53,6 +53,8 @@ interface EmployeeDashboardProps {
   breakStartTime: string;
   breakEndTime: string;
   workEndTime: string;
+  isDayOff?: boolean;
+  dayOffLabel?: string | null;
 }
 
 export function EmployeeDashboard({
@@ -75,6 +77,8 @@ export function EmployeeDashboard({
   breakStartTime,
   breakEndTime,
   workEndTime,
+  isDayOff,
+  dayOffLabel,
 }: EmployeeDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
@@ -417,6 +421,20 @@ export function EmployeeDashboard({
       {/* Check-in/out card */}
       <Card>
         <CardContent className="flex flex-col sm:flex-row items-center gap-4 pt-6">
+          {isDayOff ? (
+            <div className="flex-1 space-y-1">
+              <p className="text-sm text-muted-foreground">Today&apos;s Status</p>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  Day Off
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  {dayOffLabel || "Enjoy your day off!"}
+                </span>
+              </div>
+            </div>
+          ) : (
+          <div className="flex-1 flex flex-col sm:flex-row items-center gap-4">
           <div className="flex-1 space-y-1">
             <p className="text-sm text-muted-foreground">Today&apos;s Status</p>
             <div className="flex items-center gap-2">
@@ -541,7 +559,9 @@ export function EmployeeDashboard({
               </Badge>
             )}
           </div>
+          </div>)}
         </CardContent>
+
       </Card>
 
       {/* Monthly stats */}
@@ -718,6 +738,10 @@ export function EmployeeDashboard({
         <CardContent className="pt-4 pb-3">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold">Leave Policy — This Month</p>
+            {paidBudgetRemaining <= 0 && (
+              <span className="text-xs text-red-500 font-medium">Budget exhausted</span>
+            )}
+            {paidBudgetRemaining > 0 && (
             <Dialog open={leaveOpen} onOpenChange={(open) => {
               setLeaveOpen(open);
               if (!open) { setEditLeaveId(null); setLeaveForm({ type: "HALF", date: "", reason: "" }); }
@@ -766,6 +790,7 @@ export function EmployeeDashboard({
                 </div>
               </DialogContent>
             </Dialog>
+            )}
           </div>
           <div className="space-y-2">
             <div>
