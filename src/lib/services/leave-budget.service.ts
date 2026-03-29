@@ -13,26 +13,28 @@ export async function getAccumulatedLeaveBudget(
   userId: string,
   paidLeavesPerMonth: number = 1.0
 ): Promise<{ totalEarned: number; totalUsed: number; available: number }> {
-  // Get employee joining date
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { joiningDate: true },
+  // Get employee's first attendance record (when they started using the system)
+  const firstAttendance = await prisma.attendance.findFirst({
+    where: { userId },
+    orderBy: { date: "asc" },
+    select: { date: true },
   });
 
-  if (!user?.joiningDate) {
+  if (!firstAttendance) {
+    // No attendance records yet — give them 1 month budget
     return { totalEarned: paidLeavesPerMonth, totalUsed: 0, available: paidLeavesPerMonth };
   }
 
-  // Calculate months from joining to current month
+  // Calculate months from first attendance to current month
   const now = nowPKT();
-  const joinDate = new Date(user.joiningDate);
-  const joinYear = joinDate.getUTCFullYear();
-  const joinMonth = joinDate.getUTCMonth();
+  const startDate = new Date(firstAttendance.date);
+  const startYear = startDate.getUTCFullYear();
+  const startMonth = startDate.getUTCMonth();
   const currentYear = now.getUTCFullYear();
   const currentMonth = now.getUTCMonth();
 
-  const monthsEmployed = Math.max(1, (currentYear - joinYear) * 12 + (currentMonth - joinMonth) + 1);
-  const totalEarned = monthsEmployed * paidLeavesPerMonth;
+  const monthsActive = Math.max(1, (currentYear - startYear) * 12 + (currentMonth - startMonth) + 1);
+  const totalEarned = monthsActive * paidLeavesPerMonth;
 
   // Count all covered leaves across all time (fines with amount=0 and "Covered by paid leave" in reason)
   const coveredAbsences = await prisma.fine.count({
@@ -50,7 +52,7 @@ export async function getAccumulatedLeaveBudget(
     where: {
       userId,
       status: "HALF_DAY",
-      date: { gte: joinDate },
+      date: { gte: startDate },
     },
   });
 
