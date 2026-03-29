@@ -14,9 +14,9 @@ interface StatCardProps {
 
 const variantStyles = {
   default: "bg-card",
-  success: "bg-emerald-50 border-emerald-200",
-  warning: "bg-amber-50 border-amber-200",
-  danger: "bg-red-50 border-red-200",
+  success: "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800",
+  warning: "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800",
+  danger: "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800",
 };
 
 export function StatCard({

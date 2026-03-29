@@ -23,6 +23,7 @@ import {
   Rocket,
   MessageSquare,
   BarChart3,
+  CalendarDays,
 } from "lucide-react";
 import {
   Sidebar,
@@ -60,6 +61,7 @@ const mainNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
   { title: "Daily Activities", href: "/fines", icon: CalendarClock, roles: ["all"] },
   { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
+  { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN"] },
 ];
 
 const managementNav = [

@@ -129,7 +129,7 @@ export function AdminDashboard({
           title="Fines"
           value={`PKR ${totalFines.toLocaleString()}`}
           icon={AlertTriangle}
-          variant={totalFines > 0 ? "danger" : "default"}
+          variant="default"
           description="This month"
         />
         <StatCard
