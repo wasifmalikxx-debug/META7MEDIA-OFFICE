@@ -17,20 +17,24 @@ export async function syncPayrollRecord(userId: string, month: number, year: num
   if (payroll.status === "PAID") return; // Don't modify paid records
 
   // Recalculate fines and incentives from source of truth
-  const [fines, incentives, salary] = await Promise.all([
+  const [fines, incentives, salary, user] = await Promise.all([
     prisma.fine.findMany({ where: { userId, month, year } }),
     prisma.incentive.findMany({ where: { userId, month, year } }),
     prisma.salaryStructure.findUnique({ where: { userId } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { status: true } }),
   ]);
 
   const totalFines = fines.reduce((s, f) => s + f.amount, 0);
 
+  // PROBATION employees get no incentives
   let totalIncentives = 0;
-  for (const inc of incentives) {
-    if (inc.type === "PERCENTAGE" && inc.percentage) {
-      totalIncentives += (salary?.monthlySalary || 0) * (inc.percentage / 100);
-    } else {
-      totalIncentives += inc.amount;
+  if (user?.status !== "PROBATION") {
+    for (const inc of incentives) {
+      if (inc.type === "PERCENTAGE" && inc.percentage) {
+        totalIncentives += (salary?.monthlySalary || 0) * (inc.percentage / 100);
+      } else {
+        totalIncentives += inc.amount;
+      }
     }
   }
 

@@ -114,8 +114,12 @@ export async function POST(request: NextRequest) {
 
     // WhatsApp removed — only fines & salary paid get WhatsApp notifications
 
+    // Block PROBATION employees from receiving incentives
+    const empRecord = await prisma.user.findUnique({ where: { id: parsed.userId }, select: { status: true } });
+    const isOnProbation = empRecord?.status === "PROBATION";
+
     // Create or update Incentive record for profit bonus
-    if (isEligible && bonusAmount > 0) {
+    if (isEligible && bonusAmount > 0 && !isOnProbation) {
       // Check if profit bonus incentive already exists for this month
       const existingIncentive = await prisma.incentive.findFirst({
         where: {

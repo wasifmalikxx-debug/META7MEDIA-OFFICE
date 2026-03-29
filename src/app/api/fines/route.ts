@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const parsed = fineSchema.parse(body);
 
     const fineDate = new Date(parsed.date);
-    fineDate.setHours(0, 0, 0, 0);
+    fineDate.setUTCHours(0, 0, 0, 0);
 
     const fine = await prisma.fine.create({
       data: {
@@ -52,8 +52,8 @@ export async function POST(request: NextRequest) {
         amount: parsed.amount,
         reason: parsed.reason,
         date: fineDate,
-        month: fineDate.getMonth() + 1,
-        year: fineDate.getFullYear(),
+        month: fineDate.getUTCMonth() + 1,
+        year: fineDate.getUTCFullYear(),
         issuedById: session.user.id,
       },
     });
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     // Sync payroll record
     try {
       const { syncPayrollRecord } = await import("@/lib/services/payroll-sync.service");
-      await syncPayrollRecord(parsed.userId, fineDate.getMonth() + 1, fineDate.getFullYear());
+      await syncPayrollRecord(parsed.userId, fineDate.getUTCMonth() + 1, fineDate.getUTCFullYear());
     } catch {}
 
     return json(fine, 201);
