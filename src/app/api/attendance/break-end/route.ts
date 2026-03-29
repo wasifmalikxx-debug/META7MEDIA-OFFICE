@@ -38,7 +38,7 @@ export async function POST() {
     // Check if late from break → auto-fine (using PKT time)
     const settings = await getCachedSettings();
     if (settings && settings.breakLateFineAmt > 0) {
-      const [breakEndHour, breakEndMin] = (settings.breakEndTime || "15:00").split(":").map(Number);
+      const [breakEndHour, breakEndMin] = (settings.breakEndTime || "16:00").split(":").map(Number);
       // Compare in PKT minutes
       const currentPKTMin = pktMinutesSinceMidnight();
       const scheduledEndMin = breakEndHour * 60 + breakEndMin + (settings.breakGraceMinutes || 0);

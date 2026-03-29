@@ -57,6 +57,7 @@ interface EmployeeDashboardProps {
   isDayOff?: boolean;
   dayOffLabel?: string | null;
   hasSubmittedReport?: boolean;
+  pendingLeaves?: number;
 }
 
 export function EmployeeDashboard({
@@ -82,6 +83,7 @@ export function EmployeeDashboard({
   isDayOff,
   dayOffLabel,
   hasSubmittedReport: initialHasReport,
+  pendingLeaves = 1,
 }: EmployeeDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
@@ -189,8 +191,8 @@ export function EmployeeDashboard({
   const checkInOpensAt = `${String(Math.floor(checkInWindowStart / 60)).padStart(2, "0")}:${String(checkInWindowStart % 60).padStart(2, "0")}`;
 
   // Break window check
-  const [bsH, bsM] = (breakStartTime || "14:00").split(":").map(Number);
-  const [beH, beM] = (breakEndTime || "15:00").split(":").map(Number);
+  const [bsH, bsM] = (breakStartTime || "15:00").split(":").map(Number);
+  const [beH, beM] = (breakEndTime || "16:00").split(":").map(Number);
   const breakStartMin = bsH * 60 + bsM;
   const breakEndMin = beH * 60 + beM;
   const isInBreakWindow = currentMinutes >= breakStartMin && currentMinutes <= breakEndMin;
@@ -199,7 +201,7 @@ export function EmployeeDashboard({
   // Work end time check (strict checkout rule)
   const [weH, weM] = (workEndTime || "19:00").split(":").map(Number);
   const workEndMin = weH * 60 + weM;
-  const canCheckoutByTime = currentMinutes >= workEndMin;
+  const canCheckoutByTime = currentMinutes >= workEndMin - 30; // Allow checkout 30 min before office end
   // Check if employee has an approved half-day leave for today
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const hasHalfDayToday = leaves.some((l: any) => {
@@ -234,15 +236,6 @@ export function EmployeeDashboard({
   });
   const halfDayLeaves = thisMonthLeaves.filter((l: any) => l.leaveType === "HALF_DAY");
   const halfDaysUsed = halfDayLeaves.length;
-  // Budget consumed: each half day = 0.5, absences auto-consume from budget too
-  const budgetUsedByHalfDays = halfDaysUsed * 0.5;
-  const paidLeaveBudget = 1.0;
-  let remainingBudgetCalc = paidLeaveBudget;
-  const coveredHalfDays = Math.min(halfDaysUsed, Math.floor(remainingBudgetCalc / 0.5));
-  remainingBudgetCalc -= coveredHalfDays * 0.5;
-  const coveredAbsents = Math.min(monthAbsent, Math.floor(remainingBudgetCalc));
-  remainingBudgetCalc -= coveredAbsents;
-  const paidBudgetRemaining = Math.max(0, remainingBudgetCalc);
 
   // Check if leave can be applied (todayStr already defined above)
   // Calculate today's worked minutes for threshold check
@@ -825,10 +818,10 @@ export function EmployeeDashboard({
         <CardContent className="pt-4 pb-3">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold">Leave Policy — This Month</p>
-            {paidBudgetRemaining <= 0 && (
+            {pendingLeaves <= 0 && (
               <span className="text-xs text-red-500 font-medium">Budget exhausted</span>
             )}
-            {paidBudgetRemaining > 0 && (
+            {pendingLeaves > 0 && (
             <Dialog open={leaveOpen} onOpenChange={(open) => {
               setLeaveOpen(open);
               if (!open) { setEditLeaveId(null); setLeaveForm({ type: "HALF", date: "", reason: "" }); }
@@ -882,13 +875,13 @@ export function EmployeeDashboard({
           <div className="space-y-2">
             <div>
               <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                <span>Paid Leave Budget</span>
-                <span>{paidBudgetRemaining.toFixed(1)} / 1.0 day remaining</span>
+                <span>Pending Leaves (Rollover)</span>
+                <span>{pendingLeaves.toFixed(1)} day{pendingLeaves !== 1 ? "s" : ""} available</span>
               </div>
               <div className="h-2 rounded-full bg-muted overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all ${paidBudgetRemaining > 0.5 ? "bg-green-500" : paidBudgetRemaining > 0 ? "bg-yellow-500" : "bg-red-500"}`}
-                  style={{ width: `${paidBudgetRemaining * 100}%` }}
+                  className={`h-full rounded-full transition-all ${pendingLeaves >= 2 ? "bg-green-500" : pendingLeaves > 0 ? "bg-yellow-500" : "bg-red-500"}`}
+                  style={{ width: `${Math.min(100, (pendingLeaves / 3) * 100)}%` }}
                 />
               </div>
             </div>
@@ -902,14 +895,19 @@ export function EmployeeDashboard({
                 <span className="font-medium">{monthAbsent}</span>
               </div>
             </div>
-            {halfDaysUsed === 1 && monthAbsent === 0 && (
-              <p className="text-xs text-blue-600 dark:text-blue-400">
-                1 more half day or absence = paid leave fully used
+            {pendingLeaves > 1 && (
+              <p className="text-xs text-green-600 dark:text-green-400">
+                You have {pendingLeaves.toFixed(1)} pending leaves (unused leaves roll over monthly).
               </p>
             )}
-            {paidBudgetRemaining === 0 && (
+            {pendingLeaves > 0 && pendingLeaves <= 1 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                {pendingLeaves.toFixed(1)} leave remaining. Use wisely!
+              </p>
+            )}
+            {pendingLeaves === 0 && (
               <p className="text-xs text-red-500">
-                Paid leave exhausted. Further absences/half days will be deducted from salary.
+                No pending leaves. Further absences/half days will be deducted from salary.
               </p>
             )}
           </div>

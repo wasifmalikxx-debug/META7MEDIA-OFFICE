@@ -213,6 +213,10 @@ export default async function DashboardPage() {
   const empIsDayOff = empWeekendDays.includes(empDayOfWeek) || !!empHoliday;
   const empDayOffLabel = empHoliday?.name ? `Holiday — ${empHoliday.name}` : empWeekendDays.includes(empDayOfWeek) ? "Sunday — Day Off" : null;
 
+  // Calculate accumulated leave budget (rollover)
+  const { getAccumulatedLeaveBudget } = await import("@/lib/services/leave-budget.service");
+  const leaveBudgetInfo = await getAccumulatedLeaveBudget(userId, officeSettings?.paidLeavesPerMonth ?? 1);
+
   const monthPresent = monthAttendances.filter(
     (a) => a.status === "PRESENT" || a.status === "LATE"
   ).length;
@@ -240,12 +244,13 @@ export default async function DashboardPage() {
       monthlySalary={salaryStructure?.monthlySalary || 0}
       leaveRequests={JSON.parse(JSON.stringify(leaveRequests))}
       workStartTime={officeSettings?.workStartTime || "11:00"}
-      breakStartTime={officeSettings?.breakStartTime || "14:00"}
-      breakEndTime={officeSettings?.breakEndTime || "15:00"}
+      breakStartTime={officeSettings?.breakStartTime || "15:00"}
+      breakEndTime={officeSettings?.breakEndTime || "16:00"}
       workEndTime={officeSettings?.workEndTime || "19:00"}
       isDayOff={empIsDayOff}
       dayOffLabel={empDayOffLabel}
       hasSubmittedReport={!!todayReport}
+      pendingLeaves={leaveBudgetInfo.available}
     />
   );
 }
