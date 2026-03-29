@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, ShoppingBag, Megaphone } from "lucide-react";
 
 interface DailyReportViewProps {
   reports: any[];
@@ -49,20 +49,33 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
   return (
     <div className="space-y-4">
       {/* Month Navigation */}
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-8">
-          <ChevronLeft className="size-4" />
-        </Button>
-        <h2 className="text-lg font-bold min-w-[180px] text-center">{monthName}</h2>
-        <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-8">
-          <ChevronRight className="size-4" />
-        </Button>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-9 rounded-full">
+            <ChevronLeft className="size-4" />
+          </Button>
+          <div className="flex items-center gap-2 min-w-[200px] justify-center">
+            <Calendar className="size-5 text-muted-foreground" />
+            <h2 className="text-xl font-bold">{monthName}</h2>
+          </div>
+          <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-9 rounded-full">
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs gap-1"><ShoppingBag className="size-3" />{etsyReports.length} Etsy</Badge>
+          <Badge variant="outline" className="text-xs gap-1"><Megaphone className="size-3" />{fbReports.length} FB</Badge>
+        </div>
       </div>
 
       {reports.length === 0 && (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No daily reports for {monthName}.
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-16 text-center">
+            <div className="size-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
+              <Calendar className="size-6 text-muted-foreground/50" />
+            </div>
+            <p className="text-muted-foreground font-medium">No reports for {monthName}</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Employee daily reports will appear here</p>
           </CardContent>
         </Card>
       )}
@@ -70,18 +83,21 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
       {/* Etsy Team Reports */}
       {etsyGrouped.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Etsy Team</h3>
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="size-4 text-emerald-600" />
+            <h3 className="text-sm font-bold uppercase tracking-wider">Etsy Team</h3>
+          </div>
           {etsyGrouped.map(([dateStr, dayReports]) => {
             const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d");
             const totalListings = dayReports.reduce((s: number, r: any) => s + (r.listingsCount || 0), 0);
             return (
-              <Card key={dateStr}>
-                <CardHeader className="pb-2 bg-muted/20">
+              <Card key={dateStr} className="border-0 shadow-sm overflow-hidden">
+                <CardHeader className="pb-2 bg-emerald-50/50 dark:bg-emerald-950/20 border-b">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold">{dateLabel}</CardTitle>
+                    <CardTitle className="text-sm font-bold">{dateLabel}</CardTitle>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground">{dayReports.length} report{dayReports.length !== 1 ? "s" : ""}</span>
-                      <Badge variant="outline" className="text-xs">{totalListings} listings</Badge>
+                      <Badge variant="outline" className="text-[10px] font-normal">{dayReports.length} report{dayReports.length !== 1 ? "s" : ""}</Badge>
+                      <Badge className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0">{totalListings} listings</Badge>
                     </div>
                   </div>
                 </CardHeader>
@@ -139,18 +155,21 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
       {/* FB Team Reports */}
       {fbGrouped.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Facebook Team</h3>
+          <div className="flex items-center gap-2">
+            <Megaphone className="size-4 text-blue-600" />
+            <h3 className="text-sm font-bold uppercase tracking-wider">Facebook Team</h3>
+          </div>
           {fbGrouped.map(([dateStr, dayReports]) => {
             const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d");
             const totalPosts = dayReports.reduce((s: number, r: any) => s + (r.postsCount || 0), 0);
             return (
-              <Card key={dateStr}>
-                <CardHeader className="pb-2 bg-muted/20">
+              <Card key={dateStr} className="border-0 shadow-sm overflow-hidden">
+                <CardHeader className="pb-2 bg-blue-50/50 dark:bg-blue-950/20 border-b">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold">{dateLabel}</CardTitle>
+                    <CardTitle className="text-sm font-bold">{dateLabel}</CardTitle>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground">{dayReports.length} report{dayReports.length !== 1 ? "s" : ""}</span>
-                      <Badge variant="outline" className="text-xs">{totalPosts} posts</Badge>
+                      <Badge variant="outline" className="text-[10px] font-normal">{dayReports.length} report{dayReports.length !== 1 ? "s" : ""}</Badge>
+                      <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">{totalPosts} posts</Badge>
                     </div>
                   </div>
                 </CardHeader>

@@ -20,7 +20,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Trash2, Calendar } from "lucide-react";
 
 interface FinesViewProps {
   fines: any[];
@@ -138,17 +138,31 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
   return (
-    <div className="space-y-4">
-      {/* Month Navigation */}
+    <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-8">
-            <ChevronLeft className="size-4" />
-          </Button>
-          <h2 className="text-lg font-bold min-w-[180px] text-center">{monthName}</h2>
-          <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-8">
-            <ChevronRight className="size-4" />
-          </Button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-9 rounded-full">
+              <ChevronLeft className="size-4" />
+            </Button>
+            <div className="flex items-center gap-2 min-w-[200px] justify-center">
+              <Calendar className="size-5 text-muted-foreground" />
+              <h2 className="text-xl font-bold">{monthName}</h2>
+            </div>
+            <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-9 rounded-full">
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          {/* Quick stats */}
+          <div className="hidden sm:flex items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/30 px-3 py-1.5 rounded-full">
+              <span className="text-xs font-semibold text-rose-700 dark:text-rose-400">PKR {actualTotal.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-full">
+              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{coveredFines.length} covered</span>
+            </div>
+          </div>
         </div>
         {isAdmin && (
           <Dialog open={open} onOpenChange={setOpen}>
@@ -236,9 +250,13 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
 
       {/* Fines grouped by date */}
       {sortedDates.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No fines for {monthName}.
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-16 text-center">
+            <div className="size-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
+              <Calendar className="size-6 text-muted-foreground/50" />
+            </div>
+            <p className="text-muted-foreground font-medium">No activities for {monthName}</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Fines, leaves, and activities will appear here</p>
           </CardContent>
         </Card>
       ) : (
@@ -249,13 +267,17 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
           const dayTotal = dayFines.reduce((s: number, f: any) => s + (f.amount || 0), 0);
           const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d, yyyy");
           return (
-            <Card key={dateStr}>
-              <CardHeader className="pb-2 bg-muted/20">
+            <Card key={dateStr} className="border-0 shadow-sm overflow-hidden">
+              <CardHeader className="pb-2 bg-muted/30 border-b">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold">{dateLabel}</CardTitle>
+                  <CardTitle className="text-sm font-bold">{dateLabel}</CardTitle>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">{dayItems.length} entr{dayItems.length !== 1 ? "ies" : "y"}</span>
-                    {dayTotal > 0 && <span className="text-xs font-semibold text-red-600">PKR {dayTotal.toLocaleString()}</span>}
+                    <Badge variant="outline" className="text-[10px] font-normal">{dayItems.length} entr{dayItems.length !== 1 ? "ies" : "y"}</Badge>
+                    {dayTotal > 0 && (
+                      <Badge className="text-[10px] bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-0">
+                        PKR {dayTotal.toLocaleString()}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </CardHeader>
