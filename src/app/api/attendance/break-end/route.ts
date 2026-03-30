@@ -66,7 +66,7 @@ export async function POST() {
             const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { firstName: true, lastName: true, phone: true } });
             const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
             if (user?.phone) {
-              sendBreakFineTemplate(user.phone, empName, lateMinutes, settings.breakLateFineAmt).catch(() => {});
+              sendBreakFineTemplate(user.phone, empName, lateMinutes, settings.breakLateFineAmt).catch((e) => console.error(`[WHATSAPP] Break fine to ${user.phone} failed:`, e.message));
             }
           } catch {}
         }

@@ -4,7 +4,7 @@ import { normalizePhone } from "@/lib/pkt";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-const fromNumber = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
+const fromNumber = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+15559046375";
 
 // WhatsApp Content Template SIDs (approved templates for business-initiated messages)
 const TEMPLATE_SIDS = {
