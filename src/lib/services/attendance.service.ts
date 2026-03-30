@@ -165,6 +165,25 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     throw new Error("Already checked out today");
   }
 
+  // Break skip fine: if employee didn't start break at all → fine (same as break late fine)
+  if (!attendance.breakStart && settings.breakLateFineAmt > 0) {
+    const adminUser = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
+    if (adminUser) {
+      await prisma.fine.create({
+        data: {
+          userId,
+          type: "POLICY_VIOLATION",
+          amount: settings.breakLateFineAmt,
+          reason: "Break skipped — did not log break attendance",
+          date: today,
+          month: pktMonth(),
+          year: pktYear(),
+          issuedById: adminUser.id,
+        },
+      });
+    }
+  }
+
   // Subtract break time from worked minutes
   let breakMinutes = 0;
   if (attendance.breakStart && attendance.breakEnd) {

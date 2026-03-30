@@ -208,6 +208,65 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">Friday Break (Jummah)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Friday Break Start</Label>
+                <Input
+                  type="time"
+                  value={settings.fridayBreakStartTime}
+                  onChange={(e) => update("fridayBreakStartTime", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Friday Break End</Label>
+                <Input
+                  type="time"
+                  value={settings.fridayBreakEndTime}
+                  onChange={(e) => update("fridayBreakEndTime", e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Friday has longer break for Jummah prayers. Same grace period and fine rules apply.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Auto Fines</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>No Report Fine (PKR)</Label>
+              <Input
+                type="number"
+                value={settings.noReportFineAmt}
+                onChange={(e) => update("noReportFineAmt", parseFloat(e.target.value))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Fine if employee is auto-checked-out without submitting daily report
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Break Skip Fine (PKR)</Label>
+              <Input
+                type="number"
+                value={settings.breakLateFineAmt}
+                disabled
+              />
+              <p className="text-xs text-muted-foreground">
+                Same as break late fine. Applied if employee doesn&apos;t log break at all.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Late Fine Tiers</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

@@ -463,8 +463,11 @@ model OfficeSettings {
   breakStartTime      String @default("15:00") // HH:mm (3:00 PM PKT)
   breakEndTime        String @default("16:00") // (4:00 PM PKT)
   breakDurationMin    Int    @default(60)
-  breakGraceMinutes   Int    @default(5)   // grace after break end
-  breakLateFineAmt    Float  @default(100) // fine for returning late from break (PKR 100)
+  breakGraceMinutes      Int    @default(5)   // grace after break end
+  breakLateFineAmt       Float  @default(100) // fine for returning late from break OR skipping break (PKR 100)
+  fridayBreakStartTime   String @default("13:30") // Friday Jummah+break start (1:30 PM)
+  fridayBreakEndTime     String @default("14:45") // Friday Jummah+break end (2:45 PM)
+  noReportFineAmt        Float  @default(100) // fine for not submitting daily report at auto-checkout
 
   workingDaysPerWeek Int    @default(6) // Mon-Sat
   weekendDays        String @default("0") // 0=Sunday

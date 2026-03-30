@@ -75,13 +75,14 @@ export default async function HowItWorksPage() {
       </PolicyCard>
 
       <PolicyCard icon={Coffee} title="Break Policy" color="bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400">
-        <Rule>Break window: <strong>3:00 PM - 4:00 PM</strong></Rule>
-        <Rule>You must click <strong>Start Break</strong> and <strong>End Break</strong> buttons</Rule>
+        <Rule>Break window: <strong>3:00 PM - 4:00 PM</strong> (Mon-Thu, Sat)</Rule>
+        <Rule>Friday (Jummah): <strong>1:30 PM - 2:45 PM</strong></Rule>
+        <Rule>You <strong>MUST</strong> click <strong>Start Break</strong> and <strong>End Break</strong> buttons</Rule>
         <Rule>Minimum break duration: <strong>15 minutes</strong></Rule>
-        <Rule>Grace period after 4:00 PM: <strong>5 minutes</strong></Rule>
-        <Rule>Late return from break (after 4:05 PM): <strong>PKR 100 fine</strong> (auto-applied)</Rule>
+        <Rule>Grace period after break ends: <strong>5 minutes</strong></Rule>
+        <Rule>Late return from break: <strong>PKR 100 fine</strong> (auto-applied)</Rule>
+        <Rule><strong>Skipping break</strong> (not clicking Start Break): <strong>PKR 100 fine</strong> — you must log your break</Rule>
         <Rule>Break time is <strong>not counted</strong> in your working hours</Rule>
-        <Rule>If you miss the break window, it shows as &quot;Break missed&quot;</Rule>
       </PolicyCard>
 
       <PolicyCard icon={Ban} title="Absence Policy" color="bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400">
@@ -118,6 +119,7 @@ export default async function HowItWorksPage() {
         <Rule><strong>Facebook team (SMM-):</strong> How many posts, page names</Rule>
         <Rule>Optional notes field available for both teams</Rule>
         <Rule>One report per day — can be updated if submitted again</Rule>
+        <Rule>If auto-checked out without report: <strong>PKR 100 fine</strong> (auto-applied)</Rule>
         <Rule>CEO sees all reports grouped by date and team</Rule>
       </PolicyCard>
 
