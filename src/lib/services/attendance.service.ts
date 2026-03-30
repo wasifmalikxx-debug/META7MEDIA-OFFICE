@@ -96,6 +96,7 @@ export async function checkIn(
   });
 
   // Auto-create late fine if applicable
+  console.log(`[CHECK-IN] ${userId} | PKT min: ${currentMinutes} | Start: ${startMinutes} | Grace: ${settings.graceMinutes} | Late: ${lateMinutes}min | Tiers: ${settings.lateFineTier1Amt}/${settings.lateFineTier2Amt}/${settings.lateFineTier3Amt}`);
   if (lateMinutes > 0) {
     let fineAmount = 0;
     if (lateMinutes >= settings.lateFineTier3Min && settings.lateFineTier3Amt > 0) {
@@ -105,6 +106,7 @@ export async function checkIn(
     } else if (lateMinutes >= settings.lateFineTier1Min && settings.lateFineTier1Amt > 0) {
       fineAmount = settings.lateFineTier1Amt;
     }
+    console.log(`[CHECK-IN] Late fine: ${fineAmount} PKR for ${lateMinutes}min late`);
 
     if (fineAmount > 0) {
       // Find a system/admin user for the issuedById field
