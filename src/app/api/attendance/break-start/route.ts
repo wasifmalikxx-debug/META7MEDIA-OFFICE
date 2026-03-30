@@ -24,14 +24,24 @@ export async function POST() {
       return error("Already checked out for the day");
     }
 
-    // Enforce break window using PKT time
+    // Enforce break window using PKT time — Friday has different timings (Jummah)
     const settings = await getCachedSettings();
     if (settings) {
       const currentMin = pktMinutesSinceMidnight();
-      const [bsH, bsM] = (settings.breakStartTime || "15:00").split(":").map(Number);
-      const [beH, beM] = (settings.breakEndTime || "16:00").split(":").map(Number);
+      const isFriday = now.getUTCDay() === 5;
+
+      const breakStart = isFriday
+        ? (settings.fridayBreakStartTime || "13:30")
+        : (settings.breakStartTime || "15:00");
+      const breakEnd = isFriday
+        ? (settings.fridayBreakEndTime || "14:45")
+        : (settings.breakEndTime || "16:00");
+
+      const [bsH, bsM] = breakStart.split(":").map(Number);
+      const [beH, beM] = breakEnd.split(":").map(Number);
+
       if (currentMin < bsH * 60 + bsM || currentMin > beH * 60 + beM) {
-        return error(`Break can only be started between ${settings.breakStartTime} and ${settings.breakEndTime}`);
+        return error(`Break can only be started between ${breakStart} and ${breakEnd}`);
       }
     }
 

@@ -244,8 +244,8 @@ export default async function DashboardPage() {
       monthlySalary={salaryStructure?.monthlySalary || 0}
       leaveRequests={JSON.parse(JSON.stringify(leaveRequests))}
       workStartTime={officeSettings?.workStartTime || "11:00"}
-      breakStartTime={officeSettings?.breakStartTime || "15:00"}
-      breakEndTime={officeSettings?.breakEndTime || "16:00"}
+      breakStartTime={nowPKT().getUTCDay() === 5 ? (officeSettings?.fridayBreakStartTime || "13:30") : (officeSettings?.breakStartTime || "15:00")}
+      breakEndTime={nowPKT().getUTCDay() === 5 ? (officeSettings?.fridayBreakEndTime || "14:45") : (officeSettings?.breakEndTime || "16:00")}
       workEndTime={officeSettings?.workEndTime || "19:00"}
       isDayOff={empIsDayOff}
       dayOffLabel={empDayOffLabel}

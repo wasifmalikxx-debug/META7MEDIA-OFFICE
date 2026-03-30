@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
-import { todayPKT } from "@/lib/pkt";
+import { todayPKT, pktMonth, pktYear } from "@/lib/pkt";
+import { createNotification } from "@/lib/services/notification.service";
 
 // GET /api/attendance/auto-checkout — called by Vercel cron
 export async function GET(request: NextRequest) {
@@ -85,6 +86,53 @@ async function handleAutoCheckout() {
           notes: "Auto-checkout by system at office closing time",
         },
       });
+
+      // Find admin for fine issuance
+      const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
+      const month = pktMonth();
+      const year = pktYear();
+
+      // Fine: No daily report submitted
+      const dailyReport = await prisma.dailyReport.findUnique({
+        where: { userId_date: { userId: att.user.id, date: today } },
+      });
+      if (!dailyReport && settings?.noReportFineAmt > 0 && admin) {
+        await prisma.fine.create({
+          data: {
+            userId: att.user.id,
+            type: "POLICY_VIOLATION",
+            amount: settings.noReportFineAmt,
+            reason: "Daily report not submitted before auto-checkout",
+            date: today,
+            month,
+            year,
+            issuedById: admin.id,
+          },
+        });
+        await createNotification(
+          att.user.id,
+          "FINE_ISSUED",
+          "Fine: Report Not Submitted",
+          `PKR ${settings.noReportFineAmt} fine — daily report was not submitted. You were auto-checked out.`,
+          "/fines"
+        );
+      }
+
+      // Fine: Break skipped (didn't log break)
+      if (!att.breakStart && settings?.breakLateFineAmt > 0 && admin) {
+        await prisma.fine.create({
+          data: {
+            userId: att.user.id,
+            type: "POLICY_VIOLATION",
+            amount: settings.breakLateFineAmt,
+            reason: "Break skipped — did not log break attendance",
+            date: today,
+            month,
+            year,
+            issuedById: admin.id,
+          },
+        });
+      }
 
       results.push({ name, workedMinutes, status, autoCheckout: true });
     }
