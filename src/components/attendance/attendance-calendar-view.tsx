@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { formatPKTTime } from "@/lib/pkt";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -92,8 +93,8 @@ export function AttendanceCalendarView({
     const att = attendanceMap[empId]?.[dateStr];
     if (!att) return "No record";
     let text = att.status;
-    if (att.checkIn) text += ` | In: ${format(new Date(att.checkIn), "hh:mm a")}`;
-    if (att.checkOut) text += ` | Out: ${format(new Date(att.checkOut), "hh:mm a")}`;
+    if (att.checkIn) text += ` | In: ${formatPKTTime(att.checkIn)}`;
+    if (att.checkOut) text += ` | Out: ${formatPKTTime(att.checkOut)}`;
     if (att.workedMinutes) text += ` | ${Math.floor(att.workedMinutes / 60)}h ${att.workedMinutes % 60}m`;
     if (att.lateMinutes) text += ` | Late: ${att.lateMinutes}m`;
     return text;

@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { formatPKTTime } from "@/lib/pkt";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -478,12 +479,12 @@ export function EmployeeDashboard({
                   </Badge>
                   {attendance.checkIn && (
                     <span className="text-sm text-muted-foreground">
-                      In: {format(new Date(attendance.checkIn), "hh:mm a")}
+                      In: {formatPKTTime(attendance.checkIn)}
                     </span>
                   )}
                   {attendance.checkOut && (
                     <span className="text-sm text-muted-foreground">
-                      Out: {format(new Date(attendance.checkOut), "hh:mm a")}
+                      Out: {formatPKTTime(attendance.checkOut)}
                     </span>
                   )}
                   {attendance.workedMinutes && (
@@ -547,7 +548,7 @@ export function EmployeeDashboard({
             {breakDone && (
               <Badge variant="secondary" className="text-xs py-1.5 px-3 gap-1.5">
                 <Coffee className="size-3" />
-                Break ended at {format(new Date(attendance.breakEnd), "h:mm a")}
+                Break ended at {formatPKTTime(attendance.breakEnd)}
               </Badge>
             )}
             {hasCheckedIn && !hasCheckedOut && !hasReport && (

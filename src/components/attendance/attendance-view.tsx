@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
+import { formatPKTTime } from "@/lib/pkt";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -158,12 +159,12 @@ export function AttendanceView({
                     </TableCell>
                     <TableCell className="text-sm">
                       {att.checkIn
-                        ? format(new Date(att.checkIn), "hh:mm a")
+                        ? formatPKTTime(att.checkIn)
                         : "—"}
                     </TableCell>
                     <TableCell className="text-sm">
                       {att.checkOut
-                        ? format(new Date(att.checkOut), "hh:mm a")
+                        ? formatPKTTime(att.checkOut)
                         : "—"}
                     </TableCell>
                     <TableCell className="text-sm">
