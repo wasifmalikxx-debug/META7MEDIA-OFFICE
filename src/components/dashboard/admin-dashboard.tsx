@@ -20,6 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { formatPKTTime } from "@/lib/pkt";
 
 interface EmployeeStatus {
   id: string;
@@ -290,8 +291,8 @@ export function AdminDashboard({
                       </div>
                       {emp.checkIn && (
                         <p className="text-[11px] text-muted-foreground mt-0.5">
-                          {format(new Date(emp.checkIn), "hh:mm a")}
-                          {emp.checkOut && ` — ${format(new Date(emp.checkOut), "hh:mm a")}`}
+                          {formatPKTTime(emp.checkIn)}
+                          {emp.checkOut && ` — ${formatPKTTime(emp.checkOut)}`}
                         </p>
                       )}
                     </div>

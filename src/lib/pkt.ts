@@ -58,6 +58,16 @@ export function formatPKTDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** Format a PKT-shifted Date to time string (hh:mm a) — use for displaying stored timestamps */
+export function formatPKTTime(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const hours = d.getUTCHours();
+  const minutes = d.getUTCMinutes();
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const h12 = hours % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${ampm}`;
+}
+
 /** Normalize a phone number to international format for WhatsApp */
 export function normalizePhone(phone: string): string | null {
   if (!phone) return null;
