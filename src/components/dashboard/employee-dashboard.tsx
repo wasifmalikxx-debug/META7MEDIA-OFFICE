@@ -182,9 +182,9 @@ export function EmployeeDashboard({
   const hasCheckedOut = !!attendance?.checkOut;
   const onBreak = !!attendance?.breakStart && !attendance?.breakEnd;
 
-  // Check-in window: 30 minutes before office start time
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  // Check-in window: 30 minutes before office start time (using PKT)
+  const pktNow = new Date(Date.now() + 5 * 60 * 60_000); // PKT time
+  const currentMinutes = pktNow.getUTCHours() * 60 + pktNow.getUTCMinutes();
   const [wsH, wsM] = (workStartTime || "11:00").split(":").map(Number);
   const workStartMin = wsH * 60 + wsM;
   const checkInWindowStart = workStartMin - 30; // 30 min before office start
@@ -204,7 +204,7 @@ export function EmployeeDashboard({
   const workEndMin = weH * 60 + weM;
   const canCheckoutByTime = currentMinutes >= workEndMin - 30; // Allow checkout 30 min before office end
   // Check if employee has an approved half-day leave for today
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const todayStr = `${pktNow.getUTCFullYear()}-${String(pktNow.getUTCMonth() + 1).padStart(2, "0")}-${String(pktNow.getUTCDate()).padStart(2, "0")}`;
   const hasHalfDayToday = leaves.some((l: any) => {
     const d = format(new Date(l.startDate), "yyyy-MM-dd");
     return d === todayStr && l.leaveType === "HALF_DAY" && l.status !== "REJECTED";
@@ -215,9 +215,9 @@ export function EmployeeDashboard({
   let todayWorkedMin = 0;
   if (attendance?.checkIn) {
     const cIn = new Date(attendance.checkIn).getTime();
-    let worked = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : Date.now()) - cIn;
+    let worked = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : pktNow.getTime()) - cIn;
     if (attendance?.breakStart) {
-      const bEnd = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : Date.now();
+      const bEnd = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : pktNow.getTime();
       worked -= (bEnd - new Date(attendance.breakStart).getTime());
     }
     todayWorkedMin = Math.max(0, Math.floor(worked / 60000));
@@ -229,8 +229,8 @@ export function EmployeeDashboard({
   const workEndFormatted = `${weH > 12 ? weH - 12 : weH}:${String(weM).padStart(2, "0")} ${weH >= 12 ? "PM" : "AM"}`;
 
   // Paid leave budget: 1.0 day per month. Half day = 0.5, absent = uses remaining budget
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
+  const currentMonth = pktNow.getUTCMonth();
+  const currentYear = pktNow.getUTCFullYear();
   const thisMonthLeaves = leaves.filter((l: any) => {
     const d = new Date(l.startDate);
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear && l.status !== "REJECTED";
@@ -243,9 +243,9 @@ export function EmployeeDashboard({
   let todayWorkedMinutes = 0;
   if (attendance?.checkIn) {
     const checkInMs = new Date(attendance.checkIn).getTime();
-    let workedMs = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : Date.now()) - checkInMs;
+    let workedMs = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : pktNow.getTime()) - checkInMs;
     if (attendance.breakStart) {
-      const breakEndMs = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : Date.now();
+      const breakEndMs = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : pktNow.getTime();
       workedMs -= (breakEndMs - new Date(attendance.breakStart).getTime());
     }
     todayWorkedMinutes = Math.max(0, Math.floor(workedMs / 60000));
@@ -411,9 +411,9 @@ export function EmployeeDashboard({
   let liveTotalMinutes = totalWorkedHours * 60;
   if (attendance?.checkIn && !attendance?.checkOut) {
     const checkInMs = new Date(attendance.checkIn).getTime();
-    let todayWorkedMs = Date.now() - checkInMs;
+    let todayWorkedMs = pktNow.getTime() - checkInMs;
     if (attendance.breakStart) {
-      const breakEndMs = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : Date.now();
+      const breakEndMs = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : pktNow.getTime();
       todayWorkedMs -= (breakEndMs - new Date(attendance.breakStart).getTime());
     }
     liveTotalMinutes += Math.max(0, Math.floor(todayWorkedMs / 60000));
