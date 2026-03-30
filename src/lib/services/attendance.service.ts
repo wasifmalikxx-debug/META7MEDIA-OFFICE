@@ -130,7 +130,7 @@ export async function checkIn(
         const user = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, phone: true } });
         const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
         if (user?.phone) {
-          sendLateFineTemplate(user.phone, empName, lateMinutes, fineAmount).catch(() => {});
+          sendLateFineTemplate(user.phone, empName, lateMinutes, fineAmount).catch((e) => console.error(`[WHATSAPP] Late fine to ${user.phone} failed:`, e.message));
         }
       }
     }
