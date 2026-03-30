@@ -557,45 +557,56 @@ export function EmployeeDashboard({
                   <CalendarPlus className="size-4" />
                   Submit Report
                 </DialogTrigger>
-                <DialogContent className="max-w-sm">
+                <DialogContent className="sm:max-w-[440px]">
                   <DialogHeader>
-                    <DialogTitle>Daily Work Report</DialogTitle>
+                    <DialogTitle className="text-lg">End of Day Report</DialogTitle>
                   </DialogHeader>
+                  <div className="rounded-lg border bg-muted/30 p-3 mb-1">
+                    <p className="text-[11px] text-muted-foreground">
+                      Complete your daily report before checking out. This is <strong>mandatory</strong> — auto-checkout without a report results in a fine.
+                    </p>
+                  </div>
                   <div className="space-y-4">
                     {isEtsy && (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <div className="space-y-1.5">
-                          <Label className="text-xs">How many listings did you do?</Label>
-                          <Input type="number" min="0" value={reportForm.listingsCount} onChange={(e) => setReportForm({ ...reportForm, listingsCount: parseInt(e.target.value) || 0 })} />
+                          <Label className="text-xs font-semibold">Total Listings Completed</Label>
+                          <Input type="number" min="0" value={reportForm.listingsCount} onChange={(e) => setReportForm({ ...reportForm, listingsCount: parseInt(e.target.value) || 0 })} placeholder="0" />
+                          <p className="text-[10px] text-muted-foreground">Number of product listings you created or updated today</p>
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Which store did you work on today?</Label>
-                          <Input value={reportForm.storeName} onChange={(e) => setReportForm({ ...reportForm, storeName: e.target.value })} placeholder="Store name..." />
+                          <Label className="text-xs font-semibold">Store Name</Label>
+                          <Input value={reportForm.storeName} onChange={(e) => setReportForm({ ...reportForm, storeName: e.target.value })} placeholder="e.g. META7 Crafts, VintageFinds..." />
+                          <p className="text-[10px] text-muted-foreground">Which Etsy store did you work on today?</p>
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Listing links (one per line)</Label>
-                          <Textarea value={reportForm.listingLinks} onChange={(e) => setReportForm({ ...reportForm, listingLinks: e.target.value })} placeholder="Paste listing links..." rows={4} />
+                          <Label className="text-xs font-semibold">Listing URLs</Label>
+                          <Textarea value={reportForm.listingLinks} onChange={(e) => setReportForm({ ...reportForm, listingLinks: e.target.value })} placeholder={"https://etsy.com/listing/...\nhttps://etsy.com/listing/...\nhttps://etsy.com/listing/..."} rows={4} className="font-mono text-xs" />
+                          <p className="text-[10px] text-muted-foreground">Paste each listing link on a new line</p>
                         </div>
                       </div>
                     )}
                     {isFB && (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <div className="space-y-1.5">
-                          <Label className="text-xs">How many posts did you do?</Label>
-                          <Input type="number" min="0" value={reportForm.postsCount} onChange={(e) => setReportForm({ ...reportForm, postsCount: parseInt(e.target.value) || 0 })} />
+                          <Label className="text-xs font-semibold">Total Posts Published</Label>
+                          <Input type="number" min="0" value={reportForm.postsCount} onChange={(e) => setReportForm({ ...reportForm, postsCount: parseInt(e.target.value) || 0 })} placeholder="0" />
+                          <p className="text-[10px] text-muted-foreground">Number of posts, reels, or stories you published today</p>
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Page names you worked on</Label>
-                          <Textarea value={reportForm.pageNames} onChange={(e) => setReportForm({ ...reportForm, pageNames: e.target.value })} placeholder="Enter page names..." rows={3} />
+                          <Label className="text-xs font-semibold">Pages Worked On</Label>
+                          <Textarea value={reportForm.pageNames} onChange={(e) => setReportForm({ ...reportForm, pageNames: e.target.value })} placeholder={"META7 Media Official\nMETA7 Digital Marketing\n..."} rows={3} className="text-xs" />
+                          <p className="text-[10px] text-muted-foreground">List all Facebook/Instagram pages you managed today</p>
                         </div>
                       </div>
                     )}
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Notes (optional)</Label>
-                      <Input value={reportForm.notes} onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })} placeholder="Any additional notes..." />
+                      <Label className="text-xs font-semibold">Additional Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                      <Textarea value={reportForm.notes} onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })} placeholder="Any challenges, achievements, or things to flag..." rows={2} className="text-xs" />
                     </div>
-                    <Button onClick={handleSubmitReport} disabled={loading} className="w-full">
-                      {loading ? "Submitting..." : "Submit Report"}
+                    <Button onClick={handleSubmitReport} disabled={loading} className="w-full gap-2" size="lg">
+                      <CheckCircle className="size-4" />
+                      {loading ? "Submitting..." : "Submit Daily Report"}
                     </Button>
                   </div>
                 </DialogContent>
