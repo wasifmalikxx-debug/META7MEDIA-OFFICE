@@ -175,7 +175,7 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
                     </SelectTrigger>
                     <SelectContent>
                       {/* If date is today, only allow second half (must check in first) */}
-                      {form.startDate && form.startDate === new Date().toISOString().split("T")[0] ? (
+                      {form.startDate && form.startDate === (() => { const p = new Date(Date.now() + 5*60*60_000); return `${p.getUTCFullYear()}-${String(p.getUTCMonth()+1).padStart(2,"0")}-${String(p.getUTCDate()).padStart(2,"0")}`; })() ? (
                         <SelectItem value="SECOND_HALF">Second Half (leave after break)</SelectItem>
                       ) : (
                         <>
