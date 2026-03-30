@@ -637,9 +637,27 @@ export function BonusProgramView({
         </CardContent>
       </Card>
 
-      {/* Team lead bonus is shown on Izaan's dashboard, not here */}
-
-      {/* Summary cards removed — team lead bonus shown on Izaan's dashboard */}
+      {/* Team Lead Bonus Summary */}
+      <Card className="border-0 shadow-sm overflow-hidden">
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Team Lead Bonus — Izaan Kashif (EM-4)</p>
+              <p className="text-2xl font-bold mt-1">
+                {teamLeadBonus > 0 ? (
+                  <span className="text-emerald-600 dark:text-emerald-400">PKR {teamLeadBonus.toLocaleString()}</span>
+                ) : (
+                  <span className="text-muted-foreground">PKR 0</span>
+                )}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">{eligibleCount} eligible employee{eligibleCount !== 1 ? "s" : ""}</p>
+              <p className="text-xs text-muted-foreground">{eligibleCount} x PKR 5,000</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
