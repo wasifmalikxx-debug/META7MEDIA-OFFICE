@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Save, DollarSign, Users, Trophy, RefreshCw, Cloud, Eye, EyeOff } from "lucide-react";
+import { Save, DollarSign, Users, Trophy, RefreshCw, Cloud, Eye, EyeOff, Target, Star, Calendar } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -351,70 +351,87 @@ export function BonusProgramView({
         </div>
       )}
 
-      {/* Month/Year Selector */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Month:</span>
-              <Select value={month} onValueChange={(v) => v && setMonth(v)}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MONTHS.map((m, i) => (
-                    <SelectItem key={i} value={String(i + 1)}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Year:</span>
-              <Select value={year} onValueChange={(v) => v && setYear(v)}>
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((y) => (
-                    <SelectItem key={y} value={String(y)}>
-                      {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button size="sm" onClick={handleMonthChange}>
-              Load
-            </Button>
-            <div className="ml-auto">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleFetchProfits}
-                disabled={fetchingProfits}
-                className="gap-2"
-              >
-                {fetchingProfits ? (
-                  <RefreshCw className="size-3.5 animate-spin" />
-                ) : (
-                  <Cloud className="size-3.5" />
-                )}
-                {fetchingProfits ? "Fetching..." : "Fetch Profits from Sheets"}
-              </Button>
-            </div>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="size-5 text-muted-foreground" />
+            <Select value={month} onValueChange={(v) => v && setMonth(v)}>
+              <SelectTrigger className="w-[130px] h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={year} onValueChange={(v) => v && setYear(v)}>
+              <SelectTrigger className="w-[90px] h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((y) => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button size="sm" onClick={handleMonthChange} className="h-9 rounded-lg">Load</Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <Button size="sm" variant="outline" onClick={handleFetchProfits} disabled={fetchingProfits} className="gap-2 rounded-lg">
+          {fetchingProfits ? <RefreshCw className="size-3.5 animate-spin" /> : <Cloud className="size-3.5" />}
+          {fetchingProfits ? "Fetching..." : "Sync Profits"}
+        </Button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
+          <CardContent className="py-3.5 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="size-3.5 text-emerald-500" />
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Eligible</p>
+            </div>
+            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{eligibleCount}</p>
+            <p className="text-[10px] text-muted-foreground">of {employees.length} employees</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
+          <CardContent className="py-3.5 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Trophy className="size-3.5 text-blue-500" />
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Profit Bonuses</p>
+            </div>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">PKR {totalBonuses.toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/30 dark:to-slate-800">
+          <CardContent className="py-3.5 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Star className="size-3.5 text-violet-500" />
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Review Bonuses</p>
+            </div>
+            <p className="text-2xl font-bold text-violet-600 dark:text-violet-400">PKR {totalReviewBonuses.toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
+          <CardContent className="py-3.5 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Users className="size-3.5 text-amber-500" />
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Team Lead</p>
+            </div>
+            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">PKR {teamLeadBonus.toLocaleString()}</p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Bonus Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Trophy className="size-4" />
-            Etsy Employee Bonus Eligibility - {MONTHS[parseInt(month) - 1]} {year}
-          </CardTitle>
+      <Card className="border-0 shadow-sm overflow-hidden">
+        <CardHeader className="pb-2 bg-emerald-50/40 dark:bg-emerald-950/10 border-b">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <Trophy className="size-4 text-emerald-600" />
+              Eligibility Matrix — {MONTHS[parseInt(month) - 1]} {year}
+            </CardTitle>
+            <Badge variant="outline" className="text-[9px] h-5">{employees.length} employees</Badge>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -638,21 +655,26 @@ export function BonusProgramView({
       </Card>
 
       {/* Team Lead Bonus Summary */}
-      <Card className="border-0 shadow-sm overflow-hidden">
-        <CardContent className="py-4">
+      <Card className="border-0 shadow-sm overflow-hidden bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-800">
+        <CardContent className="py-4 px-5">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Team Lead Bonus — Izaan Kashif (EM-4)</p>
-              <p className="text-2xl font-bold mt-1">
-                {teamLeadBonus > 0 ? (
-                  <span className="text-emerald-600 dark:text-emerald-400">PKR {teamLeadBonus.toLocaleString()}</span>
-                ) : (
-                  <span className="text-muted-foreground">PKR 0</span>
-                )}
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <Trophy className="size-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Team Lead Bonus — Izaan Kashif (EM-4)</p>
+                <p className="text-2xl font-bold mt-0.5">
+                  {teamLeadBonus > 0 ? (
+                    <span className="text-amber-600 dark:text-amber-400">PKR {teamLeadBonus.toLocaleString()}</span>
+                  ) : (
+                    <span className="text-muted-foreground">PKR 0</span>
+                  )}
+                </p>
+              </div>
             </div>
             <div className="text-right">
-              <p className="text-xs text-muted-foreground">{eligibleCount} eligible employee{eligibleCount !== 1 ? "s" : ""}</p>
+              <p className="text-sm font-semibold">{eligibleCount} eligible</p>
               <p className="text-xs text-muted-foreground">{eligibleCount} x PKR 5,000</p>
             </div>
           </div>

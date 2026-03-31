@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Check, X, Eye, Star, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, X, Eye, Star, ChevronLeft, ChevronRight, Calendar, Clock, CheckCircle, XCircle, Trash2, DollarSign } from "lucide-react";
 
 interface Submission {
   id: string;
@@ -125,147 +125,124 @@ export function ReviewBonusManager({
 
   function renderSubmissionCard(sub: Submission, showActions: boolean) {
     const isLoading = actionLoading === sub.id;
+    const statusColors: Record<string, string> = {
+      PENDING: "bg-amber-50/50 dark:bg-amber-950/15",
+      APPROVED: "bg-emerald-50/30 dark:bg-emerald-950/10",
+      REJECTED: "bg-rose-50/30 dark:bg-rose-950/10",
+      REMOVED: "bg-slate-50/50 dark:bg-slate-800/50",
+    };
+    const statusBadgeColors: Record<string, string> = {
+      PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+      APPROVED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+      REJECTED: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
+      REMOVED: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+    };
 
     return (
-      <Card key={sub.id} className="overflow-hidden">
-        <CardContent className="pt-4">
-          <div className="space-y-3">
-            {/* Header */}
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-medium text-sm">
-                  {sub.user.firstName} {sub.user.lastName}
-                  <span className="text-muted-foreground ml-2 text-xs">{sub.user.employeeId}</span>
-                </p>
-                <p className="text-sm text-muted-foreground">{sub.storeName}</p>
-                {sub.customerName && (
-                  <p className="text-xs text-muted-foreground">Customer: {sub.customerName}</p>
-                )}
+      <Card key={sub.id} className={`border-0 shadow-sm overflow-hidden hover:shadow-md transition-shadow ${showActions ? "ring-1 ring-amber-300 dark:ring-amber-700" : ""}`}>
+        <CardContent className="p-0">
+          {/* Header */}
+          <div className={`px-4 py-3 border-b ${statusColors[sub.status] || ""}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                  {sub.user.firstName[0]}{sub.user.lastName?.[0] || ""}
+                </div>
+                <div>
+                  <span className="text-sm font-bold">{sub.user.firstName} {sub.user.lastName}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-muted-foreground font-mono">{sub.user.employeeId}</span>
+                    <Badge className={`text-[8px] h-4 border-0 ${statusBadgeColors[sub.status] || ""}`}>{sub.status}</Badge>
+                  </div>
+                </div>
               </div>
-              <div className="text-right">
-                <Badge
-                  variant={
-                    sub.status === "APPROVED" ? "default" :
-                    sub.status === "REJECTED" ? "destructive" : "outline"
-                  }
-                >
-                  {sub.status}
-                </Badge>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {format(new Date(sub.createdAt), "MMM d, yyyy")}
-                </p>
+              <Button size="sm" variant="ghost" className="size-7 p-0 text-muted-foreground/40 hover:text-rose-600" onClick={async () => {
+                if (!confirm(`Remove this submission${sub.status === "APPROVED" ? " and reverse the incentive" : ""}?`)) return;
+                try {
+                  const res = await fetch(`/api/review-bonus/${sub.id}`, { method: "DELETE" });
+                  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
+                  toast.success("Removed"); router.refresh();
+                } catch (err: any) { toast.error(err.message); }
+              }} disabled={isLoading}>
+                <Trash2 className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Details */}
+          <div className="px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Store</span>
+              <span className="font-semibold">{sub.storeName}</span>
+            </div>
+            {sub.customerName && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Customer</span>
+                <span className="font-medium">{sub.customerName}</span>
               </div>
+            )}
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Submitted</span>
+              <span className="font-medium">{format(new Date(sub.createdAt), "MMM d, h:mm a")}</span>
             </div>
 
             {/* Rating Change */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 text-red-500">
-                <Star className="size-4 fill-current" />
-                <span className="font-medium">{sub.originalRating}</span>
+            <div className="flex items-center justify-between bg-muted/30 rounded-lg p-2.5">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <Star className="size-4 text-rose-500 fill-rose-500" />
+                  <span className="text-sm font-bold text-rose-600">{sub.originalRating}</span>
+                </div>
+                <span className="text-muted-foreground text-xs">→</span>
+                <div className="flex items-center gap-1">
+                  <Star className="size-4 text-emerald-500 fill-emerald-500" />
+                  <span className="text-sm font-bold text-emerald-600">{sub.newRating}</span>
+                </div>
               </div>
-              <span className="text-muted-foreground">-&gt;</span>
-              <div className="flex items-center gap-1 text-green-500">
-                <Star className="size-4 fill-current" />
-                <span className="font-medium">{sub.newRating}</span>
-              </div>
-              <span className="ml-auto font-bold text-green-600">Rs. {sub.amount.toLocaleString()}</span>
+              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0 text-xs gap-1">
+                <DollarSign className="size-3" />PKR {sub.amount.toLocaleString()}
+              </Badge>
             </div>
 
             {/* Screenshots */}
             <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                className="relative group rounded-lg overflow-hidden border cursor-pointer"
-                onClick={() => openImageDialog(sub.beforeScreenshot, "Before Screenshot")}
-              >
-                <img
-                  src={sub.beforeScreenshot}
-                  alt="Before"
-                  className="w-full h-24 object-cover"
-                />
+              <button type="button" className="relative group rounded-lg overflow-hidden border-2 border-rose-200 dark:border-rose-800 cursor-pointer" onClick={() => openImageDialog(sub.beforeScreenshot, "Before Screenshot")}>
+                <img src={sub.beforeScreenshot} alt="Before" className="w-full h-28 object-cover" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                   <Eye className="size-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <span className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1.5 py-0.5 rounded">
-                  Before
-                </span>
+                <span className="absolute bottom-1.5 left-1.5 text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-medium">Before</span>
               </button>
-              <button
-                type="button"
-                className="relative group rounded-lg overflow-hidden border cursor-pointer"
-                onClick={() => openImageDialog(sub.afterScreenshot, "After Screenshot")}
-              >
-                <img
-                  src={sub.afterScreenshot}
-                  alt="After"
-                  className="w-full h-24 object-cover"
-                />
+              <button type="button" className="relative group rounded-lg overflow-hidden border-2 border-emerald-200 dark:border-emerald-800 cursor-pointer" onClick={() => openImageDialog(sub.afterScreenshot, "After Screenshot")}>
+                <img src={sub.afterScreenshot} alt="After" className="w-full h-28 object-cover" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                   <Eye className="size-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <span className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1.5 py-0.5 rounded">
-                  After
-                </span>
+                <span className="absolute bottom-1.5 left-1.5 text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-medium">After</span>
               </button>
             </div>
 
-            {/* Rejection reason */}
             {sub.status === "REJECTED" && sub.rejectionReason && (
-              <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
-                <span className="font-medium">Reason:</span> {sub.rejectionReason}
+              <div className="text-xs bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 p-2.5 rounded-lg">
+                <span className="font-semibold text-rose-700 dark:text-rose-400">Rejection:</span> <span className="text-rose-600 dark:text-rose-400">{sub.rejectionReason}</span>
               </div>
             )}
-
-            {/* Approved by */}
             {sub.status === "APPROVED" && sub.approvedBy && (
-              <p className="text-xs text-muted-foreground">
-                Approved by {sub.approvedBy.firstName} {sub.approvedBy.lastName}
-              </p>
+              <p className="text-[10px] text-muted-foreground">Approved by {sub.approvedBy.firstName} {sub.approvedBy.lastName}</p>
             )}
-
-            {/* Actions */}
-            {showActions && (
-              <div className="flex gap-2 pt-1">
-                <Button
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleApprove(sub.id)}
-                  disabled={isLoading}
-                >
-                  <Check className="size-3.5 mr-1" />
-                  Approve
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => openRejectDialog(sub.id)}
-                  disabled={isLoading}
-                >
-                  <X className="size-3.5 mr-1" />
-                  Reject
-                </Button>
-              </div>
-            )}
-            {/* Remove button — always visible for CEO/Manager */}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-red-400 hover:text-red-600 text-xs mt-1"
-              onClick={async () => {
-                if (!confirm(`Remove this submission${sub.status === "APPROVED" ? " and reverse the incentive" : ""}? This cannot be undone.`)) return;
-                try {
-                  const res = await fetch(`/api/review-bonus/${sub.id}`, { method: "DELETE" });
-                  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
-                  toast.success("Submission removed" + (sub.status === "APPROVED" ? " & incentive reversed" : ""));
-                  router.refresh();
-                } catch (err: any) { toast.error(err.message); }
-              }}
-              disabled={isLoading}
-            >
-              Remove
-            </Button>
           </div>
+
+          {/* Actions */}
+          {showActions && (
+            <div className="px-4 py-3 border-t bg-muted/10 flex gap-2">
+              <Button size="sm" className="flex-1 h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg" onClick={() => handleApprove(sub.id)} disabled={isLoading}>
+                <CheckCircle className="size-3.5" /> Approve
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1 h-9 gap-1.5 text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-800 dark:hover:bg-rose-950/30 rounded-lg" onClick={() => openRejectDialog(sub.id)} disabled={isLoading}>
+                <XCircle className="size-3.5" /> Reject
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -282,16 +259,32 @@ export function ReviewBonusManager({
   const monthName = `${MONTHS[currentMonth - 1]} ${currentYear}`;
 
   return (
-    <div className="space-y-4">
-      {/* Month Navigation */}
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-8">
-          <ChevronLeft className="size-4" />
-        </Button>
-        <h2 className="text-lg font-bold min-w-[180px] text-center">{monthName}</h2>
-        <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-8">
-          <ChevronRight className="size-4" />
-        </Button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-9 rounded-full">
+            <ChevronLeft className="size-4" />
+          </Button>
+          <div className="flex items-center gap-2 min-w-[200px] justify-center">
+            <Calendar className="size-5 text-muted-foreground" />
+            <h2 className="text-xl font-bold">{monthName}</h2>
+          </div>
+          <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-9 rounded-full">
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          {pending.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-full">
+              <Clock className="size-3 text-amber-600" />
+              <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">{pending.length} pending</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-full">
+            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">PKR {(approved.reduce((s, a) => s + a.amount, 0)).toLocaleString()} paid</span>
+          </div>
+        </div>
       </div>
 
       <Tabs defaultValue="pending">
@@ -312,8 +305,8 @@ export function ReviewBonusManager({
 
         <TabsContent value="pending">
           {pending.length === 0 ? (
-            <Card>
-              <CardContent className="pt-4 text-center text-muted-foreground py-8">
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-4 text-center text-muted-foreground py-12">
                 No pending submissions.
               </CardContent>
             </Card>
@@ -326,8 +319,8 @@ export function ReviewBonusManager({
 
         <TabsContent value="approved">
           {approved.length === 0 ? (
-            <Card>
-              <CardContent className="pt-4 text-center text-muted-foreground py-8">
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-4 text-center text-muted-foreground py-12">
                 No approved submissions.
               </CardContent>
             </Card>
@@ -340,8 +333,8 @@ export function ReviewBonusManager({
 
         <TabsContent value="rejected">
           {rejected.length === 0 ? (
-            <Card>
-              <CardContent className="pt-4 text-center text-muted-foreground py-8">
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-4 text-center text-muted-foreground py-12">
                 No rejected submissions.
               </CardContent>
             </Card>
@@ -354,8 +347,8 @@ export function ReviewBonusManager({
 
         <TabsContent value="removed">
           {removed.length === 0 ? (
-            <Card>
-              <CardContent className="pt-4 text-center text-muted-foreground py-8">
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-4 text-center text-muted-foreground py-12">
                 No removed submissions.
               </CardContent>
             </Card>

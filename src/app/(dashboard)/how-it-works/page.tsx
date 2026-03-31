@@ -5,7 +5,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Clock, Calendar, Wallet, AlertTriangle, Coffee, ShieldCheck,
   Smartphone, Ban, CreditCard, Timer, FileText, CalendarDays,
-  Target, Star,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -155,31 +154,6 @@ export default async function HowItWorksPage() {
         </div>
         <Rule>Estimated salary updates <strong>live</strong> on your dashboard</Rule>
         <Rule>Covered absences (paid leave) have <strong>zero deduction</strong></Rule>
-      </PolicyCard>
-
-      <PolicyCard icon={Target} title="E-Commerce Bonus (Etsy)" color="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400">
-        <Rule><strong>7 criteria must ALL pass</strong> to be eligible for bonus</Rule>
-        <Rule>Minimum monthly profit: <strong>$1,000 USD</strong></Rule>
-        <Rule>Formula: <strong>floor(profit / 500) x PKR 5,000</strong></Rule>
-        <div className="rounded-lg border bg-muted/30 p-3 my-1">
-          <div className="grid grid-cols-2 gap-1 text-xs">
-            <span>$1,000 profit</span><span className="text-right font-bold text-emerald-600">PKR 10,000</span>
-            <span>$1,500 profit</span><span className="text-right font-bold text-emerald-600">PKR 15,000</span>
-            <span>$2,000 profit</span><span className="text-right font-bold text-emerald-600">PKR 20,000</span>
-            <span>$5,000 profit</span><span className="text-right font-bold text-emerald-600">PKR 50,000</span>
-          </div>
-        </div>
-        <Rule>If ANY criteria fails: <strong>ALL bonuses are zero</strong> (profit + review)</Rule>
-        <Rule>Team Lead bonus: <strong>PKR 5,000 per eligible employee</strong></Rule>
-        <Rule><strong>Probation employees</strong> are not eligible for any bonuses</Rule>
-      </PolicyCard>
-
-      <PolicyCard icon={Star} title="Review Bonus" color="bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400">
-        <Rule><strong>PKR 500</strong> per approved bad review fix</Rule>
-        <Rule>Submit: store name, before/after screenshots, original/new rating</Rule>
-        <Rule>CEO or Manager reviews and approves/rejects</Rule>
-        <Rule><strong>2-minute edit/delete window</strong> after submission</Rule>
-        <Rule>Only awarded if main bonus eligibility is met</Rule>
       </PolicyCard>
 
       <PolicyCard icon={CreditCard} title="Payroll" color="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400">

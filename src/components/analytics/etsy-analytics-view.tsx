@@ -176,58 +176,40 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
 
   return (
     <div className="space-y-6">
-      {/* Header: Month/Year Selector + Controls */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={String(month)} onValueChange={(v: string | null) => v && setMonth(parseInt(v))}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MONTHS.map((m, i) => (
-              <SelectItem key={i} value={String(i + 1)}>
-                {m}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={String(year)} onValueChange={(v: string | null) => v && setYear(parseInt(v))}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {yearOptions.map((y) => (
-              <SelectItem key={y} value={String(y)}>
-                {y}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <div className="flex items-center gap-2 ml-auto">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Calendar className="size-5 text-muted-foreground" />
+          <Select value={String(month)} onValueChange={(v: string | null) => v && setMonth(parseInt(v))}>
+            <SelectTrigger className="w-[130px] h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {MONTHS.map((m, i) => (
+                <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={String(year)} onValueChange={(v: string | null) => v && setYear(parseInt(v))}>
+            <SelectTrigger className="w-[90px] h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {yearOptions.map((y) => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
           {lastFetched && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground/60">
               Updated {lastFetched.toLocaleTimeString()}
             </span>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowValues(!showValues)}
-            className="gap-1"
-          >
+          <Button variant="outline" size="sm" onClick={() => setShowValues(!showValues)} className="gap-1.5 rounded-lg h-9">
             {showValues ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-            {showValues ? "Hide" : "Show"}
+            {showValues ? "Hide Values" : "Show Values"}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchData(true)}
-            disabled={loading}
-            className="gap-1"
-          >
+          <Button variant="outline" size="sm" onClick={() => fetchData(true)} disabled={loading} className="gap-1.5 rounded-lg h-9">
             <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-            {loading ? "Fetching..." : "Refresh"}
+            {loading ? "Loading..." : "Refresh Data"}
           </Button>
         </div>
       </div>
@@ -295,18 +277,23 @@ function MetricCard({
     ? "bg-red-500"
     : "bg-slate-400 dark:bg-slate-500";
 
+  const gradients: Record<string, string> = {
+    green: "from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800",
+    red: "from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-800",
+    default: "from-slate-50 to-white dark:from-slate-800 dark:to-slate-800",
+  };
+
   return (
-    <Card className="relative overflow-hidden">
-      <div className={`absolute top-0 left-0 right-0 h-0.5 ${accent}`} />
-      <CardContent className="pt-4 pb-3 px-4">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+    <Card className={`border-0 shadow-sm overflow-hidden bg-gradient-to-br ${gradients[accentColor || "default"]}`}>
+      <CardContent className="py-3.5 px-4">
+        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           {label}
         </p>
-        <p className="mt-1 text-xl font-bold text-foreground tabular-nums">
+        <p className="mt-1 text-2xl font-bold tabular-nums">
           {show || noMask ? value : "****"}
         </p>
         {subtitle && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</p>
         )}
       </CardContent>
     </Card>
@@ -410,14 +397,17 @@ function EmployeeTable({ employees, show }: { employees: EmployeeData[]; show: b
   );
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Users className="size-4" />
-          Employee Performance
-        </CardTitle>
+    <Card className="border-0 shadow-sm overflow-hidden">
+      <CardHeader className="pb-2 bg-emerald-50/40 dark:bg-emerald-950/10 border-b">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Users className="size-4 text-emerald-600" />
+            Employee Performance
+          </CardTitle>
+          <span className="text-[10px] text-muted-foreground">{employees.length} employees</span>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -532,9 +522,9 @@ function DailySalesChart({
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Calendar className="size-4" />
+      <CardHeader className="pb-3 border-b">
+        <CardTitle className="text-sm font-bold flex items-center gap-2">
+          <Calendar className="size-4 text-slate-600" />
           Daily Sales — {MONTHS[month - 1]} {year}
         </CardTitle>
       </CardHeader>
@@ -624,14 +614,17 @@ function ShopPerformance({ shops, show }: { shops: ShopData[]; show: boolean }) 
   const sorted = [...shops].sort((a, b) => b.profit - a.profit);
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Store className="size-4" />
-          Shop Performance
-        </CardTitle>
+    <Card className="border-0 shadow-sm overflow-hidden">
+      <CardHeader className="pb-2 bg-blue-50/40 dark:bg-blue-950/10 border-b">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Store className="size-4 text-blue-600" />
+            Shop Performance
+          </CardTitle>
+          <span className="text-[10px] text-muted-foreground">{sorted.length} shops</span>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -681,54 +674,48 @@ function Highlights({ stats, show }: { stats: QuickStatsData; show: boolean }) {
 
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-      {/* Best Employee */}
-      <Card className="relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-amber-400" />
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Trophy className="size-4 text-muted-foreground" />
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Best Employee
-            </p>
+      <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
+        <CardContent className="py-4 px-4">
+          <div className="flex items-center gap-2.5">
+            <div className="size-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <Trophy className="size-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Top Performer</p>
+              <p className="text-sm font-bold">{stats.bestEmployee || "N/A"}</p>
+              <p className="text-[10px] text-muted-foreground">Profit: {m(usd(stats.bestEmployeeProfit))}</p>
+            </div>
           </div>
-          <p className="text-base font-bold text-foreground">{stats.bestEmployee || "N/A"}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Profit: {m(usd(stats.bestEmployeeProfit))}
-          </p>
         </CardContent>
       </Card>
 
-      {/* Best Shop */}
-      <Card className="relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-amber-400" />
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Award className="size-4 text-muted-foreground" />
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Best Shop
-            </p>
+      <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
+        <CardContent className="py-4 px-4">
+          <div className="flex items-center gap-2.5">
+            <div className="size-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+              <Award className="size-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Best Shop</p>
+              <p className="text-sm font-bold">{stats.bestShop || "N/A"}</p>
+              <p className="text-[10px] text-muted-foreground">Profit: {m(usd(stats.bestShopProfit))}</p>
+            </div>
           </div>
-          <p className="text-base font-bold text-foreground">{stats.bestShop || "N/A"}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Profit: {m(usd(stats.bestShopProfit))}
-          </p>
         </CardContent>
       </Card>
 
-      {/* Highest Order */}
-      <Card className="relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-amber-400" />
-        <CardContent className="pt-4 pb-3 px-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Star className="size-4 text-muted-foreground" />
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Highest Order
-            </p>
+      <Card className="border-0 shadow-sm bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/30 dark:to-slate-800">
+        <CardContent className="py-4 px-4">
+          <div className="flex items-center gap-2.5">
+            <div className="size-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
+              <Star className="size-5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Highest Order</p>
+              <p className="text-sm font-bold">{m(usd(stats.highestOrder))}</p>
+              <p className="text-[10px] text-muted-foreground">{stats.highestOrderShop || "N/A"}</p>
+            </div>
           </div>
-          <p className="text-base font-bold text-foreground">{m(usd(stats.highestOrder))}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {stats.highestOrderShop || "N/A"}
-          </p>
         </CardContent>
       </Card>
     </div>
