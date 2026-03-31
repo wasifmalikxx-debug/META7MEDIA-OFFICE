@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight, Upload, Image as ImageIcon } from "lucide-react";
+import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight, Upload, Image as ImageIcon, Calendar, Users, AlertTriangle, Gift } from "lucide-react";
 import { sortByNestedEmployeeId } from "@/lib/utils/sort-employees";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -123,10 +123,15 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
     const deptTotal = deptRecords.reduce((s: number, r: any) => s + r.netSalary, 0);
     return (
       <Card key={deptName} className="overflow-hidden border-0 shadow-sm">
-        <CardHeader className="pb-2 bg-muted/30 border-b">
+        <CardHeader className={`pb-2 border-b ${deptName === "Etsy" ? "bg-emerald-50/40 dark:bg-emerald-950/10" : deptName === "Facebook" ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-muted/30"}`}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-bold">{deptName} Team</CardTitle>
-            <Badge variant="outline" className="text-[10px] font-normal">{deptRecords.length} employees</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[9px] h-5">{deptRecords.length} employees</Badge>
+              <Badge className="text-[9px] h-5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
+                PKR {deptTotal.toLocaleString()}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -282,34 +287,75 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
     );
   }
 
+  const paidCount = records.filter((r: any) => r.status === "PAID").length;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-8">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-9 rounded-full">
             <ChevronLeft className="size-4" />
           </Button>
-          <h2 className="text-lg font-bold min-w-[180px] text-center">{monthName}</h2>
-          <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-8">
+          <div className="flex items-center gap-2 min-w-[200px] justify-center">
+            <Calendar className="size-5 text-muted-foreground" />
+            <h2 className="text-xl font-bold">{monthName}</h2>
+          </div>
+          <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-9 rounded-full">
             <ChevronRight className="size-4" />
           </Button>
         </div>
         {isAdmin && (
-          <Button onClick={handleGenerate} disabled={generating} size="sm" className="gap-2">
+          <Button onClick={handleGenerate} disabled={generating} size="sm" className="gap-2 rounded-lg">
             <Calculator className="size-4" />
             {generating ? "Generating..." : "Generate Payroll"}
           </Button>
         )}
       </div>
 
-      {/* Summary Strip — CEO only sees fines/bonuses breakdown */}
+      {/* KPI Cards */}
       {records.length > 0 && (
-        <div className="flex gap-6 text-sm bg-muted/30 rounded-lg px-4 py-2.5">
-          <div>Total Payable: <span className="font-bold">PKR {totalNet.toLocaleString()}</span></div>
-          {isAdmin && <div className="text-red-600">Fines: PKR {totalFines.toLocaleString()}</div>}
-          {isAdmin && <div className="text-green-600">Bonuses: PKR {totalIncentives.toLocaleString()}</div>}
-          {isAdmin && <div className="ml-auto text-muted-foreground">{records.length} employees</div>}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Wallet className="size-3.5 text-blue-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Payable</p>
+              </div>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">PKR {totalNet.toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          {isAdmin && (
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-800">
+              <CardContent className="py-3.5 px-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="size-3.5 text-rose-500" />
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Fines</p>
+                </div>
+                <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">PKR {totalFines.toLocaleString()}</p>
+              </CardContent>
+            </Card>
+          )}
+          {isAdmin && (
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
+              <CardContent className="py-3.5 px-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Gift className="size-3.5 text-emerald-500" />
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Bonuses</p>
+                </div>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">PKR {totalIncentives.toLocaleString()}</p>
+              </CardContent>
+            </Card>
+          )}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="size-3.5 text-slate-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{isAdmin ? "Paid" : "Status"}</p>
+              </div>
+              <p className="text-2xl font-bold">{isAdmin ? `${paidCount}/${records.length}` : (records[0]?.status === "PAID" ? "Paid" : "Pending")}</p>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -317,9 +363,15 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
       {deptOrder.map((dept) => renderTable(grouped[dept], dept))}
 
       {records.length === 0 && (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No payroll records for {monthName}.{isAdmin && " Click 'Generate Payroll' to calculate salaries."}
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-16 text-center">
+            <div className="size-14 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
+              <Wallet className="size-7 text-muted-foreground/40" />
+            </div>
+            <p className="text-muted-foreground font-semibold">No Payroll Records</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              {isAdmin ? "Click 'Generate Payroll' to calculate salaries for " + monthName : "Payroll for " + monthName + " has not been generated yet"}
+            </p>
           </CardContent>
         </Card>
       )}

@@ -167,154 +167,117 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
           />
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger render={<Button size="sm" />}>
-              <Plus className="size-4 mr-1" /> Add Employee
+          <DialogTrigger render={<Button size="sm" className="gap-1.5 rounded-lg" />}>
+              <Plus className="size-4" /> Add Employee
           </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add New Employee</DialogTitle>
+              <DialogTitle className="text-lg">Add New Employee</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleAdd} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Employee ID</Label>
-                  <Input
-                    placeholder="M7M-001"
-                    value={form.employeeId}
-                    onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
-                    required
-                  />
+            <form onSubmit={handleAdd} className="space-y-5">
+              {/* Login Credentials */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Login Credentials</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Employee ID</Label>
+                    <Input placeholder="EM-11 or SMM-8" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} required className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Email</Label>
+                    <Input type="email" placeholder="name@meta7.media" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required className="h-9" />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    required
-                  />
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Password</Label>
+                  <Input type="password" placeholder="Min 6 characters" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={6} className="h-9" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>First Name</Label>
-                  <Input
-                    value={form.firstName}
-                    onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                    required
-                  />
+
+              <hr className="border-muted" />
+
+              {/* Personal Info */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Personal Information</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">First Name</Label>
+                    <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Last Name</Label>
+                    <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required className="h-9" />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Last Name</Label>
-                  <Input
-                    value={form.lastName}
-                    onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Password</Label>
-                  <Input
-                    type="password"
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    required
-                    minLength={6}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  />
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Phone <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="03XX-XXXXXXX" className="h-9" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Select
-                    value={form.departmentId}
-                    onValueChange={(v) => v && setForm({ ...form, departmentId: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id}>
-                          {dept.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+
+              <hr className="border-muted" />
+
+              {/* Employment */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Employment Details</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Department</Label>
+                    <Select value={form.departmentId} onValueChange={(v) => v && setForm({ ...form, departmentId: v })}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Select..." /></SelectTrigger>
+                      <SelectContent>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Status</Label>
+                    <Select value={form.status} onValueChange={(v) => v && setForm({ ...form, status: v })}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="HIRED">Hired</SelectItem>
+                        <SelectItem value="PROBATION">Probation</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Joining Date</Label>
+                    <Input type="date" value={form.joiningDate} onChange={(e) => setForm({ ...form, joiningDate: e.target.value })} required className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Monthly Salary (PKR)</Label>
+                    <Input type="number" min="0" value={form.monthlySalary} onChange={(e) => setForm({ ...form, monthlySalary: parseFloat(e.target.value) || 0 })} required className="h-9" />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Joining Date</Label>
-                  <Input
-                    type="date"
-                    value={form.joiningDate}
-                    onChange={(e) => setForm({ ...form, joiningDate: e.target.value })}
-                    required
-                  />
+
+              <hr className="border-muted" />
+
+              {/* Bank Details */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Bank Account <span className="font-normal text-muted-foreground">(optional)</span></p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Bank Name</Label>
+                  <Input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} placeholder="e.g. Meezan Bank, JazzCash, Easypaisa" className="h-9" />
                 </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={form.status}
-                    onValueChange={(v) => v && setForm({ ...form, status: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="HIRED">Hired</SelectItem>
-                      <SelectItem value="PROBATION">Probation</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Account Number</Label>
+                    <Input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} placeholder="IBAN or account number" className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Account Title</Label>
+                    <Input value={form.accountTitle} onChange={(e) => setForm({ ...form, accountTitle: e.target.value })} placeholder="Account holder name" className="h-9" />
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Monthly Salary (PKR)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={form.monthlySalary}
-                  onChange={(e) =>
-                    setForm({ ...form, monthlySalary: parseFloat(e.target.value) || 0 })
-                  }
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Bank Name</Label>
-                  <Input
-                    value={form.bankName}
-                    onChange={(e) => setForm({ ...form, bankName: e.target.value })}
-                    placeholder="e.g. Meezan Bank"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Account Number</Label>
-                  <Input
-                    value={form.accountNumber}
-                    onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Account Title</Label>
-                  <Input
-                    value={form.accountTitle}
-                    onChange={(e) => setForm({ ...form, accountTitle: e.target.value })}
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+
+              <Button type="submit" className="w-full h-10 gap-2 rounded-lg" disabled={loading}>
+                <Plus className="size-4" />
                 {loading ? "Adding..." : "Add Employee"}
               </Button>
             </form>
