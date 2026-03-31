@@ -57,8 +57,7 @@ export async function POST(request: NextRequest) {
       if (!body.storeName?.trim()) return error("Please enter store name");
       if (!body.listingLinks?.trim()) return error("Please enter listing links");
     } else if (isFB) {
-      if (!body.postsCount && body.postsCount !== 0) return error("Please enter posts count");
-      if (!body.pageNames?.trim()) return error("Please enter page names");
+      if (!body.notes?.trim()) return error("Please enter your daily work summary");
     }
 
     const report = await prisma.dailyReport.upsert({
