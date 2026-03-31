@@ -74,15 +74,13 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
             {links.length > 0 && (
               <div className="flex items-start gap-1.5 text-xs">
                 <Link2 className="size-3 text-muted-foreground shrink-0 mt-0.5" />
-                <div className="flex flex-wrap gap-1.5">
-                  {links.slice(0, 3).map((link: string, i: number) => (
-                    <a key={i} href={link.trim()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline bg-blue-50 dark:bg-blue-950/30 px-2 py-0.5 rounded text-[10px]">
-                      Link {i + 1} <ExternalLink className="size-2" />
+                <div className="space-y-0.5 max-h-[80px] overflow-y-auto">
+                  {links.map((link: string, i: number) => (
+                    <a key={i} href={link.trim()} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[450px]">
+                      {link.trim()}
+                      <ExternalLink className="size-2.5 shrink-0" />
                     </a>
                   ))}
-                  {links.length > 3 && (
-                    <span className="text-[10px] text-muted-foreground">+{links.length - 3} more</span>
-                  )}
                 </div>
               </div>
             )}
