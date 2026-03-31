@@ -44,9 +44,9 @@ async function handleAutoCheckout() {
     const [startH, startM] = (settings?.workStartTime || "11:00").split(":").map(Number);
     const fullDayMinutes = (endH * 60 + endM) - (startH * 60 + startM);
 
-    // Force checkout time = office end time (PKT-shifted to match nowPKT() convention)
-    // All timestamps in DB are PKT-shifted, so checkout must also be PKT-shifted
-    const checkoutTime = new Date(today.getTime() + (endH * 60 + endM) * 60_000);
+    // Use actual current PKT time as checkout timestamp (not office end time)
+    // This shows the real time the system checked them out (e.g. 7:30 PM)
+    const checkoutTime = new Date(Date.now() + 5 * 60 * 60_000); // nowPKT()
 
     const results: any[] = [];
 
