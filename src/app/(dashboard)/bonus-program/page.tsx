@@ -6,7 +6,7 @@ import { BonusProgramView } from "@/components/bonus-program/bonus-program-view"
 
 export const dynamic = "force-dynamic";
 
-export default async function BonusProgramPage() {
+export default async function BonusProgramPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
@@ -15,9 +15,10 @@ export default async function BonusProgramPage() {
     redirect("/dashboard");
   }
 
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
+  const params = await searchParams;
+  const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;
+  const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
 
   // Find the Etsy department
   const etsyDept = await prisma.department.findUnique({
