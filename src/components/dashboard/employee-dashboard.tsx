@@ -102,6 +102,7 @@ export function EmployeeDashboard({
   });
   const isEtsy = employeeId.startsWith("EM");
   const isFB = employeeId.startsWith("SMM");
+  const isManager = employeeId === "EM-4"; // Izaan — managerial report
 
   const router = useRouter();
 
@@ -567,7 +568,29 @@ export function EmployeeDashboard({
                     </p>
                   </div>
                   <div className="space-y-4">
-                    {isEtsy && (
+                    {isEtsy && isManager && (
+                      <div className="space-y-4">
+                        <div className="rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                          <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Team Lead / Manager Report</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Team Members Managed Today</Label>
+                          <Input type="number" min="0" value={reportForm.listingsCount} onChange={(e) => setReportForm({ ...reportForm, listingsCount: parseInt(e.target.value) || 0 })} placeholder="0" />
+                          <p className="text-[10px] text-muted-foreground">How many team members did you oversee today?</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Stores Supervised</Label>
+                          <Input value={reportForm.storeName} onChange={(e) => setReportForm({ ...reportForm, storeName: e.target.value })} placeholder="e.g. All Etsy stores, Store A + Store B..." />
+                          <p className="text-[10px] text-muted-foreground">Which stores did you supervise or review?</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">What did you do today?</Label>
+                          <Textarea value={reportForm.listingLinks} onChange={(e) => setReportForm({ ...reportForm, listingLinks: e.target.value })} placeholder={"Reviewed team listings quality\nHandled customer escalations\nTrained new team member\nChecked order processing\nUpdated store policies..."} rows={5} className="text-xs" />
+                          <p className="text-[10px] text-muted-foreground">Describe your managerial tasks, reviews, escalations, and decisions</p>
+                        </div>
+                      </div>
+                    )}
+                    {isEtsy && !isManager && (
                       <div className="space-y-4">
                         <div className="space-y-1.5">
                           <Label className="text-xs font-semibold">Total Listings Completed</Label>
@@ -589,20 +612,21 @@ export function EmployeeDashboard({
                     {isFB && (
                       <div className="space-y-4">
                         <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Total Posts Published</Label>
+                          <Label className="text-xs font-semibold">Total Posts / Reels Published</Label>
                           <Input type="number" min="0" value={reportForm.postsCount} onChange={(e) => setReportForm({ ...reportForm, postsCount: parseInt(e.target.value) || 0 })} placeholder="0" />
-                          <p className="text-[10px] text-muted-foreground">Number of posts, reels, or stories you published today</p>
+                          <p className="text-[10px] text-muted-foreground">Total posts, reels, stories, or content pieces published today</p>
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Pages Worked On</Label>
-                          <Textarea value={reportForm.pageNames} onChange={(e) => setReportForm({ ...reportForm, pageNames: e.target.value })} placeholder={"META7 Media Official\nMETA7 Digital Marketing\n..."} rows={3} className="text-xs" />
-                          <p className="text-[10px] text-muted-foreground">List all Facebook/Instagram pages you managed today</p>
+                          <Label className="text-xs font-semibold">Pages / Accounts Managed</Label>
+                          <Textarea value={reportForm.pageNames} onChange={(e) => setReportForm({ ...reportForm, pageNames: e.target.value })} placeholder={"Page 1 Name\nPage 2 Name\n..."} rows={2} className="text-xs" />
+                          <p className="text-[10px] text-muted-foreground">List all Facebook / Instagram pages you worked on</p>
                         </div>
                       </div>
                     )}
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Additional Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                      <Textarea value={reportForm.notes} onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })} placeholder="Any challenges, achievements, or things to flag..." rows={2} className="text-xs" />
+                      <Label className="text-xs font-semibold">{isFB ? "What did you do today?" : "Additional Notes"} {!isFB && <span className="font-normal text-muted-foreground">(optional)</span>}</Label>
+                      <Textarea value={reportForm.notes} onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })} placeholder={isFB ? "Describe your work today in detail \u2014 tasks completed, content created, campaigns managed, client interactions, designs, scheduling..." : "Any challenges, achievements, or things to flag..."} rows={isFB ? 4 : 2} className="text-xs" />
+                      {isFB && <p className="text-[10px] text-muted-foreground">Provide a clear summary of all tasks and activities you completed today</p>}
                     </div>
                     <Button onClick={handleSubmitReport} disabled={loading} className="w-full gap-2" size="lg">
                       <CheckCircle className="size-4" />
