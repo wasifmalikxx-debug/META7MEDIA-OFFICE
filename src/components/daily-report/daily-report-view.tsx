@@ -137,7 +137,13 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
               </div>
             )}
             {r.notes && (
-              <p className="text-[10px] text-muted-foreground italic mt-1">{r.notes}</p>
+              <div className="flex items-start gap-1.5 text-xs mt-1">
+                <ClipboardList className="size-3 text-blue-500 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-muted-foreground text-[10px]">Daily Summary:</span>
+                  <p className="font-medium text-[11px] whitespace-pre-line mt-0.5">{r.notes}</p>
+                </div>
+              </div>
             )}
           </div>
         </div>
