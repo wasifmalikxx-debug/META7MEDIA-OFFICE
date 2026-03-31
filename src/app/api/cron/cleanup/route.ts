@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { nowPKT } from "@/lib/pkt";
 
 /**
  * Monthly cleanup cron — runs on 1st of every month
@@ -24,11 +25,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const now = new Date();
+    const now = nowPKT();
     // Keep current month + 2 previous months = 3 months total
-    const cutoffDate = new Date(now.getFullYear(), now.getMonth() - 2, 1); // 1st of 3 months ago
-    const cutoffMonth = cutoffDate.getMonth() + 1;
-    const cutoffYear = cutoffDate.getFullYear();
+    const cutoffDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
+    const cutoffMonth = cutoffDate.getUTCMonth() + 1;
+    const cutoffYear = cutoffDate.getUTCFullYear();
 
     const results: Record<string, number> = {};
 
