@@ -254,7 +254,7 @@ export default async function DashboardPage() {
     // Monthly attendance — fetched in SAME batch instead of sequentially
     prisma.attendance.findMany({
       where: { userId, date: { gte: startOfMonth, lte: endOfMonth } },
-      select: { status: true, workedMinutes: true },
+      select: { date: true, status: true, workedMinutes: true },
     }),
     prisma.salaryStructure.findUnique({ where: { userId } }),
     prisma.user.findUnique({
@@ -282,9 +282,29 @@ export default async function DashboardPage() {
   ).length;
   const monthAbsent = monthAttendances.filter((a) => a.status === "ABSENT").length;
   const monthLate = monthAttendances.filter((a) => a.status === "LATE").length;
-  const totalWorkedHours = Math.round(
-    monthAttendances.reduce((sum, a) => sum + (a.workedMinutes || 0), 0) / 60
-  );
+  const monthHalfDay = monthAttendances.filter((a) => a.status === "HALF_DAY").length;
+  const totalWorkedMin = monthAttendances.reduce((sum, a) => sum + (a.workedMinutes || 0), 0);
+  const totalWorkedHours = Math.round(totalWorkedMin / 60);
+
+  // Working days so far (exclude weekends/holidays)
+  const pktToday = nowPKT();
+  const todayDate = pktToday.getUTCDate();
+  const wkDays = (empOfficeSettings?.weekendDays || "0").split(",").map((d: string) => parseInt(d.trim()));
+  let workingDaysSoFar = 0;
+  for (let d = 1; d <= todayDate; d++) {
+    const dayOfWeek = new Date(year, month - 1, d).getDay();
+    if (!wkDays.includes(dayOfWeek)) workingDaysSoFar++;
+  }
+  const attendanceRate = workingDaysSoFar > 0 ? Math.round((monthPresent / workingDaysSoFar) * 100) : 100;
+
+  // This week attendance (Sat-Fri or Mon-Sat)
+  const weekAttendances = monthAttendances
+    .filter((a) => {
+      const attDate = new Date(a.date);
+      const diffDays = Math.floor((today.getTime() - attDate.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays < 7;
+    })
+    .map((a) => ({ date: a.date, status: a.status }));
 
   return (
     <EmployeeDashboard
@@ -311,6 +331,10 @@ export default async function DashboardPage() {
       dayOffLabel={empDayOffLabel}
       hasSubmittedReport={!!todayReport}
       pendingLeaves={leaveBudgetInfo.available}
+      attendanceRate={attendanceRate}
+      monthHalfDay={monthHalfDay}
+      totalWorkedMin={totalWorkedMin}
+      weekAttendances={JSON.parse(JSON.stringify(weekAttendances))}
     />
   );
 }

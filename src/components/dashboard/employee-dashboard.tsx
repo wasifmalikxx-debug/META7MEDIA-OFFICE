@@ -59,6 +59,10 @@ interface EmployeeDashboardProps {
   dayOffLabel?: string | null;
   hasSubmittedReport?: boolean;
   pendingLeaves?: number;
+  attendanceRate?: number;
+  monthHalfDay?: number;
+  totalWorkedMin?: number;
+  weekAttendances?: { date: string; status: string }[];
 }
 
 export function EmployeeDashboard({
@@ -85,6 +89,10 @@ export function EmployeeDashboard({
   dayOffLabel,
   hasSubmittedReport: initialHasReport,
   pendingLeaves = 1,
+  attendanceRate = 100,
+  monthHalfDay = 0,
+  totalWorkedMin = 0,
+  weekAttendances = [],
 }: EmployeeDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [attendance, setAttendance] = useState(todayAttendance);
@@ -690,6 +698,84 @@ export function EmployeeDashboard({
             icon={Clock}
           />
         </div>
+
+        {/* Attendance Rate + This Week */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Attendance Rate */}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Attendance Rate</span>
+                <span className={`text-sm font-bold ${attendanceRate >= 90 ? "text-emerald-600" : attendanceRate >= 70 ? "text-amber-600" : "text-rose-600"}`}>
+                  {attendanceRate}%
+                </span>
+              </div>
+              <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${attendanceRate >= 90 ? "bg-emerald-500" : attendanceRate >= 70 ? "bg-amber-500" : "bg-rose-500"}`}
+                  style={{ width: `${attendanceRate}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-2 text-[10px] text-muted-foreground">
+                <span>{monthPresent} present</span>
+                <span>{monthAbsent} absent</span>
+                <span>{monthHalfDay} half</span>
+                <span>{monthLate} late</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* This Week */}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">This Week</p>
+              <div className="flex gap-1.5">
+                {(() => {
+                  const pktNowW = new Date(Date.now() + 5 * 60 * 60_000);
+                  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+                  const todayDow = pktNowW.getUTCDay();
+                  // Get Monday of this week
+                  const mondayOffset = todayDow === 0 ? -6 : 1 - todayDow;
+                  return days.map((name, i) => {
+                    const dayDate = new Date(pktNowW);
+                    dayDate.setUTCDate(pktNowW.getUTCDate() + mondayOffset + i);
+                    const dateStr = dayDate.toISOString().split("T")[0];
+                    const att = weekAttendances.find((a: any) => {
+                      const aDate = typeof a.date === "string" ? a.date.split("T")[0] : new Date(a.date).toISOString().split("T")[0];
+                      return aDate === dateStr;
+                    });
+                    const isFuture = dateStr > pktNowW.toISOString().split("T")[0];
+                    const isToday = dateStr === pktNowW.toISOString().split("T")[0];
+                    const statusColors: Record<string, string> = {
+                      PRESENT: "bg-emerald-500 text-white",
+                      LATE: "bg-amber-500 text-white",
+                      HALF_DAY: "bg-orange-500 text-white",
+                      ABSENT: "bg-rose-500 text-white",
+                      ON_LEAVE: "bg-violet-500 text-white",
+                    };
+                    const statusLabels: Record<string, string> = {
+                      PRESENT: "P", LATE: "L", HALF_DAY: "H", ABSENT: "A", ON_LEAVE: "LV",
+                    };
+                    return (
+                      <div key={name} className={`flex-1 flex flex-col items-center gap-1 rounded-lg py-2 ${isToday ? "ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-slate-900" : ""}`}>
+                        <span className={`text-[10px] font-medium ${isToday ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>{name}</span>
+                        {att ? (
+                          <div className={`size-7 rounded-md flex items-center justify-center text-[9px] font-bold ${statusColors[att.status] || "bg-slate-200 text-slate-600"}`}>
+                            {statusLabels[att.status] || "?"}
+                          </div>
+                        ) : isFuture ? (
+                          <div className="size-7 rounded-md flex items-center justify-center text-[9px] text-muted-foreground/30">·</div>
+                        ) : (
+                          <div className="size-7 rounded-md flex items-center justify-center text-[9px] bg-muted/30 text-muted-foreground/50">-</div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -759,6 +845,31 @@ export function EmployeeDashboard({
             </CardContent>
           </Card>
         </div>
+
+        {/* Salary Breakdown Bar */}
+        {showSalary && monthlySalary > 0 && (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Salary Breakdown</p>
+              <div className="h-4 rounded-full overflow-hidden flex bg-muted/30">
+                {salaryTillNow > 0 && (
+                  <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(100, (salaryTillNow / (monthlySalary + totalIncentivesAmount)) * 100)}%` }} title={`Net: PKR ${salaryTillNow.toLocaleString()}`} />
+                )}
+                {totalFinesAmount > 0 && (
+                  <div className="bg-rose-500 h-full transition-all" style={{ width: `${(totalFinesAmount / (monthlySalary + totalIncentivesAmount)) * 100}%` }} title={`Fines: PKR ${totalFinesAmount.toLocaleString()}`} />
+                )}
+              </div>
+              <div className="flex items-center justify-between mt-2 text-[10px]">
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-emerald-500" /> Net: PKR {salaryTillNow.toLocaleString()}</span>
+                  {totalFinesAmount > 0 && <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-rose-500" /> Fines: PKR {totalFinesAmount.toLocaleString()}</span>}
+                  {totalIncentivesAmount > 0 && <span className="flex items-center gap-1 text-emerald-600">+ Bonus: PKR {totalIncentivesAmount.toLocaleString()}</span>}
+                </div>
+                <span className="text-muted-foreground">Base: PKR {monthlySalary.toLocaleString()}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* My Leave Requests */}
