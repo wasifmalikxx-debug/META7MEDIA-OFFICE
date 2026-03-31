@@ -611,15 +611,8 @@ export function EmployeeDashboard({
                     )}
                     {isFB && (
                       <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Total Posts / Reels Published</Label>
-                          <Input type="number" min="0" value={reportForm.postsCount} onChange={(e) => setReportForm({ ...reportForm, postsCount: parseInt(e.target.value) || 0 })} placeholder="0" />
-                          <p className="text-[10px] text-muted-foreground">Total posts, reels, stories, or content pieces published today</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Pages / Accounts Managed</Label>
-                          <Textarea value={reportForm.pageNames} onChange={(e) => setReportForm({ ...reportForm, pageNames: e.target.value })} placeholder={"Page 1 Name\nPage 2 Name\n..."} rows={2} className="text-xs" />
-                          <p className="text-[10px] text-muted-foreground">List all Facebook / Instagram pages you worked on</p>
+                        <div className="rounded-lg border bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                          <p className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">Social Media Daily Report</p>
                         </div>
                       </div>
                     )}
