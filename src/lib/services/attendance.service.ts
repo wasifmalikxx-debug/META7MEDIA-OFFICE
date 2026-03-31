@@ -206,15 +206,11 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     );
   }
 
-  // Check if half day (worked less than full day)
-  let status = attendance.status;
+  // Keep existing status — HALF_DAY is only set manually via leave request
+  const status = attendance.status;
   const officeEnd = parseTime(settings.workEndTime);
   const officeStart = parseTime(settings.workStartTime);
   const fullDayMinutes = (officeEnd.hours * 60 + officeEnd.minutes) - (officeStart.hours * 60 + officeStart.minutes);
-  // If worked less than 75% of full day, it's a half day
-  if (workedMinutes < fullDayMinutes * 0.75) {
-    status = AttendanceStatus.HALF_DAY;
-  }
 
   // Calculate overtime
   const standardMinutes = fullDayMinutes;
