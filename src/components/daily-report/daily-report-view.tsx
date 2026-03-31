@@ -94,6 +94,7 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
   }
 
   function renderFBReport(r: any) {
+    const pages = r.pageNames?.split("\n").filter(Boolean) || [];
     return (
       <div key={r.id} className="flex gap-3 py-3 hover:bg-blue-50/30 dark:hover:bg-blue-950/10 px-4 transition-colors">
         <div className="size-8 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-800 dark:to-blue-700 flex items-center justify-center text-[10px] font-bold text-blue-700 dark:text-blue-300 shrink-0">
@@ -109,11 +110,30 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
               <Megaphone className="size-2.5" />{r.postsCount || 0} posts
             </Badge>
           </div>
-          <div className="mt-1.5 space-y-1">
-            {r.pageNames && (
+          <div className="mt-1.5 space-y-1.5">
+            {pages.length > 0 && (
+              <div className="flex items-start gap-1.5 text-xs">
+                <Users className="size-3 text-blue-500 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="text-muted-foreground text-[10px]">Pages:</span>
+                  {pages.map((page: string, i: number) => (
+                    <div key={i} className="font-medium">{page.trim()}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {!pages.length && r.pageNames && (
               <div className="flex items-center gap-1.5 text-xs">
                 <Users className="size-3 text-blue-500 shrink-0" />
+                <span className="text-muted-foreground text-[10px]">Pages:</span>
                 <span className="font-medium">{r.pageNames}</span>
+              </div>
+            )}
+            {r.postsCount > 0 && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <FileText className="size-3 text-blue-500 shrink-0" />
+                <span className="text-muted-foreground text-[10px]">Published:</span>
+                <span className="font-medium">{r.postsCount} post{r.postsCount !== 1 ? "s" : ""} / reel{r.postsCount !== 1 ? "s" : ""}</span>
               </div>
             )}
             {r.notes && (
