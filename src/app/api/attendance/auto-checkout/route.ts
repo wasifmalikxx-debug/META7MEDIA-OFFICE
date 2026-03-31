@@ -44,9 +44,9 @@ async function handleAutoCheckout() {
     const [startH, startM] = (settings?.workStartTime || "11:00").split(":").map(Number);
     const fullDayMinutes = (endH * 60 + endM) - (startH * 60 + startM);
 
-    // Force checkout time = office end time in UTC
-    // Office end 19:00 PKT = 14:00 UTC
-    const checkoutTime = new Date(today.getTime() + (endH * 60 + endM) * 60_000 - 5 * 60 * 60_000);
+    // Force checkout time = office end time (PKT-shifted to match nowPKT() convention)
+    // All timestamps in DB are PKT-shifted, so checkout must also be PKT-shifted
+    const checkoutTime = new Date(today.getTime() + (endH * 60 + endM) * 60_000);
 
     const results: any[] = [];
 
@@ -64,11 +64,9 @@ async function handleAutoCheckout() {
         (checkoutTime.getTime() - checkIn.getTime()) / (1000 * 60)
       ) - breakMinutes);
 
-      // Determine status based on worked time
-      let status = att.status;
-      if (workedMinutes < fullDayMinutes * 0.75) {
-        status = "HALF_DAY";
-      }
+      // Keep existing status — HALF_DAY is only set manually via leave request
+      // Auto-checkout should NOT change status to HALF_DAY
+      const status = att.status;
 
       // Calculate early leave and overtime
       const earlyLeaveMin = Math.max(0, fullDayMinutes - workedMinutes);
