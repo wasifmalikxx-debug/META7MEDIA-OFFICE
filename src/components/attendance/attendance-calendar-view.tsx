@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { formatPKTTime } from "@/lib/pkt";
@@ -154,56 +155,73 @@ export function AttendanceCalendarView({
             </thead>
             <tbody>
               {teamEmployees.map((emp, idx) => (
-                <tr key={emp.id} className={`group transition-colors hover:bg-muted/20 ${idx % 2 === 0 ? "bg-card" : "bg-muted/5"}`}>
-                  <td className={`sticky left-0 z-10 px-3 py-1.5 border-r ${idx % 2 === 0 ? "bg-card" : "bg-muted/5"} group-hover:bg-muted/20 transition-colors`}>
-                    <div className="flex items-center gap-2">
-                      <div className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
-                        {emp.firstName[0]}{emp.lastName?.[0] || ""}
+                <React.Fragment key={emp.id}>
+                  {/* Status row */}
+                  <tr className={`group transition-colors hover:bg-muted/20 ${idx % 2 === 0 ? "bg-card" : "bg-muted/5"}`}>
+                    <td rowSpan={3} className={`sticky left-0 z-10 px-3 py-1 border-r border-b ${idx % 2 === 0 ? "bg-card" : "bg-muted/5"} group-hover:bg-muted/20 transition-colors align-middle`}>
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                          {emp.firstName[0]}{emp.lastName?.[0] || ""}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-[10px] leading-tight truncate max-w-[80px]">
+                            {emp.firstName} {emp.lastName?.[0] ? emp.lastName[0] + "." : ""}
+                          </span>
+                          <span className="text-[8px] text-muted-foreground font-mono leading-tight">{emp.employeeId}</span>
+                        </div>
+                        {emp.status === "PROBATION" && (
+                          <span className="text-[7px] px-1 py-0.5 rounded bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 font-bold leading-none">P</span>
+                        )}
                       </div>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-[10px] leading-tight truncate max-w-[80px]">
-                          {emp.firstName} {emp.lastName?.[0] ? emp.lastName[0] + "." : ""}
-                        </span>
-                        <span className="text-[8px] text-muted-foreground font-mono leading-tight">{emp.employeeId}</span>
-                      </div>
-                      {emp.status === "PROBATION" && (
-                        <span className="text-[7px] px-1 py-0.5 rounded bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 font-bold leading-none">P</span>
-                      )}
-                    </div>
-                  </td>
-                  {days.map((d) => {
-                    const cell = getCellInfo(emp.id, d.dateStr, d.isWeekend, d.isHoliday, d.isFuture);
-                    return (
-                      <td
-                        key={d.day}
-                        className={`px-0 py-1 text-center ${d.isToday ? "bg-blue-50/40 dark:bg-blue-950/10" : d.isWeekend || d.isHoliday ? "bg-muted/15" : ""}`}
-                        title={d.isFuture ? "" : getTooltipText(emp.id, d.dateStr, d.isHoliday, d.holidayName)}
-                      >
-                        {cell ? (
-                          <div className={`inline-flex items-center justify-center size-5 rounded text-[8px] font-bold text-white ${cell.bg}`}>
-                            {cell.label}
-                          </div>
-                        ) : d.isFuture ? (
-                          <span className="text-muted-foreground/20 text-[8px]">·</span>
-                        ) : null}
-                      </td>
-                    );
-                  })}
-                  <td className="px-1.5 py-1 text-center border-l">
-                    <span className="inline-flex items-center justify-center size-5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">{emp.present}</span>
-                  </td>
-                  <td className="px-1.5 py-1 text-center">
-                    <span className={`inline-flex items-center justify-center size-5 rounded text-[10px] font-bold ${emp.absent > 0 ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400" : "text-muted-foreground/30"}`}>{emp.absent}</span>
-                  </td>
-                  <td className="px-1.5 py-1 text-center">
-                    <span className={`inline-flex items-center justify-center size-5 rounded text-[10px] font-bold ${emp.halfDay > 0 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "text-muted-foreground/30"}`}>{emp.halfDay}</span>
-                  </td>
-                  <td className="px-1.5 py-1 text-center">
-                    <Badge variant="outline" className={`text-[8px] px-1 py-0 font-bold ${emp.pendingLeaves > 1 ? "border-emerald-300 text-emerald-600 dark:border-emerald-700 dark:text-emerald-400" : emp.pendingLeaves > 0 ? "border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400" : "border-rose-300 text-rose-600 dark:border-rose-700 dark:text-rose-400"}`}>
-                      {emp.pendingLeaves.toFixed(1)}
-                    </Badge>
-                  </td>
-                </tr>
+                    </td>
+                    {days.map((d) => {
+                      const cell = getCellInfo(emp.id, d.dateStr, d.isWeekend, d.isHoliday, d.isFuture);
+                      return (
+                        <td key={d.day} className={`px-0 py-1 text-center ${d.isToday ? "bg-blue-50/40 dark:bg-blue-950/10" : d.isWeekend || d.isHoliday ? "bg-muted/15" : ""}`} title={d.isFuture ? "" : getTooltipText(emp.id, d.dateStr, d.isHoliday, d.holidayName)}>
+                          {cell ? (
+                            <div className={`inline-flex items-center justify-center size-5 rounded text-[8px] font-bold text-white ${cell.bg}`}>{cell.label}</div>
+                          ) : d.isFuture ? <span className="text-muted-foreground/20 text-[8px]">·</span> : null}
+                        </td>
+                      );
+                    })}
+                    <td rowSpan={3} className="px-1.5 py-1 text-center border-l border-b align-middle">
+                      <span className="inline-flex items-center justify-center size-5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">{emp.present}</span>
+                    </td>
+                    <td rowSpan={3} className="px-1.5 py-1 text-center border-b align-middle">
+                      <span className={`inline-flex items-center justify-center size-5 rounded text-[10px] font-bold ${emp.absent > 0 ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400" : "text-muted-foreground/30"}`}>{emp.absent}</span>
+                    </td>
+                    <td rowSpan={3} className="px-1.5 py-1 text-center border-b align-middle">
+                      <span className={`inline-flex items-center justify-center size-5 rounded text-[10px] font-bold ${emp.halfDay > 0 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "text-muted-foreground/30"}`}>{emp.halfDay}</span>
+                    </td>
+                    <td rowSpan={3} className="px-1.5 py-1 text-center border-b align-middle">
+                      <Badge variant="outline" className={`text-[8px] px-1 py-0 font-bold ${emp.pendingLeaves > 1 ? "border-emerald-300 text-emerald-600 dark:border-emerald-700 dark:text-emerald-400" : emp.pendingLeaves > 0 ? "border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400" : "border-rose-300 text-rose-600 dark:border-rose-700 dark:text-rose-400"}`}>
+                        {emp.pendingLeaves.toFixed(1)}
+                      </Badge>
+                    </td>
+                  </tr>
+                  {/* Check-in time row */}
+                  <tr className={`${idx % 2 === 0 ? "bg-card" : "bg-muted/5"}`}>
+                    {days.map((d) => {
+                      const att = attendanceMap[emp.id]?.[d.dateStr];
+                      return (
+                        <td key={d.day} className={`px-0 py-0 text-center ${d.isWeekend || d.isHoliday ? "bg-muted/10" : ""}`}>
+                          {att?.checkIn && <span className="text-[7px] text-emerald-600 dark:text-emerald-400 font-mono">{formatPKTTime(att.checkIn)}</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {/* Check-out time row */}
+                  <tr className={`border-b border-muted/30 ${idx % 2 === 0 ? "bg-card" : "bg-muted/5"}`}>
+                    {days.map((d) => {
+                      const att = attendanceMap[emp.id]?.[d.dateStr];
+                      return (
+                        <td key={d.day} className={`px-0 py-0 pb-0.5 text-center ${d.isWeekend || d.isHoliday ? "bg-muted/10" : ""}`}>
+                          {att?.checkOut && <span className="text-[7px] text-rose-500 dark:text-rose-400 font-mono">{formatPKTTime(att.checkOut)}</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
