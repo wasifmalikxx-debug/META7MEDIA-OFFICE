@@ -245,7 +245,7 @@ export async function sendManualFineTemplate(to: string, name: string, amount: n
 
 export async function sendSalaryPaidTemplate(to: string, name: string, amount: number, monthName: string): Promise<boolean> {
   return sendWhatsAppTemplate(to, TEMPLATE_SIDS.SALARY_PAID, {
-    "1": name, "2": String(amount), "3": monthName,
+    "1": name, "2": monthName, "3": String(amount),
   });
 }
 
