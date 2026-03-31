@@ -445,61 +445,47 @@ export function EmployeeDashboard({
         </div>
       </div>
 
-      {/* Check-in/out card */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="flex flex-col sm:flex-row items-center gap-4 pt-6">
-          {isDayOff ? (
-            <div className="flex-1 space-y-1">
-              <p className="text-sm text-muted-foreground">Today&apos;s Status</p>
+      {/* Today's Status Card */}
+      <Card className="border-0 shadow-sm overflow-hidden">
+        <CardContent className="p-0">
+          <div className={`px-5 py-3 border-b ${isDayOff ? "bg-slate-50 dark:bg-slate-800/50" : hasCheckedOut ? "bg-emerald-50/40 dark:bg-emerald-950/10" : hasCheckedIn ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-amber-50/40 dark:bg-amber-950/10"}`}>
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                  Day Off
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  {dayOffLabel || "Enjoy your day off!"}
-                </span>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Today&apos;s Status</p>
+                {attendance && (
+                  <Badge className={`text-[9px] h-4 border-0 ${
+                    attendance.status === "PRESENT" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
+                    attendance.status === "LATE" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+                    "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+                  }`}>{attendance.status}</Badge>
+                )}
+              </div>
+              {attendance?.checkIn && (
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>In: <strong>{formatPKTTime(attendance.checkIn)}</strong></span>
+                  {attendance.checkOut && <span>Out: <strong>{formatPKTTime(attendance.checkOut)}</strong></span>}
+                  {attendance.workedMinutes > 0 && <span className="font-semibold">{Math.floor(attendance.workedMinutes / 60)}h {attendance.workedMinutes % 60}m</span>}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="px-5 py-4 flex flex-col sm:flex-row items-center gap-4">
+          {isDayOff ? (
+            <div className="flex-1 flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <Calendar className="size-5 text-slate-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Day Off</p>
+                <p className="text-xs text-muted-foreground">{dayOffLabel || "Enjoy your day off!"}</p>
               </div>
             </div>
           ) : (
           <div className="flex-1 flex flex-col sm:flex-row items-center gap-4">
-          <div className="flex-1 space-y-1">
-            <p className="text-sm text-muted-foreground">Today&apos;s Status</p>
-            <div className="flex items-center gap-2">
-              {attendance ? (
-                <>
-                  <Badge
-                    variant={
-                      attendance.status === "PRESENT"
-                        ? "default"
-                        : attendance.status === "LATE"
-                        ? "secondary"
-                        : "destructive"
-                    }
-                  >
-                    {attendance.status}
-                  </Badge>
-                  {attendance.checkIn && (
-                    <span className="text-sm text-muted-foreground">
-                      In: {formatPKTTime(attendance.checkIn)}
-                    </span>
-                  )}
-                  {attendance.checkOut && (
-                    <span className="text-sm text-muted-foreground">
-                      Out: {formatPKTTime(attendance.checkOut)}
-                    </span>
-                  )}
-                  {attendance.workedMinutes && (
-                    <span className="text-sm text-muted-foreground">
-                      ({Math.floor(attendance.workedMinutes / 60)}h {attendance.workedMinutes % 60}m)
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="text-sm text-muted-foreground">
-                  Not checked in yet
-                </span>
-              )}
-            </div>
+          <div className="flex-1">
+            {!attendance && (
+              <p className="text-sm text-muted-foreground">Not checked in yet</p>
+            )}
           </div>
           <div className="flex gap-2 flex-wrap">
             {!hasCheckedIn && (
@@ -670,8 +656,8 @@ export function EmployeeDashboard({
             )}
           </div>
           </div>)}
+          </div>
         </CardContent>
-
       </Card>
 
       {/* Monthly stats */}
@@ -706,13 +692,13 @@ export function EmployeeDashboard({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-sm font-medium text-muted-foreground">Salary & Finance</h3>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold">Salary & Finance</h3>
           <Button
             size="sm"
-            variant="ghost"
-            className="gap-1.5 text-xs text-muted-foreground"
+            variant="outline"
+            className="gap-1.5 text-xs h-8 rounded-lg"
             onClick={() => setShowSalary(!showSalary)}
           >
             {showSalary ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
@@ -737,12 +723,12 @@ export function EmployeeDashboard({
             icon={Gift}
             description="This month"
           />
-          <Card>
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
             <CardContent className="pt-5 pb-4">
               <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground font-medium">Estimated Salary</p>
-                  <p className="text-2xl font-bold tracking-tight">
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estimated Salary</p>
+                  <p className="text-2xl font-bold tracking-tight text-blue-700 dark:text-blue-400">
                     {showSalary ? (
                       <AnimatedNumber value={salaryTillNow} prefix="PKR " />
                     ) : (
@@ -750,8 +736,8 @@ export function EmployeeDashboard({
                     )}
                   </p>
                 </div>
-                <div className="rounded-lg bg-muted/50 p-2.5">
-                  <Wallet className="size-5 text-muted-foreground" />
+                <div className="rounded-xl bg-blue-100 dark:bg-blue-900/30 p-2.5">
+                  <Wallet className="size-5 text-blue-600 dark:text-blue-400" />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
