@@ -20,6 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { formatPKTTime } from "@/lib/pkt";
 
 interface EmployeeStatus {
@@ -43,6 +44,14 @@ interface AdminDashboardProps {
   recentAttendances: any[];
   employeeStatuses: EmployeeStatus[];
   dayOffLabel?: string | null;
+  attendanceTrend?: { day: string; present: number; absent: number }[];
+  finesTrend?: { day: string; fines: number }[];
+  todayReports?: number;
+  topAbsent?: { name: string; employeeId: string; count: number }[];
+  etsyTeamSize?: number;
+  fbTeamSize?: number;
+  etsyPresent?: number;
+  fbPresent?: number;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string; icon: any }> = {
@@ -68,6 +77,14 @@ export function AdminDashboard({
   recentAttendances,
   employeeStatuses,
   dayOffLabel,
+  attendanceTrend = [],
+  finesTrend = [],
+  todayReports = 0,
+  topAbsent = [],
+  etsyTeamSize = 0,
+  fbTeamSize = 0,
+  etsyPresent = 0,
+  fbPresent = 0,
 }: AdminDashboardProps) {
   const router = useRouter();
   const attendanceRate = totalEmployees > 0 ? Math.round((presentToday / totalEmployees) * 100) : 0;
@@ -234,6 +251,147 @@ export function AdminDashboard({
           </CardContent>
         </Card>
       )}
+
+      {/* Charts Row */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Attendance Trend Chart */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold">Attendance Trend</CardTitle>
+            <p className="text-[10px] text-muted-foreground">Daily present vs absent this month</p>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="h-[200px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={attendanceTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="presentGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="absentGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" opacity={0.5} />
+                  <XAxis dataKey="day" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }} />
+                  <Area type="monotone" dataKey="present" stroke="#10b981" strokeWidth={2} fill="url(#presentGrad)" name="Present" />
+                  <Area type="monotone" dataKey="absent" stroke="#f43f5e" strokeWidth={2} fill="url(#absentGrad)" name="Absent" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Fines Trend Chart */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold">Fines Collected</CardTitle>
+            <p className="text-[10px] text-muted-foreground">Daily fines in PKR this month</p>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="h-[200px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={finesTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" opacity={0.5} />
+                  <XAxis dataKey="day" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }} formatter={(value: any) => [`PKR ${value}`, "Fines"]} />
+                  <Bar dataKey="fines" fill="#f59e0b" radius={[3, 3, 0, 0]} name="Fines" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bottom Row: Reports + Top Absent + Team Comparison */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Reports Submitted Today */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold">Reports Today</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-3">
+              <span className="text-4xl font-bold">{todayReports}</span>
+              <span className="text-muted-foreground text-sm mb-1">/ {totalEmployees}</span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden mt-3">
+              <div
+                className={`h-full rounded-full transition-all ${todayReports >= totalEmployees ? "bg-emerald-500" : todayReports > totalEmployees / 2 ? "bg-amber-500" : "bg-rose-500"}`}
+                style={{ width: `${totalEmployees > 0 ? Math.min(100, (todayReports / totalEmployees) * 100) : 0}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">
+              {todayReports >= totalEmployees ? "All reports submitted" : `${totalEmployees - todayReports} pending`}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Top Absent Employees */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold">Most Absences</CardTitle>
+            <p className="text-[10px] text-muted-foreground">This month</p>
+          </CardHeader>
+          <CardContent>
+            {topAbsent.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No absences this month</p>
+            ) : (
+              <div className="space-y-2.5">
+                {topAbsent.map((emp, i) => (
+                  <div key={emp.employeeId} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[10px] font-bold text-muted-foreground w-4">{i + 1}.</span>
+                      <div>
+                        <span className="text-xs font-medium">{emp.name}</span>
+                        <span className="text-[9px] text-muted-foreground ml-1">{emp.employeeId}</span>
+                      </div>
+                    </div>
+                    <Badge className="text-[9px] h-5 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-0">
+                      {emp.count} day{emp.count !== 1 ? "s" : ""}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Team Comparison */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold">Team Attendance</CardTitle>
+            <p className="text-[10px] text-muted-foreground">Monthly present days by team</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium">Etsy Team</span>
+                  <span className="text-xs text-muted-foreground">{etsyPresent} days ({etsyTeamSize} staff)</span>
+                </div>
+                <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${etsyTeamSize > 0 ? Math.min(100, (etsyPresent / (etsyTeamSize * 26)) * 100) : 0}%` }} />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium">Facebook Team</span>
+                  <span className="text-xs text-muted-foreground">{fbPresent} days ({fbTeamSize} staff)</span>
+                </div>
+                <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${fbTeamSize > 0 ? Math.min(100, (fbPresent / (fbTeamSize * 26)) * 100) : 0}%` }} />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Live Employee Status */}
       <Card className="border-0 shadow-sm overflow-hidden">
