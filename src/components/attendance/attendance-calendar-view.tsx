@@ -37,8 +37,8 @@ interface AttendanceCalendarViewProps {
 
 const STATUS_CELL: Record<string, { label: string; bg: string }> = {
   PRESENT: { label: "P", bg: "bg-emerald-500" },
-  LATE: { label: "P", bg: "bg-emerald-500" },
-  HALF_DAY: { label: "H", bg: "bg-amber-500" },
+  LATE: { label: "L", bg: "bg-amber-500" },
+  HALF_DAY: { label: "H", bg: "bg-orange-500" },
   ABSENT: { label: "A", bg: "bg-rose-500" },
   ON_LEAVE: { label: "LV", bg: "bg-violet-500" },
   HOLIDAY: { label: "", bg: "bg-slate-300 dark:bg-slate-600" },
@@ -300,8 +300,9 @@ export function AttendanceCalendarView({
       {/* Legend */}
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-emerald-500" /><span>Present</span></div>
+        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-amber-500" /><span>Late</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-rose-500" /><span>Absent</span></div>
-        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-amber-500" /><span>Half Day</span></div>
+        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-orange-500" /><span>Half Day</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-violet-500" /><span>On Leave</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-slate-300 dark:bg-slate-600" /><span>Day Off</span></div>
       </div>
