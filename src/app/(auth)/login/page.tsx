@@ -6,8 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldCheck, Clock, XCircle } from "lucide-react";
+import { ShieldCheck, Clock, XCircle, Lock, Mail, ArrowRight, Building2 } from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -18,7 +17,6 @@ export default function LoginPage() {
   const [fingerprint, setFingerprint] = useState<string | null>(null);
   const router = useRouter();
 
-  // Generate browser fingerprint on mount
   useEffect(() => {
     async function loadFingerprint() {
       try {
@@ -27,7 +25,6 @@ export default function LoginPage() {
         const result = await fp.get();
         setFingerprint(result.visitorId);
       } catch {
-        // Fallback: use a simple hash of user agent + screen
         const raw = `${navigator.userAgent}-${screen.width}x${screen.height}-${navigator.language}`;
         const hash = Array.from(raw).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0).toString(36);
         setFingerprint(hash);
@@ -59,7 +56,6 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // First, authenticate credentials
       const result = await signIn("credentials", {
         email,
         password,
@@ -72,19 +68,16 @@ export default function LoginPage() {
         return;
       }
 
-      // Get user session to check role
       const sessionRes = await fetch("/api/auth/session");
       const session = await sessionRes.json();
       const role = session?.user?.role;
 
-      // Super Admin skips device check
       if (role === "SUPER_ADMIN") {
         router.push("/dashboard");
         router.refresh();
         return;
       }
 
-      // For employees: check device approval
       if (!fingerprint) {
         router.push("/dashboard");
         router.refresh();
@@ -109,11 +102,8 @@ export default function LoginPage() {
         router.refresh();
       } else if (deviceData.status === "REJECTED") {
         setDeviceStatus("rejected");
-        // Sign out since device is rejected
-        await signIn("credentials", { redirect: false }); // this won't actually sign out, let me use signOut
         await fetch("/api/auth/signout", { method: "POST" });
       } else {
-        // PENDING — show waiting message
         setDeviceStatus("pending");
       }
     } catch {
@@ -124,88 +114,150 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <img src="/logo.png" alt="META7MEDIA" className="mx-auto mb-4 h-14 w-auto" />
-          <CardTitle className="text-2xl">META7MEDIA AI</CardTitle>
-          <CardDescription className="text-xs text-muted-foreground">
-            Office Manager — Powered By: Google
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 px-4">
+      {/* Background decoration */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 size-80 rounded-full bg-blue-500/5 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 size-80 rounded-full bg-emerald-500/5 blur-3xl" />
+      </div>
+
+      <div className="w-full max-w-[420px] relative z-10">
+        {/* Logo & Branding */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-white dark:bg-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-slate-950/50 mb-5 border border-slate-100 dark:border-slate-700">
+            <img src="/logo.png" alt="META7MEDIA" className="size-10 object-contain" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">META7MEDIA</h1>
+          <p className="text-sm text-muted-foreground mt-1">AI-Powered Office Management System</p>
+        </div>
+
+        {/* Login Card */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-slate-950/40 border border-slate-200/60 dark:border-slate-800 overflow-hidden">
+
+          {/* Device Pending */}
           {deviceStatus === "pending" && (
-            <div className="rounded-lg border bg-yellow-50 dark:bg-yellow-950/30 p-4 text-center space-y-3 mb-4">
-              <Clock className="size-10 mx-auto text-yellow-600" />
-              <h3 className="font-semibold text-yellow-800 dark:text-yellow-400">Device Approval Required</h3>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                This is your first login from this device. Your CEO has been notified and needs to approve this device before you can access the system.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Please wait or contact your CEO.
-              </p>
-              <Button variant="outline" size="sm" onClick={() => { setDeviceStatus(null); setError(""); }}>
-                Refresh
-              </Button>
-            </div>
-          )}
-
-          {deviceStatus === "rejected" && (
-            <div className="rounded-lg border bg-red-50 dark:bg-red-950/30 p-4 text-center space-y-3 mb-4">
-              <XCircle className="size-10 mx-auto text-red-600" />
-              <h3 className="font-semibold text-red-800 dark:text-red-400">Device Rejected</h3>
-              <p className="text-sm text-red-700 dark:text-red-300">
-                This device has been rejected by admin. You can only login from approved devices.
-              </p>
-              <Button variant="outline" size="sm" onClick={() => { setDeviceStatus(null); setError(""); }}>
-                Back to Login
-              </Button>
-            </div>
-          )}
-
-          {!deviceStatus && (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                  {error}
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@meta7media.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                />
+            <div className="p-8 text-center space-y-4">
+              <div className="size-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto">
+                <Clock className="size-7 text-amber-600 dark:text-amber-400" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? (deviceStatus === "checking" ? "Verifying device..." : "Signing in...") : "Sign In"}
-              </Button>
-              {fingerprint && (
-                <p className="text-[10px] text-muted-foreground/40 text-center flex items-center justify-center gap-1">
-                  <ShieldCheck className="size-3" /> Device fingerprint secured
+              <div>
+                <h3 className="font-bold text-lg">Awaiting Approval</h3>
+                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                  This is your first sign-in from this device. Your request has been sent to the CEO for approval.
                 </p>
-              )}
-            </form>
+              </div>
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Please wait for approval or contact your administrator.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => { setDeviceStatus(null); setError(""); }} className="rounded-full px-6">
+                Try Again
+              </Button>
+            </div>
           )}
-        </CardContent>
-      </Card>
+
+          {/* Device Rejected */}
+          {deviceStatus === "rejected" && (
+            <div className="p-8 text-center space-y-4">
+              <div className="size-14 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center mx-auto">
+                <XCircle className="size-7 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Access Denied</h3>
+                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                  This device has been rejected. You can only access the system from approved devices.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => { setDeviceStatus(null); setError(""); }} className="rounded-full px-6">
+                Back to Sign In
+              </Button>
+            </div>
+          )}
+
+          {/* Login Form */}
+          {!deviceStatus && (
+            <>
+              <div className="px-8 pt-7 pb-2">
+                <h2 className="text-lg font-bold">Sign in to your account</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Enter your credentials to access the portal</p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="px-8 pb-8 space-y-5">
+                {error && (
+                  <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 p-3 flex items-center gap-2.5">
+                    <XCircle className="size-4 text-rose-500 shrink-0" />
+                    <span className="text-sm text-rose-700 dark:text-rose-400">{error}</span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="email" className="text-xs font-semibold">Email Address</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground/50" />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="name@meta7media.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoComplete="email"
+                      className="pl-10 h-11 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="password" className="text-xs font-semibold">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground/50" />
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                      className="pl-10 h-11 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <Button type="submit" className="w-full h-11 rounded-lg gap-2 text-sm font-semibold" disabled={loading}>
+                  {loading ? (
+                    deviceStatus === "checking" ? "Verifying device..." : "Signing in..."
+                  ) : (
+                    <>
+                      Sign In
+                      <ArrowRight className="size-4" />
+                    </>
+                  )}
+                </Button>
+
+                {fingerprint && (
+                  <div className="flex items-center justify-center gap-1.5 pt-1">
+                    <ShieldCheck className="size-3 text-emerald-500" />
+                    <span className="text-[10px] text-muted-foreground/50">Secured with device fingerprint</span>
+                  </div>
+                )}
+              </form>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="text-center mt-6 space-y-1">
+          <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground/40">
+            <Building2 className="size-3" />
+            <span>META7MEDIA Private Limited</span>
+          </div>
+          <p className="text-[9px] text-muted-foreground/30">
+            Powered by META7MEDIA AI
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
