@@ -20,7 +20,10 @@ export default async function DashboardPage() {
 
   if (userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN") {
     // Admin dashboard — all queries in ONE batch
-    const [allEmployees, todayAttendances, payrollRecords, fines, todayLeaves, officeSettings, todayHoliday] = await Promise.all([
+    const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
+    const endOfMonth = new Date(Date.UTC(year, month, 0));
+
+    const [allEmployees, todayAttendances, payrollRecords, fines, todayLeaves, officeSettings, todayHoliday, monthAttendances, todayReports, monthFinesDetailed] = await Promise.all([
       prisma.user.findMany({
         where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
         select: { id: true, firstName: true, lastName: true, employeeId: true, status: true },
@@ -48,6 +51,18 @@ export default async function DashboardPage() {
       }),
       prisma.officeSettings.findUnique({ where: { id: "default" }, select: { weekendDays: true } }),
       prisma.holiday.findFirst({ where: { date: today } }),
+      // Monthly attendance for chart
+      prisma.attendance.findMany({
+        where: { date: { gte: startOfMonth, lte: endOfMonth } },
+        select: { date: true, status: true, userId: true },
+      }),
+      // Today's daily reports count
+      prisma.dailyReport.count({ where: { date: today } }),
+      // Monthly fines with dates for chart
+      prisma.fine.findMany({
+        where: { month, year },
+        select: { date: true, amount: true, type: true },
+      }),
     ]);
 
     const totalEmployees = allEmployees.length;
@@ -125,6 +140,43 @@ export default async function DashboardPage() {
       };
     });
 
+    // Build attendance trend data (per day of month)
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const attendanceTrend = Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dayAtt = monthAttendances.filter((a: any) => a.date.toISOString().split("T")[0] === dateStr);
+      const present = dayAtt.filter((a: any) => a.status === "PRESENT" || a.status === "LATE").length;
+      const absent = dayAtt.filter((a: any) => a.status === "ABSENT").length;
+      return { day: String(day), present, absent };
+    });
+
+    // Build fines trend data (per day)
+    const finesTrend = Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dayFines = monthFinesDetailed.filter((f: any) => f.date?.toISOString().split("T")[0] === dateStr);
+      const total = dayFines.reduce((s: number, f: any) => s + f.amount, 0);
+      return { day: String(day), fines: total };
+    });
+
+    // Top absent employees
+    const absentCounts: Record<string, { name: string; employeeId: string; count: number }> = {};
+    monthAttendances.filter((a: any) => a.status === "ABSENT").forEach((a: any) => {
+      if (!absentCounts[a.userId]) {
+        const emp = allEmployees.find((e) => e.id === a.userId);
+        absentCounts[a.userId] = { name: emp ? `${emp.firstName} ${emp.lastName || ""}`.trim() : "Unknown", employeeId: emp?.employeeId || "", count: 0 };
+      }
+      absentCounts[a.userId].count++;
+    });
+    const topAbsent = Object.values(absentCounts).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    // Team productivity
+    const etsyEmployees = allEmployees.filter((e) => e.employeeId.startsWith("EM"));
+    const fbEmployees = allEmployees.filter((e) => e.employeeId.startsWith("SMM"));
+    const etsyPresent = monthAttendances.filter((a: any) => (a.status === "PRESENT" || a.status === "LATE") && etsyEmployees.some((e) => e.id === a.userId)).length;
+    const fbPresent = monthAttendances.filter((a: any) => (a.status === "PRESENT" || a.status === "LATE") && fbEmployees.some((e) => e.id === a.userId)).length;
+
     return (
       <AdminDashboard
         totalEmployees={totalEmployees}
@@ -136,6 +188,14 @@ export default async function DashboardPage() {
         recentAttendances={todayAttendances}
         employeeStatuses={JSON.parse(JSON.stringify(employeeStatuses))}
         dayOffLabel={holidayName ? `Holiday — ${holidayName}` : isWeekend ? "Sunday" : null}
+        attendanceTrend={attendanceTrend}
+        finesTrend={finesTrend}
+        todayReports={todayReports}
+        topAbsent={topAbsent}
+        etsyTeamSize={etsyEmployees.length}
+        fbTeamSize={fbEmployees.length}
+        etsyPresent={etsyPresent}
+        fbPresent={fbPresent}
       />
     );
   }
