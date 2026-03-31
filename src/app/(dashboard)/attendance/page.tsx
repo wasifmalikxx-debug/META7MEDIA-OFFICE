@@ -58,8 +58,8 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   return (
     <div className="space-y-6">
       <PageHeader
-        title="My Attendance"
-        description="Your monthly attendance calendar"
+        title="Monthly Attendance Calendar"
+        description="Your attendance history and leave balance"
       />
       <MyAttendanceCalendar
         attendances={JSON.parse(JSON.stringify(attendances))}

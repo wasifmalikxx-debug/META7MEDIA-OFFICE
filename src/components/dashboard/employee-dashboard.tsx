@@ -456,48 +456,52 @@ export function EmployeeDashboard({
       {/* Today's Status Card */}
       <Card className="border-0 shadow-sm overflow-hidden">
         <CardContent className="p-0">
-          <div className={`px-5 py-3 border-b ${isDayOff ? "bg-slate-50 dark:bg-slate-800/50" : hasCheckedOut ? "bg-emerald-50/40 dark:bg-emerald-950/10" : hasCheckedIn ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-amber-50/40 dark:bg-amber-950/10"}`}>
+          {/* Status Header */}
+          <div className={`px-5 py-4 ${isDayOff ? "bg-slate-50 dark:bg-slate-800/50" : hasCheckedOut ? "bg-gradient-to-r from-emerald-50 to-white dark:from-emerald-950/20 dark:to-slate-800" : hasCheckedIn ? "bg-gradient-to-r from-blue-50 to-white dark:from-blue-950/20 dark:to-slate-800" : "bg-gradient-to-r from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-800"}`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Today&apos;s Status</p>
-                {attendance && (
-                  <Badge className={`text-[9px] h-4 border-0 ${
-                    attendance.status === "PRESENT" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                    attendance.status === "LATE" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                    "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
-                  }`}>{attendance.status}</Badge>
-                )}
+              <div className="flex items-center gap-3">
+                <div className={`size-11 rounded-xl flex items-center justify-center ${isDayOff ? "bg-slate-200 dark:bg-slate-700" : hasCheckedOut ? "bg-emerald-100 dark:bg-emerald-900/30" : hasCheckedIn ? "bg-blue-100 dark:bg-blue-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
+                  {isDayOff ? <Calendar className="size-5 text-slate-500" /> : hasCheckedOut ? <CheckCircle className="size-5 text-emerald-600" /> : hasCheckedIn ? <Clock className="size-5 text-blue-600" /> : <AlertTriangle className="size-5 text-amber-600" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold">
+                      {isDayOff ? "Day Off" : hasCheckedOut ? "Day Complete" : hasCheckedIn ? "Currently Working" : "Not Checked In"}
+                    </p>
+                    {attendance && !isDayOff && (
+                      <Badge className={`text-[8px] h-4 border-0 ${
+                        attendance.status === "PRESENT" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
+                        attendance.status === "LATE" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+                        "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+                      }`}>{attendance.status}</Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {isDayOff ? (dayOffLabel || "Enjoy your day off!") :
+                     attendance?.checkIn ? (
+                       <>In: {formatPKTTime(attendance.checkIn)}{attendance.checkOut ? ` — Out: ${formatPKTTime(attendance.checkOut)}` : ""}{attendance.workedMinutes > 0 ? ` — ${Math.floor(attendance.workedMinutes / 60)}h ${attendance.workedMinutes % 60}m worked` : ""}</>
+                     ) : "Check in to start your day"}
+                  </p>
+                </div>
               </div>
-              {attendance?.checkIn && (
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>In: <strong>{formatPKTTime(attendance.checkIn)}</strong></span>
-                  {attendance.checkOut && <span>Out: <strong>{formatPKTTime(attendance.checkOut)}</strong></span>}
-                  {attendance.workedMinutes > 0 && <span className="font-semibold">{Math.floor(attendance.workedMinutes / 60)}h {attendance.workedMinutes % 60}m</span>}
+              {/* Live indicator */}
+              {hasCheckedIn && !hasCheckedOut && !isDayOff && (
+                <div className="flex items-center gap-1.5">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
+                  </span>
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Live</span>
                 </div>
               )}
             </div>
           </div>
-          <div className="px-5 py-4 flex flex-col sm:flex-row items-center gap-4">
-          {isDayOff ? (
-            <div className="flex-1 flex items-center gap-3">
-              <div className="size-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                <Calendar className="size-5 text-slate-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">Day Off</p>
-                <p className="text-xs text-muted-foreground">{dayOffLabel || "Enjoy your day off!"}</p>
-              </div>
-            </div>
-          ) : (
-          <div className="flex-1 flex flex-col sm:flex-row items-center gap-4">
-          <div className="flex-1">
-            {!attendance && (
-              <p className="text-sm text-muted-foreground">Not checked in yet</p>
-            )}
-          </div>
-          <div className="flex gap-2 flex-wrap">
+
+          {/* Action Buttons */}
+          {!isDayOff && (
+          <div className="px-5 py-3.5 border-t flex items-center gap-2 flex-wrap">
             {!hasCheckedIn && (
-                <Button onClick={handleCheckIn} disabled={loading} className="gap-2">
+                <Button onClick={handleCheckIn} disabled={loading} className="gap-2 rounded-lg">
                   <CheckCircle className="size-4" />
                   {loading ? "..." : "Check In"}
                 </Button>
@@ -505,43 +509,33 @@ export function EmployeeDashboard({
             {hasCheckedIn && !hasCheckedOut && !onBreak && !breakDone && (
               <>
                 {currentMinutes < breakStartMin && (
-                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Badge variant="outline" className="text-xs py-1.5 px-3 gap-1.5">
                     <Coffee className="size-3" />
-                    Break starts at {breakStartTime}
-                  </span>
+                    Break at {breakStartTime}
+                  </Badge>
                 )}
                 {isInBreakWindow && (
-                  <Button
-                    onClick={handleBreakStart}
-                    disabled={loading}
-                    variant="secondary"
-                    className="gap-2"
-                  >
+                  <Button onClick={handleBreakStart} disabled={loading} variant="secondary" className="gap-2 rounded-lg">
                     <Coffee className="size-4" />
                     {loading ? "..." : "Start Break"}
                   </Button>
                 )}
                 {currentMinutes > breakEndMin && (
-                  <Badge variant="destructive" className="text-xs py-1.5 px-3 gap-1.5">
+                  <Badge className="text-xs py-1.5 px-3 gap-1.5 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-0">
                     <Coffee className="size-3" />
-                    Break missed ({breakWindowLabel})
+                    Break missed
                   </Badge>
                 )}
               </>
             )}
             {onBreak && (
-              <Button
-                onClick={handleBreakEnd}
-                disabled={loading}
-                variant="secondary"
-                className="gap-2"
-              >
+              <Button onClick={handleBreakEnd} disabled={loading} variant="secondary" className="gap-2 rounded-lg">
                 <Coffee className="size-4" />
                 {loading ? "..." : "End Break"}
               </Button>
             )}
             {breakDone && (
-              <Badge variant="secondary" className="text-xs py-1.5 px-3 gap-1.5">
+              <Badge variant="outline" className="text-xs py-1.5 px-3 gap-1.5">
                 <Coffee className="size-3" />
                 Break ended at {formatPKTTime(attendance.breakEnd)}
               </Badge>
@@ -658,13 +652,13 @@ export function EmployeeDashboard({
               </>
             )}
             {hasCheckedOut && (
-              <Badge variant="secondary" className="text-sm py-1.5 px-3">
-                Day Complete
+              <Badge className="text-xs py-1.5 px-3 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0 gap-1.5">
+                <CheckCircle className="size-3" />
+                Completed
               </Badge>
             )}
           </div>
-          </div>)}
-          </div>
+          )}
         </CardContent>
       </Card>
 

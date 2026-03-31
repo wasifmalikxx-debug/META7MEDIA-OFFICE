@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Upload, X, Star, Send } from "lucide-react";
+import { Upload, X, Star, Send, DollarSign, Clock, CheckCircle, XCircle, Pencil, Trash2 } from "lucide-react";
 
 interface ReviewSubmission {
   id: string;
@@ -192,17 +192,17 @@ export function ReviewBonusSubmit({
 
   return (
     <div className="space-y-6">
-      {/* Bonus Amount Banner */}
-      <Card className="border-green-200 bg-green-50">
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-3">
-            <div className="flex size-12 items-center justify-center rounded-full bg-green-100">
-              <Star className="size-6 text-green-600" />
+      {/* Bonus Banner */}
+      <Card className="border-0 shadow-sm overflow-hidden bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
+        <CardContent className="py-5 px-5">
+          <div className="flex items-center gap-4">
+            <div className="size-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+              <DollarSign className="size-6 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <p className="text-lg font-bold text-green-700">Rs. 500 per Fixed Review</p>
-              <p className="text-sm text-green-600">
-                Fix a negative review (1-3 stars) to a positive one (4-5 stars) and earn Rs. 500 bonus
+              <h2 className="text-lg font-bold text-emerald-700 dark:text-emerald-400">PKR 500 Per Review Fix</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Fix a negative review (1-3 stars) to positive (4-5 stars) and earn PKR 500 bonus per fix
               </p>
             </div>
           </div>
@@ -210,41 +210,43 @@ export function ReviewBonusSubmit({
       </Card>
 
       {/* Submission Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Submit Review Fix</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="border-0 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b bg-muted/20">
+          <h3 className="text-xs font-bold">{editingId ? "Edit Submission" : "Submit New Review Fix"}</h3>
+        </div>
+        <CardContent className="pt-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Store Name *</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Store Name</Label>
                 <Input
                   value={form.storeName}
                   onChange={(e) => setForm({ ...form, storeName: e.target.value })}
-                  placeholder="Enter store name"
+                  placeholder="e.g. META7 Crafts"
                   required
+                  className="h-9"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Customer Name (Optional)</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Customer Name <span className="font-normal text-muted-foreground">(optional)</span></Label>
                 <Input
                   value={form.customerName}
                   onChange={(e) => setForm({ ...form, customerName: e.target.value })}
-                  placeholder="Enter customer name"
+                  placeholder="Customer who left the review"
+                  className="h-9"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Original Rating *</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Original Rating (Before)</Label>
                 <Select
                   value={form.originalRating}
                   onValueChange={(v) => v && setForm({ ...form, originalRating: v })}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select original rating..." />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">1 Star</SelectItem>
@@ -253,14 +255,14 @@ export function ReviewBonusSubmit({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>New Rating *</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">New Rating (After Fix)</Label>
                 <Select
                   value={form.newRating}
                   onValueChange={(v) => v && setForm({ ...form, newRating: v })}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select new rating..." />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="4">4 Stars</SelectItem>
@@ -273,10 +275,10 @@ export function ReviewBonusSubmit({
             {/* Screenshot Uploads */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Before Screenshot */}
-              <div className="space-y-2">
-                <Label>Before Screenshot *</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Before Screenshot</Label>
                 <div
-                  className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                  className="border-2 border-dashed border-rose-200 dark:border-rose-800 rounded-lg p-4 text-center cursor-pointer hover:border-rose-400 transition-colors"
                   onClick={() => beforeInputRef.current?.click()}
                   onDrop={handleDrop("before")}
                   onDragOver={handleDragOver}
@@ -318,10 +320,10 @@ export function ReviewBonusSubmit({
               </div>
 
               {/* After Screenshot */}
-              <div className="space-y-2">
-                <Label>After Screenshot *</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">After Screenshot</Label>
                 <div
-                  className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                  className="border-2 border-dashed border-emerald-200 dark:border-emerald-800 rounded-lg p-4 text-center cursor-pointer hover:border-emerald-400 transition-colors"
                   onClick={() => afterInputRef.current?.click()}
                   onDrop={handleDrop("after")}
                   onDragOver={handleDragOver}
@@ -363,20 +365,23 @@ export function ReviewBonusSubmit({
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              <Send className="size-4 mr-2" />
-              {loading ? "Submitting..." : editingId ? "Update Submission" : "Submit Review Bonus"}
+            <Button type="submit" className="w-full h-10 gap-2 rounded-lg" disabled={loading}>
+              <Send className="size-4" />
+              {loading ? "Submitting..." : editingId ? "Update Submission" : "Submit for Approval"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
       {/* Submission History */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Your Submissions</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="border-0 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b bg-muted/20">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold">Your Submissions</h3>
+            <Badge variant="outline" className="text-[9px] h-5">{submissions.length} total</Badge>
+          </div>
+        </div>
+        <CardContent className="pt-4">
           <Table>
             <TableHeader>
               <TableRow>
