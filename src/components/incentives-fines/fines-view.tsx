@@ -40,7 +40,7 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
     type: "LATE_ARRIVAL",
     amount: 0,
     reason: "",
-    date: new Date().toISOString().split("T")[0],
+    date: new Date(Date.now() + 5 * 60 * 60_000).toISOString().split("T")[0],
   });
 
   const monthName = format(new Date(currentYear, currentMonth - 1), "MMMM yyyy");

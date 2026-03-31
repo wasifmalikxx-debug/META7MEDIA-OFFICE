@@ -242,7 +242,7 @@ export function EmployeeDashboard({
   const currentYear = pktNow.getUTCFullYear();
   const thisMonthLeaves = leaves.filter((l: any) => {
     const d = new Date(l.startDate);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear && l.status !== "REJECTED";
+    return d.getUTCMonth() === currentMonth && d.getUTCFullYear() === currentYear && l.status !== "REJECTED";
   });
   const halfDayLeaves = thisMonthLeaves.filter((l: any) => l.leaveType === "HALF_DAY");
   const halfDaysUsed = halfDayLeaves.length;
@@ -449,7 +449,7 @@ export function EmployeeDashboard({
               {employeeStatus}
             </Badge>
           </h1>
-          <p className="text-muted-foreground mt-1">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
+          <p className="text-muted-foreground mt-1">{format(new Date(Date.now() + 5 * 60 * 60_000), "EEEE, MMMM d, yyyy")}</p>
         </div>
       </div>
 
@@ -666,7 +666,7 @@ export function EmployeeDashboard({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold">
-            {new Date().toLocaleString("en-US", { month: "long", year: "numeric" })}
+            {new Date(Date.now() + 5 * 60 * 60_000).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}
           </h2>
           <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Resets monthly</span>
         </div>
@@ -965,7 +965,7 @@ export function EmployeeDashboard({
                     <Input
                       type="date"
                       value={leaveForm.date}
-                      min={new Date().toISOString().split("T")[0]}
+                      min={new Date(Date.now() + 5 * 60 * 60_000).toISOString().split("T")[0]}
                       onChange={(e) => setLeaveForm({ ...leaveForm, date: e.target.value })}
                     />
                   </div>

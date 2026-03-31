@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { nowPKT } from "@/lib/pkt";
 import { fetchAllProfits } from "@/lib/services/google-sheets.service";
 import { calculateEligibility } from "@/lib/services/bonus.service";
 
@@ -24,9 +25,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+    const now = nowPKT();
+    const month = now.getUTCMonth() + 1;
+    const year = now.getUTCFullYear();
 
     // Get Etsy employees with sheets
     const etsyDept = await prisma.department.findFirst({ where: { name: "Etsy" } });
