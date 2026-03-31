@@ -155,15 +155,15 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex gap-4 items-center justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search employees..."
+            placeholder="Search by name, ID, or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 h-10 rounded-lg"
           />
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -515,125 +515,104 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
         });
 
         const sections = sortedKeys.map((dept) => (
-          <div key={dept} className="space-y-2">
-            <div className="flex items-center gap-3 px-1">
-              <h3 className="text-lg font-semibold">{dept} Team</h3>
-              <Badge variant="outline" className="text-xs">
-                {grouped[dept].length} employees
-              </Badge>
+          <div key={dept} className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <div className={`size-8 rounded-lg flex items-center justify-center ${dept === "Etsy" ? "bg-emerald-100 dark:bg-emerald-900/30" : dept === "Facebook" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-slate-100 dark:bg-slate-800"}`}>
+                <span className="text-xs font-bold">{dept[0]}</span>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold">{dept} Team</h3>
+                <p className="text-[10px] text-muted-foreground">{grouped[dept].length} members</p>
+              </div>
             </div>
-            <Card>
-              <CardContent className="pt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Salary</TableHead>
-                      <TableHead>Bank Details</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Joining</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {grouped[dept].map((emp) => (
-                      <TableRow key={emp.id}>
-                        <TableCell className="text-sm font-mono">{emp.employeeId}</TableCell>
-                        <TableCell>
-                          <div className="text-sm font-medium">
-                            {emp.firstName} {emp.lastName}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {grouped[dept].map((emp) => (
+                <Card key={emp.id} className="border-0 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                  <CardContent className="p-0">
+                    {/* Header */}
+                    <div className={`px-4 py-3 border-b ${dept === "Etsy" ? "bg-emerald-50/40 dark:bg-emerald-950/10" : dept === "Facebook" ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-muted/20"}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="size-9 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            {emp.firstName[0]}{emp.lastName?.[0] || ""}
                           </div>
-                          <div className="text-xs text-muted-foreground">{emp.email}</div>
-                        </TableCell>
-                        <TableCell className="text-sm font-mono">
-                          {emp.phone || <span className="text-xs text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell className="text-sm font-medium">
-                          {emp.salaryStructure
-                            ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}`
-                            : "—"}
-                        </TableCell>
-                        <TableCell>
-                          {emp.bankName ? (
-                            <div>
-                              <div className="text-sm">{emp.bankName}</div>
-                              <div className="text-xs text-muted-foreground font-mono">
-                                {emp.accountNumber}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {emp.accountTitle}
-                              </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-bold">{emp.firstName} {emp.lastName}</span>
+                              <Badge className={`text-[8px] h-4 border-0 ${emp.status === "HIRED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>
+                                {emp.status}
+                              </Badge>
                             </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Not provided</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              emp.status === "HIRED"
-                                ? "default"
-                                : emp.status === "PROBATION"
-                                ? "secondary"
-                                : "destructive"
-                            }
-                            className="text-xs"
-                          >
-                            {emp.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {emp.joiningDate
-                            ? new Date(emp.joiningDate).toLocaleDateString("en-PK", {
-                                day: "numeric",
-                                month: "short",
-                                year: "numeric",
-                              })
-                            : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => openEdit(emp)}
-                            >
-                              <Pencil className="size-3.5" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-red-500 hover:text-red-700"
-                              onClick={() =>
-                                handleDelete(emp.id, `${emp.firstName} ${emp.lastName}`)
-                              }
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
+                            <span className="text-[10px] text-muted-foreground font-mono">{emp.employeeId}</span>
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                        </div>
+                        <div className="flex gap-0.5">
+                          <Button size="sm" variant="ghost" className="size-7 p-0" onClick={() => openEdit(emp)}>
+                            <Pencil className="size-3" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="size-7 p-0 text-rose-400 hover:text-rose-600" onClick={() => handleDelete(emp.id, `${emp.firstName} ${emp.lastName}`)}>
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Details */}
+                    <div className="px-4 py-3 space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Email</span>
+                        <span className="font-medium truncate max-w-[160px]">{emp.email}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Phone</span>
+                        <span className="font-medium font-mono">{emp.phone || "—"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Salary</span>
+                        <span className="font-bold">{emp.salaryStructure ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}` : "—"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Joined</span>
+                        <span className="font-medium">{emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>
+                      </div>
+                      {emp.bankName && (
+                        <div className="pt-1.5 mt-1.5 border-t border-muted/30">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Bank</span>
+                            <span className="font-medium">{emp.bankName}</span>
+                          </div>
+                          <div className="flex justify-between mt-0.5">
+                            <span className="text-muted-foreground">Account</span>
+                            <span className="font-mono text-[10px]">{emp.accountNumber}</span>
+                          </div>
+                          {emp.accountTitle && (
+                            <div className="flex justify-between mt-0.5">
+                              <span className="text-muted-foreground">Title</span>
+                              <span className="font-medium text-[10px]">{emp.accountTitle}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         ));
 
-        // Resigned / Fired section
         if (inactive.length > 0) {
           sections.push(
-            <div key="inactive" className="space-y-2 mt-4">
-              <div className="flex items-center gap-3 px-1">
-                <h3 className="text-lg font-semibold text-muted-foreground">Terminated</h3>
-                <Badge variant="outline" className="text-xs text-muted-foreground">
-                  {inactive.length} employees
-                </Badge>
+            <div key="inactive" className="space-y-3 mt-4">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+                  <span className="text-xs font-bold text-rose-600">X</span>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-muted-foreground">Terminated / Resigned</h3>
+                  <p className="text-[10px] text-muted-foreground">{inactive.length} former employees</p>
+                </div>
               </div>
-              <Card className="opacity-75">
+              <Card className="opacity-60 border-0 shadow-sm">
                 <CardContent className="pt-4">
                   <Table>
                     <TableHeader>
