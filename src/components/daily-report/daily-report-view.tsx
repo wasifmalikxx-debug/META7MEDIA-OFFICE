@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import { ChevronLeft, ChevronRight, Calendar, ShoppingBag, Megaphone, FileText, Link2, Users, ExternalLink } from "lucide-react";
+  ChevronLeft, ChevronRight, Calendar, ShoppingBag, Megaphone,
+  FileText, Link2, Users, ExternalLink, ClipboardList,
+} from "lucide-react";
 
 interface DailyReportViewProps {
   reports: any[];
@@ -30,25 +30,102 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
 
   const etsyReports = reports.filter((r: any) => r.user.employeeId.startsWith("EM"));
   const fbReports = reports.filter((r: any) => r.user.employeeId.startsWith("SMM"));
-
-  // Monthly totals
   const totalEtsyListings = etsyReports.reduce((s: number, r: any) => s + (r.listingsCount || 0), 0);
   const totalFBPosts = fbReports.reduce((s: number, r: any) => s + (r.postsCount || 0), 0);
   const uniqueEtsyEmployees = new Set(etsyReports.map((r: any) => r.user.employeeId)).size;
   const uniqueFBEmployees = new Set(fbReports.map((r: any) => r.user.employeeId)).size;
 
-  function groupByDate(items: any[]) {
-    const grouped: Record<string, any[]> = {};
-    items.forEach((r: any) => {
-      const dateKey = format(new Date(r.date), "yyyy-MM-dd");
-      if (!grouped[dateKey]) grouped[dateKey] = [];
-      grouped[dateKey].push(r);
-    });
-    return Object.entries(grouped).sort((a, b) => b[0].localeCompare(a[0]));
+  // Group ALL reports by date (both teams together)
+  const grouped: Record<string, { etsy: any[]; fb: any[] }> = {};
+  reports.forEach((r: any) => {
+    const dateKey = format(new Date(r.date), "yyyy-MM-dd");
+    if (!grouped[dateKey]) grouped[dateKey] = { etsy: [], fb: [] };
+    if (r.user.employeeId.startsWith("EM")) grouped[dateKey].etsy.push(r);
+    else if (r.user.employeeId.startsWith("SMM")) grouped[dateKey].fb.push(r);
+  });
+  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  function renderEtsyReport(r: any) {
+    const links = r.listingLinks?.split("\n").filter(Boolean) || [];
+    return (
+      <div key={r.id} className="flex gap-3 py-3 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 px-4 transition-colors">
+        <div className="size-8 rounded-full bg-gradient-to-br from-emerald-100 to-emerald-200 dark:from-emerald-800 dark:to-emerald-700 flex items-center justify-center text-[10px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0">
+          {r.user.firstName[0]}{r.user.lastName?.[0] || ""}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">{r.user.firstName} {r.user.lastName}</span>
+              <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">{r.user.employeeId}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge className="text-[9px] h-5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0 gap-1">
+                <ClipboardList className="size-2.5" />{r.listingsCount || 0} listings
+              </Badge>
+            </div>
+          </div>
+          <div className="mt-1.5 space-y-1">
+            {r.storeName && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <ShoppingBag className="size-3 text-emerald-500 shrink-0" />
+                <span className="font-medium">{r.storeName}</span>
+              </div>
+            )}
+            {links.length > 0 && (
+              <div className="flex items-start gap-1.5 text-xs">
+                <Link2 className="size-3 text-muted-foreground shrink-0 mt-0.5" />
+                <div className="flex flex-wrap gap-1.5">
+                  {links.slice(0, 3).map((link: string, i: number) => (
+                    <a key={i} href={link.trim()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 hover:underline bg-blue-50 dark:bg-blue-950/30 px-2 py-0.5 rounded text-[10px]">
+                      Link {i + 1} <ExternalLink className="size-2" />
+                    </a>
+                  ))}
+                  {links.length > 3 && (
+                    <span className="text-[10px] text-muted-foreground">+{links.length - 3} more</span>
+                  )}
+                </div>
+              </div>
+            )}
+            {r.notes && (
+              <p className="text-[10px] text-muted-foreground italic mt-1">{r.notes}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  const etsyGrouped = groupByDate(etsyReports);
-  const fbGrouped = groupByDate(fbReports);
+  function renderFBReport(r: any) {
+    return (
+      <div key={r.id} className="flex gap-3 py-3 hover:bg-blue-50/30 dark:hover:bg-blue-950/10 px-4 transition-colors">
+        <div className="size-8 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-800 dark:to-blue-700 flex items-center justify-center text-[10px] font-bold text-blue-700 dark:text-blue-300 shrink-0">
+          {r.user.firstName[0]}{r.user.lastName?.[0] || ""}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">{r.user.firstName} {r.user.lastName}</span>
+              <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">{r.user.employeeId}</span>
+            </div>
+            <Badge className="text-[9px] h-5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0 gap-1">
+              <Megaphone className="size-2.5" />{r.postsCount || 0} posts
+            </Badge>
+          </div>
+          <div className="mt-1.5 space-y-1">
+            {r.pageNames && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <Users className="size-3 text-blue-500 shrink-0" />
+                <span className="font-medium">{r.pageNames}</span>
+              </div>
+            )}
+            {r.notes && (
+              <p className="text-[10px] text-muted-foreground italic mt-1">{r.notes}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -68,214 +145,125 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
         </div>
       </div>
 
-      {/* Monthly Overview Cards */}
+      {/* Monthly KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
-          <CardContent className="py-4 px-4">
+          <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
               <ShoppingBag className="size-3.5 text-emerald-500" />
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Etsy Listings</p>
             </div>
             <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{totalEtsyListings}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{etsyReports.length} reports from {uniqueEtsyEmployees} employees</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{uniqueEtsyEmployees} employees</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
-          <CardContent className="py-4 px-4">
+          <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
               <Megaphone className="size-3.5 text-blue-500" />
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">FB Posts</p>
             </div>
             <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{totalFBPosts}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{fbReports.length} reports from {uniqueFBEmployees} employees</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{uniqueFBEmployees} employees</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
-          <CardContent className="py-4 px-4">
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
               <FileText className="size-3.5 text-slate-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Reports</p>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Reports</p>
             </div>
             <p className="text-3xl font-bold">{reports.length}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">This month</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/30 dark:to-slate-800">
-          <CardContent className="py-4 px-4">
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
-              <Users className="size-3.5 text-violet-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Active Staff</p>
+              <Calendar className="size-3.5 text-violet-500" />
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Days Covered</p>
             </div>
-            <p className="text-3xl font-bold text-violet-600 dark:text-violet-400">{uniqueEtsyEmployees + uniqueFBEmployees}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Submitted at least 1 report</p>
+            <p className="text-3xl font-bold text-violet-600 dark:text-violet-400">{sortedDates.length}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Working days with reports</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Empty State */}
       {reports.length === 0 && (
         <Card className="border-0 shadow-sm">
           <CardContent className="py-16 text-center">
-            <div className="size-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
-              <FileText className="size-6 text-muted-foreground/50" />
+            <div className="size-14 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
+              <FileText className="size-7 text-muted-foreground/40" />
             </div>
-            <p className="text-muted-foreground font-medium">No reports for {monthName}</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Employee daily reports will appear here</p>
+            <p className="text-muted-foreground font-semibold">No Reports Yet</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Employee daily reports for {monthName} will appear here</p>
           </CardContent>
         </Card>
       )}
 
-      {/* Etsy Team Reports */}
-      {etsyGrouped.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="size-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                <ShoppingBag className="size-4 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold">Etsy Team</h3>
-                <p className="text-[10px] text-muted-foreground">{totalEtsyListings} total listings this month</p>
-              </div>
-            </div>
-          </div>
-          {etsyGrouped.map(([dateStr, dayReports]) => {
-            const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d");
-            const totalListings = dayReports.reduce((s: number, r: any) => s + (r.listingsCount || 0), 0);
-            return (
-              <Card key={dateStr} className="border-0 shadow-sm overflow-hidden">
-                <CardHeader className="py-2.5 px-4 bg-emerald-50/50 dark:bg-emerald-950/15 border-b">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xs font-bold">{dateLabel}</CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[9px] h-5">{dayReports.length} report{dayReports.length !== 1 ? "s" : ""}</Badge>
-                      <Badge className="text-[9px] h-5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0">{totalListings} listings</Badge>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="divide-y divide-muted/30">
-                    {dayReports.map((r: any) => (
-                      <div key={r.id} className="px-4 py-3 hover:bg-muted/20 transition-colors">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="size-7 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
-                              {r.user.firstName[0]}{r.user.lastName?.[0] || ""}
-                            </div>
-                            <div>
-                              <span className="text-sm font-semibold">{r.user.firstName} {r.user.lastName}</span>
-                              <span className="text-[10px] text-muted-foreground ml-1.5 font-mono bg-muted/50 px-1.5 py-0.5 rounded">{r.user.employeeId}</span>
-                            </div>
-                          </div>
-                          <Badge variant="outline" className="text-[10px] font-bold gap-1">
-                            <FileText className="size-2.5" />
-                            {r.listingsCount || 0} listings
-                          </Badge>
-                        </div>
-                        <div className="ml-9.5 pl-0.5 space-y-1.5">
-                          {r.storeName && (
-                            <div className="flex items-center gap-1.5 text-xs">
-                              <ShoppingBag className="size-3 text-muted-foreground shrink-0" />
-                              <span className="text-muted-foreground">Store:</span>
-                              <span className="font-medium">{r.storeName}</span>
-                            </div>
-                          )}
-                          {r.listingLinks && (
-                            <div className="flex items-start gap-1.5 text-xs">
-                              <Link2 className="size-3 text-muted-foreground shrink-0 mt-0.5" />
-                              <div className="space-y-0.5">
-                                {r.listingLinks.split("\n").filter(Boolean).map((link: string, i: number) => (
-                                  <a key={i} href={link.trim()} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[400px]">
-                                    {link.trim()}
-                                    <ExternalLink className="size-2.5 shrink-0" />
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {r.notes && (
-                            <p className="text-[11px] text-muted-foreground italic">&quot;{r.notes}&quot;</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      {/* Daily Feed — Grouped by Date, Both Teams Under Each Day */}
+      {sortedDates.map((dateStr) => {
+        const day = grouped[dateStr];
+        const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d");
+        const dayListings = day.etsy.reduce((s: number, r: any) => s + (r.listingsCount || 0), 0);
+        const dayPosts = day.fb.reduce((s: number, r: any) => s + (r.postsCount || 0), 0);
+        const totalReports = day.etsy.length + day.fb.length;
 
-      {/* FB Team Reports */}
-      {fbGrouped.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="size-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <Megaphone className="size-4 text-blue-600 dark:text-blue-400" />
+        return (
+          <Card key={dateStr} className="border-0 shadow-sm overflow-hidden">
+            {/* Date Header */}
+            <CardHeader className="py-3 px-5 bg-muted/30 border-b">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-bold">{dateLabel}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-[9px] h-5">{totalReports} report{totalReports !== 1 ? "s" : ""}</Badge>
+                  {dayListings > 0 && (
+                    <Badge className="text-[9px] h-5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0">
+                      {dayListings} listings
+                    </Badge>
+                  )}
+                  {dayPosts > 0 && (
+                    <Badge className="text-[9px] h-5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
+                      {dayPosts} posts
+                    </Badge>
+                  )}
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold">Facebook Team</h3>
-                <p className="text-[10px] text-muted-foreground">{totalFBPosts} total posts this month</p>
-              </div>
-            </div>
-          </div>
-          {fbGrouped.map(([dateStr, dayReports]) => {
-            const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d");
-            const totalPosts = dayReports.reduce((s: number, r: any) => s + (r.postsCount || 0), 0);
-            return (
-              <Card key={dateStr} className="border-0 shadow-sm overflow-hidden">
-                <CardHeader className="py-2.5 px-4 bg-blue-50/50 dark:bg-blue-950/15 border-b">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xs font-bold">{dateLabel}</CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[9px] h-5">{dayReports.length} report{dayReports.length !== 1 ? "s" : ""}</Badge>
-                      <Badge className="text-[9px] h-5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">{totalPosts} posts</Badge>
-                    </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {/* Etsy Section */}
+              {day.etsy.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 px-5 py-2 bg-emerald-50/40 dark:bg-emerald-950/10 border-b border-muted/20">
+                    <ShoppingBag className="size-3 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Etsy Team</span>
+                    <span className="text-[10px] text-muted-foreground">({day.etsy.length})</span>
                   </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="divide-y divide-muted/30">
-                    {dayReports.map((r: any) => (
-                      <div key={r.id} className="px-4 py-3 hover:bg-muted/20 transition-colors">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="size-7 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
-                              {r.user.firstName[0]}{r.user.lastName?.[0] || ""}
-                            </div>
-                            <div>
-                              <span className="text-sm font-semibold">{r.user.firstName} {r.user.lastName}</span>
-                              <span className="text-[10px] text-muted-foreground ml-1.5 font-mono bg-muted/50 px-1.5 py-0.5 rounded">{r.user.employeeId}</span>
-                            </div>
-                          </div>
-                          <Badge variant="outline" className="text-[10px] font-bold gap-1">
-                            <Megaphone className="size-2.5" />
-                            {r.postsCount || 0} posts
-                          </Badge>
-                        </div>
-                        <div className="ml-9.5 pl-0.5 space-y-1.5">
-                          {r.pageNames && (
-                            <div className="flex items-start gap-1.5 text-xs">
-                              <Users className="size-3 text-muted-foreground shrink-0 mt-0.5" />
-                              <div>
-                                <span className="text-muted-foreground">Pages: </span>
-                                <span className="font-medium">{r.pageNames}</span>
-                              </div>
-                            </div>
-                          )}
-                          {r.notes && (
-                            <p className="text-[11px] text-muted-foreground italic">&quot;{r.notes}&quot;</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                  <div className="divide-y divide-muted/20">
+                    {day.etsy.map(renderEtsyReport)}
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                </div>
+              )}
+
+              {/* FB Section */}
+              {day.fb.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 px-5 py-2 bg-blue-50/40 dark:bg-blue-950/10 border-b border-t border-muted/20">
+                    <Megaphone className="size-3 text-blue-600 dark:text-blue-400" />
+                    <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Facebook Team</span>
+                    <span className="text-[10px] text-muted-foreground">({day.fb.length})</span>
+                  </div>
+                  <div className="divide-y divide-muted/20">
+                    {day.fb.map(renderFBReport)}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
