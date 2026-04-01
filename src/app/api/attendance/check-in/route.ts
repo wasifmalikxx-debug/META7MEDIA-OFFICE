@@ -13,13 +13,18 @@ export async function POST(request: NextRequest) {
     return error("You must be on the office network to check in", 403);
   }
 
-  // Enforce 30-minute check-in window before office start (using PKT)
+  // Enforce check-in window: 30 min before start to office end time (using PKT)
   const settings = await getOfficeSettings();
   const [wsH, wsM] = (settings?.workStartTime || "11:00").split(":").map(Number);
+  const [weH, weM] = (settings?.workEndTime || "19:00").split(":").map(Number);
   const workStartMin = wsH * 60 + wsM;
+  const workEndMin = weH * 60 + weM;
   const currentMin = pktMinutesSinceMidnight();
   if (currentMin < workStartMin - 30) {
     return error(`Check-in opens 30 minutes before office hours (${settings?.workStartTime || "11:00"})`, 400);
+  }
+  if (currentMin > workEndMin) {
+    return error("Check-in is closed for today. Office hours have ended.", 400);
   }
 
   try {
