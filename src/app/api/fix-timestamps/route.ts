@@ -1,75 +1,83 @@
 import { json, error, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
-// One-time fix: shift all old UTC timestamps to PKT-shifted format
-// Old records stored checkIn/checkOut as real UTC (before nowPKT() fix)
-// New records store as PKT-shifted (UTC+5). This migrates old to match new.
-// DELETE THIS FILE after running once.
+// One-time fix: shift old UTC timestamps to PKT-shifted format AND recalculate workedMinutes
+// DELETE THIS FILE after running
 export async function POST() {
   const session = await requireRole("SUPER_ADMIN");
   if (!session) return error("Forbidden", 403);
 
   const PKT_OFFSET_MS = 5 * 60 * 60_000;
 
-  // Get all attendance records
   const records = await prisma.attendance.findMany({
-    select: { id: true, checkIn: true, checkOut: true, breakStart: true, breakEnd: true },
+    select: { id: true, checkIn: true, checkOut: true, breakStart: true, breakEnd: true, workedMinutes: true },
   });
 
-  let fixed = 0;
+  let fixedTimestamps = 0;
+  let fixedWorkedMin = 0;
 
   for (const rec of records) {
     const updates: any = {};
     let needsUpdate = false;
 
-    // Heuristic: if checkIn UTC hour is < 8 (before 8 AM UTC = 1 PM PKT),
-    // it's likely a real UTC value that needs +5h shift.
-    // PKT-shifted values would have UTC hour >= 10 (for 10:30 AM PKT check-in)
-    if (rec.checkIn) {
-      const h = rec.checkIn.getUTCHours();
-      if (h < 8) {
-        updates.checkIn = new Date(rec.checkIn.getTime() + PKT_OFFSET_MS);
-        needsUpdate = true;
-      }
+    // Fix checkIn: if UTC hour < 8, it's real UTC (before nowPKT fix)
+    if (rec.checkIn && rec.checkIn.getUTCHours() < 8) {
+      updates.checkIn = new Date(rec.checkIn.getTime() + PKT_OFFSET_MS);
+      needsUpdate = true;
     }
 
-    if (rec.checkOut) {
-      const h = rec.checkOut.getUTCHours();
-      if (h < 16) { // Real UTC checkout at 14:00 (7PM PKT) → shift to 19:00
-        updates.checkOut = new Date(rec.checkOut.getTime() + PKT_OFFSET_MS);
-        needsUpdate = true;
-      }
+    // Fix checkOut: if UTC hour < 16, it's real UTC
+    if (rec.checkOut && rec.checkOut.getUTCHours() < 16) {
+      updates.checkOut = new Date(rec.checkOut.getTime() + PKT_OFFSET_MS);
+      needsUpdate = true;
     }
 
-    if (rec.breakStart) {
-      const h = rec.breakStart.getUTCHours();
-      if (h < 10) { // Real UTC break at 10:00 (3PM PKT) → shift to 15:00
-        updates.breakStart = new Date(rec.breakStart.getTime() + PKT_OFFSET_MS);
-        needsUpdate = true;
-      }
+    // Fix breakStart: if UTC hour < 10, it's real UTC
+    if (rec.breakStart && rec.breakStart.getUTCHours() < 10) {
+      updates.breakStart = new Date(rec.breakStart.getTime() + PKT_OFFSET_MS);
+      needsUpdate = true;
     }
 
-    if (rec.breakEnd) {
-      const h = rec.breakEnd.getUTCHours();
-      if (h < 12) { // Real UTC break end at 11:00 (4PM PKT) → shift to 16:00
-        updates.breakEnd = new Date(rec.breakEnd.getTime() + PKT_OFFSET_MS);
+    // Fix breakEnd: if UTC hour < 12, it's real UTC
+    if (rec.breakEnd && rec.breakEnd.getUTCHours() < 12) {
+      updates.breakEnd = new Date(rec.breakEnd.getTime() + PKT_OFFSET_MS);
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      fixedTimestamps++;
+    }
+
+    // Recalculate workedMinutes using corrected timestamps
+    const checkIn = updates.checkIn || rec.checkIn;
+    const checkOut = updates.checkOut || rec.checkOut;
+    const breakStart = updates.breakStart || rec.breakStart;
+    const breakEnd = updates.breakEnd || rec.breakEnd;
+
+    if (checkIn && checkOut) {
+      let breakMin = 0;
+      if (breakStart && breakEnd) {
+        breakMin = Math.floor((breakEnd.getTime() - breakStart.getTime()) / (1000 * 60));
+        if (breakMin < 0 || breakMin > 180) breakMin = 0; // sanity check
+      }
+      const newWorked = Math.max(0, Math.floor((checkOut.getTime() - checkIn.getTime()) / (1000 * 60)) - breakMin);
+
+      if (newWorked !== rec.workedMinutes) {
+        updates.workedMinutes = newWorked;
+        fixedWorkedMin++;
         needsUpdate = true;
       }
     }
 
     if (needsUpdate) {
-      await prisma.attendance.update({
-        where: { id: rec.id },
-        data: updates,
-      });
-      fixed++;
+      await prisma.attendance.update({ where: { id: rec.id }, data: updates });
     }
   }
 
   return json({
-    message: `Migrated ${fixed} records from UTC to PKT-shifted format`,
+    message: `Fixed ${fixedTimestamps} timestamps, recalculated ${fixedWorkedMin} worked minutes`,
     total: records.length,
-    fixed,
-    unchanged: records.length - fixed,
+    fixedTimestamps,
+    fixedWorkedMin,
   });
 }
