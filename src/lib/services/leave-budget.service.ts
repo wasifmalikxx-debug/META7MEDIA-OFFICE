@@ -13,23 +13,13 @@ export async function getAccumulatedLeaveBudget(
   userId: string,
   paidLeavesPerMonth: number = 1.0
 ): Promise<{ totalEarned: number; totalUsed: number; available: number }> {
-  // Get employee's first attendance record (when they started using the system)
-  const firstAttendance = await prisma.attendance.findFirst({
-    where: { userId },
-    orderBy: { date: "asc" },
-    select: { date: true },
-  });
+  // System start date: April 2026 (leave tracking begins from this month)
+  const SYSTEM_START_YEAR = 2026;
+  const SYSTEM_START_MONTH = 3; // 0-indexed: 3 = April
 
-  if (!firstAttendance) {
-    // No attendance records yet — give them 1 month budget
-    return { totalEarned: paidLeavesPerMonth, totalUsed: 0, available: paidLeavesPerMonth };
-  }
-
-  // Calculate months from first attendance to current month
   const now = nowPKT();
-  const startDate = new Date(firstAttendance.date);
-  const startYear = startDate.getUTCFullYear();
-  const startMonth = startDate.getUTCMonth();
+  const startYear = SYSTEM_START_YEAR;
+  const startMonth = SYSTEM_START_MONTH;
   const currentYear = now.getUTCFullYear();
   const currentMonth = now.getUTCMonth();
 
@@ -52,7 +42,7 @@ export async function getAccumulatedLeaveBudget(
       userId,
       leaveType: "HALF_DAY",
       status: "APPROVED",
-      startDate: { gte: startDate },
+      startDate: { gte: new Date(Date.UTC(SYSTEM_START_YEAR, SYSTEM_START_MONTH, 1)) },
     },
   });
 
