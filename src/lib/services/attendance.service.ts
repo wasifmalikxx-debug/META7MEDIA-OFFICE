@@ -36,12 +36,15 @@ export async function checkIn(
   const now = nowPKT();
   const today = todayPKT();
 
-  // Check if already checked in today
+  // Check if already checked in today or marked absent by system
   const existing = await prisma.attendance.findUnique({
     where: { userId_date: { userId, date: today } },
   });
   if (existing?.checkIn) {
     throw new Error("Already checked in today");
+  }
+  if (existing?.status === "ABSENT") {
+    throw new Error("You have been marked absent for today. Contact your CEO if this is incorrect.");
   }
 
   // Check if employee has a FIRST_HALF leave today — they'll arrive after break, no late fine
