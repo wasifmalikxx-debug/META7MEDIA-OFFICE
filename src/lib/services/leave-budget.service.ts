@@ -45,19 +45,19 @@ export async function getAccumulatedLeaveBudget(
     },
   });
 
-  // Count attendance records marked HALF_DAY that consumed budget
-  // (half-days with a corresponding covered fine are counted above, but
-  // half-days from leave requests also consume 0.5 each)
-  const halfDayAttendances = await prisma.attendance.count({
+  // Count ONLY half-day leave requests (not wrongly-marked HALF_DAY attendance)
+  // Only approved half-day leave requests actually consume budget
+  const halfDayLeaves = await prisma.leaveRequest.count({
     where: {
       userId,
-      status: "HALF_DAY",
-      date: { gte: startDate },
+      leaveType: "HALF_DAY",
+      status: "APPROVED",
+      startDate: { gte: startDate },
     },
   });
 
-  // Each covered absence = 1.0 used, each half-day attendance = 0.5 used
-  const totalUsed = coveredAbsences + (halfDayAttendances * 0.5);
+  // Each covered absence = 1.0 used, each half-day leave = 0.5 used
+  const totalUsed = coveredAbsences + (halfDayLeaves * 0.5);
   const available = Math.max(0, totalEarned - totalUsed);
 
   return { totalEarned, totalUsed, available };
