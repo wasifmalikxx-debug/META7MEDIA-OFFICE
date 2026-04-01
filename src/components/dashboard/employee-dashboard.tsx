@@ -996,13 +996,13 @@ export function EmployeeDashboard({
           <div className="space-y-2">
             <div>
               <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                <span>Pending Leaves (Rollover)</span>
+                <span>Paid Leave Balance</span>
                 <span>{pendingLeaves.toFixed(1)} day{pendingLeaves !== 1 ? "s" : ""} available</span>
               </div>
               <div className="h-2 rounded-full bg-muted overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all ${pendingLeaves >= 2 ? "bg-green-500" : pendingLeaves > 0 ? "bg-yellow-500" : "bg-red-500"}`}
-                  style={{ width: `${Math.min(100, (pendingLeaves / 3) * 100)}%` }}
+                  className={`h-full rounded-full transition-all ${pendingLeaves >= 1 ? "bg-emerald-500" : pendingLeaves > 0 ? "bg-amber-500" : "bg-rose-500"}`}
+                  style={{ width: `${Math.min(100, pendingLeaves * 100)}%` }}
                 />
               </div>
             </div>
