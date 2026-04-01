@@ -592,7 +592,7 @@ export function EmployeeDashboard({
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-xs font-semibold">Listing URLs</Label>
-                          <Textarea value={reportForm.listingLinks} onChange={(e) => setReportForm({ ...reportForm, listingLinks: e.target.value })} placeholder={"https://etsy.com/listing/...\nhttps://etsy.com/listing/...\nhttps://etsy.com/listing/..."} rows={4} className="font-mono text-xs" />
+                          <Textarea value={reportForm.listingLinks} onChange={(e) => setReportForm({ ...reportForm, listingLinks: e.target.value })} placeholder={"https://etsy.com/listing/...\nhttps://etsy.com/listing/...\nhttps://etsy.com/listing/..."} rows={5} className="font-mono text-[10px] break-all" />
                           <p className="text-[10px] text-muted-foreground">Paste each listing link on a new line</p>
                         </div>
                       </div>
