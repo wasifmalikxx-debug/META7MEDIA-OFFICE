@@ -56,10 +56,13 @@ export async function checkIn(
   });
 
   // Calculate late status using Pakistan time (UTC+5)
+  // Grace period: no fine if arrive within grace minutes after start
+  // After grace: late minutes counted from office start (not from grace end)
   const startTime = parseTime(settings.workStartTime);
   const startMinutes = startTime.hours * 60 + startTime.minutes;
   const currentMinutes = pktMinutesSinceMidnight();
-  let lateMinutes = Math.max(0, currentMinutes - startMinutes - settings.graceMinutes);
+  const minutesPastStart = Math.max(0, currentMinutes - startMinutes);
+  let lateMinutes = minutesPastStart > settings.graceMinutes ? minutesPastStart : 0;
 
   // If employee has first-half leave, they are NOT late — they're expected after break
   if (firstHalfLeave) {
