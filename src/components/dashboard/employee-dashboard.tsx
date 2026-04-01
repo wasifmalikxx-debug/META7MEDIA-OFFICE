@@ -416,9 +416,11 @@ export function EmployeeDashboard({
   const totalFinesAmount = recentFines.reduce((s, f) => s + f.amount, 0);
   const totalIncentivesAmount = recentIncentives.reduce((s: number, i: any) => s + i.amount, 0);
 
-  // Live hours worked: server total + today's live hours
+  // Live hours worked: server total from monthAttendances (includes today if checked out)
+  // Only add live calculation if still checked in (not yet in workedMinutes)
   let liveTotalMinutes = totalWorkedHours * 60;
   if (attendance?.checkIn && !attendance?.checkOut) {
+    // Still working — add live time for today (not yet in monthAttendances workedMinutes)
     const checkInMs = new Date(attendance.checkIn).getTime();
     let todayWorkedMs = pktNow.getTime() - checkInMs;
     if (attendance.breakStart) {
@@ -426,10 +428,8 @@ export function EmployeeDashboard({
       todayWorkedMs -= (breakEndMs - new Date(attendance.breakStart).getTime());
     }
     liveTotalMinutes += Math.max(0, Math.floor(todayWorkedMs / 60000));
-  } else if (attendance?.workedMinutes) {
-    // Today already checked out but might not be in monthAttendances yet
-    liveTotalMinutes += attendance.workedMinutes;
   }
+  // No else needed — if checked out, workedMinutes is already in monthAttendances total
   const liveWorkedHours = Math.floor(liveTotalMinutes / 60);
   const liveWorkedMins = liveTotalMinutes % 60;
 
