@@ -78,13 +78,14 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   halfDayAttendances.forEach((a: any) => { halfDayMap[a.userId] = a._count; });
 
   const now = new Date(Date.now() + 5 * 60 * 60_000); // PKT
+  // System start: April 2026 (must match leave-budget.service.ts)
+  const SYS_START_YEAR = 2026;
+  const SYS_START_MONTH = 3; // 0-indexed: 3 = April
   const leaveBudgets: Record<string, number> = {};
   for (const emp of employees) {
-    const startDate = firstAttMap[emp.id];
-    if (!startDate) { leaveBudgets[emp.id] = paidLeavesPerMonth; continue; }
-    const monthsActive = Math.max(1, (now.getUTCFullYear() - startDate.getUTCFullYear()) * 12 + (now.getUTCMonth() - startDate.getUTCMonth()) + 1);
+    const monthsActive = Math.max(1, (now.getUTCFullYear() - SYS_START_YEAR) * 12 + (now.getUTCMonth() - SYS_START_MONTH) + 1);
     const totalEarned = monthsActive * paidLeavesPerMonth;
-    const totalUsed = (coveredMap[emp.id] || 0) + (halfDayMap[emp.id] || 0) * 0.5;
+    const totalUsed = (coveredMap[emp.id] || 0);
     leaveBudgets[emp.id] = Math.max(0, totalEarned - totalUsed);
   }
 
