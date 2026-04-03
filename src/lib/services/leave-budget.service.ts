@@ -26,12 +26,13 @@ export async function getAccumulatedLeaveBudget(
   const monthsActive = Math.max(1, (currentYear - startYear) * 12 + (currentMonth - startMonth) + 1);
   const totalEarned = monthsActive * paidLeavesPerMonth;
 
-  // Count all covered leaves across all time (fines with amount=0 and "Covered by paid leave" in reason)
+  // Count covered leaves from system start date onwards only
   const coveredAbsences = await prisma.fine.count({
     where: {
       userId,
       amount: 0,
       reason: { contains: "Covered by paid leave" },
+      date: { gte: new Date(Date.UTC(SYSTEM_START_YEAR, SYSTEM_START_MONTH, 1)) },
     },
   });
 
