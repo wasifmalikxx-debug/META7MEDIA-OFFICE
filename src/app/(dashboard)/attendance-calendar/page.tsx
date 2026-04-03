@@ -56,10 +56,10 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
       distinct: ["userId"],
       select: { userId: true, date: true },
     }),
-    // Covered absences (fines with amount=0)
+    // Covered absences (fines with amount=0) — only from April 2026 onwards
     prisma.fine.groupBy({
       by: ["userId"],
-      where: { userId: { in: empIds }, amount: 0, reason: { contains: "Covered by paid leave" } },
+      where: { userId: { in: empIds }, amount: 0, reason: { contains: "Covered by paid leave" }, date: { gte: new Date(Date.UTC(2026, 3, 1)) } },
       _count: true,
     }),
     // Half-day attendance count per employee
