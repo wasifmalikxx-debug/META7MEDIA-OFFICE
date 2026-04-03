@@ -546,7 +546,7 @@ export function EmployeeDashboard({
                   <CalendarPlus className="size-4" />
                   Submit Report
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[440px]">
+                <DialogContent className="sm:max-w-[440px] max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle className="text-lg">End of Day Report</DialogTitle>
                   </DialogHeader>
