@@ -24,7 +24,7 @@ interface MyAttendanceCalendarProps {
 const STATUS_CELL: Record<string, { label: string; bg: string }> = {
   PRESENT: { label: "P", bg: "bg-emerald-500" },
   LATE: { label: "P", bg: "bg-emerald-500" },
-  HALF_DAY: { label: "H", bg: "bg-amber-500" },
+  HALF_DAY: { label: "H", bg: "bg-blue-500" },
   ABSENT: { label: "A", bg: "bg-rose-500" },
   ON_LEAVE: { label: "LV", bg: "bg-violet-500" },
   HOLIDAY: { label: "", bg: "bg-slate-300 dark:bg-slate-600" },
@@ -113,9 +113,9 @@ export function MyAttendanceCalendar({
             <div className="size-2 rounded-full bg-rose-500" />
             <span className="text-xs font-semibold text-rose-700 dark:text-rose-400">{monthAbsent} Absent</span>
           </div>
-          <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-full">
-            <div className="size-2 rounded-full bg-amber-500" />
-            <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">{monthHalfDay} Half Day</span>
+          <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5 rounded-full">
+            <div className="size-2 rounded-full bg-blue-500" />
+            <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">{monthHalfDay} Half Day</span>
           </div>
         </div>
       </div>
@@ -140,13 +140,13 @@ export function MyAttendanceCalendar({
             <p className="text-3xl font-bold text-rose-600 dark:text-rose-400">{monthAbsent}</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
           <CardContent className="py-4 px-4">
             <div className="flex items-center gap-2 mb-1">
-              <CoffeeIcon className="size-3.5 text-amber-500" />
+              <CoffeeIcon className="size-3.5 text-blue-500" />
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Half Day</p>
             </div>
-            <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{monthHalfDay}</p>
+            <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{monthHalfDay}</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
@@ -296,7 +296,7 @@ export function MyAttendanceCalendar({
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-emerald-500" /><span>Present</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-rose-500" /><span>Absent</span></div>
-        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-amber-500" /><span>Half Day</span></div>
+        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-blue-500" /><span>Half Day</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-violet-500" /><span>On Leave</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-slate-300 dark:bg-slate-600" /><span>Day Off</span></div>
       </div>

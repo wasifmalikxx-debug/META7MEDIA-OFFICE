@@ -38,7 +38,7 @@ interface AttendanceCalendarViewProps {
 const STATUS_CELL: Record<string, { label: string; bg: string }> = {
   PRESENT: { label: "P", bg: "bg-emerald-500" },
   LATE: { label: "L", bg: "bg-amber-500" },
-  HALF_DAY: { label: "H", bg: "bg-orange-500" },
+  HALF_DAY: { label: "H", bg: "bg-blue-500" },
   ABSENT: { label: "A", bg: "bg-rose-500" },
   ON_LEAVE: { label: "LV", bg: "bg-violet-500" },
   HOLIDAY: { label: "", bg: "bg-slate-300 dark:bg-slate-600" },
@@ -149,7 +149,7 @@ export function AttendanceCalendarView({
                 ))}
                 <th className="px-2 py-2 text-center font-bold border-b border-l bg-emerald-50/50 dark:bg-emerald-950/10 min-w-[32px] text-emerald-600 dark:text-emerald-400 text-[10px]">P</th>
                 <th className="px-2 py-2 text-center font-bold border-b bg-rose-50/50 dark:bg-rose-950/10 min-w-[32px] text-rose-600 dark:text-rose-400 text-[10px]">A</th>
-                <th className="px-2 py-2 text-center font-bold border-b bg-amber-50/50 dark:bg-amber-950/10 min-w-[32px] text-amber-600 dark:text-amber-400 text-[10px]">HD</th>
+                <th className="px-2 py-2 text-center font-bold border-b bg-blue-50/50 dark:bg-blue-950/10 min-w-[32px] text-blue-600 dark:text-blue-400 text-[10px]">HD</th>
                 <th className="px-2 py-2 text-center font-bold border-b bg-violet-50/50 dark:bg-violet-950/10 min-w-[44px] text-violet-600 dark:text-violet-400 text-[10px]">Bal</th>
               </tr>
             </thead>
@@ -191,7 +191,7 @@ export function AttendanceCalendarView({
                       <span className={`inline-flex items-center justify-center size-5 rounded text-[10px] font-bold ${emp.absent > 0 ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400" : "text-muted-foreground/30"}`}>{emp.absent}</span>
                     </td>
                     <td rowSpan={3} className="px-1.5 py-1 text-center border-b align-middle">
-                      <span className={`inline-flex items-center justify-center size-5 rounded text-[10px] font-bold ${emp.halfDay > 0 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "text-muted-foreground/30"}`}>{emp.halfDay}</span>
+                      <span className={`inline-flex items-center justify-center size-5 rounded text-[10px] font-bold ${emp.halfDay > 0 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" : "text-muted-foreground/30"}`}>{emp.halfDay}</span>
                     </td>
                     <td rowSpan={3} className="px-1.5 py-1 text-center border-b align-middle">
                       <Badge variant="outline" className={`text-[8px] px-1 py-0 font-bold ${emp.pendingLeaves > 1 ? "border-emerald-300 text-emerald-600 dark:border-emerald-700 dark:text-emerald-400" : emp.pendingLeaves > 0 ? "border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400" : "border-rose-300 text-rose-600 dark:border-rose-700 dark:text-rose-400"}`}>
@@ -277,13 +277,13 @@ export function AttendanceCalendarView({
             <p className="text-3xl font-bold text-rose-600 dark:text-rose-400">{totalAbsent}</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
+        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
           <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
-              <Clock className="size-3.5 text-amber-500" />
+              <Clock className="size-3.5 text-blue-500" />
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Half Days</p>
             </div>
-            <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{totalHalfDay}</p>
+            <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{totalHalfDay}</p>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/30 dark:to-slate-800">
@@ -302,7 +302,7 @@ export function AttendanceCalendarView({
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-emerald-500" /><span>Present</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-amber-500" /><span>Late</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-rose-500" /><span>Absent</span></div>
-        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-orange-500" /><span>Half Day</span></div>
+        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-blue-500" /><span>Half Day</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-violet-500" /><span>On Leave</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-slate-300 dark:bg-slate-600" /><span>Day Off</span></div>
       </div>

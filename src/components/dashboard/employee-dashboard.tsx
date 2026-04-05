@@ -746,7 +746,7 @@ export function EmployeeDashboard({
                     const statusColors: Record<string, string> = {
                       PRESENT: "bg-emerald-500 text-white",
                       LATE: "bg-amber-500 text-white",
-                      HALF_DAY: "bg-orange-500 text-white",
+                      HALF_DAY: "bg-blue-500 text-white",
                       ABSENT: "bg-rose-500 text-white",
                       ON_LEAVE: "bg-violet-500 text-white",
                     };
