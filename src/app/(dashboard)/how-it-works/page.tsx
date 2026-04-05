@@ -51,13 +51,13 @@ export default async function HowItWorksPage() {
         <Rule>Office hours: <strong>11:00 AM - 7:00 PM PKT</strong> (8-hour work day)</Rule>
         <Rule>Check-in opens at <strong>10:30 AM</strong> (30 minutes before office start)</Rule>
         <Rule>Check-out available from <strong>6:30 PM</strong></Rule>
-        <Rule>Auto check-out at <strong>7:30 PM</strong> if you forget (forced by system)</Rule>
+        <Rule>Auto check-out at <strong>8:00 PM</strong> if you forget (forced by system)</Rule>
         <Rule>Working days: <strong>Monday - Saturday</strong>. Sunday is a day off</Rule>
         <Rule>Official holidays are added by CEO — no attendance or fines on those days</Rule>
       </PolicyCard>
 
       <PolicyCard icon={Calendar} title="Attendance Rules" color="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400">
-        <Rule>Daily check-in is <strong>mandatory</strong>. No check-in = marked absent at 7:33 PM</Rule>
+        <Rule>Daily check-in is <strong>mandatory</strong>. No check-in = marked absent at 8:03 PM</Rule>
         <Rule>Hours tracked = check-out time - check-in time - break time</Rule>
         <Rule>If you work less than <strong>6 hours</strong> (75% of full day), it counts as half day</Rule>
         <Rule>Minimum <strong>4 hours</strong> required before you can check out</Rule>
@@ -96,7 +96,7 @@ export default async function HowItWorksPage() {
       </PolicyCard>
 
       <PolicyCard icon={Ban} title="Absence Policy" color="bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400">
-        <Rule>If not checked in by <strong>7:33 PM</strong>, you are automatically marked <strong>absent</strong></Rule>
+        <Rule>If not checked in by <strong>8:03 PM</strong>, you are automatically marked <strong>absent</strong></Rule>
         <Rule>Absent fine = <strong>Monthly Salary / 30</strong> per day</Rule>
         <Rule>First absence is covered by your <strong>paid leave budget</strong> (no deduction)</Rule>
         <Rule>After budget is used, full daily rate is deducted from salary</Rule>
@@ -139,7 +139,7 @@ export default async function HowItWorksPage() {
         <Rule>One report per day — can be updated if submitted again</Rule>
         <div className="rounded-lg border bg-rose-50 dark:bg-rose-950/20 p-3 my-1">
           <p className="text-xs font-semibold text-rose-700 dark:text-rose-400">
-            If you are auto-checked out at 7:30 PM without submitting your report, a PKR 100 fine is applied automatically and you will receive a notification.
+            If you are auto-checked out at 8:00 PM without submitting your report, a PKR 100 fine is applied automatically and you will receive a notification.
           </p>
         </div>
         <Rule>CEO sees all reports grouped by date and team</Rule>
