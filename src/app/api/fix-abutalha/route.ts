@@ -46,10 +46,30 @@ export async function POST() {
     await syncPayrollRecord(abuTalha.id, pkt.getUTCMonth() + 1, pkt.getUTCFullYear());
   } catch {}
 
+  // Fix attendance status: set HALF_DAY for days with approved half-day leave
+  const leaves = await prisma.leaveRequest.findMany({
+    where: { userId: abuTalha.id, leaveType: "HALF_DAY", status: "APPROVED" },
+    select: { startDate: true },
+  });
+  let statusFixed = 0;
+  for (const lv of leaves) {
+    const att = await prisma.attendance.findUnique({
+      where: { userId_date: { userId: abuTalha.id, date: lv.startDate } },
+    });
+    if (att && att.status !== "HALF_DAY") {
+      await prisma.attendance.update({
+        where: { id: att.id },
+        data: { status: "HALF_DAY" },
+      });
+      statusFixed++;
+    }
+  }
+
   return json({
     message: "Abu Talha's fines fixed",
     breakFinesDeleted: breakFines.count,
     lateFinesDeleted: lateFine.count,
     reportFinesDeleted: reportFine.count,
+    statusFixed,
   });
 }

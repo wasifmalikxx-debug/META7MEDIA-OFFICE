@@ -64,9 +64,12 @@ async function handleAutoCheckout() {
         (checkoutTime.getTime() - checkIn.getTime()) / (1000 * 60)
       ) - breakMinutes);
 
-      // Keep existing status — HALF_DAY is only set manually via leave request
-      // Auto-checkout should NOT change status to HALF_DAY
-      const status = att.status;
+      // Check if employee has an approved HALF_DAY leave for today
+      const halfDayLeaveStatus = await prisma.leaveRequest.findFirst({
+        where: { userId: att.user.id, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
+        select: { halfDayPeriod: true },
+      });
+      const status = halfDayLeaveStatus ? "HALF_DAY" : att.status;
 
       // Calculate early leave and overtime
       const earlyLeaveMin = Math.max(0, fullDayMinutes - workedMinutes);
