@@ -98,7 +98,7 @@ export function EmployeeDashboard({
   const [attendance, setAttendance] = useState(todayAttendance);
   const [showSalary, setShowSalary] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
-  const [leaveForm, setLeaveForm] = useState({ type: "HALF", date: "", reason: "" });
+  const [leaveForm, setLeaveForm] = useState({ type: "HALF", date: "", reason: "", halfDayPeriod: "" });
   const [leaves, setLeaves] = useState(initialLeaveRequests);
   const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
   const [, setTick] = useState(0);
@@ -129,11 +129,13 @@ export function EmployeeDashboard({
     try {
       const url = editLeaveId ? `/api/leaves/${editLeaveId}` : "/api/leaves";
       const method = editLeaveId ? "PATCH" : "POST";
+      if (!leaveForm.halfDayPeriod) { toast.error("Please select First Half or Second Half"); setLoading(false); return; }
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           leaveType: "HALF_DAY",
+          halfDayPeriod: leaveForm.halfDayPeriod,
           startDate: leaveForm.date,
           endDate: leaveForm.date,
           reason: leaveForm.reason || "Half day leave",
@@ -144,7 +146,7 @@ export function EmployeeDashboard({
       toast.success(editLeaveId ? "Leave updated!" : "Half day leave applied!");
       setLeaveOpen(false);
       setEditLeaveId(null);
-      setLeaveForm({ type: "HALF", date: "", reason: "" });
+      setLeaveForm({ type: "HALF", date: "", reason: "", halfDayPeriod: "" });
       // Refresh leaves and attendance in parallel
       const [leavesRes, attRes] = await Promise.all([
         fetch("/api/leaves"),
@@ -183,6 +185,7 @@ export function EmployeeDashboard({
       type: leave.leaveType === "HALF_DAY" ? "HALF" : "FULL",
       date: leave.startDate.split("T")[0],
       reason: leave.reason || "",
+      halfDayPeriod: leave.halfDayPeriod || "",
     });
     setLeaveOpen(true);
   }
@@ -945,7 +948,7 @@ export function EmployeeDashboard({
             {pendingLeaves > 0 && (
             <Dialog open={leaveOpen} onOpenChange={(open) => {
               setLeaveOpen(open);
-              if (!open) { setEditLeaveId(null); setLeaveForm({ type: "HALF", date: "", reason: "" }); }
+              if (!open) { setEditLeaveId(null); setLeaveForm({ type: "HALF", date: "", reason: "", halfDayPeriod: "" }); }
             }}>
               <DialogTrigger render={<Button variant="outline" size="sm" className="gap-2" />}>
                 <CalendarPlus className="size-4" /> Apply Half Day
@@ -968,6 +971,35 @@ export function EmployeeDashboard({
                       min={new Date(Date.now() + 5 * 60 * 60_000).toISOString().split("T")[0]}
                       onChange={(e) => setLeaveForm({ ...leaveForm, date: e.target.value })}
                     />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Period <span className="text-red-500">*</span></Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant={leaveForm.halfDayPeriod === "FIRST_HALF" ? "default" : "outline"}
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={() => setLeaveForm({ ...leaveForm, halfDayPeriod: "FIRST_HALF" })}
+                      >
+                        First Half (arrive after break)
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={leaveForm.halfDayPeriod === "SECOND_HALF" ? "default" : "outline"}
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={() => setLeaveForm({ ...leaveForm, halfDayPeriod: "SECOND_HALF" })}
+                      >
+                        Second Half (leave after break)
+                      </Button>
+                    </div>
+                    {leaveForm.halfDayPeriod === "FIRST_HALF" && (
+                      <p className="text-[10px] text-muted-foreground">You will arrive after break time — no late fine will apply</p>
+                    )}
+                    {leaveForm.halfDayPeriod === "SECOND_HALF" && (
+                      <p className="text-[10px] text-muted-foreground">You will leave after break — submit report before leaving</p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Reason <span className="text-red-500">*</span></Label>
