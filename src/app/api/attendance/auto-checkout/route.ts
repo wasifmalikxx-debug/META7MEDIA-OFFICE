@@ -85,51 +85,70 @@ async function handleAutoCheckout() {
         },
       });
 
-      // Find admin for fine issuance
+      // Check if employee has a half-day leave for today
+      const halfDayLeave = await prisma.leaveRequest.findFirst({
+        where: { userId: att.user.id, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
+        select: { halfDayPeriod: true },
+      });
+      const hasFirstHalf = halfDayLeave?.halfDayPeriod === "FIRST_HALF";
+      const hasSecondHalf = halfDayLeave?.halfDayPeriod === "SECOND_HALF";
+
       const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
       const month = pktMonth();
       const year = pktYear();
 
-      // Fine: No daily report submitted
-      const dailyReport = await prisma.dailyReport.findUnique({
-        where: { userId_date: { userId: att.user.id, date: today } },
-      });
-      if (!dailyReport && settings?.noReportFineAmt > 0 && admin) {
-        await prisma.fine.create({
-          data: {
-            userId: att.user.id,
-            type: "POLICY_VIOLATION",
-            amount: settings.noReportFineAmt,
-            reason: "Daily report not submitted before auto-checkout",
-            date: today,
-            month,
-            year,
-            issuedById: admin.id,
-          },
+      // Fine: No daily report submitted (skip if first-half leave — arrived late, less time)
+      if (!hasFirstHalf) {
+        const dailyReport = await prisma.dailyReport.findUnique({
+          where: { userId_date: { userId: att.user.id, date: today } },
         });
-        await createNotification(
-          att.user.id,
-          "FINE_ISSUED",
-          "Fine: Report Not Submitted",
-          `PKR ${settings.noReportFineAmt} fine — daily report was not submitted. You were auto-checked out.`,
-          "/fines"
-        );
+        // Prevent duplicate: check if fine already exists
+        const existingReportFine = await prisma.fine.findFirst({
+          where: { userId: att.user.id, date: today, reason: "Daily report not submitted before auto-checkout" },
+        });
+        if (!dailyReport && !existingReportFine && settings?.noReportFineAmt > 0 && admin) {
+          await prisma.fine.create({
+            data: {
+              userId: att.user.id,
+              type: "POLICY_VIOLATION",
+              amount: settings.noReportFineAmt,
+              reason: "Daily report not submitted before auto-checkout",
+              date: today,
+              month,
+              year,
+              issuedById: admin.id,
+            },
+          });
+          await createNotification(
+            att.user.id,
+            "FINE_ISSUED",
+            "Fine: Report Not Submitted",
+            `PKR ${settings.noReportFineAmt} fine — daily report was not submitted. You were auto-checked out.`,
+            "/fines"
+          );
+        }
       }
 
-      // Fine: Break skipped (didn't log break)
-      if (!att.breakStart && settings?.breakLateFineAmt > 0 && admin) {
-        await prisma.fine.create({
-          data: {
-            userId: att.user.id,
-            type: "POLICY_VIOLATION",
-            amount: settings.breakLateFineAmt,
-            reason: "Break skipped — did not log break attendance",
-            date: today,
-            month,
-            year,
-            issuedById: admin.id,
-          },
+      // Fine: Break skipped (skip if first-half or second-half leave — they weren't there for break)
+      if (!att.breakStart && !hasFirstHalf && !hasSecondHalf && settings?.breakLateFineAmt > 0 && admin) {
+        // Prevent duplicate
+        const existingBreakFine = await prisma.fine.findFirst({
+          where: { userId: att.user.id, date: today, reason: "Break skipped — did not log break attendance" },
         });
+        if (!existingBreakFine) {
+          await prisma.fine.create({
+            data: {
+              userId: att.user.id,
+              type: "POLICY_VIOLATION",
+              amount: settings.breakLateFineAmt,
+              reason: "Break skipped — did not log break attendance",
+              date: today,
+              month,
+              year,
+              issuedById: admin.id,
+            },
+          });
+        }
       }
 
       results.push({ name, workedMinutes, status, autoCheckout: true });

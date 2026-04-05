@@ -171,8 +171,11 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     throw new Error("Already checked out today");
   }
 
-  // Break skip fine: if employee didn't start break at all → fine (same as break late fine)
-  if (!attendance.breakStart && settings.breakLateFineAmt > 0) {
+  // Break skip fine: skip if employee has half-day leave (first or second half)
+  const halfDayLeaveForCheckout = await prisma.leaveRequest.findFirst({
+    where: { userId, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
+  });
+  if (!attendance.breakStart && settings.breakLateFineAmt > 0 && !halfDayLeaveForCheckout) {
     const adminUser = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
     if (adminUser) {
       await prisma.fine.create({
