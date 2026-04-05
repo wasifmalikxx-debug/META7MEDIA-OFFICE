@@ -215,8 +215,11 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     );
   }
 
-  // Keep existing status — HALF_DAY is only set manually via leave request
-  const status = attendance.status;
+  // Check if employee has approved HALF_DAY leave — set status accordingly
+  const halfDayLeaveAtCheckout = await prisma.leaveRequest.findFirst({
+    where: { userId, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
+  });
+  const status = halfDayLeaveAtCheckout ? AttendanceStatus.HALF_DAY : attendance.status;
   const officeEnd = parseTime(settings.workEndTime);
   const officeStart = parseTime(settings.workStartTime);
   const fullDayMinutes = (officeEnd.hours * 60 + officeEnd.minutes) - (officeStart.hours * 60 + officeStart.minutes);
