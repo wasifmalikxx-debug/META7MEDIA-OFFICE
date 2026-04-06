@@ -109,6 +109,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
       status: emp.status,
       designation: emp.designation || "",
       departmentId: emp.department?.id || "",
+      joiningDate: emp.joiningDate ? new Date(emp.joiningDate).toISOString().split("T")[0] : "",
       monthlySalary: emp.salaryStructure?.monthlySalary || 0,
       bankName: emp.bankName || "",
       accountNumber: emp.accountNumber || "",
@@ -404,17 +405,27 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     </Select>
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Monthly Salary (PKR)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={editForm.monthlySalary}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
-                    }
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Joining Date</Label>
+                    <Input
+                      type="date"
+                      value={editForm.joiningDate || ""}
+                      onChange={(e) => setEditForm({ ...editForm, joiningDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Monthly Salary (PKR)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editForm.monthlySalary}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
+                      }
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -478,89 +489,55 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
         });
 
         const sections = sortedKeys.map((dept) => (
-          <div key={dept} className="space-y-3">
-            <div className="flex items-center gap-2.5">
-              <div className={`size-8 rounded-lg flex items-center justify-center ${dept === "Etsy" ? "bg-emerald-100 dark:bg-emerald-900/30" : dept === "Facebook" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-slate-100 dark:bg-slate-800"}`}>
-                <span className="text-xs font-bold">{dept[0]}</span>
+          <Card key={dept} className="border-0 shadow-sm overflow-hidden">
+            <div className={`flex items-center justify-between px-5 py-2.5 border-b ${dept === "Etsy" ? "bg-emerald-50/40 dark:bg-emerald-950/10" : dept === "Facebook" ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-muted/20"}`}>
+              <div className="flex items-center gap-2.5">
+                <div className={`size-7 rounded-lg flex items-center justify-center ${dept === "Etsy" ? "bg-emerald-100 dark:bg-emerald-900/30" : dept === "Facebook" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-slate-100 dark:bg-slate-800"}`}>
+                  <span className="text-[10px] font-bold">{dept[0]}</span>
+                </div>
+                <h3 className="text-xs font-bold">{dept} Team</h3>
               </div>
-              <div>
-                <h3 className="text-sm font-bold">{dept} Team</h3>
-                <p className="text-[10px] text-muted-foreground">{grouped[dept].length} members</p>
-              </div>
+              <Badge variant="outline" className="text-[9px] h-5">{grouped[dept].length} members</Badge>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <CardContent className="p-0">
+              <div className="divide-y divide-muted/30">
               {grouped[dept].map((emp) => (
-                <Card key={emp.id} className="border-0 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                  <CardContent className="p-0">
-                    {/* Header */}
-                    <div className={`px-4 py-3 border-b ${dept === "Etsy" ? "bg-emerald-50/40 dark:bg-emerald-950/10" : dept === "Facebook" ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-muted/20"}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="size-9 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                            {emp.firstName[0]}{emp.lastName?.[0] || ""}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-bold">{emp.firstName} {emp.lastName}</span>
-                              <Badge className={`text-[8px] h-4 border-0 ${emp.status === "HIRED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>
-                                {emp.status}
-                              </Badge>
-                            </div>
-                            <span className="text-[10px] text-muted-foreground font-mono">{emp.employeeId}</span>
-                          </div>
-                        </div>
-                        <div className="flex gap-0.5">
-                          <Button size="sm" variant="ghost" className="size-7 p-0" onClick={() => openEdit(emp)}>
-                            <Pencil className="size-3" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="size-7 p-0 text-rose-400 hover:text-rose-600" onClick={() => handleDelete(emp.id, `${emp.firstName} ${emp.lastName}`)}>
-                            <Trash2 className="size-3" />
-                          </Button>
-                        </div>
+                <div key={emp.id} className="flex items-center gap-4 px-5 py-3 hover:bg-muted/20 transition-colors">
+                  <div className="size-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                    {emp.firstName[0]}{emp.lastName?.[0] || ""}
+                  </div>
+                  <div className="flex-1 min-w-0 grid grid-cols-6 gap-3 items-center text-xs">
+                    {/* Name + ID */}
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold">{emp.firstName} {emp.lastName}</span>
+                        <Badge className={`text-[7px] h-3.5 border-0 ${emp.status === "HIRED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>{emp.status}</Badge>
                       </div>
+                      <span className="text-[9px] text-muted-foreground font-mono">{emp.employeeId}</span>
                     </div>
-                    {/* Details */}
-                    <div className="px-4 py-3 space-y-2 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Email</span>
-                        <span className="font-medium truncate max-w-[160px]">{emp.email}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Phone</span>
-                        <span className="font-medium font-mono">{emp.phone || "—"}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Salary</span>
-                        <span className="font-bold">{emp.salaryStructure ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}` : "—"}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Joined</span>
-                        <span className="font-medium">{emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>
-                      </div>
-                      {emp.bankName && (
-                        <div className="pt-1.5 mt-1.5 border-t border-muted/30">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Bank</span>
-                            <span className="font-medium">{emp.bankName}</span>
-                          </div>
-                          <div className="flex justify-between mt-0.5">
-                            <span className="text-muted-foreground">Account</span>
-                            <span className="font-mono text-[10px]">{emp.accountNumber}</span>
-                          </div>
-                          {emp.accountTitle && (
-                            <div className="flex justify-between mt-0.5">
-                              <span className="text-muted-foreground">Title</span>
-                              <span className="font-medium text-[10px]">{emp.accountTitle}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                    {/* Email */}
+                    <div className="truncate text-muted-foreground">{emp.email}</div>
+                    {/* Phone */}
+                    <div className="font-mono text-muted-foreground">{emp.phone || "—"}</div>
+                    {/* Salary */}
+                    <div className="font-semibold">{emp.salaryStructure ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}` : "—"}</div>
+                    {/* Joining */}
+                    <div className="text-muted-foreground">{emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" }) : "—"}</div>
+                    {/* Actions */}
+                    <div className="flex gap-1 justify-end">
+                      <Button size="sm" variant="ghost" className="size-7 p-0" onClick={() => openEdit(emp)}>
+                        <Pencil className="size-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="size-7 p-0 text-rose-400 hover:text-rose-600" onClick={() => handleDelete(emp.id, `${emp.firstName} ${emp.lastName}`)}>
+                        <Trash2 className="size-3" />
+                      </Button>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               ))}
-            </div>
-          </div>
+              </div>
+            </CardContent>
+          </Card>
         ));
 
         if (inactive.length > 0) {
