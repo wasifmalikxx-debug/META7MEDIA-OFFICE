@@ -63,7 +63,7 @@ export async function PATCH(
   const updateData: any = {};
   if (body.status !== undefined) {
     updateData.status = body.status;
-    if (body.status === "PAID") updateData.paidAt = new Date();
+    if (body.status === "PAID") updateData.paidAt = new Date(Date.now() + 5 * 60 * 60_000);
     if (body.status === "DRAFT") { updateData.paidAt = null; updateData.paymentProof = null; }
   }
   if (body.notes !== undefined) updateData.notes = body.notes;

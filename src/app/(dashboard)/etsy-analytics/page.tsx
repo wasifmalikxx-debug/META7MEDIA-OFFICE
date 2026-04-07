@@ -14,9 +14,9 @@ export default async function EtsyAnalyticsPage() {
     redirect("/dashboard");
   }
 
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
+  const pkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = pkt.getUTCMonth() + 1;
+  const year = pkt.getUTCFullYear();
 
   return (
     <div className="space-y-6">

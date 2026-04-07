@@ -49,12 +49,13 @@ export function endOfMonthPKT(): Date {
   return new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth() + 1, 0));
 }
 
-/** Format a Date to PKT date string (YYYY-MM-DD) */
+/** Format a PKT-shifted Date to date string (YYYY-MM-DD).
+ *  Timestamps in the DB are already PKT-shifted (nowPKT()), so read UTC fields directly.
+ *  For raw UTC dates (e.g. @db.Date columns), they already store midnight UTC = PKT date. */
 export function formatPKTDate(date: Date): string {
-  const pkt = new Date(date.getTime() + PKT_OFFSET_MS);
-  const y = pkt.getUTCFullYear();
-  const m = String(pkt.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(pkt.getUTCDate()).padStart(2, "0");
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 

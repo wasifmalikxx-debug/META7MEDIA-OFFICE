@@ -44,15 +44,15 @@ export function IncentivesView({ incentives, employees, isAdmin }: IncentivesVie
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const now = new Date();
+  const pktNow = new Date(Date.now() + 5 * 60 * 60_000);
   const [form, setForm] = useState({
     userId: "",
     type: "FIXED",
     amount: 0,
     percentage: 0,
     reason: "",
-    month: now.getMonth() + 1,
-    year: now.getFullYear(),
+    month: pktNow.getUTCMonth() + 1,
+    year: pktNow.getUTCFullYear(),
   });
 
   async function handleSubmit(e: React.FormEvent) {

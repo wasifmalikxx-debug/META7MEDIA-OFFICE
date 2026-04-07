@@ -176,20 +176,26 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     where: { userId, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
   });
   if (!attendance.breakStart && settings.breakLateFineAmt > 0 && !halfDayLeaveForCheckout) {
-    const adminUser = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
-    if (adminUser) {
-      await prisma.fine.create({
-        data: {
-          userId,
-          type: "POLICY_VIOLATION",
-          amount: settings.breakLateFineAmt,
-          reason: "Break skipped — did not log break attendance",
-          date: today,
-          month: pktMonth(),
-          year: pktYear(),
-          issuedById: adminUser.id,
-        },
-      });
+    // Prevent duplicate break-skip fine (auto-checkout may have already created one)
+    const existingBreakFine = await prisma.fine.findFirst({
+      where: { userId, date: today, reason: "Break skipped — did not log break attendance" },
+    });
+    if (!existingBreakFine) {
+      const adminUser = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
+      if (adminUser) {
+        await prisma.fine.create({
+          data: {
+            userId,
+            type: "POLICY_VIOLATION",
+            amount: settings.breakLateFineAmt,
+            reason: "Break skipped — did not log break attendance",
+            date: today,
+            month: pktMonth(),
+            year: pktYear(),
+            issuedById: adminUser.id,
+          },
+        });
+      }
     }
   }
 

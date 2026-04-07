@@ -109,7 +109,7 @@ export function AdminDashboard({
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground mt-1">
-            {format(new Date(), "EEEE, MMMM d, yyyy")}
+            {format(new Date(Date.now() + 5 * 60 * 60_000), "EEEE, MMMM d, yyyy")}
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
