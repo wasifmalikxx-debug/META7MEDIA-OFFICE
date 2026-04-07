@@ -352,7 +352,9 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                           {leave.halfDayPeriod === "FIRST_HALF" ? " (1st)" : leave.halfDayPeriod === "SECOND_HALF" ? " (2nd)" : ""}
                         </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{leave.reason}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                        <span className="font-medium">{format(new Date(leave.startDate), "EEE, MMM d")}</span> — {leave.reason}
+                      </p>
                     </div>
                     <div className="text-right shrink-0">
                       <Badge className={`text-[9px] ${leave.status === "APPROVED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"} border-0`}>
