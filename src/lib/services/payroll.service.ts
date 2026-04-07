@@ -150,10 +150,17 @@ export async function generatePayrollForEmployee(
   }
 
   // Get fines and incentives for the month
+  // EXCLUDE absence fines (type ABSENT_WITHOUT_LEAVE) because absent deductions
+  // are already calculated separately above from attendance records.
+  // Including them here would DOUBLE-DEDUCT for uncovered absences.
   const fines = await prisma.fine.findMany({
     where: { userId, month, year },
   });
-  const totalFines = roundMoney(fines.reduce((sum, f) => sum + f.amount, 0));
+  const totalFines = roundMoney(
+    fines
+      .filter((f) => f.type !== "ABSENT_WITHOUT_LEAVE")
+      .reduce((sum, f) => sum + f.amount, 0)
+  );
 
   const incentives = await prisma.incentive.findMany({
     where: { userId, month, year },

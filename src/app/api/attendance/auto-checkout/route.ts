@@ -88,13 +88,9 @@ async function handleAutoCheckout() {
         },
       });
 
-      // Check if employee has a half-day leave for today
-      const halfDayLeave = await prisma.leaveRequest.findFirst({
-        where: { userId: att.user.id, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
-        select: { halfDayPeriod: true },
-      });
-      const hasFirstHalf = halfDayLeave?.halfDayPeriod === "FIRST_HALF";
-      const hasSecondHalf = halfDayLeave?.halfDayPeriod === "SECOND_HALF";
+      // Reuse the already-fetched halfDayLeaveStatus (no duplicate query)
+      const hasFirstHalf = halfDayLeaveStatus?.halfDayPeriod === "FIRST_HALF";
+      const hasSecondHalf = halfDayLeaveStatus?.halfDayPeriod === "SECOND_HALF";
 
       const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
       const month = pktMonth();

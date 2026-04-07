@@ -881,7 +881,8 @@ export function EmployeeDashboard({
             <div className="space-y-2">
               {leaves.map((leave: any) => {
                 const leaveDate = new Date(leave.startDate);
-                const today = new Date(); today.setHours(0,0,0,0);
+                const pktNow = new Date(Date.now() + 5 * 60 * 60_000);
+                const today = new Date(Date.UTC(pktNow.getUTCFullYear(), pktNow.getUTCMonth(), pktNow.getUTCDate()));
                 const isToday = leaveDate.getTime() === today.getTime();
                 const isFuture = leaveDate > today;
                 const createdAt = new Date(leave.createdAt);

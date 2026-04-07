@@ -87,7 +87,7 @@ export async function PATCH(
         create: {
           userId: id,
           monthlySalary: body.monthlySalary,
-          effectiveFrom: new Date(),
+          effectiveFrom: new Date(Date.now() + 5 * 60 * 60_000),
         },
         update: { monthlySalary: body.monthlySalary },
       });

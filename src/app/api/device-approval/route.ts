@@ -75,8 +75,8 @@ export async function PATCH(request: NextRequest) {
       where: { id },
       data: {
         status: action === "approve" ? "APPROVED" : "REJECTED",
-        approvedAt: action === "approve" ? new Date() : null,
-        rejectedAt: action === "reject" ? new Date() : null,
+        approvedAt: action === "approve" ? new Date(Date.now() + 5 * 60 * 60_000) : null,
+        rejectedAt: action === "reject" ? new Date(Date.now() + 5 * 60 * 60_000) : null,
       },
     });
 
