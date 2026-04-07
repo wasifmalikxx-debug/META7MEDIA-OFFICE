@@ -48,7 +48,7 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   const empIds = employees.map((e) => e.id);
   const paidLeavesPerMonth = settings?.paidLeavesPerMonth ?? 1;
 
-  const [firstAttendances, coveredFines, halfDayAttendances] = await Promise.all([
+  const [firstAttendances, coveredFines, halfDayLeaveRequests] = await Promise.all([
     // First attendance per employee (for monthsActive calculation)
     prisma.attendance.findMany({
       where: { userId: { in: empIds } },
@@ -62,10 +62,10 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
       where: { userId: { in: empIds }, amount: 0, reason: { contains: "Covered by paid leave" }, date: { gte: new Date(Date.UTC(2026, 3, 1)) } },
       _count: true,
     }),
-    // Half-day attendance count per employee
-    prisma.attendance.groupBy({
+    // Half-day LEAVE REQUESTS (not attendance status) per employee — matches leave-budget.service.ts
+    prisma.leaveRequest.groupBy({
       by: ["userId"],
-      where: { userId: { in: empIds }, status: "HALF_DAY" },
+      where: { userId: { in: empIds }, leaveType: "HALF_DAY", status: "APPROVED", startDate: { gte: new Date(Date.UTC(2026, 3, 1)) } },
       _count: true,
     }),
   ]);
@@ -75,7 +75,7 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   const coveredMap: Record<string, number> = {};
   coveredFines.forEach((f: any) => { coveredMap[f.userId] = f._count; });
   const halfDayMap: Record<string, number> = {};
-  halfDayAttendances.forEach((a: any) => { halfDayMap[a.userId] = a._count; });
+  halfDayLeaveRequests.forEach((a: any) => { halfDayMap[a.userId] = a._count; });
 
   const now = new Date(Date.now() + 5 * 60 * 60_000); // PKT
   // System start: April 2026 (must match leave-budget.service.ts)
@@ -85,7 +85,7 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   for (const emp of employees) {
     const monthsActive = Math.max(1, (now.getUTCFullYear() - SYS_START_YEAR) * 12 + (now.getUTCMonth() - SYS_START_MONTH) + 1);
     const totalEarned = monthsActive * paidLeavesPerMonth;
-    const totalUsed = (coveredMap[emp.id] || 0);
+    const totalUsed = (coveredMap[emp.id] || 0) + (halfDayMap[emp.id] || 0) * 0.5;
     leaveBudgets[emp.id] = Math.max(0, totalEarned - totalUsed);
   }
 
