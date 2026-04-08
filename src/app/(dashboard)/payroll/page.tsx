@@ -17,11 +17,21 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;
   const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
 
-  const where: any = { month, year };
+  // Only show employees who joined ON or BEFORE the last day of the payroll month
+  const payrollMonthEnd = new Date(Date.UTC(year, month, 0)); // last day of month
+
+  const where: any = {
+    month,
+    year,
+    user: {
+      joiningDate: { lte: payrollMonthEnd },
+      status: { not: "RESIGNED" },
+    },
+  };
   if (!isAdmin) {
     where.userId = session.user.id;
   } else {
-    where.user = { role: { not: "SUPER_ADMIN" } };
+    where.user.role = { not: "SUPER_ADMIN" };
   }
 
   const records = await prisma.payrollRecord.findMany({
