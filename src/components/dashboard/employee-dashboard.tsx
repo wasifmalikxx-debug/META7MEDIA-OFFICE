@@ -223,14 +223,15 @@ export function EmployeeDashboard({
   });
   // Half day threshold = 4 hours = 240 minutes
   const halfDayThresholdMin = 240;
-  // Calculate today's worked minutes for early checkout check
+  // Calculate today's worked minutes from CHECK-IN time
+  // Only subtract break time if break is COMPLETED (both start and end)
+  // If break hasn't ended, don't subtract — checkout threshold is from check-in
   let todayWorkedMin = 0;
   if (attendance?.checkIn) {
     const cIn = new Date(attendance.checkIn).getTime();
     let worked = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : pktNow.getTime()) - cIn;
-    if (attendance?.breakStart) {
-      const bEnd = attendance.breakEnd ? new Date(attendance.breakEnd).getTime() : pktNow.getTime();
-      worked -= (bEnd - new Date(attendance.breakStart).getTime());
+    if (attendance?.breakStart && attendance?.breakEnd) {
+      worked -= (new Date(attendance.breakEnd).getTime() - new Date(attendance.breakStart).getTime());
     }
     todayWorkedMin = Math.max(0, Math.floor(worked / 60000));
   }
