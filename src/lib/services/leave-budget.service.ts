@@ -26,29 +26,51 @@ export async function getAccumulatedLeaveBudget(
   const monthsActive = Math.max(1, (currentYear - startYear) * 12 + (currentMonth - startMonth) + 1);
   const totalEarned = monthsActive * paidLeavesPerMonth;
 
-  // Count covered leaves from system start date onwards only
-  const coveredAbsences = await prisma.fine.count({
+  const systemStart = new Date(Date.UTC(SYSTEM_START_YEAR, SYSTEM_START_MONTH, 1));
+
+  // Count covered absences from fines (amount=0, "Covered by paid leave")
+  const coveredAbsenceFines = await prisma.fine.count({
     where: {
       userId,
       amount: 0,
       reason: { contains: "Covered by paid leave" },
-      date: { gte: new Date(Date.UTC(SYSTEM_START_YEAR, SYSTEM_START_MONTH, 1)) },
+      date: { gte: systemStart },
     },
   });
 
+  // Also count ABSENT attendance records that have NO fine at all
+  // (cron may not have created a fine if salary structure was missing at the time)
+  const absentDates = await prisma.attendance.findMany({
+    where: {
+      userId,
+      status: "ABSENT",
+      date: { gte: systemStart },
+    },
+    select: { date: true },
+  });
+  // Check which absences have no fine record
+  let uncoveredAbsencesWithoutFine = 0;
+  for (const att of absentDates) {
+    const hasFine = await prisma.fine.findFirst({
+      where: { userId, date: att.date, type: "ABSENT_WITHOUT_LEAVE" },
+    });
+    if (!hasFine) {
+      uncoveredAbsencesWithoutFine++;
+    }
+  }
+
   // Count ONLY half-day leave requests (not wrongly-marked HALF_DAY attendance)
-  // Only approved half-day leave requests actually consume budget
   const halfDayLeaves = await prisma.leaveRequest.count({
     where: {
       userId,
       leaveType: "HALF_DAY",
       status: "APPROVED",
-      startDate: { gte: new Date(Date.UTC(SYSTEM_START_YEAR, SYSTEM_START_MONTH, 1)) },
+      startDate: { gte: systemStart },
     },
   });
 
-  // Each covered absence = 1.0 used, each half-day leave = 0.5 used
-  const totalUsed = coveredAbsences + (halfDayLeaves * 0.5);
+  // Each covered absence = 1.0 used, each orphan absence = 1.0 used, each half-day = 0.5 used
+  const totalUsed = coveredAbsenceFines + uncoveredAbsencesWithoutFine + (halfDayLeaves * 0.5);
   const available = Math.max(0, totalEarned - totalUsed);
 
   return { totalEarned, totalUsed, available };
