@@ -69,7 +69,15 @@ async function handleAutoCheckout() {
         where: { userId: att.user.id, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
         select: { halfDayPeriod: true },
       });
-      const status = halfDayLeaveStatus ? "HALF_DAY" : att.status;
+      // ONLY set HALF_DAY if a leave request exists. Never preserve a stale HALF_DAY status.
+      // If no leave, restore to PRESENT or LATE based on lateMinutes from check-in.
+      let status = att.status;
+      if (halfDayLeaveStatus) {
+        status = "HALF_DAY";
+      } else if (att.status === "HALF_DAY") {
+        // No leave request but status was HALF_DAY — fix it
+        status = att.lateMinutes && att.lateMinutes > 0 ? "LATE" : "PRESENT";
+      }
 
       // Calculate early leave and overtime
       const earlyLeaveMin = Math.max(0, fullDayMinutes - workedMinutes);
