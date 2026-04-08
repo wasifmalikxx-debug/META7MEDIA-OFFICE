@@ -244,8 +244,15 @@ export async function generatePayrollForAll(
   year: number,
   generatedBy: string
 ) {
+  // Only include employees who joined ON or BEFORE the last day of the payroll month
+  const payrollMonthEnd = new Date(Date.UTC(year, month, 0)); // last day of month
   const employees = await prisma.user.findMany({
-    where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" }, salaryStructure: { isNot: null } },
+    where: {
+      status: { in: ["HIRED", "PROBATION"] },
+      role: { not: "SUPER_ADMIN" },
+      salaryStructure: { isNot: null },
+      joiningDate: { lte: payrollMonthEnd },
+    },
     select: { id: true },
   });
 
