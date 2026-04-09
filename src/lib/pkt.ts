@@ -69,6 +69,33 @@ export function formatPKTTime(date: Date | string): string {
   return `${String(h12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${ampm}`;
 }
 
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTH_NAMES_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * Format a UTC/@db.Date date to a display string, reading UTC fields only.
+ * NEVER uses browser timezone — safe for any PC clock setting.
+ * Patterns: "EEEE, MMMM d, yyyy" | "EEE, MMM d, yyyy" | "yyyy-MM-dd" | "MMMM yyyy"
+ */
+export function formatPKTDisplay(date: Date | string, pattern: string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth(); // 0-indexed
+  const day = d.getUTCDate();
+  const dow = d.getUTCDay();
+
+  return pattern
+    .replace("EEEE", DAY_NAMES[dow])
+    .replace("EEE", DAY_NAMES_SHORT[dow])
+    .replace("MMMM", MONTH_NAMES_FULL[m])
+    .replace("MMM", MONTH_NAMES_SHORT[m])
+    .replace("MM", String(m + 1).padStart(2, "0"))
+    .replace("yyyy", String(y))
+    .replace(/\bd\b/, String(day));
+}
+
 /** Normalize a phone number to international format for WhatsApp */
 export function normalizePhone(phone: string): string | null {
   if (!phone) return null;

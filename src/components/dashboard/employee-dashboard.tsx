@@ -19,8 +19,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
-import { formatPKTTime } from "@/lib/pkt";
+import { formatPKTTime, formatPKTDisplay, formatPKTDate } from "@/lib/pkt";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -218,7 +217,7 @@ export function EmployeeDashboard({
   // Check if employee has an approved half-day leave for today
   const todayStr = `${pktNow.getUTCFullYear()}-${String(pktNow.getUTCMonth() + 1).padStart(2, "0")}-${String(pktNow.getUTCDate()).padStart(2, "0")}`;
   const hasHalfDayToday = leaves.some((l: any) => {
-    const d = format(new Date(l.startDate), "yyyy-MM-dd");
+    const d = formatPKTDate(new Date(l.startDate));
     return d === todayStr && l.leaveType === "HALF_DAY" && l.status !== "REJECTED";
   });
   // Half day threshold = 4 hours = 240 minutes
@@ -453,7 +452,7 @@ export function EmployeeDashboard({
               {employeeStatus}
             </Badge>
           </h1>
-          <p className="text-muted-foreground mt-1">{format(new Date(Date.now() + 5 * 60 * 60_000), "EEEE, MMMM d, yyyy")}</p>
+          <p className="text-muted-foreground mt-1">{formatPKTDisplay(new Date(Date.now() + 5 * 60 * 60_000), "EEEE, MMMM d, yyyy")}</p>
         </div>
       </div>
 
@@ -909,7 +908,7 @@ export function EmployeeDashboard({
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {format(leaveDate, "EEE, MMM d, yyyy")}
+                        {formatPKTDisplay(leaveDate, "EEE, MMM d, yyyy")}
                         {leave.reason && ` — ${leave.reason}`}
                       </p>
                     </div>
