@@ -113,13 +113,12 @@ export function EmployeeDashboard({
 
   const router = useRouter();
 
-  // Auto-refresh dashboard data every 2 minutes (reduced from 30s for performance)
+  // Re-render every 30 seconds so time-based UI (break button, checkout button) stays current
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTick((t) => t + 1);
-      router.refresh();
-    }, 120_000);
-    return () => clearInterval(interval);
+    const tickInterval = setInterval(() => setTick((t) => t + 1), 30_000);
+    // Full data refresh every 2 minutes
+    const refreshInterval = setInterval(() => router.refresh(), 120_000);
+    return () => { clearInterval(tickInterval); clearInterval(refreshInterval); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleApplyLeave() {
