@@ -20,6 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { formatPKTDisplay } from "@/lib/pkt";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { formatPKTTime } from "@/lib/pkt";
 
@@ -109,7 +110,7 @@ export function AdminDashboard({
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground mt-1">
-            {format(new Date(Date.now() + 5 * 60 * 60_000), "EEEE, MMMM d, yyyy")}
+            {formatPKTDisplay(new Date(Date.now() + 5 * 60 * 60_000), "EEEE, MMMM d, yyyy")}
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
