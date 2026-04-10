@@ -5,6 +5,7 @@ import { Moon, Sun } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { NotificationsBell } from "@/components/layout/notifications-bell";
 
 interface HeaderProps {
   title?: string;
@@ -33,7 +34,8 @@ export function Header({ title }: HeaderProps) {
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
       {title && <h1 className="text-sm font-medium">{title}</h1>}
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1">
+        <NotificationsBell />
         <Button size="sm" variant="ghost" onClick={toggle} className="size-8 p-0">
           {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </Button>

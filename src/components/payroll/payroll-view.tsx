@@ -10,22 +10,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight, Upload, Image as ImageIcon, Calendar, Users, AlertTriangle, Gift } from "lucide-react";
+import { Calculator, CheckCircle, Wallet, ChevronLeft, ChevronRight, Upload, Image as ImageIcon, Calendar, Users, AlertTriangle, Gift, Lock, Unlock } from "lucide-react";
 import { sortByNestedEmployeeId } from "@/lib/utils/sort-employees";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+
+interface PayrollLockInfo {
+  lockedAt: string;
+  lockedBy: string;
+  totalNet: number;
+  recordCount: number;
+}
 
 interface PayrollViewProps {
   records: any[];
   isAdmin: boolean;
   currentMonth: number;
   currentYear: number;
+  monthLocked?: boolean;
+  lockInfo?: PayrollLockInfo | null;
 }
 
-export function PayrollView({ records, isAdmin, currentMonth, currentYear }: PayrollViewProps) {
+export function PayrollView({ records, isAdmin, currentMonth, currentYear, monthLocked = false, lockInfo = null }: PayrollViewProps) {
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
+  const [locking, setLocking] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
 
@@ -58,6 +68,57 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
       toast.error(err.message);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleLock() {
+    if (records.length === 0) {
+      toast.error("Generate payroll first before locking");
+      return;
+    }
+    const ok = typeof window !== "undefined" && window.confirm(
+      `Lock ${monthName} payroll?\n\n` +
+      `This will freeze all ${records.length} records and create an immutable snapshot. ` +
+      `Auto-regeneration will stop. You can unlock from this screen at any time.`
+    );
+    if (!ok) return;
+    setLocking(true);
+    try {
+      const res = await fetch("/api/payroll/lock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month: currentMonth, year: currentYear }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to lock");
+      toast.success(`${monthName} locked — PKR ${Math.round(data.totalNet).toLocaleString()} snapshot created`);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLocking(false);
+    }
+  }
+
+  async function handleUnlock() {
+    const ok = typeof window !== "undefined" && window.confirm(
+      `Unlock ${monthName} payroll?\n\n` +
+      `This will delete the snapshot and allow records to be regenerated again.`
+    );
+    if (!ok) return;
+    setLocking(true);
+    try {
+      const res = await fetch(`/api/payroll/lock?month=${currentMonth}&year=${currentYear}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to unlock");
+      toast.success(`${monthName} unlocked`);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLocking(false);
     }
   }
 
@@ -306,12 +367,63 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear }: Pay
           </Button>
         </div>
         {isAdmin && (
-          <Button onClick={handleGenerate} disabled={generating} size="sm" className="gap-2 rounded-lg">
-            <Calculator className="size-4" />
-            {generating ? "Generating..." : "Generate Payroll"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleGenerate}
+              disabled={generating || locking || monthLocked}
+              size="sm"
+              className="gap-2 rounded-lg"
+              title={monthLocked ? "Month is locked — unlock to regenerate" : ""}
+            >
+              <Calculator className="size-4" />
+              {generating ? "Generating..." : "Generate Payroll"}
+            </Button>
+            {monthLocked ? (
+              <Button
+                onClick={handleUnlock}
+                disabled={locking}
+                size="sm"
+                variant="outline"
+                className="gap-2 rounded-lg border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400"
+              >
+                <Unlock className="size-4" />
+                {locking ? "Unlocking..." : "Unlock"}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleLock}
+                disabled={locking || generating || records.length === 0}
+                size="sm"
+                variant="outline"
+                className="gap-2 rounded-lg"
+              >
+                <Lock className="size-4" />
+                {locking ? "Locking..." : "Lock Month"}
+              </Button>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Lock banner */}
+      {isAdmin && monthLocked && lockInfo && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+          <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/50">
+            <Lock className="size-4 text-amber-700 dark:text-amber-400" />
+          </div>
+          <div className="flex-1 text-sm">
+            <p className="font-semibold text-amber-900 dark:text-amber-300">
+              {monthName} is locked
+            </p>
+            <p className="text-xs text-amber-800/80 dark:text-amber-400/80 mt-0.5">
+              Snapshot created {format(new Date(lockInfo.lockedAt), "MMM d, yyyy 'at' hh:mm a")}
+              {lockInfo.lockedBy ? ` by ${lockInfo.lockedBy}` : ""} •{" "}
+              {lockInfo.recordCount} records • PKR {Math.round(lockInfo.totalNet).toLocaleString()} total.
+              Records are frozen and will not auto-regenerate.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       {records.length > 0 && (

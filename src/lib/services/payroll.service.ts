@@ -332,12 +332,15 @@ export async function generatePayrollForEmployee(
     Math.max(0, salary.monthlySalary + totalIncentives - totalDeductions)
   );
 
-  // Check if record already exists and is PAID — never overwrite a paid record.
-  // Once marked paid, the values are locked for audit trail.
+  // Check if record already exists and is immutable.
+  // Immutable means either:
+  //   - status === PAID (marked paid, locked for audit trail)
+  //   - lockedAt set (month snapshot created by admin)
+  // In both cases, return the existing record unchanged.
   const existing = await prisma.payrollRecord.findUnique({
     where: { userId_month_year: { userId, month, year } },
   });
-  if (existing && existing.status === "PAID") {
+  if (existing && (existing.status === "PAID" || existing.lockedAt)) {
     return existing;
   }
 
