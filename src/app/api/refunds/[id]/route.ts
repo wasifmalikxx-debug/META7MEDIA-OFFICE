@@ -77,6 +77,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       } else {
         return error("Screenshot proof is required when AliExpress refund is marked as Yes");
       }
+    } else {
+      // When AliExpress refund was NOT applied, require a detailed explanation
+      if (!notes || notes.length < 10) {
+        return error(
+          "Please explain why the refund was not applied on AliExpress (at least 10 characters)"
+        );
+      }
     }
 
     const updated = await prisma.refund.update({
