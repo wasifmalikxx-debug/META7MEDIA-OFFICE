@@ -50,9 +50,15 @@ export async function POST(request: NextRequest) {
 
     const isEtsy = user.employeeId.startsWith("EM");
     const isFB = user.employeeId.startsWith("SMM");
+    // Izaan (EM-4) is the Etsy team manager — uses the simple notes-only template
+    // (same validation/storage as FB employees). Keeps manager reports qualitative
+    // instead of forcing listing-count fields that don't apply to his role.
+    const isManager = user.employeeId === "EM-4";
 
-    // Validate fields based on team
-    if (isEtsy) {
+    // Validate fields based on team + manager override
+    if (isManager) {
+      if (!body.notes?.trim()) return error("Please describe your managerial work today");
+    } else if (isEtsy) {
       if (!body.listingsCount && body.listingsCount !== 0) return error("Please enter listings count");
       if (!body.storeName?.trim()) return error("Please enter store name");
       if (!body.listingLinks?.trim()) return error("Please enter listing links");
@@ -60,22 +66,27 @@ export async function POST(request: NextRequest) {
       if (!body.notes?.trim()) return error("Please enter your daily work summary");
     }
 
+    // Store using FB-style shape when manager: notes only, Etsy columns null
+    const storeEtsyFields = isEtsy && !isManager;
+
     const report = await prisma.dailyReport.upsert({
       where: { userId_date: { userId, date: today } },
       create: {
         userId,
         date: today,
-        listingsCount: isEtsy ? (body.listingsCount || 0) : null,
-        storeName: isEtsy ? body.storeName : null,
-        listingLinks: isEtsy ? body.listingLinks : null,
+        listingsCount: storeEtsyFields ? (body.listingsCount || 0) : null,
+        storeName: storeEtsyFields ? body.storeName : null,
+        listingLinks: storeEtsyFields ? body.listingLinks : null,
         postsCount: isFB ? (body.postsCount || 0) : null,
         pageNames: isFB ? body.pageNames : null,
         notes: body.notes || null,
       },
       update: {
-        listingsCount: isEtsy ? (body.listingsCount || 0) : undefined,
-        storeName: isEtsy ? body.storeName : undefined,
-        listingLinks: isEtsy ? body.listingLinks : undefined,
+        // When Izaan (or any manager) updates, clear the Etsy-specific fields
+        // to ensure a clean manager-style record regardless of previous state
+        listingsCount: storeEtsyFields ? (body.listingsCount || 0) : null,
+        storeName: storeEtsyFields ? body.storeName : null,
+        listingLinks: storeEtsyFields ? body.listingLinks : null,
         postsCount: isFB ? (body.postsCount || 0) : undefined,
         pageNames: isFB ? body.pageNames : undefined,
         notes: body.notes || null,

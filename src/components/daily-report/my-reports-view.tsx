@@ -40,7 +40,8 @@ interface MyReportsViewProps {
 
 export function MyReportsView({ reports, currentMonth, currentYear, employeeId }: MyReportsViewProps) {
   const router = useRouter();
-  const isEtsy = employeeId.startsWith("EM");
+  const isManager = employeeId === "EM-4"; // Izaan — simple notes-only template
+  const isEtsy = employeeId.startsWith("EM") && !isManager;
   const isFB = employeeId.startsWith("SMM");
 
   const monthName = formatPKTDisplay(
@@ -140,6 +141,19 @@ export function MyReportsView({ reports, currentMonth, currentYear, employeeId }
                 </p>
               </div>
               <p className="text-3xl font-bold text-sky-600 dark:text-sky-400">{totalPosts}</p>
+            </CardContent>
+          </Card>
+        )}
+        {isManager && (
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <FileText className="size-3.5 text-amber-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Team Lead Reports
+                </p>
+              </div>
+              <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{totalReports}</p>
             </CardContent>
           </Card>
         )}

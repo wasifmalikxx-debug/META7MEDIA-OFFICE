@@ -46,6 +46,43 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
   function renderEtsyReport(r: any) {
+    // Izaan (EM-4) is the team manager — uses a simple notes-only template.
+    // Render him with a distinct amber manager card instead of the listings layout.
+    const isManager = r.user.employeeId === "EM-4";
+    if (isManager) {
+      return (
+        <div key={r.id} className="flex gap-3 py-3 hover:bg-amber-50/30 dark:hover:bg-amber-950/10 px-4 transition-colors">
+          <div className="size-8 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-800 dark:to-amber-700 flex items-center justify-center text-[10px] font-bold text-amber-700 dark:text-amber-300 shrink-0">
+            {r.user.firstName[0]}{r.user.lastName?.[0] || ""}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">{r.user.firstName} {r.user.lastName}</span>
+                <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">{r.user.employeeId}</span>
+                <Badge className="text-[8px] h-4 px-1.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0">
+                  Team Lead
+                </Badge>
+              </div>
+            </div>
+            {r.notes && (
+              <div className="flex items-start gap-1.5 text-xs mt-1.5">
+                <ClipboardList className="size-3 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-muted-foreground text-[10px]">Daily Summary:</span>
+                  <p className="font-medium text-[11px] whitespace-pre-line mt-0.5">{r.notes}</p>
+                </div>
+              </div>
+            )}
+            {!r.notes && (
+              <p className="text-[10px] text-muted-foreground italic mt-1">No summary recorded.</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Regular Etsy employee layout
     const links = r.listingLinks?.split("\n").filter(Boolean) || [];
     return (
       <div key={r.id} className="flex gap-3 py-3 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 px-4 transition-colors">
