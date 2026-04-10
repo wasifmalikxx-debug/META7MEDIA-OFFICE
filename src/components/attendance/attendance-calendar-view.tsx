@@ -40,7 +40,7 @@ const STATUS_CELL: Record<string, { label: string; bg: string }> = {
   LATE: { label: "L", bg: "bg-amber-500" },
   HALF_DAY: { label: "H", bg: "bg-blue-500" },
   ABSENT: { label: "A", bg: "bg-rose-500" },
-  COVERED: { label: "C", bg: "bg-teal-500" },
+  COVERED: { label: "C", bg: "bg-purple-500" },
   ON_LEAVE: { label: "LV", bg: "bg-violet-500" },
   HOLIDAY: { label: "", bg: "bg-slate-300 dark:bg-slate-600" },
   WEEKEND: { label: "", bg: "bg-slate-200 dark:bg-slate-700" },
