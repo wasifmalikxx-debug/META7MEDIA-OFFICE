@@ -94,6 +94,48 @@ function isFullMessage(m: ComplaintMessage | MessagePreview): m is ComplaintMess
   return "id" in m;
 }
 
+/**
+ * Compress an image file to a small JPEG data URL.
+ * Resizes so the longest side is max 1600px, encodes at 0.82 quality.
+ * Result is typically 100–400 KB even for large photos.
+ */
+async function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_SIDE = 1600;
+        let { width, height } = img;
+        if (width > MAX_SIDE || height > MAX_SIDE) {
+          if (width > height) {
+            height = Math.round((height * MAX_SIDE) / width);
+            width = MAX_SIDE;
+          } else {
+            width = Math.round((width * MAX_SIDE) / height);
+            height = MAX_SIDE;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas not supported"));
+        // White background for transparent PNGs so the JPEG doesn't turn black
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 interface ComplaintsViewProps {
   initialComplaints: Complaint[];
   isAdmin: boolean;
@@ -290,9 +332,11 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
   });
   const [messageInput, setMessageInput] = useState("");
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [formImage, setFormImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formFileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const viewingIdRef = useRef<string | null>(null);
 
@@ -409,13 +453,14 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
       const res = await fetch("/api/complaints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, imageUrl: formImage }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to submit");
       toast.success("Complaint submitted — delivered securely to the CEO");
       setComplaints([data, ...complaints]);
       setForm({ subject: "", category: "BUG", priority: "MEDIUM", description: "" });
+      setFormImage(null);
       setNewOpen(false);
       router.refresh();
     } catch (err: any) {
@@ -445,27 +490,47 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
   async function handleImagePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      toast.error("Only JPG, PNG, or WebP images");
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files allowed");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image must be under 5 MB");
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image must be under 10 MB");
       return;
     }
     setUploadingImage(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      setAttachedImage(data.url);
+      // Compress client-side (resize + re-encode as JPEG) so the payload stays small
+      const compressed = await compressImage(file);
+      setAttachedImage(compressed);
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Failed to process image");
     } finally {
       setUploadingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleFormImagePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files allowed");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image must be under 10 MB");
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const compressed = await compressImage(file);
+      setFormImage(compressed);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to process image");
+    } finally {
+      setUploadingImage(false);
+      if (formFileInputRef.current) formFileInputRef.current.value = "";
     }
   }
 
@@ -619,7 +684,8 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
         </p>
       </div>
 
-      {/* Launch button */}
+      {/* Launch button — employees only */}
+      {!isAdmin && (
       <div className="flex items-center justify-end">
         <Dialog open={newOpen} onOpenChange={setNewOpen}>
           <DialogTrigger
@@ -712,9 +778,62 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
                 <p className="text-[10px] text-muted-foreground">{form.description.length} / 2000</p>
               </div>
 
+              {/* Screenshot attachment */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <ImageIcon className="size-3.5" />
+                  Attach screenshot <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <input
+                  ref={formFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFormImagePick}
+                />
+                {formImage ? (
+                  <div className="relative inline-block">
+                    <img
+                      src={formImage}
+                      alt="Preview"
+                      className="h-32 w-auto rounded-lg border object-cover cursor-pointer"
+                      onClick={() => setLightboxImage(formImage)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setFormImage(null)}
+                      className="absolute -top-2 -right-2 size-6 rounded-full bg-rose-500 text-white flex items-center justify-center hover:bg-rose-600 shadow-md"
+                      title="Remove image"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-20 border-dashed gap-2 flex-col text-muted-foreground hover:text-violet-600 hover:border-violet-400"
+                    onClick={() => formFileInputRef.current?.click()}
+                    disabled={uploadingImage}
+                  >
+                    {uploadingImage ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        <span className="text-[10px]">Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Paperclip className="size-4" />
+                        <span className="text-[10px]">Click to attach a screenshot (JPG, PNG, WebP)</span>
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+
               <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="ghost" onClick={() => setNewOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={loading} className="gap-2">
+                <Button type="button" variant="ghost" onClick={() => { setNewOpen(false); setFormImage(null); }}>Cancel</Button>
+                <Button type="submit" disabled={loading || uploadingImage} className="gap-2">
                   <Send className="size-4" />
                   {loading ? "Sending..." : "Submit Securely"}
                 </Button>
@@ -723,6 +842,7 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
           </DialogContent>
         </Dialog>
       </div>
+      )}
 
       {/* Grouped sections: Open Cases / Closed / Denied */}
       {complaints.length === 0 ? (
