@@ -25,6 +25,7 @@ import {
   BarChart3,
   CalendarDays,
   AlertOctagon,
+  RefreshCcw,
 } from "lucide-react";
 import {
   Sidebar,
@@ -82,14 +83,25 @@ const financeNav = [
   { title: "Payroll", href: "/payroll", icon: Wallet, roles: ["all"] },
 ];
 
-function getEtsyNav(userRole: string) {
+function getEtsyNav(userRole: string, employeeId: string) {
+  const isAdminOrManager = userRole === "SUPER_ADMIN" || userRole === "MANAGER";
+  // Izaan (EM-4) is Etsy team lead — gets the admin-style label even though
+  // his role is EMPLOYEE, because he sees all refunds but doesn't submit
+  const isTeamLead = employeeId === "EM-4";
   return [
     { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER"] },
     { title: "Analytics", href: "/etsy-analytics", icon: BarChart3, roles: ["SUPER_ADMIN"] },
     {
-      title: userRole === "SUPER_ADMIN" || userRole === "MANAGER" ? "Review Approvals" : "Submit Review",
+      title: isAdminOrManager ? "Review Approvals" : "Submit Review",
       href: "/review-bonus",
       icon: Star,
+      roles: ["all"],
+    },
+    // Refunds: CEO + Izaan see 'Refunds' (all), other Etsy employees see 'Submit Refund'
+    {
+      title: isAdminOrManager || isTeamLead ? "Refunds" : "Submit Refund",
+      href: "/refunds",
+      icon: RefreshCcw,
       roles: ["all"],
     },
     { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] },
@@ -237,11 +249,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
         {/* Etsy Program — only for Etsy employees (EM-), Manager (EM-4), and CEO */}
         {(user.role === "SUPER_ADMIN" || user.role === "MANAGER" || user.employeeId?.startsWith("EM")) &&
-          getEtsyNav(user.role).some((item) => hasAccess(item.roles, user.role)) && (
+          getEtsyNav(user.role, user.employeeId || "").some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
             <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>{renderNavItems(getEtsyNav(user.role))}</SidebarMenu>
+              <SidebarMenu>{renderNavItems(getEtsyNav(user.role, user.employeeId || ""))}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         )}
