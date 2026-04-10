@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
     const etsyRefundAmount = parseFloat(body.etsyRefundAmount);
     const aliexpressRefunded = !!body.aliexpressRefunded;
     const aliexpressAmount = body.aliexpressAmount != null ? parseFloat(body.aliexpressAmount) : null;
+    const aliexpressProofUrl = body.aliexpressProofUrl ? String(body.aliexpressProofUrl) : null;
     const notes = body.notes ? String(body.notes).trim() : null;
 
     if (!storeName || storeName.length < 2) return error("Store name is required");
@@ -97,6 +98,12 @@ export async function POST(request: NextRequest) {
     if (aliexpressRefunded) {
       if (aliexpressAmount == null || isNaN(aliexpressAmount) || aliexpressAmount <= 0) {
         return error("AliExpress refund amount is required when marked as refunded");
+      }
+      if (!aliexpressProofUrl) {
+        return error("Screenshot proof is required when AliExpress refund is marked as Yes");
+      }
+      if (!aliexpressProofUrl.startsWith("data:image/")) {
+        return error("Invalid screenshot format");
       }
     }
 
@@ -109,6 +116,7 @@ export async function POST(request: NextRequest) {
         etsyRefundAmount,
         aliexpressRefunded,
         aliexpressAmount: aliexpressRefunded ? aliexpressAmount : null,
+        aliexpressProofUrl: aliexpressRefunded ? aliexpressProofUrl : null,
         notes,
         createdAt: now,
         updatedAt: now,
