@@ -576,8 +576,10 @@ function RefundCard({
   const withinWindow = minutesSince <= 15;
   const minutesLeft = Math.max(0, 15 - minutesSince);
 
-  // Admin/manager can always delete (and edit); owner can edit/delete within 15 min
-  const canEdit = canSeeAll || (isOwner && withinWindow);
+  // Edit is ONLY allowed by the original submitter within the 15-minute window.
+  // CEO / Izaan cannot edit — they can only delete. This keeps refund records
+  // authoritative to the employee who submitted them.
+  const canEdit = isOwner && withinWindow;
   const canDelete = canSeeAll || (isOwner && withinWindow);
 
   return (
