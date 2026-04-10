@@ -230,6 +230,19 @@ export function EmployeeDashboard({
     return `${s}s`;
   }
 
+  // Half day threshold = 4 hours = 240 minutes (used for checkout unlock + nextAction)
+  const halfDayThresholdMin = 240;
+  // Calculate today's worked minutes from CHECK-IN time (subtract completed break only)
+  let todayWorkedMin = 0;
+  if (attendance?.checkIn) {
+    const cIn = new Date(attendance.checkIn).getTime();
+    let worked = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : pktNow.getTime()) - cIn;
+    if (attendance?.breakStart && attendance?.breakEnd) {
+      worked -= (new Date(attendance.breakEnd).getTime() - new Date(attendance.breakStart).getTime());
+    }
+    todayWorkedMin = Math.max(0, Math.floor(worked / 60000));
+  }
+
   // "What's Next" state machine — figures out the next action the employee
   // needs to take and how long until (or how long the current window stays open).
   // All calculations are in PKT-minutes-from-midnight and are timezone-agnostic.
@@ -248,17 +261,9 @@ export function EmployeeDashboard({
     if (hasCheckedOut) {
       return { label: "Day Complete", countdown: "", state: "done", color: "emerald", detail: "See you tomorrow 👋" };
     }
-    // Not checked in yet
+    // Not checked in yet — permissive: can check in at any time during the day
     if (!hasCheckedIn) {
-      if (currentMinutes < checkInWindowStart) {
-        const secsUntil = (checkInWindowStart - currentMinutes) * 60 - pktSeconds;
-        return { label: "Check In", countdown: `opens in ${formatCountdown(secsUntil)}`, state: "waiting", color: "slate", detail: `Check-in window opens at ${checkInOpensAt} PKT` };
-      }
-      if (currentMinutes <= workEndMin) {
-        const secsUntil = (workEndMin - currentMinutes) * 60 - pktSeconds;
-        return { label: "Check In", countdown: `window open · ${formatCountdown(secsUntil)} left`, state: "active", color: "blue", detail: "Click the Check In button to start your day" };
-      }
-      return { label: "Check-in closed", countdown: "", state: "missed", color: "rose", detail: "Office hours have ended" };
+      return { label: "Check In", countdown: "ready", state: "active", color: "blue", detail: "Click the Check In button to start your day" };
     }
     // On break right now
     if (onBreak) {
@@ -266,27 +271,30 @@ export function EmployeeDashboard({
       const secsLeft = Math.max(0, breakEndSecs - currentTotalSeconds);
       return { label: "On Break", countdown: secsLeft > 0 ? `end in ${formatCountdown(secsLeft)}` : "break ending now", state: "active", color: "amber", detail: "End break before grace period expires to avoid fine" };
     }
-    // Break already done — waiting to checkout
+    // Checkout unlocks when worked hours hit the half-day minimum (default 4h)
+    const minutesToUnlockCheckout = Math.max(0, halfDayThresholdMin - todayWorkedMin);
+
+    // Break already done — waiting to reach minimum hours for checkout
     if (breakDone) {
-      if (currentMinutes < workEndMin - 30) {
-        const secsUntil = (workEndMin - 30 - currentMinutes) * 60 - pktSeconds;
-        return { label: "Checkout", countdown: `opens in ${formatCountdown(secsUntil)}`, state: "waiting", color: "violet", detail: "Continue working until checkout window opens" };
+      if (minutesToUnlockCheckout > 0) {
+        return { label: "Checkout", countdown: `unlocks in ${formatCountdown(minutesToUnlockCheckout * 60)}`, state: "waiting", color: "violet", detail: "Keep working to reach minimum required hours" };
       }
-      return { label: "Checkout", countdown: "available now", state: "active", color: "emerald", detail: "Submit your report and check out" };
+      return { label: "Checkout", countdown: "available now", state: "active", color: "emerald", detail: "Submit your report and check out when you're done" };
     }
-    // Checked in, break not yet started
+
+    // Checked in, haven't taken break yet — break button is always available
+    // Show guidance based on whether they're inside/before/after the scheduled break window
     if (currentMinutes < breakStartMin) {
       const secsUntil = (breakStartMin - currentMinutes) * 60 - pktSeconds;
-      return { label: "Start Break", countdown: `opens in ${formatCountdown(secsUntil)}`, state: "waiting", color: "violet", detail: `Break window: ${breakStartTime} – ${breakEndTime} PKT` };
+      return { label: "Start Break", countdown: `scheduled in ${formatCountdown(secsUntil)}`, state: "active", color: "violet", detail: `You can break any time. Scheduled: ${breakStartTime} – ${breakEndTime} PKT` };
     }
     if (isInBreakWindow) {
       const secsUntil = (breakEndMin - currentMinutes) * 60 - pktSeconds;
-      return { label: "Start Break", countdown: `closes in ${formatCountdown(secsUntil)}`, state: "active", color: "violet", detail: "Click Start Break now" };
+      return { label: "Start Break", countdown: `window closes in ${formatCountdown(secsUntil)}`, state: "active", color: "violet", detail: "Break window is open — click Start Break" };
     }
-    // Break window missed, heading to checkout
-    if (currentMinutes < workEndMin - 30) {
-      const secsUntil = (workEndMin - 30 - currentMinutes) * 60 - pktSeconds;
-      return { label: "Checkout", countdown: `opens in ${formatCountdown(secsUntil)}`, state: "missed", color: "amber", detail: "Break was missed — continue working until checkout" };
+    // Past the scheduled window but they can still click it (they'll get a late fine)
+    if (minutesToUnlockCheckout > 0) {
+      return { label: "Start Break / Checkout", countdown: `checkout in ${formatCountdown(minutesToUnlockCheckout * 60)}`, state: "active", color: "amber", detail: "Break window passed. You can still click Start Break, or wait for checkout to unlock" };
     }
     return { label: "Checkout", countdown: "available now", state: "active", color: "emerald", detail: "Submit your report and check out" };
   })();
@@ -305,22 +313,10 @@ export function EmployeeDashboard({
     const d = formatPKTDate(new Date(l.startDate));
     return d === todayStr && l.leaveType === "HALF_DAY" && l.status !== "REJECTED";
   });
-  // Half day threshold = 4 hours = 240 minutes
-  const halfDayThresholdMin = 240;
-  // Calculate today's worked minutes from CHECK-IN time
-  // Only subtract break time if break is COMPLETED (both start and end)
-  // If break hasn't ended, don't subtract — checkout threshold is from check-in
-  let todayWorkedMin = 0;
-  if (attendance?.checkIn) {
-    const cIn = new Date(attendance.checkIn).getTime();
-    let worked = (attendance?.checkOut ? new Date(attendance.checkOut).getTime() : pktNow.getTime()) - cIn;
-    if (attendance?.breakStart && attendance?.breakEnd) {
-      worked -= (new Date(attendance.breakEnd).getTime() - new Date(attendance.breakStart).getTime());
-    }
-    todayWorkedMin = Math.max(0, Math.floor(worked / 60000));
-  }
-  const canCheckoutHalfDay = hasHalfDayToday && todayWorkedMin >= halfDayThresholdMin;
-  const canCheckout = canCheckoutByTime || canCheckoutHalfDay;
+  // Checkout is allowed as soon as the employee has worked their minimum required
+  // hours (defaults to 4h / half-day threshold). No PKT time window check — that
+  // was blocking remote employees on different timezones.
+  const canCheckout = todayWorkedMin >= halfDayThresholdMin;
 
   // Format work end time for display
   const workEndFormatted = `${weH > 12 ? weH - 12 : weH}:${String(weM).padStart(2, "0")} ${weH >= 12 ? "PM" : "AM"}`;
@@ -679,26 +675,10 @@ export function EmployeeDashboard({
                 </Button>
             )}
             {hasCheckedIn && !hasCheckedOut && !onBreak && !breakDone && (
-              <>
-                {currentMinutes < breakStartMin && (
-                  <Badge variant="outline" className="text-xs py-1.5 px-3 gap-1.5 tabular-nums">
-                    <Coffee className="size-3" />
-                    Break in {formatCountdown((breakStartMin - currentMinutes) * 60 - pktSeconds)}
-                  </Badge>
-                )}
-                {isInBreakWindow && (
-                  <Button onClick={handleBreakStart} disabled={loading} variant="secondary" className="gap-2 rounded-lg">
-                    <Coffee className="size-4" />
-                    {loading ? "..." : "Start Break"}
-                  </Button>
-                )}
-                {currentMinutes > breakEndMin && (
-                  <Badge className="text-xs py-1.5 px-3 gap-1.5 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-0">
-                    <Coffee className="size-3" />
-                    Break missed
-                  </Badge>
-                )}
-              </>
+              <Button onClick={handleBreakStart} disabled={loading} variant="secondary" className="gap-2 rounded-lg">
+                <Coffee className="size-4" />
+                {loading ? "..." : "Start Break"}
+              </Button>
             )}
             {onBreak && (
               <Button onClick={handleBreakEnd} disabled={loading} variant="secondary" className="gap-2 rounded-lg">
@@ -807,19 +787,10 @@ export function EmployeeDashboard({
                     <XCircle className="size-4" />
                     {loading ? "..." : "Check Out"}
                   </Button>
-                ) : todayWorkedMin < halfDayThresholdMin ? (
-                  <span className="text-xs text-muted-foreground">
-                    Checkout available at {workEndFormatted} PKT
-                  </span>
                 ) : (
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                      You&apos;ve worked {Math.floor(todayWorkedMin / 60)}h {todayWorkedMin % 60}m — half day will be recorded
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Full checkout at {workEndFormatted} PKT • Or apply half day leave
-                    </span>
-                  </div>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    Checkout unlocks in {formatCountdown((halfDayThresholdMin - todayWorkedMin) * 60)} (min 4h worked)
+                  </span>
                 )}
               </>
             )}

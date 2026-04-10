@@ -1,7 +1,16 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
-import { prisma, getCachedSettings } from "@/lib/prisma";
-import { todayPKT, pktMinutesSinceMidnight, nowPKT } from "@/lib/pkt";
+import { prisma } from "@/lib/prisma";
+import { todayPKT, nowPKT } from "@/lib/pkt";
 
+/**
+ * Break-start endpoint — PERMISSIVE by design.
+ *
+ * No PKT time window check. Employee can start their break whenever.
+ * The server just records the actual PKT moment. Wrong timing is handled
+ * by the late-break fine at break-end (calculated from scheduled break end).
+ *
+ * This removes timezone-related blocking issues for remote employees.
+ */
 export async function POST() {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
@@ -22,27 +31,6 @@ export async function POST() {
     }
     if (attendance.checkOut) {
       return error("Already checked out for the day");
-    }
-
-    // Enforce break window using PKT time — Friday has different timings (Jummah)
-    const settings = await getCachedSettings();
-    if (settings) {
-      const currentMin = pktMinutesSinceMidnight();
-      const isFriday = now.getUTCDay() === 5;
-
-      const breakStart = isFriday
-        ? (settings.fridayBreakStartTime || "13:30")
-        : (settings.breakStartTime || "15:00");
-      const breakEnd = isFriday
-        ? (settings.fridayBreakEndTime || "14:45")
-        : (settings.breakEndTime || "16:00");
-
-      const [bsH, bsM] = breakStart.split(":").map(Number);
-      const [beH, beM] = breakEnd.split(":").map(Number);
-
-      if (currentMin < bsH * 60 + bsM || currentMin > beH * 60 + beM) {
-        return error(`Break can only be started between ${breakStart} and ${breakEnd}`);
-      }
     }
 
     const updated = await prisma.attendance.update({
