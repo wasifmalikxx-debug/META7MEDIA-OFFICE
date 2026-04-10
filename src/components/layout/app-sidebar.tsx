@@ -24,6 +24,7 @@ import {
   MessageSquare,
   BarChart3,
   CalendarDays,
+  AlertOctagon,
 } from "lucide-react";
 import {
   Sidebar,
@@ -63,6 +64,7 @@ const mainNav = [
   { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
   { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
   { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN"] },
+  { title: "Complaints", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
 ];
 
 const managementNav = [
@@ -103,6 +105,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
   const [pendingDevices, setPendingDevices] = useState(0);
   const [pendingReviews, setPendingReviews] = useState(0);
+  const [openComplaints, setOpenComplaints] = useState(0);
 
   // Poll for pending device approvals every 30 seconds (CEO only)
   useEffect(() => {
@@ -138,6 +141,23 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role]);
 
+  // Poll for open complaints (CEO only — shows OPEN + IN_PROGRESS)
+  useEffect(() => {
+    if (user.role !== "SUPER_ADMIN" && user.role !== "HR_ADMIN") return;
+    async function fetchComplaints() {
+      try {
+        const res = await fetch("/api/complaints?status=OPEN");
+        if (res.ok) {
+          const data = await res.json();
+          setOpenComplaints(Array.isArray(data) ? data.length : 0);
+        }
+      } catch {}
+    }
+    fetchComplaints();
+    const interval = setInterval(fetchComplaints, 120_000);
+    return () => clearInterval(interval);
+  }, [user.role]);
+
   const renderNavItems = (items: typeof mainNav) =>
     items
       .filter((item) => hasAccess(item.roles, user.role))
@@ -154,6 +174,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
               {item.href === "/review-bonus" && pendingReviews > 0 && (
                 <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
                   {pendingReviews}
+                </Badge>
+              )}
+              {item.href === "/complaints" && openComplaints > 0 && (user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN") && (
+                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
+                  {openComplaints}
                 </Badge>
               )}
           </SidebarMenuButton>
