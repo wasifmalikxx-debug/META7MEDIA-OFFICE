@@ -61,77 +61,120 @@ export function LoginApprovalsView({ devices: initialDevices }: LoginApprovalsVi
     return <Monitor className="size-4" />;
   }
 
-  function renderDeviceCard(device: any) {
+  function renderDeviceRow(device: any) {
     const isPending = device.status === "PENDING";
     const isApproved = device.status === "APPROVED";
+    const statusColors = isPending
+      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+      : isApproved
+      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+      : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400";
     return (
-      <Card key={device.id} className={`border-0 shadow-sm overflow-hidden hover:shadow-md transition-shadow ${isPending ? "ring-1 ring-amber-300 dark:ring-amber-700" : ""}`}>
-        <CardContent className="p-0">
-          {/* Header */}
-          <div className={`px-4 py-3 border-b ${isPending ? "bg-amber-50/50 dark:bg-amber-950/15" : isApproved ? "bg-emerald-50/30 dark:bg-emerald-950/10" : "bg-rose-50/30 dark:bg-rose-950/10"}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="size-9 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
-                  {device.user.firstName[0]}{device.user.lastName?.[0] || ""}
-                </div>
-                <div>
-                  <span className="text-sm font-bold">{device.user.firstName} {device.user.lastName}</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] text-muted-foreground font-mono">{device.user.employeeId}</span>
-                    <Badge className={`text-[8px] h-4 border-0 ${isPending ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : isApproved ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"}`}>
-                      {device.status}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-              <Button size="sm" variant="ghost" className="size-7 p-0 text-muted-foreground/40 hover:text-rose-600" onClick={() => handleDelete(device.id)}>
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
+      <div
+        key={device.id}
+        className={`flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-muted/20 transition-colors ${isPending ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}`}
+      >
+        {/* Avatar */}
+        <div className="size-9 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+          {device.user.firstName[0]}
+          {device.user.lastName?.[0] || ""}
+        </div>
+
+        {/* Employee */}
+        <div className="min-w-0 w-[180px] shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold truncate">
+              {device.user.firstName} {device.user.lastName}
+            </span>
+            <Badge className={`text-[8px] h-4 px-1 border-0 ${statusColors}`}>
+              {device.status}
+            </Badge>
           </div>
-          {/* Details */}
-          <div className="px-4 py-3 space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                {getDeviceIcon(device.deviceName)}
-                <span>Device</span>
-              </div>
-              <span className="font-medium">{device.deviceName || "Unknown"}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Fingerprint className="size-4" />
-                <span>Fingerprint</span>
-              </div>
-              <span className="font-mono text-[9px] text-muted-foreground truncate max-w-[120px]">{device.fingerprint?.slice(0, 16)}...</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Clock className="size-4" />
-                <span>Requested</span>
-              </div>
-              <span className="font-medium">{format(new Date(device.createdAt), "MMM d, h:mm a")}</span>
-            </div>
-            {device.ipAddress && (
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">IP Address</span>
-                <span className="font-mono text-[10px]">{device.ipAddress}</span>
-              </div>
-            )}
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {device.user.employeeId}
+          </span>
+        </div>
+
+        {/* Device */}
+        <div className="min-w-0 w-[160px] shrink-0 hidden sm:block">
+          <div className="flex items-center gap-1.5 text-xs">
+            {getDeviceIcon(device.deviceName)}
+            <span className="font-medium truncate">{device.deviceName || "Unknown"}</span>
           </div>
-          {/* Actions */}
+          <span className="text-[9px] text-muted-foreground font-mono truncate block">
+            {device.fingerprint?.slice(0, 12)}...
+          </span>
+        </div>
+
+        {/* Requested time */}
+        <div className="min-w-0 w-[130px] shrink-0 hidden md:block">
+          <div className="flex items-center gap-1.5 text-xs">
+            <Clock className="size-3 text-muted-foreground" />
+            <span>{format(new Date(device.createdAt), "MMM d, h:mm a")}</span>
+          </div>
+        </div>
+
+        {/* IP */}
+        <div className="min-w-0 flex-1 hidden lg:block">
+          <span className="font-mono text-[10px] text-muted-foreground truncate">
+            {device.ipAddress || "—"}
+          </span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
           {isPending && (
-            <div className="px-4 py-3 border-t bg-muted/10 flex gap-2">
-              <Button size="sm" className="flex-1 h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs" onClick={() => handleAction(device.id, "approve")}>
-                <CheckCircle className="size-3.5" /> Approve
+            <>
+              <Button
+                size="sm"
+                className="h-7 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] px-2.5"
+                onClick={() => handleAction(device.id, "approve")}
+              >
+                <CheckCircle className="size-3" />
+                Approve
               </Button>
-              <Button size="sm" variant="outline" className="flex-1 h-8 gap-1.5 text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-800 dark:hover:bg-rose-950/30 rounded-lg text-xs" onClick={() => handleAction(device.id, "reject")}>
-                <XCircle className="size-3.5" /> Reject
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-800 dark:hover:bg-rose-950/30 rounded-md text-[11px] px-2.5"
+                onClick={() => handleAction(device.id, "reject")}
+              >
+                <XCircle className="size-3" />
+                Reject
               </Button>
-            </div>
+            </>
           )}
-        </CardContent>
-      </Card>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="size-7 p-0 text-muted-foreground/40 hover:text-rose-600"
+            onClick={() => handleDelete(device.id)}
+            title="Remove device"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderSection(title: string, icon: React.ReactNode, items: any[], opacity = "") {
+    if (items.length === 0) return null;
+    return (
+      <div className={`space-y-2 ${opacity}`}>
+        <h3 className="text-sm font-bold flex items-center gap-2">
+          {icon}
+          {title}
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-bold">
+            {items.length}
+          </Badge>
+        </h3>
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <CardContent className="p-0">
+            {items.map(renderDeviceRow)}
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -181,43 +224,21 @@ export function LoginApprovalsView({ devices: initialDevices }: LoginApprovalsVi
         </Card>
       )}
 
-      {/* Pending Devices */}
-      {pendingDevices.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold flex items-center gap-2">
-            <Clock className="size-4 text-amber-500" />
-            Awaiting Approval
-          </h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {pendingDevices.map(renderDeviceCard)}
-          </div>
-        </div>
+      {renderSection(
+        "Awaiting Approval",
+        <Clock className="size-4 text-amber-500" />,
+        pendingDevices
       )}
-
-      {/* Approved Devices */}
-      {approvedDevices.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold flex items-center gap-2">
-            <ShieldCheck className="size-4 text-emerald-500" />
-            Approved Devices
-          </h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {approvedDevices.map(renderDeviceCard)}
-          </div>
-        </div>
+      {renderSection(
+        "Approved Devices",
+        <ShieldCheck className="size-4 text-emerald-500" />,
+        approvedDevices
       )}
-
-      {/* Rejected Devices */}
-      {rejectedDevices.length > 0 && (
-        <div className="space-y-3 opacity-60">
-          <h3 className="text-sm font-bold flex items-center gap-2">
-            <ShieldX className="size-4 text-rose-500" />
-            Rejected
-          </h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {rejectedDevices.map(renderDeviceCard)}
-          </div>
-        </div>
+      {renderSection(
+        "Rejected",
+        <ShieldX className="size-4 text-rose-500" />,
+        rejectedDevices,
+        "opacity-70"
       )}
     </div>
   );
