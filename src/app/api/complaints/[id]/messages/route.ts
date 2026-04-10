@@ -18,8 +18,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const body = await request.json();
     const message = String(body.message || "").trim();
-    if (!message || message.length < 1) return error("Message cannot be empty");
+    const imageUrl = body.imageUrl ? String(body.imageUrl) : null;
+    // Either text or image is required
+    if (!message && !imageUrl) return error("Message or image required");
     if (message.length > 4000) return error("Message too long (max 4000 characters)");
+    // Basic validation: imageUrl must be a data URL
+    if (imageUrl && !imageUrl.startsWith("data:image/")) {
+      return error("Invalid image URL");
+    }
 
     const complaint = await prisma.complaint.findUnique({
       where: { id },
@@ -48,6 +54,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           senderId: session.user.id,
           senderRole,
           message,
+          imageUrl,
           createdAt: now,
         },
         include: {

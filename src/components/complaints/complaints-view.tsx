@@ -48,6 +48,9 @@ import {
   CheckCheck,
   Ban,
   PlayCircle,
+  Paperclip,
+  ImageIcon,
+  X,
 } from "lucide-react";
 import { formatPKTDisplay, formatPKTTime } from "@/lib/pkt";
 
@@ -56,6 +59,7 @@ interface ComplaintMessage {
   senderId: string;
   senderRole: string;
   message: string;
+  imageUrl?: string | null;
   createdAt: string;
   sender: { firstName: string; lastName: string | null; employeeId: string };
 }
@@ -157,6 +161,120 @@ function CategoryIcon({ category, size = "md" }: { category: string; size?: "sm"
   );
 }
 
+function ComplaintCard({ c, isAdmin, onOpen }: { c: Complaint; isAdmin: boolean; onOpen: (id: string) => void }) {
+  const cat = CATEGORY_MAP[c.category];
+  const employeeName = `${c.user.firstName} ${c.user.lastName || ""}`.trim();
+  const lastMessage = c.messages?.[0];
+  const unread = isAdmin ? c.unreadByCeo : c.unreadByEmployee;
+  return (
+    <Card
+      className={`border-0 shadow-sm hover:shadow-md transition-all cursor-pointer group ${unread ? "ring-2 ring-violet-300 dark:ring-violet-700" : ""}`}
+      onClick={() => onOpen(c.id)}
+    >
+      <CardContent className="p-3.5">
+        <div className="flex items-start gap-3">
+          <CategoryIcon category={c.category} size="sm" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h3 className="font-semibold text-xs truncate flex items-center gap-2">
+                {c.subject}
+                {unread && <span className="size-1.5 rounded-full bg-violet-500 animate-pulse" />}
+              </h3>
+              <div className="flex items-center gap-1 shrink-0">
+                <PriorityPill priority={c.priority} />
+                <StatusPill status={c.status} />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground line-clamp-1 mb-1.5">
+              {lastMessage ? (
+                <>
+                  {lastMessage.senderRole === "CEO" && <span className="font-semibold text-emerald-600 dark:text-emerald-400">CEO: </span>}
+                  {lastMessage.message}
+                </>
+              ) : (
+                c.description
+              )}
+            </p>
+            <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+              {isAdmin && (
+                <span className="flex items-center gap-1 font-medium">
+                  <Users className="size-3" />
+                  {employeeName} · {c.user.employeeId}
+                </span>
+              )}
+              <span className="text-muted-foreground/70">{cat?.label}</span>
+              <span className="flex items-center gap-1">
+                <Clock className="size-3" />
+                {formatPKTDisplay(new Date(c.updatedAt), "MMM d")} · {formatPKTTime(new Date(c.updatedAt))}
+              </span>
+              {(c._count?.messages ?? 0) > 1 && (
+                <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400 font-medium">
+                  <MessageSquare className="size-3" />
+                  {c._count?.messages}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ComplaintSection({
+  title,
+  subtitle,
+  icon: Icon,
+  iconColor,
+  bgColor,
+  complaints,
+  isAdmin,
+  emptyText,
+  onOpen,
+}: {
+  title: string;
+  subtitle: string;
+  icon: any;
+  iconColor: string;
+  bgColor: string;
+  complaints: Complaint[];
+  isAdmin: boolean;
+  emptyText: string;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-3">
+        <div className={`size-8 rounded-lg ${bgColor} flex items-center justify-center`}>
+          <Icon className={`size-4 ${iconColor}`} />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-sm font-bold">{title}</h2>
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-bold">
+              {complaints.length}
+            </Badge>
+          </div>
+          <p className="text-[11px] text-muted-foreground">{subtitle}</p>
+        </div>
+      </div>
+      {complaints.length === 0 ? (
+        <Card className="border-0 shadow-sm bg-muted/10">
+          <CardContent className="py-6 text-center">
+            <p className="text-[11px] text-muted-foreground">{emptyText}</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-2">
+          {complaints.map((c) => (
+            <ComplaintCard key={c.id} c={c} isAdmin={isAdmin} onOpen={onOpen} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: ComplaintsViewProps) {
   const router = useRouter();
   const [complaints, setComplaints] = useState<Complaint[]>(initialComplaints);
@@ -164,8 +282,6 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
   const [loading, setLoading] = useState(false);
   const [viewing, setViewing] = useState<Complaint | null>(null);
   const [viewingLoading, setViewingLoading] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [filterCategory, setFilterCategory] = useState<string>("all");
   const [form, setForm] = useState({
     subject: "",
     category: "BUG",
@@ -173,7 +289,12 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
     description: "",
   });
   const [messageInput, setMessageInput] = useState("");
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const viewingIdRef = useRef<string | null>(null);
 
   // Auto-scroll the chat to the bottom when a new message is added or dialog opens
   useEffect(() => {
@@ -182,13 +303,85 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
     }
   }, [viewing?.messages?.length]);
 
-  const filtered = useMemo(() => {
-    return complaints.filter((c) => {
-      if (filterStatus !== "all" && c.status !== filterStatus) return false;
-      if (filterCategory !== "all" && c.category !== filterCategory) return false;
-      return true;
-    });
-  }, [complaints, filterStatus, filterCategory]);
+  // LIVE CHAT POLLING — while the dialog is open, refetch the complaint every 4 seconds
+  // to pick up new messages from the other side in near real-time
+  useEffect(() => {
+    if (!viewing) {
+      viewingIdRef.current = null;
+      return;
+    }
+    viewingIdRef.current = viewing.id;
+    const interval = setInterval(async () => {
+      if (!viewingIdRef.current) return;
+      try {
+        const res = await fetch(`/api/complaints/${viewingIdRef.current}`);
+        if (!res.ok) return;
+        const data: Complaint = await res.json();
+        // Only update if something actually changed to avoid re-renders
+        setViewing((prev) => {
+          if (!prev || prev.id !== data.id) return prev;
+          const prevCount = (prev.messages || []).length;
+          const newCount = (data.messages || []).length;
+          if (prevCount === newCount && prev.status === data.status) {
+            return prev;
+          }
+          return data;
+        });
+        // Also keep the list card in sync
+        setComplaints((prev) =>
+          prev.map((c) =>
+            c.id === data.id
+              ? {
+                  ...c,
+                  status: data.status,
+                  updatedAt: data.updatedAt,
+                  resolvedAt: data.resolvedAt,
+                  _count: { messages: (data.messages || []).length },
+                  messages:
+                    data.messages && data.messages.length > 0
+                      ? [
+                          {
+                            message: data.messages[data.messages.length - 1].message,
+                            senderRole: data.messages[data.messages.length - 1].senderRole,
+                            createdAt: data.messages[data.messages.length - 1].createdAt,
+                          },
+                        ]
+                      : c.messages,
+                }
+              : c
+          )
+        );
+      } catch {}
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [viewing?.id]);
+
+  // LIVE LIST POLLING — refetch the complaint list every 15 seconds when dialog is CLOSED
+  // so new complaints and replies show up without manual refresh
+  useEffect(() => {
+    if (viewing) return; // don't poll the list while a chat is open (chat poll handles updates)
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/complaints");
+        if (!res.ok) return;
+        const data = await res.json();
+        setComplaints(data);
+      } catch {}
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [viewing]);
+
+  const grouped = useMemo(() => {
+    const openCases: Complaint[] = [];
+    const closedCases: Complaint[] = [];
+    const deniedCases: Complaint[] = [];
+    for (const c of complaints) {
+      if (c.status === "OPEN" || c.status === "IN_PROGRESS") openCases.push(c);
+      else if (c.status === "RESOLVED" || c.status === "APPROVED") closedCases.push(c);
+      else if (c.status === "DENIED") deniedCases.push(c);
+    }
+    return { openCases, closedCases, deniedCases };
+  }, [complaints]);
 
   const stats = useMemo(() => {
     return {
@@ -249,10 +442,37 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
     }
   }
 
+  async function handleImagePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Only JPG, PNG, or WebP images");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be under 5 MB");
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setAttachedImage(data.url);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   async function sendMessage() {
     if (!viewing) return;
     const text = messageInput.trim();
-    if (!text) return;
+    if (!text && !attachedImage) return;
     if (viewing.status === "RESOLVED" || viewing.status === "DENIED") {
       toast.error("This complaint is closed.");
       return;
@@ -262,7 +482,7 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
       const res = await fetch(`/api/complaints/${viewing.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, imageUrl: attachedImage }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -274,6 +494,7 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
         updatedAt: data.createdAt,
       });
       setMessageInput("");
+      setAttachedImage(null);
       // Also update the list entry's count + last message
       setComplaints((prev) =>
         prev.map((c) =>
@@ -398,34 +619,8 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
         </p>
       </div>
 
-      {/* Header with filters + submit button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v || "all")}>
-            <SelectTrigger className="h-9 w-[140px] text-xs">
-              <SelectValue placeholder="All statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="OPEN">Open</SelectItem>
-              <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-              <SelectItem value="APPROVED">Approved</SelectItem>
-              <SelectItem value="RESOLVED">Resolved</SelectItem>
-              <SelectItem value="DENIED">Denied</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filterCategory} onValueChange={(v) => setFilterCategory(v || "all")}>
-            <SelectTrigger className="h-9 w-[160px] text-xs">
-              <SelectValue placeholder="All categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {CATEGORIES.map((c) => (
-                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {/* Launch button */}
+      <div className="flex items-center justify-end">
         <Dialog open={newOpen} onOpenChange={setNewOpen}>
           <DialogTrigger
             render={
@@ -529,8 +724,8 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
         </Dialog>
       </div>
 
-      {/* Complaint list */}
-      {filtered.length === 0 ? (
+      {/* Grouped sections: Open Cases / Closed / Denied */}
+      {complaints.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="py-16 text-center">
             <div className="size-14 mx-auto rounded-2xl bg-gradient-to-br from-violet-100 to-fuchsia-100 dark:from-violet-950/50 dark:to-fuchsia-950/50 flex items-center justify-center mb-3">
@@ -538,140 +733,107 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
             </div>
             <p className="text-sm font-semibold">No complaints yet</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {isAdmin ? "No complaints match your filters." : "You can launch a complaint any time — it stays completely confidential."}
+              {isAdmin ? "Employee complaints will show up here." : "You can launch a complaint any time — it stays completely confidential."}
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-2.5">
-          {filtered.map((c) => {
-            const cat = CATEGORY_MAP[c.category];
-            const employeeName = `${c.user.firstName} ${c.user.lastName || ""}`.trim();
-            const lastMessage = c.messages?.[0];
-            const unread = isAdmin ? c.unreadByCeo : c.unreadByEmployee;
-            return (
-              <Card
-                key={c.id}
-                className={`border-0 shadow-sm hover:shadow-md transition-all cursor-pointer group ${unread ? "ring-2 ring-violet-300 dark:ring-violet-700" : ""}`}
-                onClick={() => openComplaint(c.id)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <CategoryIcon category={c.category} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-3 mb-1">
-                        <h3 className="font-semibold text-sm truncate flex items-center gap-2">
-                          {c.subject}
-                          {unread && <span className="size-1.5 rounded-full bg-violet-500 animate-pulse" />}
-                        </h3>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <PriorityPill priority={c.priority} />
-                          <StatusPill status={c.status} />
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground line-clamp-1 mb-2">
-                        {lastMessage ? (
-                          <>
-                            {lastMessage.senderRole === "CEO" && <span className="font-semibold text-emerald-600 dark:text-emerald-400">CEO: </span>}
-                            {lastMessage.message}
-                          </>
-                        ) : (
-                          c.description
-                        )}
-                      </p>
-                      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                        {isAdmin && (
-                          <span className="flex items-center gap-1 font-medium">
-                            <Users className="size-3" />
-                            {employeeName} · {c.user.employeeId}
-                          </span>
-                        )}
-                        <span className="text-muted-foreground/70">{cat?.label}</span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="size-3" />
-                          {formatPKTDisplay(new Date(c.updatedAt), "MMM d")} · {formatPKTTime(new Date(c.updatedAt))}
-                        </span>
-                        {(c._count?.messages ?? 0) > 1 && (
-                          <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400 font-medium">
-                            <MessageSquare className="size-3" />
-                            {c._count?.messages} messages
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="space-y-6">
+          <ComplaintSection
+            title="Open Cases"
+            subtitle="Active complaints needing attention"
+            icon={AlertCircle}
+            iconColor="text-blue-600 dark:text-blue-400"
+            bgColor="bg-blue-50 dark:bg-blue-950/30"
+            complaints={grouped.openCases}
+            isAdmin={isAdmin}
+            emptyText="No open cases. You're all caught up."
+            onOpen={openComplaint}
+          />
+          <ComplaintSection
+            title="Closed"
+            subtitle="Resolved and approved complaints"
+            icon={CheckCheck}
+            iconColor="text-emerald-600 dark:text-emerald-400"
+            bgColor="bg-emerald-50 dark:bg-emerald-950/30"
+            complaints={grouped.closedCases}
+            isAdmin={isAdmin}
+            emptyText="Nothing closed yet."
+            onOpen={openComplaint}
+          />
+          <ComplaintSection
+            title="Denied"
+            subtitle="Complaints that were denied"
+            icon={Ban}
+            iconColor="text-rose-600 dark:text-rose-400"
+            bgColor="bg-rose-50 dark:bg-rose-950/30"
+            complaints={grouped.deniedCases}
+            isAdmin={isAdmin}
+            emptyText="No denied complaints."
+            onOpen={openComplaint}
+          />
         </div>
       )}
 
-      {/* Chat dialog */}
-      <Dialog open={!!viewing} onOpenChange={(o) => { if (!o) { setViewing(null); setMessageInput(""); } }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
+      {/* Chat dialog — compact, professional */}
+      <Dialog open={!!viewing} onOpenChange={(o) => { if (!o) { setViewing(null); setMessageInput(""); setAttachedImage(null); } }}>
+        <DialogContent className="max-w-xl p-0 overflow-hidden flex flex-col gap-0" style={{ height: "min(640px, 85vh)" }}>
           {viewing && (
             <>
-              {/* Header */}
-              <DialogHeader className="px-5 py-4 border-b bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-950">
-                <div className="flex items-start gap-3">
-                  <CategoryIcon category={viewing.category} />
-                  <div className="flex-1 min-w-0">
-                    <DialogTitle className="text-base pr-8 truncate">{viewing.subject}</DialogTitle>
-                    <DialogDescription className="mt-1 flex items-center gap-1.5 flex-wrap">
-                      <PriorityPill priority={viewing.priority} />
-                      <StatusPill status={viewing.status} />
-                      {isAdmin && (
-                        <span className="text-[10px] text-muted-foreground ml-1">
-                          · {viewing.user.firstName} {viewing.user.lastName || ""} ({viewing.user.employeeId})
-                        </span>
-                      )}
-                    </DialogDescription>
-                  </div>
+              {/* Compact header */}
+              <DialogHeader className="px-4 py-3 border-b bg-background flex-row items-center gap-3 space-y-0">
+                <CategoryIcon category={viewing.category} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <DialogTitle className="text-sm font-semibold truncate pr-8">{viewing.subject}</DialogTitle>
+                  <DialogDescription className="flex items-center gap-1.5 mt-0.5">
+                    <PriorityPill priority={viewing.priority} />
+                    <StatusPill status={viewing.status} />
+                    {isAdmin && (
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        · {viewing.user.firstName} {viewing.user.lastName || ""} · {viewing.user.employeeId}
+                      </span>
+                    )}
+                  </DialogDescription>
                 </div>
-
-                {/* CEO status actions */}
-                {isAdmin && (
-                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                    {viewing.status !== "IN_PROGRESS" && !isClosed && (
-                      <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => changeStatus("IN_PROGRESS")} disabled={loading}>
-                        <PlayCircle className="size-3" /> In Progress
-                      </Button>
-                    )}
-                    {!isClosed && (
-                      <>
-                        <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30" onClick={() => changeStatus("APPROVED")} disabled={loading}>
-                          <CheckCircle2 className="size-3" /> Approved
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" onClick={() => changeStatus("RESOLVED")} disabled={loading}>
-                          <CheckCheck className="size-3" /> Mark Resolved
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/30" onClick={() => changeStatus("DENIED")} disabled={loading}>
-                          <Ban className="size-3" /> Deny
-                        </Button>
-                      </>
-                    )}
-                    {isClosed && (
-                      <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => changeStatus("IN_PROGRESS")} disabled={loading}>
-                        <PlayCircle className="size-3" /> Reopen
-                      </Button>
-                    )}
-                    <div className="ml-auto">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-[11px] gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                        onClick={() => deleteComplaint(viewing.id)}
-                      >
-                        <Trash2 className="size-3" /> Delete
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </DialogHeader>
 
+              {/* CEO status action bar */}
+              {isAdmin && (
+                <div className="border-b bg-muted/20 px-4 py-2 flex items-center gap-1.5 flex-wrap">
+                  {!isClosed && viewing.status !== "IN_PROGRESS" && (
+                    <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2" onClick={() => changeStatus("IN_PROGRESS")} disabled={loading}>
+                      <PlayCircle className="size-3" /> In Progress
+                    </Button>
+                  )}
+                  {!isClosed && (
+                    <>
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400" onClick={() => changeStatus("RESOLVED")} disabled={loading}>
+                        <CheckCheck className="size-3" /> Mark Resolved
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2 border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400" onClick={() => changeStatus("DENIED")} disabled={loading}>
+                        <Ban className="size-3" /> Deny
+                      </Button>
+                    </>
+                  )}
+                  {isClosed && (
+                    <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 px-2" onClick={() => changeStatus("IN_PROGRESS")} disabled={loading}>
+                      <PlayCircle className="size-3" /> Reopen
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 ml-auto text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                    onClick={() => deleteComplaint(viewing.id)}
+                    title="Delete complaint"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              )}
+
               {/* Message thread */}
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-muted/5">
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-muted/5">
                 {viewingLoading ? (
                   <div className="flex items-center justify-center py-10 text-muted-foreground">
                     <Loader2 className="size-4 animate-spin mr-2" /> Loading...
@@ -683,30 +845,40 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
                     const senderName = `${m.sender.firstName} ${m.sender.lastName || ""}`.trim();
                     return (
                       <div key={m.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[85%] ${isMine ? "order-2" : "order-1"}`}>
-                          <div className={`flex items-center gap-1.5 mb-1 ${isMine ? "justify-end" : "justify-start"}`}>
-                            <span className="text-[10px] font-semibold text-muted-foreground">
+                        <div className="max-w-[78%]">
+                          <div className={`flex items-center gap-1.5 mb-0.5 ${isMine ? "justify-end" : "justify-start"}`}>
+                            <span className="text-[9px] font-semibold text-muted-foreground">
                               {isMine ? "You" : senderName}
                             </span>
-                            {isCeoMessage && (
-                              <Badge variant="outline" className="h-4 px-1 text-[8px] border-emerald-400 text-emerald-700 dark:text-emerald-400">
+                            {isCeoMessage && !isMine && (
+                              <span className="h-3.5 px-1 rounded text-[7px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
                                 CEO
-                              </Badge>
+                              </span>
                             )}
                             <span className="text-[9px] text-muted-foreground/60">
-                              {formatPKTDisplay(new Date(m.createdAt), "MMM d")} · {formatPKTTime(new Date(m.createdAt))}
+                              {formatPKTTime(new Date(m.createdAt))}
                             </span>
                           </div>
                           <div
-                            className={`rounded-2xl px-3.5 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
+                            className={`rounded-2xl text-[11px] leading-relaxed whitespace-pre-wrap ${
                               isMine
-                                ? "bg-violet-600 text-white rounded-tr-sm"
+                                ? "bg-violet-600 text-white rounded-tr-md"
                                 : isCeoMessage
-                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100 border border-emerald-200 dark:border-emerald-900 rounded-tl-sm"
-                                : "bg-white dark:bg-slate-900 border border-border rounded-tl-sm"
-                            }`}
+                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100 border border-emerald-200 dark:border-emerald-900 rounded-tl-md"
+                                : "bg-white dark:bg-slate-900 border border-border rounded-tl-md"
+                            } ${m.imageUrl && !m.message ? "p-1" : "px-3 py-2"}`}
                           >
-                            {m.message}
+                            {m.imageUrl && (
+                              <img
+                                src={m.imageUrl}
+                                alt="Attachment"
+                                className="rounded-lg max-w-full max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                onClick={() => setLightboxImage(m.imageUrl || null)}
+                              />
+                            )}
+                            {m.message && (
+                              <div className={m.imageUrl ? "mt-1.5 px-2 pb-1" : ""}>{m.message}</div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -714,15 +886,15 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
                   })
                 )}
                 {isClosed && (
-                  <div className="flex items-center justify-center py-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+                  <div className="flex items-center justify-center py-2">
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
                       {viewing.status === "RESOLVED" ? (
                         <><CheckCheck className="size-3 text-emerald-600" /> Resolved</>
                       ) : (
                         <><Ban className="size-3 text-rose-600" /> Denied</>
                       )}
                       {viewing.resolvedAt && (
-                        <span>on {formatPKTDisplay(new Date(viewing.resolvedAt), "MMM d")}</span>
+                        <span>· {formatPKTDisplay(new Date(viewing.resolvedAt), "MMM d")}</span>
                       )}
                     </div>
                   </div>
@@ -732,37 +904,95 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
 
               {/* Message input */}
               {!isClosed ? (
-                <div className="border-t px-5 py-3 bg-background">
-                  <div className="flex items-end gap-2">
+                <div className="border-t bg-background">
+                  {/* Attached image preview */}
+                  {attachedImage && (
+                    <div className="px-4 pt-3 pb-1">
+                      <div className="relative inline-block">
+                        <img
+                          src={attachedImage}
+                          alt="Preview"
+                          className="h-20 w-auto rounded-lg border object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setAttachedImage(null)}
+                          className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-rose-500 text-white flex items-center justify-center hover:bg-rose-600 shadow-sm"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="px-4 py-3 flex items-end gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleImagePick}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="size-9 p-0 shrink-0 text-muted-foreground hover:text-violet-600"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage || !!attachedImage}
+                      title="Attach screenshot"
+                    >
+                      {uploadingImage ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Paperclip className="size-4" />
+                      )}
+                    </Button>
                     <Textarea
                       value={messageInput}
                       onChange={(e) => setMessageInput(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
                           sendMessage();
                         }
                       }}
-                      placeholder={isAdmin ? "Write a response to the employee..." : "Reply to the CEO..."}
-                      rows={2}
-                      className="resize-none text-xs"
+                      placeholder={isAdmin ? "Write a response..." : "Type a message..."}
+                      rows={1}
+                      className="resize-none text-xs min-h-[36px] max-h-[120px] py-2"
                       maxLength={4000}
                     />
-                    <Button onClick={sendMessage} disabled={loading || !messageInput.trim()} className="gap-1.5 shrink-0 h-auto self-stretch">
-                      <Send className="size-4" />
-                      Send
+                    <Button
+                      onClick={sendMessage}
+                      disabled={loading || (!messageInput.trim() && !attachedImage)}
+                      size="sm"
+                      className="size-9 p-0 shrink-0"
+                      title="Send message"
+                    >
+                      {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                     </Button>
                   </div>
-                  <p className="text-[9px] text-muted-foreground mt-1.5">Press ⌘/Ctrl + Enter to send</p>
+                  <p className="text-[9px] text-muted-foreground px-4 pb-2">
+                    Enter to send · Shift+Enter for newline · Attach screenshots via paperclip
+                  </p>
                 </div>
               ) : (
-                <div className="border-t px-5 py-3 bg-muted/20 text-center">
+                <div className="border-t px-4 py-3 bg-muted/20 text-center">
                   <p className="text-[11px] text-muted-foreground">
-                    This complaint is closed. {isAdmin && "Click 'Reopen' above to continue the conversation."}
+                    This complaint is closed. {isAdmin && "Click 'Reopen' above to continue."}
                   </p>
                 </div>
               )}
             </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Image lightbox */}
+      <Dialog open={!!lightboxImage} onOpenChange={(o) => !o && setLightboxImage(null)}>
+        <DialogContent className="max-w-4xl p-2 bg-black/95 border-0">
+          <DialogTitle className="sr-only">Attachment preview</DialogTitle>
+          {lightboxImage && (
+            <img src={lightboxImage} alt="Attachment" className="w-full h-auto max-h-[80vh] object-contain rounded" />
           )}
         </DialogContent>
       </Dialog>

@@ -690,6 +690,7 @@ model ComplaintMessage {
   sender      User      @relation("ComplaintMessageSender", fields: [senderId], references: [id])
   senderRole  String    // "EMPLOYEE" or "CEO"
   message     String
+  imageUrl    String?   // optional attached screenshot (base64 data URL)
   createdAt   DateTime  @default(now())
 
   @@index([complaintId, createdAt])
