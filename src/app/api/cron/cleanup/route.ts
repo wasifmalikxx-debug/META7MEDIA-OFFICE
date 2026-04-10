@@ -106,6 +106,11 @@ export async function GET(request: NextRequest) {
     });
     results.notifications = notifs.count;
 
+    // Delete ALL complaints (full monthly reset — user wants no long-term records)
+    // Messages cascade-delete via the schema relation
+    const complaints = await prisma.complaint.deleteMany({});
+    results.complaints = complaints.count;
+
     const totalDeleted = Object.values(results).reduce((s, v) => s + v, 0);
 
     return json({

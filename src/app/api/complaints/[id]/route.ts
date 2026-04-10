@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const VALID_STATUSES = ["OPEN", "IN_PROGRESS", "APPROVED", "RESOLVED", "DENIED"] as const;
 
-// GET /api/complaints/[id] — get single complaint
+// GET /api/complaints/[id] — get single complaint with full message thread
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
@@ -20,8 +20,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const complaint = await prisma.complaint.findUnique({
     where: { id },
     include: {
-      user: { select: { firstName: true, lastName: true, employeeId: true } },
-      respondedBy: { select: { firstName: true, lastName: true } },
+      user: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
+      resolvedBy: { select: { firstName: true, lastName: true } },
+      messages: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          sender: { select: { firstName: true, lastName: true, employeeId: true } },
+        },
+      },
     },
   });
 
@@ -30,10 +36,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return error("Forbidden", 403);
   }
 
+  // Mark as read for the viewer
+  if (isAdmin && complaint.unreadByCeo) {
+    await prisma.complaint.update({ where: { id }, data: { unreadByCeo: false } });
+  } else if (!isAdmin && complaint.unreadByEmployee) {
+    await prisma.complaint.update({ where: { id }, data: { unreadByEmployee: false } });
+  }
+
   return json(complaint);
 }
 
-// PATCH /api/complaints/[id] — CEO updates status/response
+// PATCH /api/complaints/[id] — CEO updates status only
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
@@ -48,75 +61,68 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const existing = await prisma.complaint.findUnique({ where: { id } });
   if (!existing) return error("Not found", 404);
 
-  const updateData: any = { updatedAt: nowPKT() };
-  let statusChanged = false;
-  let responseAdded = false;
-
-  if (body.status !== undefined) {
-    if (!VALID_STATUSES.includes(body.status)) return error("Invalid status");
-    if (body.status !== existing.status) {
-      updateData.status = body.status;
-      statusChanged = true;
-      if (body.status === "RESOLVED" || body.status === "DENIED") {
-        updateData.resolvedAt = nowPKT();
-      }
-    }
+  if (!VALID_STATUSES.includes(body.status)) return error("Invalid status");
+  if (body.status === existing.status) {
+    return json({ ...existing, unchanged: true });
   }
 
-  if (body.ceoResponse !== undefined) {
-    const trimmed = String(body.ceoResponse).trim();
-    if (trimmed) {
-      updateData.ceoResponse = trimmed;
-      updateData.respondedById = session.user.id;
-      updateData.respondedAt = nowPKT();
-      responseAdded = true;
-    }
+  const now = nowPKT();
+  const updateData: any = {
+    status: body.status,
+    updatedAt: now,
+    unreadByEmployee: true,
+  };
+
+  if (body.status === "RESOLVED" || body.status === "DENIED") {
+    updateData.resolvedAt = now;
+    updateData.resolvedById = session.user.id;
+  } else {
+    updateData.resolvedAt = null;
+    updateData.resolvedById = null;
   }
 
   const updated = await prisma.complaint.update({
     where: { id },
     data: updateData,
     include: {
-      user: { select: { firstName: true, lastName: true, employeeId: true } },
-      respondedBy: { select: { firstName: true, lastName: true } },
+      user: { select: { id: true, firstName: true, lastName: true, employeeId: true } },
+      resolvedBy: { select: { firstName: true, lastName: true } },
+      messages: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          sender: { select: { firstName: true, lastName: true, employeeId: true } },
+        },
+      },
     },
   });
 
-  // Notify employee of update
-  if (statusChanged || responseAdded) {
-    const statusLabel = updated.status.replace("_", " ").toLowerCase();
-    await createNotification(
-      existing.userId,
-      responseAdded ? "COMPLAINT_RESPONDED" : "COMPLAINT_STATUS_CHANGED",
-      responseAdded ? "CEO responded to your complaint" : `Your complaint is now ${statusLabel}`,
-      `"${existing.subject}"${responseAdded ? " — CEO has left a response" : ""}`,
-      "/complaints"
-    );
-  }
+  // Notify employee of status change
+  const statusLabel = updated.status.replace("_", " ").toLowerCase();
+  await createNotification(
+    existing.userId,
+    "COMPLAINT_STATUS_CHANGED",
+    `Complaint marked as ${statusLabel}`,
+    `"${existing.subject}"`,
+    "/complaints"
+  );
 
   return json(updated);
 }
 
-// DELETE /api/complaints/[id] — employee can delete their own if still OPEN
+// DELETE /api/complaints/[id] — CEO/HR only
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
-  const { id } = await params;
   const role = (session.user as any).role;
   const isAdmin = role === "SUPER_ADMIN" || role === "HR_ADMIN";
+  if (!isAdmin) return error("Forbidden — Only CEO can delete complaints", 403);
 
+  const { id } = await params;
   const existing = await prisma.complaint.findUnique({ where: { id } });
   if (!existing) return error("Not found", 404);
 
-  // Employee: can only delete own OPEN complaints
-  if (!isAdmin) {
-    if (existing.userId !== session.user.id) return error("Forbidden", 403);
-    if (existing.status !== "OPEN") {
-      return error("Cannot delete — complaint has already been reviewed");
-    }
-  }
-
+  // Messages will cascade delete via the schema relation
   await prisma.complaint.delete({ where: { id } });
   return json({ success: true });
 }

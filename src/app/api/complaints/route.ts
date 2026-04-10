@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 const VALID_CATEGORIES = ["BUG", "PAYROLL", "ATTENDANCE", "HR", "POLICY", "TECHNICAL", "HARASSMENT", "OTHER"] as const;
 const VALID_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
 
-// GET /api/complaints — list complaints
-// Employees see only their own, admin sees all
+// GET /api/complaints — list complaints (with message count)
 export async function GET(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
@@ -32,15 +31,21 @@ export async function GET(request: NextRequest) {
     where,
     include: {
       user: { select: { firstName: true, lastName: true, employeeId: true } },
-      respondedBy: { select: { firstName: true, lastName: true } },
+      resolvedBy: { select: { firstName: true, lastName: true } },
+      _count: { select: { messages: true } },
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { message: true, senderRole: true, createdAt: true },
+      },
     },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    orderBy: [{ updatedAt: "desc" }],
   });
 
   return json(complaints);
 }
 
-// POST /api/complaints — submit a new complaint
+// POST /api/complaints — submit a new complaint (creates initial message)
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
@@ -65,6 +70,10 @@ export async function POST(request: NextRequest) {
       return error("Invalid priority");
     }
 
+    const role = (session.user as any).role;
+    const senderRole = role === "SUPER_ADMIN" || role === "HR_ADMIN" ? "CEO" : "EMPLOYEE";
+
+    const now = nowPKT();
     const complaint = await prisma.complaint.create({
       data: {
         userId: session.user.id,
@@ -73,11 +82,22 @@ export async function POST(request: NextRequest) {
         category: category as any,
         priority: priority as any,
         status: "OPEN",
-        createdAt: nowPKT(),
-        updatedAt: nowPKT(),
+        unreadByCeo: true,
+        unreadByEmployee: false,
+        createdAt: now,
+        updatedAt: now,
+        messages: {
+          create: {
+            senderId: session.user.id,
+            senderRole,
+            message: description,
+            createdAt: now,
+          },
+        },
       },
       include: {
         user: { select: { firstName: true, lastName: true, employeeId: true } },
+        messages: true,
       },
     });
 

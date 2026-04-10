@@ -186,8 +186,9 @@ model User {
   reviewBonusesSubmitted ReviewBonus[]  @relation("ReviewBonusSubmitter")
   reviewBonusesApproved  ReviewBonus[]  @relation("ReviewBonusApprover")
   dailyReports           DailyReport[]
-  complaintsSubmitted    Complaint[] @relation("ComplaintSubmitter")
-  complaintsResponded    Complaint[] @relation("ComplaintResponder")
+  complaintsSubmitted    Complaint[]        @relation("ComplaintSubmitter")
+  complaintsResolved     Complaint[]        @relation("ComplaintResponder")
+  complaintMessages      ComplaintMessage[] @relation("ComplaintMessageSender")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -663,12 +664,15 @@ model Complaint {
   priority    ComplaintPriority @default(MEDIUM)
   status      ComplaintStatus   @default(OPEN)
 
-  ceoResponse String?
-  respondedAt DateTime?
-  respondedById String?
-  respondedBy User?             @relation("ComplaintResponder", fields: [respondedById], references: [id])
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolvedBy     User?          @relation("ComplaintResponder", fields: [resolvedById], references: [id])
 
-  resolvedAt  DateTime?
+  // Unread counters for quick lookups
+  unreadByCeo      Boolean @default(true)   // new message from employee
+  unreadByEmployee Boolean @default(false)  // new message from CEO
+
+  messages    ComplaintMessage[]
 
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
@@ -676,4 +680,17 @@ model Complaint {
   @@index([userId, status])
   @@index([status])
   @@index([createdAt])
+}
+
+model ComplaintMessage {
+  id          String    @id @default(cuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User      @relation("ComplaintMessageSender", fields: [senderId], references: [id])
+  senderRole  String    // "EMPLOYEE" or "CEO"
+  message     String
+  createdAt   DateTime  @default(now())
+
+  @@index([complaintId, createdAt])
 }
