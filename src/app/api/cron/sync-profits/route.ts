@@ -138,13 +138,12 @@ export async function GET(request: NextRequest) {
           });
         }
       } else {
-        // Remove profit bonus if not eligible
+        // Remove ONLY the profit bonus when not eligible.
+        // Review bonuses are independent and must remain regardless of the
+        // 7-criteria outcome — the only gate on review bonuses is PROBATION
+        // status (enforced at approval time in /api/review-bonus/[id]).
         await prisma.incentive.deleteMany({
           where: { userId: emp.id, month, year, reason: { startsWith: "Profit Bonus" } },
-        });
-        // Remove review bonuses too
-        await prisma.incentive.deleteMany({
-          where: { userId: emp.id, month, year, reason: { startsWith: "Bad Review Fix Bonus" } },
         });
       }
 

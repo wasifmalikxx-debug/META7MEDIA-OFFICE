@@ -156,8 +156,8 @@ export default async function EtsyBonusGuidePage() {
               <span className="text-xs"><strong>2-minute edit window</strong> after submitting — then it locks</span>
             </div>
             <div className="flex items-start gap-2.5">
-              <XCircle className="size-3.5 mt-0.5 shrink-0 text-amber-600" />
-              <span className="text-xs">Only awarded if main <strong>7-criteria eligibility is met</strong></span>
+              <CheckCircle className="size-3.5 mt-0.5 shrink-0 text-emerald-600" />
+              <span className="text-xs"><strong>Independent bonus</strong> — paid once you&apos;re HIRED, not tied to the 7-criteria profit bonus. Even if your profit bonus is cancelled, your approved review fixes stay in your payroll.</span>
             </div>
           </div>
         </div>
@@ -167,16 +167,25 @@ export default async function EtsyBonusGuidePage() {
       <Section icon={ShieldAlert} title="Important Rules" color="bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400">
         <div className="space-y-3">
           <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 p-3">
-            <p className="text-xs font-bold text-rose-700 dark:text-rose-400">All-or-Nothing Rule</p>
+            <p className="text-xs font-bold text-rose-700 dark:text-rose-400">All-or-Nothing Rule (Profit Bonus Only)</p>
             <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
-              If ANY of the 7 criteria fails, ALL bonuses become zero — profit bonus, review bonus, everything. No partial credit.
+              If ANY of the 7 criteria fails, the <strong>profit bonus</strong> becomes zero — no partial credit.
+              Review fix bonuses are NOT affected by this rule and remain in your payroll independently.
+            </p>
+          </div>
+
+          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3">
+            <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Review Bonus is Independent</p>
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+              Every approved review fix earns PKR 500, regardless of whether you met the 7-criteria monthly target.
+              As long as you are HIRED (not on PROBATION), your review bonuses are paid out.
             </p>
           </div>
 
           <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3">
             <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Probation Employees</p>
             <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-              Employees on PROBATION status are not eligible for any bonuses. Incentives begin once status changes to HIRED.
+              Employees on PROBATION status are not eligible for any bonuses — profit or review. Incentives begin once status changes to HIRED.
             </p>
           </div>
 

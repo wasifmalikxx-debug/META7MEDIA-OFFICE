@@ -151,7 +151,10 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      // If not eligible, remove ALL bonuses — profit AND review
+      // If not eligible for the profit bonus, remove ONLY the profit bonus
+      // incentive. Review bonuses are independent now — they stay intact even
+      // when the main 7-criteria eligibility fails. Only PROBATION status blocks
+      // review bonuses (enforced at approval time in /api/review-bonus/[id]).
       await prisma.incentive.deleteMany({
         where: {
           userId: parsed.userId,
@@ -160,28 +163,9 @@ export async function POST(request: NextRequest) {
           reason: { startsWith: "Profit Bonus" },
         },
       });
-      // Also zero out review bonuses — reject all pending, remove incentives
-      await prisma.incentive.deleteMany({
-        where: {
-          userId: parsed.userId,
-          month: parsed.month,
-          year: parsed.year,
-          reason: { startsWith: "Bad Review Fix Bonus" },
-        },
-      });
-      // Reject any pending review submissions
-      await prisma.reviewBonus.updateMany({
-        where: {
-          userId: parsed.userId,
-          month: parsed.month,
-          year: parsed.year,
-          status: "PENDING",
-        },
-        data: {
-          status: "REJECTED",
-          rejectionReason: "Not eligible — failed bonus criteria",
-        },
-      });
+      // Note: 'Bad Review Fix Bonus' incentives and pending reviewBonus
+      // submissions are intentionally NOT touched here. Approved review fixes
+      // remain in the employee's payroll regardless of profit bonus eligibility.
     }
 
     // Sync Team Lead bonus for Izaan (EM-4)
