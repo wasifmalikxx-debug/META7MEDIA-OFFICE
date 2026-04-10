@@ -438,9 +438,30 @@ export function EmployeeDashboard({
   // Estimated Salary = Monthly Salary + Incentives - Fines
   const salaryTillNow = Math.round(monthlySalary + totalIncentivesAmount - totalFinesAmount);
 
+  // Live PKT clock values (re-calculated on every render — the setTick interval refreshes every 30s)
+  const pktClock = new Date(Date.now() + 5 * 60 * 60_000);
+  const pktHours = pktClock.getUTCHours();
+  const pktMins = pktClock.getUTCMinutes();
+  const pktTimeStr = `${String(pktHours % 12 || 12).padStart(2, "0")}:${String(pktMins).padStart(2, "0")} ${pktHours >= 12 ? "PM" : "AM"}`;
+
+  // Detect browser/device timezone mismatch with PKT (UTC+5)
+  // If the user's PC is on a different timezone, show a warning banner so they don't
+  // get confused by local vs office times (e.g. USA employee seeing 3:21 AM on their PC).
+  let timezoneMismatch = false;
+  let deviceOffsetLabel = "";
+  if (typeof window !== "undefined") {
+    // getTimezoneOffset returns minutes BEHIND UTC (e.g. EDT = 240)
+    const offsetMin = -new Date().getTimezoneOffset(); // positive for ahead of UTC
+    timezoneMismatch = offsetMin !== 300; // PKT = +300 min (UTC+5)
+    const hours = Math.floor(Math.abs(offsetMin) / 60);
+    const mins = Math.abs(offsetMin) % 60;
+    deviceOffsetLabel = `UTC${offsetMin >= 0 ? "+" : "-"}${hours}${mins > 0 ? ":" + String(mins).padStart(2, "0") : ""}`;
+  }
+
   return (
-    <div className="space-y-8">
-      <div className="flex items-end justify-between">
+    <div className="space-y-6">
+      {/* Header with live PKT clock */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
             Welcome Back, {employeeName}
@@ -451,9 +472,36 @@ export function EmployeeDashboard({
               {employeeStatus}
             </Badge>
           </h1>
-          <p className="text-muted-foreground mt-1">{formatPKTDisplay(new Date(Date.now() + 5 * 60 * 60_000), "EEEE, MMMM d, yyyy")}</p>
+          <p className="text-muted-foreground mt-1">{formatPKTDisplay(pktClock, "EEEE, MMMM d, yyyy")}</p>
+        </div>
+        {/* Live PKT Clock — always shows Pakistan time regardless of device timezone */}
+        <div className="rounded-xl border bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-violet-950/40 dark:to-fuchsia-950/40 px-4 py-2.5 min-w-[170px]">
+          <div className="flex items-center gap-1.5">
+            <Clock className="size-3 text-violet-600 dark:text-violet-400" />
+            <p className="text-[9px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-400">
+              Pakistan Time (PKT)
+            </p>
+          </div>
+          <p className="text-2xl font-bold text-violet-900 dark:text-violet-100 tabular-nums leading-tight">{pktTimeStr}</p>
+          <p className="text-[9px] text-violet-600/70 dark:text-violet-400/70">Office hours: {workStartTime} – {workEndTime} PKT</p>
         </div>
       </div>
+
+      {/* Timezone mismatch warning */}
+      {timezoneMismatch && (
+        <div className="rounded-lg border border-amber-300 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold text-amber-900 dark:text-amber-300">
+              Your device timezone is {deviceOffsetLabel} — the office runs on Pakistan Time (PKT, UTC+5)
+            </p>
+            <p className="text-[11px] text-amber-800 dark:text-amber-400 mt-0.5 leading-relaxed">
+              All times shown in this app (check-in, break, checkout) are in <strong>PKT</strong>, not your local clock.
+              Use the clock in the top right to see current Pakistan time. Your device clock may show a different time.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Today's Status Card */}
       <Card className="border-0 shadow-sm overflow-hidden">
@@ -513,7 +561,7 @@ export function EmployeeDashboard({
                 {currentMinutes < breakStartMin && (
                   <Badge variant="outline" className="text-xs py-1.5 px-3 gap-1.5">
                     <Coffee className="size-3" />
-                    Break at {breakStartTime}
+                    Break at {breakStartTime} PKT
                   </Badge>
                 )}
                 {isInBreakWindow && (
@@ -639,7 +687,7 @@ export function EmployeeDashboard({
                   </Button>
                 ) : todayWorkedMin < halfDayThresholdMin ? (
                   <span className="text-xs text-muted-foreground">
-                    Checkout available at {workEndFormatted}
+                    Checkout available at {workEndFormatted} PKT
                   </span>
                 ) : (
                   <div className="flex flex-col items-end gap-1">
@@ -647,7 +695,7 @@ export function EmployeeDashboard({
                       You&apos;ve worked {Math.floor(todayWorkedMin / 60)}h {todayWorkedMin % 60}m — half day will be recorded
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      Full checkout at {workEndFormatted} • Or apply half day leave
+                      Full checkout at {workEndFormatted} PKT • Or apply half day leave
                     </span>
                   </div>
                 )}
