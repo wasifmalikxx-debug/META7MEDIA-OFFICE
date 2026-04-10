@@ -6,12 +6,28 @@ import { DailyReportView } from "@/components/daily-report/daily-report-view";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Daily Reports page.
+ * Access:
+ *  - SUPER_ADMIN (CEO)     → all reports, both Etsy + FB teams
+ *  - Izaan (EM-4 team lead) → Etsy team reports ONLY (scoped at query level)
+ *  - Everyone else          → redirected to /dashboard
+ *
+ * Scoping is enforced on the server query, not just the UI, so Izaan can
+ * never see FB team reports even if he crafts a request manually.
+ */
 export default async function DailyReportPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN") redirect("/dashboard");
+  const user = session.user as any;
+  const role = user.role;
+  const isAdmin = role === "SUPER_ADMIN";
+  const isEtsyTeamLead = user.employeeId === "EM-4";
+
+  if (!isAdmin && !isEtsyTeamLead) {
+    redirect("/dashboard");
+  }
 
   const params = await searchParams;
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
@@ -21,8 +37,15 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
   const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
   const endOfMonth = new Date(Date.UTC(year, month, 0));
 
+  // Build the where clause. For Izaan, restrict to Etsy team members only
+  // (employeeId starts with "EM"). For CEO, no restriction.
+  const where: any = { date: { gte: startOfMonth, lte: endOfMonth } };
+  if (isEtsyTeamLead && !isAdmin) {
+    where.user = { employeeId: { startsWith: "EM" } };
+  }
+
   const reports = await prisma.dailyReport.findMany({
-    where: { date: { gte: startOfMonth, lte: endOfMonth } },
+    where,
     include: {
       user: { select: { firstName: true, lastName: true, employeeId: true } },
     },
@@ -31,7 +54,14 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Daily Reports" />
+      <PageHeader
+        title={isAdmin ? "Daily Reports" : "Etsy Team Reports"}
+        description={
+          isAdmin
+            ? "All daily reports submitted by the team"
+            : "Daily reports submitted by your Etsy team members"
+        }
+      />
       <DailyReportView
         reports={JSON.parse(JSON.stringify(reports))}
         currentMonth={month}

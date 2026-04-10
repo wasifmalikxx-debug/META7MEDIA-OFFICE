@@ -26,6 +26,7 @@ import {
   CalendarDays,
   AlertOctagon,
   RefreshCcw,
+  FileText,
 } from "lucide-react";
 import {
   Sidebar,
@@ -88,9 +89,20 @@ function getEtsyNav(userRole: string, employeeId: string) {
   // Izaan (EM-4) is Etsy team lead — gets the admin-style label even though
   // his role is EMPLOYEE, because he sees all refunds but doesn't submit
   const isTeamLead = employeeId === "EM-4";
-  return [
+  const nav: { title: string; href: string; icon: any; roles: string[] }[] = [
     { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER"] },
     { title: "Analytics", href: "/etsy-analytics", icon: BarChart3, roles: ["SUPER_ADMIN"] },
+  ];
+  // Izaan only: Etsy team reports view (scoped to EM-* employees on the server)
+  if (isTeamLead) {
+    nav.push({
+      title: "Team Reports",
+      href: "/daily-work-report",
+      icon: FileText,
+      roles: ["all"],
+    });
+  }
+  nav.push(
     {
       title: isAdminOrManager ? "Review Approvals" : "Submit Review",
       href: "/review-bonus",
@@ -104,8 +116,9 @@ function getEtsyNav(userRole: string, employeeId: string) {
       icon: RefreshCcw,
       roles: ["all"],
     },
-    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] },
-  ];
+    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] }
+  );
+  return nav;
 }
 
 const settingsNav = [
