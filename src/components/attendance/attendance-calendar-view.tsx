@@ -131,7 +131,7 @@ export function AttendanceCalendarView({
           <table className="w-full text-xs">
             <thead>
               <tr>
-                <th className="sticky left-0 z-20 bg-muted/80 backdrop-blur px-4 py-2.5 text-left font-semibold min-w-[150px] border-b border-r text-[11px]">
+                <th className="sticky left-0 z-20 bg-muted/80 backdrop-blur px-4 py-2.5 text-left font-semibold min-w-[200px] border-b border-r text-[11px]">
                   Employee
                 </th>
                 {days.map((d) => (
@@ -166,9 +166,9 @@ export function AttendanceCalendarView({
                         <div className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
                           {emp.firstName[0]}{emp.lastName?.[0] || ""}
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-[10px] leading-tight truncate max-w-[80px]">
-                            {emp.firstName} {emp.lastName?.[0] ? emp.lastName[0] + "." : ""}
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-[10px] leading-tight whitespace-nowrap">
+                            {emp.firstName}{emp.lastName ? ` ${emp.lastName}` : ""}
                           </span>
                           <span className="text-[8px] text-muted-foreground font-mono leading-tight">{emp.employeeId}</span>
                         </div>
