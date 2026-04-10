@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,11 @@ import {
   StickyNote,
   Users,
   Pencil,
+  Paperclip,
+  Loader2,
+  Image as ImageIcon,
+  X,
+  ShieldCheck,
 } from "lucide-react";
 import { formatPKTDisplay, formatPKTTime } from "@/lib/pkt";
 
@@ -46,10 +51,51 @@ interface Refund {
   etsyRefundAmount: number;
   aliexpressRefunded: boolean;
   aliexpressAmount: number | null;
+  aliexpressProofUrl: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
   user: { firstName: string; lastName: string | null; employeeId: string };
+}
+
+/**
+ * Compress an image to a small JPEG data URL.
+ * Max 1600px longest side, 0.82 quality → typically 100–400 KB.
+ * Keeps JSON payloads under the Next.js body limit.
+ */
+async function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_SIDE = 1600;
+        let { width, height } = img;
+        if (width > MAX_SIDE || height > MAX_SIDE) {
+          if (width > height) {
+            height = Math.round((height * MAX_SIDE) / width);
+            width = MAX_SIDE;
+          } else {
+            width = Math.round((width * MAX_SIDE) / height);
+            height = MAX_SIDE;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas not supported"));
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 interface RefundsViewProps {
@@ -74,6 +120,11 @@ export function RefundsView({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [proofImage, setProofImage] = useState<string | null>(null); // new upload (data URL)
+  const [keepExistingProof, setKeepExistingProof] = useState(false); // true when editing and not replacing
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const proofFileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     storeName: "",
     customerName: "",
@@ -93,6 +144,8 @@ export function RefundsView({
       notes: "",
     });
     setEditingId(null);
+    setProofImage(null);
+    setKeepExistingProof(false);
   }
 
   function openEditDialog(r: Refund) {
@@ -105,7 +158,41 @@ export function RefundsView({
       aliexpressAmount: r.aliexpressAmount != null ? String(r.aliexpressAmount) : "",
       notes: r.notes || "",
     });
+    // When editing, if the refund already has a proof image, show the existing
+    // one as a preview and mark "keepExistingProof" so the server knows to reuse
+    // it when no new file is uploaded
+    if (r.aliexpressProofUrl) {
+      setProofImage(r.aliexpressProofUrl);
+      setKeepExistingProof(true);
+    } else {
+      setProofImage(null);
+      setKeepExistingProof(false);
+    }
     setOpen(true);
+  }
+
+  async function handleProofPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files allowed");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image must be under 10 MB");
+      return;
+    }
+    setUploadingProof(true);
+    try {
+      const compressed = await compressImage(file);
+      setProofImage(compressed);
+      setKeepExistingProof(false); // a new image replaces the existing one
+    } catch (err: any) {
+      toast.error(err.message || "Failed to process image");
+    } finally {
+      setUploadingProof(false);
+      if (proofFileInputRef.current) proofFileInputRef.current.value = "";
+    }
   }
 
   const monthName = formatPKTDisplay(
@@ -141,6 +228,11 @@ export function RefundsView({
     if (form.aliexpressRefunded) {
       const aliAmt = parseFloat(form.aliexpressAmount);
       if (isNaN(aliAmt) || aliAmt <= 0) { toast.error("Enter a valid AliExpress refund amount"); return; }
+      // Proof required: either a new upload or an existing one being kept
+      if (!proofImage && !keepExistingProof) {
+        toast.error("Screenshot proof is required when AliExpress refund is Yes");
+        return;
+      }
     }
 
     setLoading(true);
@@ -154,6 +246,13 @@ export function RefundsView({
       };
       if (form.aliexpressRefunded) {
         payload.aliexpressAmount = parseFloat(form.aliexpressAmount);
+        if (proofImage && !keepExistingProof) {
+          // New upload (data URL starts with data:image/)
+          payload.aliexpressProofUrl = proofImage;
+        } else if (keepExistingProof) {
+          // Editing and reusing the existing stored proof
+          payload.keepExistingProof = true;
+        }
       }
 
       const isEdit = !!editingId;
@@ -409,9 +508,12 @@ export function RefundsView({
                       type="button"
                       variant={!form.aliexpressRefunded ? "default" : "outline"}
                       className="flex-1 h-9 gap-1.5"
-                      onClick={() =>
-                        setForm({ ...form, aliexpressRefunded: false, aliexpressAmount: "" })
-                      }
+                      onClick={() => {
+                        setForm({ ...form, aliexpressRefunded: false, aliexpressAmount: "" });
+                        // Clear any uploaded/kept proof when switching to No
+                        setProofImage(null);
+                        setKeepExistingProof(false);
+                      }}
                     >
                       <XCircle className="size-3.5" />
                       No
@@ -420,27 +522,94 @@ export function RefundsView({
                 </div>
 
                 {form.aliexpressRefunded && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">AliExpress Refund Amount (USD)</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                        $
-                      </span>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={form.aliexpressAmount}
-                        onChange={(e) => setForm({ ...form, aliexpressAmount: e.target.value })}
-                        placeholder="0.00"
-                        className="h-9 pl-7 tabular-nums"
-                        required
-                      />
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">AliExpress Refund Amount (USD)</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                          $
+                        </span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={form.aliexpressAmount}
+                          onChange={(e) => setForm({ ...form, aliexpressAmount: e.target.value })}
+                          placeholder="0.00"
+                          className="h-9 pl-7 tabular-nums"
+                          required
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        How much did you recover from AliExpress for this order?
+                      </p>
                     </div>
-                    <p className="text-[10px] text-muted-foreground">
-                      How much did you recover from AliExpress for this order?
-                    </p>
-                  </div>
+
+                    {/* Screenshot proof — REQUIRED when Yes is selected */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold flex items-center gap-1.5">
+                        <ImageIcon className="size-3.5" />
+                        Screenshot Proof
+                        <span className="text-rose-500">*</span>
+                      </Label>
+                      <input
+                        ref={proofFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleProofPick}
+                      />
+                      {proofImage ? (
+                        <div className="relative inline-block">
+                          <img
+                            src={proofImage}
+                            alt="AliExpress refund proof"
+                            className="h-36 w-auto rounded-lg border object-cover cursor-pointer"
+                            onClick={() => setLightboxImage(proofImage)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProofImage(null);
+                              setKeepExistingProof(false);
+                            }}
+                            className="absolute -top-2 -right-2 size-6 rounded-full bg-rose-500 text-white flex items-center justify-center hover:bg-rose-600 shadow-md"
+                            title="Remove image"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                          {keepExistingProof && (
+                            <p className="text-[9px] text-muted-foreground mt-1">
+                              Current proof. Click to preview, × to replace.
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full h-20 border-dashed gap-2 flex-col text-muted-foreground hover:text-rose-600 hover:border-rose-400"
+                          onClick={() => proofFileInputRef.current?.click()}
+                          disabled={uploadingProof}
+                        >
+                          {uploadingProof ? (
+                            <>
+                              <Loader2 className="size-4 animate-spin" />
+                              <span className="text-[10px]">Processing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Paperclip className="size-4" />
+                              <span className="text-[10px]">Click to upload AliExpress refund screenshot</span>
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      <p className="text-[10px] text-rose-600 dark:text-rose-400">
+                        Required. Upload a screenshot of the AliExpress refund confirmation.
+                      </p>
+                    </div>
+                  </>
                 )}
 
                 <div className="space-y-1.5">
@@ -461,7 +630,16 @@ export function RefundsView({
                   <Button type="button" variant="ghost" onClick={() => { setOpen(false); resetForm(); }}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={loading} className="gap-2">
+                  <Button
+                    type="submit"
+                    disabled={
+                      loading ||
+                      uploadingProof ||
+                      // Block submit when AliExpress = Yes but no proof attached
+                      (form.aliexpressRefunded && !proofImage && !keepExistingProof)
+                    }
+                    className="gap-2"
+                  >
                     <Send className="size-4" />
                     {loading ? "Saving..." : editingId ? "Save Changes" : "Submit Refund"}
                   </Button>
@@ -540,6 +718,7 @@ export function RefundsView({
                       canSeeAll={canSeeAll}
                       onEdit={() => openEditDialog(r)}
                       onDelete={() => handleDelete(r.id)}
+                      onViewProof={(url) => setLightboxImage(url)}
                       showEmployee={canSeeAll}
                     />
                   ))}
@@ -549,6 +728,23 @@ export function RefundsView({
           })}
         </div>
       )}
+
+      {/* Fullscreen lightbox for viewing proof screenshots */}
+      <Dialog open={!!lightboxImage} onOpenChange={(o) => !o && setLightboxImage(null)}>
+        <DialogContent
+          className="p-0 bg-black/95 border-0 flex items-center justify-center"
+          style={{ width: "98vw", maxWidth: "98vw", height: "96vh", maxHeight: "96vh" }}
+        >
+          <DialogTitle className="sr-only">AliExpress refund proof</DialogTitle>
+          {lightboxImage && (
+            <img
+              src={lightboxImage}
+              alt="AliExpress refund proof"
+              className="max-w-full max-h-full object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -559,6 +755,7 @@ function RefundCard({
   canSeeAll,
   onEdit,
   onDelete,
+  onViewProof,
   showEmployee,
 }: {
   refund: Refund;
@@ -566,6 +763,7 @@ function RefundCard({
   canSeeAll: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onViewProof: (url: string) => void;
   showEmployee: boolean;
 }) {
   const netLoss = r.etsyRefundAmount - (r.aliexpressAmount || 0);
@@ -619,10 +817,23 @@ function RefundCard({
                 Etsy ${r.etsyRefundAmount.toFixed(2)}
               </Badge>
               {r.aliexpressRefunded && r.aliexpressAmount != null ? (
-                <Badge className="text-[10px] h-5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0 gap-1 tabular-nums">
-                  <Package className="size-2.5" />
-                  AliExpress ${r.aliexpressAmount.toFixed(2)}
-                </Badge>
+                <>
+                  <Badge className="text-[10px] h-5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0 gap-1 tabular-nums">
+                    <Package className="size-2.5" />
+                    AliExpress ${r.aliexpressAmount.toFixed(2)}
+                  </Badge>
+                  {r.aliexpressProofUrl && (
+                    <button
+                      type="button"
+                      onClick={() => onViewProof(r.aliexpressProofUrl!)}
+                      className="inline-flex items-center gap-1 h-5 px-1.5 rounded-md text-[10px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50 transition-colors"
+                      title="View proof screenshot"
+                    >
+                      <ShieldCheck className="size-2.5" />
+                      Proof
+                    </button>
+                  )}
+                </>
               ) : (
                 <Badge variant="outline" className="text-[10px] h-5 gap-1 text-muted-foreground">
                   <XCircle className="size-2.5" />

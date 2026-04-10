@@ -709,6 +709,7 @@ model Refund {
   etsyRefundAmount   Float    // USD refunded on Etsy order
   aliexpressRefunded Boolean  @default(false)
   aliexpressAmount   Float?   // USD recovered from AliExpress (only if refunded)
+  aliexpressProofUrl String?  // screenshot proof (base64 data URL) — required when aliexpressRefunded
 
   notes              String?
 

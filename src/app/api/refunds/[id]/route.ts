@@ -49,6 +49,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const etsyRefundAmount = parseFloat(body.etsyRefundAmount);
     const aliexpressRefunded = !!body.aliexpressRefunded;
     const aliexpressAmount = body.aliexpressAmount != null ? parseFloat(body.aliexpressAmount) : null;
+    // Two possibilities for proof:
+    //  1. Employee uploaded a NEW image → body.aliexpressProofUrl is a data: URL
+    //  2. Employee kept the existing image → client sends body.keepExistingProof = true
+    const newProofUrl = body.aliexpressProofUrl ? String(body.aliexpressProofUrl) : null;
+    const keepExistingProof = !!body.keepExistingProof;
     const notes = body.notes ? String(body.notes).trim() : null;
 
     if (!storeName || storeName.length < 2) return error("Store name is required");
@@ -56,9 +61,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (isNaN(etsyRefundAmount) || etsyRefundAmount <= 0) {
       return error("Etsy refund amount must be greater than 0");
     }
+
+    let aliexpressProofUrl: string | null = null;
     if (aliexpressRefunded) {
       if (aliexpressAmount == null || isNaN(aliexpressAmount) || aliexpressAmount <= 0) {
         return error("AliExpress refund amount is required when marked as refunded");
+      }
+      if (newProofUrl) {
+        if (!newProofUrl.startsWith("data:image/")) {
+          return error("Invalid screenshot format");
+        }
+        aliexpressProofUrl = newProofUrl;
+      } else if (keepExistingProof && existing.aliexpressProofUrl) {
+        aliexpressProofUrl = existing.aliexpressProofUrl;
+      } else {
+        return error("Screenshot proof is required when AliExpress refund is marked as Yes");
       }
     }
 
@@ -70,6 +87,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         etsyRefundAmount,
         aliexpressRefunded,
         aliexpressAmount: aliexpressRefunded ? aliexpressAmount : null,
+        aliexpressProofUrl,
         notes,
         updatedAt: nowPKT(),
       },
