@@ -225,68 +225,71 @@ export function RefundsView({
 
   return (
     <div className="space-y-6">
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <RefreshCcw className="size-3.5 text-blue-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Total Refunds
+      {/* KPI cards — only visible to CEO and team lead (Izaan). Regular
+          employees don't need aggregate totals of their own refunds. */}
+      {canSeeAll && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <RefreshCcw className="size-3.5 text-blue-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Total Refunds
+                </p>
+              </div>
+              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{stats.totalCount}</p>
+              {stats.uniqueEmployees > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  from {stats.uniqueEmployees} employee{stats.uniqueEmployees !== 1 ? "s" : ""}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-800">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingDown className="size-3.5 text-rose-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Etsy Refunded
+                </p>
+              </div>
+              <p className="text-3xl font-bold text-rose-600 dark:text-rose-400 tabular-nums">
+                ${stats.totalEtsy.toFixed(2)}
               </p>
-            </div>
-            <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{stats.totalCount}</p>
-            {canSeeAll && stats.uniqueEmployees > 0 && (
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Package className="size-3.5 text-emerald-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  AliExpress Recovered
+                </p>
+              </div>
+              <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                ${stats.totalAliexpress.toFixed(2)}
+              </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                from {stats.uniqueEmployees} employee{stats.uniqueEmployees !== 1 ? "s" : ""}
+                {stats.aliCovered} of {stats.totalCount} covered
               </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <TrendingDown className="size-3.5 text-rose-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Etsy Refunded
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <DollarSign className="size-3.5 text-amber-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Net Loss
+                </p>
+              </div>
+              <p className="text-3xl font-bold text-amber-600 dark:text-amber-400 tabular-nums">
+                ${stats.netLoss.toFixed(2)}
               </p>
-            </div>
-            <p className="text-3xl font-bold text-rose-600 dark:text-rose-400 tabular-nums">
-              ${stats.totalEtsy.toFixed(2)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Package className="size-3.5 text-emerald-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                AliExpress Recovered
-              </p>
-            </div>
-            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-              ${stats.totalAliexpress.toFixed(2)}
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              {stats.aliCovered} of {stats.totalCount} covered
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <DollarSign className="size-3.5 text-amber-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Net Loss
-              </p>
-            </div>
-            <p className="text-3xl font-bold text-amber-600 dark:text-amber-400 tabular-nums">
-              ${stats.netLoss.toFixed(2)}
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Etsy − AliExpress</p>
-          </CardContent>
-        </Card>
-      </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Etsy − AliExpress</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Month nav + submit button */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
