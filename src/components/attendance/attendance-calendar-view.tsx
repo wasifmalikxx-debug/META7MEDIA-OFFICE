@@ -40,6 +40,7 @@ const STATUS_CELL: Record<string, { label: string; bg: string }> = {
   LATE: { label: "L", bg: "bg-amber-500" },
   HALF_DAY: { label: "H", bg: "bg-blue-500" },
   ABSENT: { label: "A", bg: "bg-rose-500" },
+  COVERED: { label: "C", bg: "bg-teal-500" },
   ON_LEAVE: { label: "LV", bg: "bg-violet-500" },
   HOLIDAY: { label: "", bg: "bg-slate-300 dark:bg-slate-600" },
   WEEKEND: { label: "", bg: "bg-slate-200 dark:bg-slate-700" },
@@ -89,6 +90,8 @@ export function AttendanceCalendarView({
     if (isWeekend) return STATUS_CELL.WEEKEND;
     const att = attendanceMap[empId]?.[dateStr];
     if (!att) return null;
+    // If absent was covered by paid leave → show "C" instead of "A"
+    if (att.status === "ABSENT" && att.covered) return STATUS_CELL.COVERED;
     return STATUS_CELL[att.status] || null;
   }
 
@@ -96,7 +99,7 @@ export function AttendanceCalendarView({
     if (isHoliday) return `Holiday: ${holidayName}`;
     const att = attendanceMap[empId]?.[dateStr];
     if (!att) return "No record";
-    let text = att.status;
+    let text = att.status === "ABSENT" && att.covered ? "ABSENT (Covered by paid leave)" : att.status;
     if (att.checkIn) text += ` | In: ${formatPKTTime(att.checkIn)}`;
     if (att.checkOut) text += ` | Out: ${formatPKTTime(att.checkOut)}`;
     if (att.workedMinutes) text += ` | ${Math.floor(att.workedMinutes / 60)}h ${att.workedMinutes % 60}m`;
