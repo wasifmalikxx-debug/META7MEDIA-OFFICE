@@ -21,7 +21,9 @@ function minutesSinceCreation(createdAt: Date): number {
   return Math.floor((nowShifted - created) / 60000);
 }
 
-// PATCH /api/refunds/[id] — employee can edit own within 15 min, admin/manager always
+// PATCH /api/refunds/[id] — ONLY the owner can edit, and only within 15 minutes.
+// Admins (CEO / Izaan) can NOT edit — they can only delete via the DELETE route.
+// This keeps refund records authoritative to the employee who submitted them.
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
@@ -32,15 +34,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const existing = await prisma.refund.findUnique({ where: { id } });
   if (!existing) return error("Not found", 404);
 
-  const isAdminOrManager = canSeeAll(user);
-  const isOwner = existing.userId === user.id;
-
-  if (!isAdminOrManager) {
-    if (!isOwner) return error("Forbidden", 403);
-    const elapsed = minutesSinceCreation(existing.createdAt);
-    if (elapsed > 15) {
-      return error("You can only edit a refund within 15 minutes of submitting it");
-    }
+  if (existing.userId !== user.id) {
+    return error("Only the employee who submitted this refund can edit it", 403);
+  }
+  const elapsed = minutesSinceCreation(existing.createdAt);
+  if (elapsed > 15) {
+    return error("You can only edit a refund within 15 minutes of submitting it");
   }
 
   try {
