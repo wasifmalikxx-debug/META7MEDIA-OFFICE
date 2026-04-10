@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { nowPKT, formatPKTDate } from "@/lib/pkt";
 import { leaveActionSchema } from "@/lib/validations/leave";
 import { createNotification } from "@/lib/services/notification.service";
+import { resolveAttendanceStatus } from "@/lib/services/attendance-status";
 
 export async function DELETE(
   request: NextRequest,
@@ -28,6 +29,30 @@ export async function DELETE(
   }
 
   await prisma.leaveRequest.delete({ where: { id } });
+
+  // If this was a half-day leave, restore attendance status from stale HALF_DAY
+  // (the resolver will see no leave exists and correct it to PRESENT/LATE)
+  if (leave.leaveType === "HALF_DAY") {
+    const attendance = await prisma.attendance.findUnique({
+      where: { userId_date: { userId: leave.userId, date: leave.startDate } },
+    });
+    if (attendance) {
+      const resolved = await resolveAttendanceStatus({
+        userId: leave.userId,
+        date: leave.startDate,
+        workedMinutes: attendance.workedMinutes || 0,
+        lateMinutes: attendance.lateMinutes,
+        currentStatus: attendance.status,
+      });
+      if (resolved.status !== attendance.status) {
+        await prisma.attendance.update({
+          where: { id: attendance.id },
+          data: { status: resolved.status },
+        });
+      }
+    }
+  }
+
   return json({ success: true });
 }
 

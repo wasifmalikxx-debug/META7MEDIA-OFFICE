@@ -3,6 +3,8 @@ import { json, error } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
 import { todayPKT, pktMonth, pktYear } from "@/lib/pkt";
 import { createNotification } from "@/lib/services/notification.service";
+import { resolveAttendanceStatus } from "@/lib/services/attendance-status";
+import { maybeCreateBreakSkipFine } from "@/lib/services/break-fine";
 
 // GET /api/attendance/auto-checkout — called by Vercel cron
 export async function GET(request: NextRequest) {
@@ -64,20 +66,15 @@ async function handleAutoCheckout() {
         (checkoutTime.getTime() - checkIn.getTime()) / (1000 * 60)
       ) - breakMinutes);
 
-      // Check if employee has an approved HALF_DAY leave for today
-      const halfDayLeaveStatus = await prisma.leaveRequest.findFirst({
-        where: { userId: att.user.id, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
-        select: { halfDayPeriod: true },
+      // Resolve status using single source of truth
+      const resolved = await resolveAttendanceStatus({
+        userId: att.user.id,
+        date: today,
+        workedMinutes,
+        lateMinutes: att.lateMinutes,
+        currentStatus: att.status,
       });
-      // ONLY set HALF_DAY if a leave request exists. Never preserve a stale HALF_DAY status.
-      // If no leave, restore to PRESENT or LATE based on lateMinutes from check-in.
-      let status = att.status;
-      if (halfDayLeaveStatus) {
-        status = "HALF_DAY";
-      } else if (att.status === "HALF_DAY") {
-        // No leave request but status was HALF_DAY — fix it
-        status = att.lateMinutes && att.lateMinutes > 0 ? "LATE" : "PRESENT";
-      }
+      const status = resolved.status;
 
       // Calculate early leave and overtime
       const earlyLeaveMin = Math.max(0, fullDayMinutes - workedMinutes);
@@ -96,10 +93,7 @@ async function handleAutoCheckout() {
         },
       });
 
-      // Reuse the already-fetched halfDayLeaveStatus (no duplicate query)
-      const hasFirstHalf = halfDayLeaveStatus?.halfDayPeriod === "FIRST_HALF";
-      const hasSecondHalf = halfDayLeaveStatus?.halfDayPeriod === "SECOND_HALF";
-
+      const hasFirstHalf = resolved.halfDayPeriod === "FIRST_HALF";
       const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
       const month = pktMonth();
       const year = pktYear();
@@ -109,7 +103,6 @@ async function handleAutoCheckout() {
         const dailyReport = await prisma.dailyReport.findUnique({
           where: { userId_date: { userId: att.user.id, date: today } },
         });
-        // Prevent duplicate: check if fine already exists
         const existingReportFine = await prisma.fine.findFirst({
           where: { userId: att.user.id, date: today, reason: "Daily report not submitted before auto-checkout" },
         });
@@ -136,26 +129,17 @@ async function handleAutoCheckout() {
         }
       }
 
-      // Fine: Break skipped (skip if first-half or second-half leave — they weren't there for break)
-      if (!att.breakStart && !hasFirstHalf && !hasSecondHalf && settings?.breakLateFineAmt > 0 && admin) {
-        // Prevent duplicate
-        const existingBreakFine = await prisma.fine.findFirst({
-          where: { userId: att.user.id, date: today, reason: "Break skipped — did not log break attendance" },
+      // Break skip fine — use single source of truth
+      if (admin) {
+        await maybeCreateBreakSkipFine({
+          userId: att.user.id,
+          date: today,
+          breakStart: att.breakStart,
+          checkIn: att.checkIn,
+          checkOut: checkoutTime,
+          workedMinutes,
+          adminId: admin.id,
         });
-        if (!existingBreakFine) {
-          await prisma.fine.create({
-            data: {
-              userId: att.user.id,
-              type: "POLICY_VIOLATION",
-              amount: settings.breakLateFineAmt,
-              reason: "Break skipped — did not log break attendance",
-              date: today,
-              month,
-              year,
-              issuedById: admin.id,
-            },
-          });
-        }
       }
 
       results.push({ name, workedMinutes, status, autoCheckout: true });
