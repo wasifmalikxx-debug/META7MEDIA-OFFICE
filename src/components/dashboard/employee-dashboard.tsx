@@ -775,26 +775,10 @@ export function EmployeeDashboard({
                     </p>
                   </div>
                   <div className="space-y-4">
-                    {isEtsy && isManager && (
-                      <div className="space-y-4">
-                        <div className="rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 p-3">
-                          <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Team Lead / Manager Report</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Team Members Managed Today</Label>
-                          <Input type="number" min="0" value={reportForm.listingsCount} onChange={(e) => setReportForm({ ...reportForm, listingsCount: parseInt(e.target.value) || 0 })} placeholder="0" />
-                          <p className="text-[10px] text-muted-foreground">How many team members did you oversee today?</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Stores Supervised</Label>
-                          <Input value={reportForm.storeName} onChange={(e) => setReportForm({ ...reportForm, storeName: e.target.value })} placeholder="e.g. All Etsy stores, Store A + Store B..." />
-                          <p className="text-[10px] text-muted-foreground">Which stores did you supervise or review?</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">What did you do today?</Label>
-                          <Textarea value={reportForm.listingLinks} onChange={(e) => setReportForm({ ...reportForm, listingLinks: e.target.value })} placeholder={"Reviewed team listings quality\nHandled customer escalations\nTrained new team member\nChecked order processing\nUpdated store policies..."} rows={5} className="text-xs" />
-                          <p className="text-[10px] text-muted-foreground">Describe your managerial tasks, reviews, escalations, and decisions</p>
-                        </div>
+                    {/* Manager (Izaan / EM-4) uses a simple single-textarea template — same as FB */}
+                    {isManager && (
+                      <div className="rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Team Lead / Manager Report</p>
                       </div>
                     )}
                     {isEtsy && !isManager && (
@@ -823,10 +807,30 @@ export function EmployeeDashboard({
                         </div>
                       </div>
                     )}
+                    {/* Main textarea: FB and Manager use it as the primary content, Etsy employees as optional notes */}
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">{isFB ? "What did you do today?" : "Additional Notes"} {!isFB && <span className="font-normal text-muted-foreground">(optional)</span>}</Label>
-                      <Textarea value={reportForm.notes} onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })} placeholder={isFB ? "Describe your work today in detail \u2014 tasks completed, content created, campaigns managed, client interactions, designs, scheduling..." : "Any challenges, achievements, or things to flag..."} rows={isFB ? 4 : 2} className="text-xs" />
-                      {isFB && <p className="text-[10px] text-muted-foreground">Provide a clear summary of all tasks and activities you completed today</p>}
+                      <Label className="text-xs font-semibold">
+                        {isFB || isManager ? "What did you do today?" : "Additional Notes"}
+                        {!isFB && !isManager && <span className="font-normal text-muted-foreground"> (optional)</span>}
+                      </Label>
+                      <Textarea
+                        value={reportForm.notes}
+                        onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })}
+                        placeholder={
+                          isFB
+                            ? "Describe your work today in detail \u2014 tasks completed, content created, campaigns managed, client interactions, designs, scheduling..."
+                            : isManager
+                            ? "Describe your managerial tasks, reviews, escalations, stores supervised, team oversight, and decisions..."
+                            : "Any challenges, achievements, or things to flag..."
+                        }
+                        rows={isFB || isManager ? 5 : 2}
+                        className="text-xs"
+                      />
+                      {(isFB || isManager) && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Provide a clear summary of all tasks and activities you completed today
+                        </p>
+                      )}
                     </div>
                     <Button onClick={handleSubmitReport} disabled={loading} className="w-full gap-2" size="lg">
                       <CheckCircle className="size-4" />
