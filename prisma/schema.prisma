@@ -94,6 +94,35 @@ enum NotificationType {
   REVIEW_BONUS_APPROVED
   REVIEW_BONUS_REJECTED
   BONUS_ELIGIBILITY_UPDATED
+  COMPLAINT_SUBMITTED
+  COMPLAINT_RESPONDED
+  COMPLAINT_STATUS_CHANGED
+}
+
+enum ComplaintCategory {
+  BUG
+  PAYROLL
+  ATTENDANCE
+  HR
+  POLICY
+  TECHNICAL
+  HARASSMENT
+  OTHER
+}
+
+enum ComplaintPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  APPROVED
+  RESOLVED
+  DENIED
 }
 
 enum ReviewBonusStatus {
@@ -157,6 +186,8 @@ model User {
   reviewBonusesSubmitted ReviewBonus[]  @relation("ReviewBonusSubmitter")
   reviewBonusesApproved  ReviewBonus[]  @relation("ReviewBonusApprover")
   dailyReports           DailyReport[]
+  complaintsSubmitted    Complaint[] @relation("ComplaintSubmitter")
+  complaintsResponded    Complaint[] @relation("ComplaintResponder")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -618,4 +649,31 @@ model DailyReport {
 
   @@unique([userId, date])
   @@index([date])
+}
+
+// ─── Complaints System ──────────────────────────────
+
+model Complaint {
+  id          String            @id @default(cuid())
+  userId      String
+  user        User              @relation("ComplaintSubmitter", fields: [userId], references: [id])
+  subject     String
+  description String
+  category    ComplaintCategory
+  priority    ComplaintPriority @default(MEDIUM)
+  status      ComplaintStatus   @default(OPEN)
+
+  ceoResponse String?
+  respondedAt DateTime?
+  respondedById String?
+  respondedBy User?             @relation("ComplaintResponder", fields: [respondedById], references: [id])
+
+  resolvedAt  DateTime?
+
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([userId, status])
+  @@index([status])
+  @@index([createdAt])
 }
