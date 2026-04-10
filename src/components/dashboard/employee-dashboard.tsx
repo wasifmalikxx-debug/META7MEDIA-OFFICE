@@ -113,10 +113,10 @@ export function EmployeeDashboard({
 
   const router = useRouter();
 
-  // Re-render every 30 seconds so time-based UI (break button, checkout button) stays current
+  // Re-render every 1 second so the live PKT clock and countdowns update in real time.
+  // Full data refresh still happens every 2 minutes (server fetch).
   useEffect(() => {
-    const tickInterval = setInterval(() => setTick((t) => t + 1), 30_000);
-    // Full data refresh every 2 minutes
+    const tickInterval = setInterval(() => setTick((t) => t + 1), 1000);
     const refreshInterval = setInterval(() => router.refresh(), 120_000);
     return () => { clearInterval(tickInterval); clearInterval(refreshInterval); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -191,6 +191,7 @@ export function EmployeeDashboard({
   const hasCheckedIn = !!attendance?.checkIn;
   const hasCheckedOut = !!attendance?.checkOut;
   const onBreak = !!attendance?.breakStart && !attendance?.breakEnd;
+  const breakDone = !!attendance?.breakEnd;
 
   // Check-in window: 30 minutes before office start time (using PKT)
   const pktNow = new Date(Date.now() + 5 * 60 * 60_000); // PKT time
@@ -213,6 +214,91 @@ export function EmployeeDashboard({
   const [weH, weM] = (workEndTime || "19:00").split(":").map(Number);
   const workEndMin = weH * 60 + weM;
   const canCheckoutByTime = currentMinutes >= workEndMin - 30; // Allow checkout 30 min before office end
+
+  // Live seconds for countdowns (refreshes every render, which is every 1 second)
+  const pktSeconds = pktNow.getUTCSeconds();
+  const currentTotalSeconds = currentMinutes * 60 + pktSeconds;
+
+  // Format a duration in seconds into a compact countdown string
+  function formatCountdown(totalSec: number): string {
+    if (totalSec <= 0) return "now";
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  // "What's Next" state machine — figures out the next action the employee
+  // needs to take and how long until (or how long the current window stays open).
+  // All calculations are in PKT-minutes-from-midnight and are timezone-agnostic.
+  type NextAction = {
+    label: string;          // e.g. "Start Break"
+    countdown: string;      // e.g. "in 1h 5m" or "closes in 14m"
+    state: "waiting" | "active" | "missed" | "done" | "dayoff";
+    color: "blue" | "violet" | "emerald" | "amber" | "rose" | "slate";
+    detail?: string;
+  };
+
+  const nextAction: NextAction = (() => {
+    if (isDayOff) {
+      return { label: "Day Off", countdown: "", state: "dayoff", color: "slate", detail: dayOffLabel || "Enjoy your day!" };
+    }
+    if (hasCheckedOut) {
+      return { label: "Day Complete", countdown: "", state: "done", color: "emerald", detail: "See you tomorrow 👋" };
+    }
+    // Not checked in yet
+    if (!hasCheckedIn) {
+      if (currentMinutes < checkInWindowStart) {
+        const secsUntil = (checkInWindowStart - currentMinutes) * 60 - pktSeconds;
+        return { label: "Check In", countdown: `opens in ${formatCountdown(secsUntil)}`, state: "waiting", color: "slate", detail: `Check-in window opens at ${checkInOpensAt} PKT` };
+      }
+      if (currentMinutes <= workEndMin) {
+        const secsUntil = (workEndMin - currentMinutes) * 60 - pktSeconds;
+        return { label: "Check In", countdown: `window open · ${formatCountdown(secsUntil)} left`, state: "active", color: "blue", detail: "Click the Check In button to start your day" };
+      }
+      return { label: "Check-in closed", countdown: "", state: "missed", color: "rose", detail: "Office hours have ended" };
+    }
+    // On break right now
+    if (onBreak) {
+      const breakEndSecs = (breakEndMin + 5) * 60; // include grace minutes
+      const secsLeft = Math.max(0, breakEndSecs - currentTotalSeconds);
+      return { label: "On Break", countdown: secsLeft > 0 ? `end in ${formatCountdown(secsLeft)}` : "break ending now", state: "active", color: "amber", detail: "End break before grace period expires to avoid fine" };
+    }
+    // Break already done — waiting to checkout
+    if (breakDone) {
+      if (currentMinutes < workEndMin - 30) {
+        const secsUntil = (workEndMin - 30 - currentMinutes) * 60 - pktSeconds;
+        return { label: "Checkout", countdown: `opens in ${formatCountdown(secsUntil)}`, state: "waiting", color: "violet", detail: "Continue working until checkout window opens" };
+      }
+      return { label: "Checkout", countdown: "available now", state: "active", color: "emerald", detail: "Submit your report and check out" };
+    }
+    // Checked in, break not yet started
+    if (currentMinutes < breakStartMin) {
+      const secsUntil = (breakStartMin - currentMinutes) * 60 - pktSeconds;
+      return { label: "Start Break", countdown: `opens in ${formatCountdown(secsUntil)}`, state: "waiting", color: "violet", detail: `Break window: ${breakStartTime} – ${breakEndTime} PKT` };
+    }
+    if (isInBreakWindow) {
+      const secsUntil = (breakEndMin - currentMinutes) * 60 - pktSeconds;
+      return { label: "Start Break", countdown: `closes in ${formatCountdown(secsUntil)}`, state: "active", color: "violet", detail: "Click Start Break now" };
+    }
+    // Break window missed, heading to checkout
+    if (currentMinutes < workEndMin - 30) {
+      const secsUntil = (workEndMin - 30 - currentMinutes) * 60 - pktSeconds;
+      return { label: "Checkout", countdown: `opens in ${formatCountdown(secsUntil)}`, state: "missed", color: "amber", detail: "Break was missed — continue working until checkout" };
+    }
+    return { label: "Checkout", countdown: "available now", state: "active", color: "emerald", detail: "Submit your report and check out" };
+  })();
+
+  const nextActionColors: Record<string, { bg: string; border: string; text: string; ring: string }> = {
+    blue: { bg: "bg-blue-50 dark:bg-blue-950/30", border: "border-blue-200 dark:border-blue-900", text: "text-blue-700 dark:text-blue-400", ring: "ring-blue-500" },
+    violet: { bg: "bg-violet-50 dark:bg-violet-950/30", border: "border-violet-200 dark:border-violet-900", text: "text-violet-700 dark:text-violet-400", ring: "ring-violet-500" },
+    emerald: { bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-200 dark:border-emerald-900", text: "text-emerald-700 dark:text-emerald-400", ring: "ring-emerald-500" },
+    amber: { bg: "bg-amber-50 dark:bg-amber-950/30", border: "border-amber-200 dark:border-amber-900", text: "text-amber-700 dark:text-amber-400", ring: "ring-amber-500" },
+    rose: { bg: "bg-rose-50 dark:bg-rose-950/30", border: "border-rose-200 dark:border-rose-900", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-500" },
+    slate: { bg: "bg-slate-50 dark:bg-slate-800/50", border: "border-slate-200 dark:border-slate-700", text: "text-slate-700 dark:text-slate-400", ring: "ring-slate-500" },
+  };
   // Check if employee has an approved half-day leave for today
   const todayStr = `${pktNow.getUTCFullYear()}-${String(pktNow.getUTCMonth() + 1).padStart(2, "0")}-${String(pktNow.getUTCDate()).padStart(2, "0")}`;
   const hasHalfDayToday = leaves.some((l: any) => {
@@ -296,7 +382,6 @@ export function EmployeeDashboard({
     return null;
   }
   const leaveBlockMsg = getLeaveBlockMessage();
-  const breakDone = !!attendance?.breakEnd;
 
   async function handleSubmitReport() {
     setLoading(true);
@@ -438,11 +523,12 @@ export function EmployeeDashboard({
   // Estimated Salary = Monthly Salary + Incentives - Fines
   const salaryTillNow = Math.round(monthlySalary + totalIncentivesAmount - totalFinesAmount);
 
-  // Live PKT clock values (re-calculated on every render — the setTick interval refreshes every 30s)
-  const pktClock = new Date(Date.now() + 5 * 60 * 60_000);
+  // Live PKT clock values (re-calculated every second via the tick interval)
+  const pktClock = pktNow;
   const pktHours = pktClock.getUTCHours();
   const pktMins = pktClock.getUTCMinutes();
-  const pktTimeStr = `${String(pktHours % 12 || 12).padStart(2, "0")}:${String(pktMins).padStart(2, "0")} ${pktHours >= 12 ? "PM" : "AM"}`;
+  const pktSecs = pktClock.getUTCSeconds();
+  const pktTimeStr = `${String(pktHours % 12 || 12).padStart(2, "0")}:${String(pktMins).padStart(2, "0")}:${String(pktSecs).padStart(2, "0")} ${pktHours >= 12 ? "PM" : "AM"}`;
 
   // Detect browser/device timezone mismatch with PKT (UTC+5)
   // If the user's PC is on a different timezone, show a warning banner so they don't
@@ -496,12 +582,48 @@ export function EmployeeDashboard({
               Your device timezone is {deviceOffsetLabel} — the office runs on Pakistan Time (PKT, UTC+5)
             </p>
             <p className="text-[11px] text-amber-800 dark:text-amber-400 mt-0.5 leading-relaxed">
-              All times shown in this app (check-in, break, checkout) are in <strong>PKT</strong>, not your local clock.
-              Use the clock in the top right to see current Pakistan time. Your device clock may show a different time.
+              Don't worry about doing time math. Use the <strong>"What's Next"</strong> card below — it shows you
+              exactly when your next action (break / checkout) opens with a live countdown.
             </p>
           </div>
         </div>
       )}
+
+      {/* What's Next — live countdown card (timezone-agnostic) */}
+      {!isDayOff && !hasCheckedOut && (() => {
+        const colors = nextActionColors[nextAction.color];
+        return (
+          <div className={`rounded-xl border ${colors.border} ${colors.bg} px-5 py-4 flex items-center gap-4`}>
+            <div className={`size-12 rounded-full bg-white dark:bg-slate-900 border-2 ${colors.border} flex items-center justify-center shrink-0`}>
+              {nextAction.state === "active" ? (
+                <div className={`size-2.5 rounded-full bg-current animate-pulse ${colors.text}`} />
+              ) : nextAction.state === "waiting" ? (
+                <Clock className={`size-5 ${colors.text}`} />
+              ) : nextAction.state === "missed" ? (
+                <AlertTriangle className={`size-5 ${colors.text}`} />
+              ) : (
+                <CheckCircle className={`size-5 ${colors.text}`} />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                What's Next
+              </p>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <p className={`text-lg font-bold ${colors.text}`}>{nextAction.label}</p>
+                {nextAction.countdown && (
+                  <p className={`text-sm font-semibold ${colors.text} tabular-nums`}>
+                    {nextAction.countdown}
+                  </p>
+                )}
+              </div>
+              {nextAction.detail && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">{nextAction.detail}</p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Today's Status Card */}
       <Card className="border-0 shadow-sm overflow-hidden">
@@ -559,9 +681,9 @@ export function EmployeeDashboard({
             {hasCheckedIn && !hasCheckedOut && !onBreak && !breakDone && (
               <>
                 {currentMinutes < breakStartMin && (
-                  <Badge variant="outline" className="text-xs py-1.5 px-3 gap-1.5">
+                  <Badge variant="outline" className="text-xs py-1.5 px-3 gap-1.5 tabular-nums">
                     <Coffee className="size-3" />
-                    Break at {breakStartTime} PKT
+                    Break in {formatCountdown((breakStartMin - currentMinutes) * 60 - pktSeconds)}
                   </Badge>
                 )}
                 {isInBreakWindow && (
