@@ -34,6 +34,7 @@ import {
   XCircle,
   StickyNote,
   Users,
+  Pencil,
 } from "lucide-react";
 import { formatPKTDisplay, formatPKTTime } from "@/lib/pkt";
 
@@ -72,6 +73,7 @@ export function RefundsView({
   const [refunds, setRefunds] = useState<Refund[]>(initialRefunds);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     storeName: "",
     customerName: "",
@@ -80,6 +82,31 @@ export function RefundsView({
     aliexpressAmount: "",
     notes: "",
   });
+
+  function resetForm() {
+    setForm({
+      storeName: "",
+      customerName: "",
+      etsyRefundAmount: "",
+      aliexpressRefunded: false,
+      aliexpressAmount: "",
+      notes: "",
+    });
+    setEditingId(null);
+  }
+
+  function openEditDialog(r: Refund) {
+    setEditingId(r.id);
+    setForm({
+      storeName: r.storeName,
+      customerName: r.customerName,
+      etsyRefundAmount: String(r.etsyRefundAmount),
+      aliexpressRefunded: r.aliexpressRefunded,
+      aliexpressAmount: r.aliexpressAmount != null ? String(r.aliexpressAmount) : "",
+      notes: r.notes || "",
+    });
+    setOpen(true);
+  }
 
   const monthName = formatPKTDisplay(
     new Date(Date.UTC(currentYear, currentMonth - 1, 1)),
@@ -128,23 +155,25 @@ export function RefundsView({
       if (form.aliexpressRefunded) {
         payload.aliexpressAmount = parseFloat(form.aliexpressAmount);
       }
-      const res = await fetch("/api/refunds", {
-        method: "POST",
+
+      const isEdit = !!editingId;
+      const url = isEdit ? `/api/refunds/${editingId}` : "/api/refunds";
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to submit");
-      toast.success("Refund submitted");
-      setRefunds([data, ...refunds]);
-      setForm({
-        storeName: "",
-        customerName: "",
-        etsyRefundAmount: "",
-        aliexpressRefunded: false,
-        aliexpressAmount: "",
-        notes: "",
-      });
+
+      toast.success(isEdit ? "Refund updated" : "Refund submitted");
+      if (isEdit) {
+        setRefunds(refunds.map((r) => (r.id === data.id ? data : r)));
+      } else {
+        setRefunds([data, ...refunds]);
+      }
+      resetForm();
       setOpen(false);
       router.refresh();
     } catch (err: any) {
@@ -168,19 +197,31 @@ export function RefundsView({
     }
   }
 
-  // Group refunds by employee for admin view
-  const groupedByEmployee = useMemo(() => {
-    if (!canSeeAll) return null;
-    const groups: Record<string, { employee: Refund["user"]; refunds: Refund[] }> = {};
+  // Group refunds by date — most recent first. Used for both employee and admin views.
+  // Date key is the PKT date string (YYYY-MM-DD) derived from createdAt.
+  const groupedByDate = useMemo(() => {
+    const groups: Record<string, Refund[]> = {};
     for (const r of refunds) {
-      const key = r.user.employeeId;
-      if (!groups[key]) groups[key] = { employee: r.user, refunds: [] };
-      groups[key].refunds.push(r);
+      // createdAt is stored as PKT-shifted, so getUTCFullYear/Month/Date gives PKT date
+      const d = new Date(r.createdAt);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const key = `${y}-${m}-${day}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
     }
-    return Object.values(groups).sort((a, b) =>
-      a.employee.employeeId.localeCompare(b.employee.employeeId)
-    );
-  }, [refunds, canSeeAll]);
+    // Sort dates most-recent first, refunds within each date also most-recent first
+    return Object.entries(groups)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([dateKey, items]) => ({
+        dateKey,
+        dateObj: new Date(dateKey + "T00:00:00Z"),
+        items: items.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ),
+      }));
+  }, [refunds]);
 
   return (
     <div className="space-y-6">
@@ -273,10 +314,16 @@ export function RefundsView({
         </div>
 
         {canSubmit && (
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog
+            open={open}
+            onOpenChange={(o) => {
+              setOpen(o);
+              if (!o) resetForm();
+            }}
+          >
             <DialogTrigger
               render={
-                <Button className="gap-2 rounded-lg">
+                <Button className="gap-2 rounded-lg" onClick={resetForm}>
                   <Plus className="size-4" />
                   Submit Refund
                 </Button>
@@ -286,10 +333,12 @@ export function RefundsView({
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <RefreshCcw className="size-5 text-rose-600" />
-                  Submit Refund
+                  {editingId ? "Edit Refund" : "Submit Refund"}
                 </DialogTitle>
                 <DialogDescription>
-                  Log a refund for your assigned Etsy shop. Visible to CEO and Team Lead.
+                  {editingId
+                    ? "Make changes to this refund. You can edit within 15 minutes of submission."
+                    : "Log a refund for your assigned Etsy shop. Visible to CEO and Team Lead."}
                 </DialogDescription>
               </DialogHeader>
 
@@ -406,12 +455,12 @@ export function RefundsView({
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-2 border-t">
-                  <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+                  <Button type="button" variant="ghost" onClick={() => { setOpen(false); resetForm(); }}>
                     Cancel
                   </Button>
                   <Button type="submit" disabled={loading} className="gap-2">
                     <Send className="size-4" />
-                    {loading ? "Submitting..." : "Submit Refund"}
+                    {loading ? "Saving..." : editingId ? "Save Changes" : "Submit Refund"}
                   </Button>
                 </div>
               </form>
@@ -420,7 +469,7 @@ export function RefundsView({
         )}
       </div>
 
-      {/* Refund list */}
+      {/* Refund list — organized by date (most recent first) */}
       {refunds.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="py-16 text-center">
@@ -435,72 +484,66 @@ export function RefundsView({
             </p>
           </CardContent>
         </Card>
-      ) : canSeeAll && groupedByEmployee ? (
-        // Admin / manager view: grouped by employee
+      ) : (
         <div className="space-y-5">
-          {groupedByEmployee.map(({ employee, refunds: empRefunds }) => {
-            const empEtsy = empRefunds.reduce((s, r) => s + r.etsyRefundAmount, 0);
-            const empAli = empRefunds.reduce((s, r) => s + (r.aliexpressAmount || 0), 0);
-            const empNet = empEtsy - empAli;
+          {groupedByDate.map(({ dateKey, dateObj, items }) => {
+            const dayEtsy = items.reduce((s, r) => s + r.etsyRefundAmount, 0);
+            const dayAli = items.reduce((s, r) => s + (r.aliexpressAmount || 0), 0);
+            const dayNet = dayEtsy - dayAli;
+            const uniqueShops = new Set(items.map((r) => r.storeName)).size;
             return (
-              <div key={employee.employeeId} className="space-y-2.5">
-                <div className="flex items-center gap-3">
-                  <div className="size-9 rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-200 dark:from-emerald-900/40 dark:to-emerald-800/40 flex items-center justify-center text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                    {employee.firstName[0]}
-                    {employee.lastName?.[0] || ""}
+              <div key={dateKey} className="space-y-2.5">
+                {/* Date section header */}
+                <div className="flex items-center gap-3 sticky top-0 z-10 bg-background/95 backdrop-blur py-2 -mx-1 px-1 border-b">
+                  <div className="size-9 rounded-lg bg-gradient-to-br from-rose-100 to-amber-100 dark:from-rose-950/40 dark:to-amber-950/40 flex items-center justify-center shrink-0">
+                    <CalendarIcon className="size-4 text-rose-600 dark:text-rose-400" />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-baseline gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 flex-wrap">
                       <h2 className="text-sm font-bold">
-                        {employee.firstName} {employee.lastName}
+                        {formatPKTDisplay(dateObj, "EEEE, MMMM d, yyyy")}
                       </h2>
-                      <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">
-                        {employee.employeeId}
-                      </span>
                       <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-bold">
-                        {empRefunds.length} refund{empRefunds.length !== 1 ? "s" : ""}
+                        {items.length} refund{items.length !== 1 ? "s" : ""}
                       </Badge>
+                      {canSeeAll && uniqueShops > 0 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          · {uniqueShops} shop{uniqueShops !== 1 ? "s" : ""}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5 tabular-nums">
+                    <div className="flex items-center gap-3 text-[10px] mt-0.5 tabular-nums">
                       <span className="text-rose-600 dark:text-rose-400 font-semibold">
-                        −${empEtsy.toFixed(2)} Etsy
+                        −${dayEtsy.toFixed(2)} Etsy
                       </span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                        +${empAli.toFixed(2)} AliExpress
-                      </span>
+                      {dayAli > 0 && (
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                          +${dayAli.toFixed(2)} AliExpress
+                        </span>
+                      )}
                       <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                        ={""} ${empNet.toFixed(2)} net
+                        = ${dayNet.toFixed(2)} net
                       </span>
                     </div>
                   </div>
                 </div>
+                {/* Refunds for this date */}
                 <div className="grid gap-2">
-                  {empRefunds.map((r) => (
+                  {items.map((r) => (
                     <RefundCard
                       key={r.id}
                       refund={r}
-                      canDelete={canSeeAll || (r.userId === currentUserId)}
+                      currentUserId={currentUserId}
+                      canSeeAll={canSeeAll}
+                      onEdit={() => openEditDialog(r)}
                       onDelete={() => handleDelete(r.id)}
-                      showEmployee={false}
+                      showEmployee={canSeeAll}
                     />
                   ))}
                 </div>
               </div>
             );
           })}
-        </div>
-      ) : (
-        // Employee view: flat list of own refunds
-        <div className="grid gap-2">
-          {refunds.map((r) => (
-            <RefundCard
-              key={r.id}
-              refund={r}
-              canDelete={r.userId === currentUserId}
-              onDelete={() => handleDelete(r.id)}
-              showEmployee={false}
-            />
-          ))}
         </div>
       )}
     </div>
@@ -509,16 +552,34 @@ export function RefundsView({
 
 function RefundCard({
   refund: r,
-  canDelete,
+  currentUserId,
+  canSeeAll,
+  onEdit,
   onDelete,
   showEmployee,
 }: {
   refund: Refund;
-  canDelete: boolean;
+  currentUserId: string;
+  canSeeAll: boolean;
+  onEdit: () => void;
   onDelete: () => void;
   showEmployee: boolean;
 }) {
   const netLoss = r.etsyRefundAmount - (r.aliexpressAmount || 0);
+  const isOwner = r.userId === currentUserId;
+
+  // 15-minute edit/delete window for the owner. createdAt is PKT-shifted,
+  // so compare against (Date.now() + 5h) to stay in the same time space.
+  const minutesSince = Math.floor(
+    (Date.now() + 5 * 60 * 60_000 - new Date(r.createdAt).getTime()) / 60000
+  );
+  const withinWindow = minutesSince <= 15;
+  const minutesLeft = Math.max(0, 15 - minutesSince);
+
+  // Admin/manager can always delete (and edit); owner can edit/delete within 15 min
+  const canEdit = canSeeAll || (isOwner && withinWindow);
+  const canDelete = canSeeAll || (isOwner && withinWindow);
+
   return (
     <Card className="border-0 shadow-sm hover:shadow-md transition-all">
       <CardContent className="p-4">
@@ -537,6 +598,9 @@ function RefundCard({
               {showEmployee && (
                 <>
                   <span className="text-muted-foreground/50 text-[10px]">·</span>
+                  <span className="text-[10px] text-muted-foreground font-semibold">
+                    {r.user.firstName} {r.user.lastName}
+                  </span>
                   <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">
                     {r.user.employeeId}
                   </span>
@@ -581,23 +645,40 @@ function RefundCard({
             <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
               <span className="flex items-center gap-1">
                 <CalendarIcon className="size-3" />
-                {formatPKTDisplay(new Date(r.createdAt), "MMM d, yyyy")} ·{" "}
                 {formatPKTTime(new Date(r.createdAt))}
               </span>
+              {isOwner && withinWindow && !canSeeAll && (
+                <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400 font-medium">
+                  Editable for {minutesLeft}m more
+                </span>
+              )}
             </div>
           </div>
 
-          {canDelete && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="size-8 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 shrink-0"
-              onClick={onDelete}
-              title="Delete refund"
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="size-8 p-0 text-muted-foreground hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+                onClick={onEdit}
+                title="Edit refund"
+              >
+                <Pencil className="size-3.5" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="size-8 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                onClick={onDelete}
+                title="Delete refund"
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>
