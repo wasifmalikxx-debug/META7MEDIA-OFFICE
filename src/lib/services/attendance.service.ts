@@ -2,6 +2,8 @@ import { prisma, getCachedSettings } from "@/lib/prisma";
 import { AttendanceStatus } from "@prisma/client";
 import { sendLateFineTemplate } from "@/lib/services/whatsapp.service";
 import { todayPKT, nowPKT, pktMinutesSinceMidnight, pktMonth, pktYear } from "@/lib/pkt";
+import { resolveAttendanceStatus } from "@/lib/services/attendance-status";
+import { maybeCreateBreakSkipFine } from "@/lib/services/break-fine";
 
 function parseTime(timeStr: string): { hours: number; minutes: number } {
   const [hours, minutes] = timeStr.split(":").map(Number);
@@ -171,35 +173,7 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     throw new Error("Already checked out today");
   }
 
-  // Break skip fine: skip if employee has half-day leave (first or second half)
-  const halfDayLeaveForCheckout = await prisma.leaveRequest.findFirst({
-    where: { userId, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
-  });
-  if (!attendance.breakStart && settings.breakLateFineAmt > 0 && !halfDayLeaveForCheckout) {
-    // Prevent duplicate break-skip fine (auto-checkout may have already created one)
-    const existingBreakFine = await prisma.fine.findFirst({
-      where: { userId, date: today, reason: "Break skipped — did not log break attendance" },
-    });
-    if (!existingBreakFine) {
-      const adminUser = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
-      if (adminUser) {
-        await prisma.fine.create({
-          data: {
-            userId,
-            type: "POLICY_VIOLATION",
-            amount: settings.breakLateFineAmt,
-            reason: "Break skipped — did not log break attendance",
-            date: today,
-            month: pktMonth(),
-            year: pktYear(),
-            issuedById: adminUser.id,
-          },
-        });
-      }
-    }
-  }
-
-  // Subtract break time from worked minutes
+  // Subtract break time from worked minutes (only if break was completed)
   let breakMinutes = 0;
   if (attendance.breakStart && attendance.breakEnd) {
     breakMinutes = Math.floor(
@@ -221,11 +195,29 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     );
   }
 
-  // Check if employee has approved HALF_DAY leave — set status accordingly
-  const halfDayLeaveAtCheckout = await prisma.leaveRequest.findFirst({
-    where: { userId, startDate: today, leaveType: "HALF_DAY", status: "APPROVED" },
+  // Break skip fine — use single source of truth
+  const adminUser = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
+  if (adminUser) {
+    await maybeCreateBreakSkipFine({
+      userId,
+      date: today,
+      breakStart: attendance.breakStart,
+      checkIn: attendance.checkIn,
+      checkOut: now,
+      workedMinutes,
+      adminId: adminUser.id,
+    });
+  }
+
+  // Resolve status using single source of truth
+  const resolved = await resolveAttendanceStatus({
+    userId,
+    date: today,
+    workedMinutes,
+    lateMinutes: attendance.lateMinutes,
+    currentStatus: attendance.status,
   });
-  const status = halfDayLeaveAtCheckout ? AttendanceStatus.HALF_DAY : attendance.status;
+  const status = resolved.status;
   const officeEnd = parseTime(settings.workEndTime);
   const officeStart = parseTime(settings.workStartTime);
   const fullDayMinutes = (officeEnd.hours * 60 + officeEnd.minutes) - (officeStart.hours * 60 + officeStart.minutes);
