@@ -63,8 +63,9 @@ export async function generatePayrollForEmployee(
 
   let presentDays = 0;
   let lateDays = 0;
-  let absentDays = 0;
+  let totalAbsentDays = 0;
   let halfDays = 0;
+  const absentDates: Date[] = [];
 
   for (const att of attendances) {
     switch (att.status) {
@@ -79,12 +80,33 @@ export async function generatePayrollForEmployee(
         halfDays++;
         break;
       case AttendanceStatus.ABSENT:
-        absentDays++;
+        totalAbsentDays++;
+        absentDates.push(att.date);
         break;
     }
   }
 
+  // Determine which absents are ALREADY covered by existing amount=0 fines
+  // (these were covered by the daily-absent cron at the time they happened)
+  // They should NOT be deducted again — they've already consumed the budget.
+  const monthCoveredAbsenceFines = await prisma.fine.findMany({
+    where: {
+      userId,
+      amount: 0,
+      type: "ABSENT_WITHOUT_LEAVE",
+      reason: { contains: "Covered by paid leave" },
+      date: { gte: startDate, lte: endDate },
+    },
+    select: { date: true },
+  });
+  const alreadyCoveredCount = monthCoveredAbsenceFines.length;
+
+  // Orphan absents = absents that have no covered fine yet (could still be covered by remaining budget)
+  let orphanAbsents = Math.max(0, totalAbsentDays - alreadyCoveredCount);
+
   // Paid leave budget: use accumulated rollover budget (unused months carry forward)
+  // Note: getAccumulatedLeaveBudget() has ALREADY subtracted the alreadyCoveredCount,
+  // so "available" is what's left AFTER those were covered.
   const settings = await prisma.officeSettings.findUnique({
     where: { id: "default" },
   });
@@ -93,30 +115,30 @@ export async function generatePayrollForEmployee(
 
   let remainingBudget = accumulatedAvailable;
 
-  // Half days consume 0.5 each from budget
+  // Half days consume 0.5 each from remaining budget
   const coveredHalfDays = Math.min(halfDays, Math.floor(remainingBudget / 0.5));
   const deductibleHalfDays = halfDays - coveredHalfDays;
   remainingBudget -= coveredHalfDays * 0.5;
 
-  // Absences consume remaining budget (partial coverage possible)
-  // e.g., if 0.5 budget left and 1 absent → 0.5 covered, 0.5 deducted
-  let coveredAbsentDays = 0;
+  // Orphan absents consume remaining budget (partial coverage possible)
+  let coveredOrphanAbsents = 0;
   let partialAbsentCoverage = 0;
-  if (absentDays > 0 && remainingBudget > 0) {
-    if (remainingBudget >= absentDays) {
-      coveredAbsentDays = absentDays;
-      remainingBudget -= absentDays;
+  if (orphanAbsents > 0 && remainingBudget > 0) {
+    if (remainingBudget >= orphanAbsents) {
+      coveredOrphanAbsents = orphanAbsents;
+      remainingBudget -= orphanAbsents;
     } else {
-      // Partial: e.g., 0.5 budget covers 0.5 of first absent day
-      coveredAbsentDays = Math.floor(remainingBudget);
-      partialAbsentCoverage = remainingBudget - coveredAbsentDays; // e.g., 0.5
+      coveredOrphanAbsents = Math.floor(remainingBudget);
+      partialAbsentCoverage = remainingBudget - coveredOrphanAbsents;
       remainingBudget = 0;
     }
   }
-  const uncoveredAbsentDays = absentDays - coveredAbsentDays;
-  absentDays = uncoveredAbsentDays;
+  const uncoveredAbsentDays = orphanAbsents - coveredOrphanAbsents;
 
-  const autoPaidLeaves = coveredAbsentDays + partialAbsentCoverage + coveredHalfDays * 0.5;
+  // For the payroll record, absentDays = uncovered only
+  let absentDays = uncoveredAbsentDays;
+  // paidLeaveDays = already covered by fine + covered by current budget + covered half days
+  const autoPaidLeaves = alreadyCoveredCount + coveredOrphanAbsents + partialAbsentCoverage + coveredHalfDays * 0.5;
 
   // Get approved leaves for the month (manual leave requests)
   const leaves = await prisma.leaveRequest.findMany({

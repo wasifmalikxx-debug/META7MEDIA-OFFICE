@@ -39,8 +39,14 @@ export async function GET(request: NextRequest) {
     // BATCH LOAD: Get all data upfront instead of querying per employee
     const [employees, todayAttendances, todayLeaves, monthAttendances, monthFines, admin] = await Promise.all([
       prisma.user.findMany({
-        where: { role: { not: "SUPER_ADMIN" }, status: { in: ["HIRED", "PROBATION"] } },
-        select: { id: true, firstName: true, lastName: true, employeeId: true, phone: true, salaryStructure: { select: { monthlySalary: true } } },
+        where: {
+          role: { not: "SUPER_ADMIN" },
+          status: { in: ["HIRED", "PROBATION"] },
+          // CRITICAL: Only consider employees whose joining date is on or before today.
+          // Prevents marking new hires as absent for days before they were employed.
+          joiningDate: { lte: today },
+        },
+        select: { id: true, firstName: true, lastName: true, employeeId: true, phone: true, joiningDate: true, salaryStructure: { select: { monthlySalary: true } } },
       }),
       prisma.attendance.findMany({
         where: { date: today },
