@@ -58,14 +58,19 @@ interface AppSidebarProps {
   };
 }
 
-const mainNav = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
-  { title: "Daily Activities", href: "/fines", icon: CalendarClock, roles: ["all"] },
-  { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
-  { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
-  { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN"] },
-  { title: "Launch Complaint", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
-];
+function getMainNav(userRole: string) {
+  const isAdmin = userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN";
+  return [
+    { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
+    { title: "Daily Activities", href: "/fines", icon: CalendarClock, roles: ["all"] },
+    { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
+    { title: "My Reports", href: "/my-reports", icon: BarChart3, roles: ["EMPLOYEE", "MANAGER"] },
+    { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
+    { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN"] },
+    // CEO sees "Complaints", employees see "Launch Complaint"
+    { title: isAdmin ? "Complaints" : "Launch Complaint", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
+  ];
+}
 
 const managementNav = [
   { title: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN"] },
@@ -158,7 +163,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role]);
 
-  const renderNavItems = (items: typeof mainNav) =>
+  const mainNav = getMainNav(user.role);
+
+  const renderNavItems = (items: { title: string; href: string; icon: any; roles: string[] }[]) =>
     items
       .filter((item) => hasAccess(item.roles, user.role))
       .map((item) => (
