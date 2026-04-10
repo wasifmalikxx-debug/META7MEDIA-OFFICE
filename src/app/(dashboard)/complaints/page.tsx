@@ -20,19 +20,25 @@ export default async function ComplaintsPage() {
     where,
     include: {
       user: { select: { firstName: true, lastName: true, employeeId: true } },
-      respondedBy: { select: { firstName: true, lastName: true } },
+      resolvedBy: { select: { firstName: true, lastName: true } },
+      _count: { select: { messages: true } },
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { message: true, senderRole: true, createdAt: true },
+      },
     },
-    orderBy: [{ createdAt: "desc" }],
+    orderBy: [{ updatedAt: "desc" }],
   });
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Complaints"
+        title="Launch Complaint"
         description={
           isAdmin
-            ? "Review and respond to employee complaints"
-            : "Submit and track your complaints — fully confidential"
+            ? "Review and respond to employee complaints — full confidentiality"
+            : "Your direct private channel to the CEO — fully confidential"
         }
       />
       <ComplaintsView

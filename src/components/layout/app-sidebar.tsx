@@ -64,7 +64,7 @@ const mainNav = [
   { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
   { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
   { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN"] },
-  { title: "Complaints", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
+  { title: "Launch Complaint", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
 ];
 
 const managementNav = [
