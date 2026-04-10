@@ -189,6 +189,7 @@ model User {
   complaintsSubmitted    Complaint[]        @relation("ComplaintSubmitter")
   complaintsResolved     Complaint[]        @relation("ComplaintResponder")
   complaintMessages      ComplaintMessage[] @relation("ComplaintMessageSender")
+  refundsSubmitted       Refund[]           @relation("RefundSubmitter")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -694,4 +695,26 @@ model ComplaintMessage {
   createdAt   DateTime  @default(now())
 
   @@index([complaintId, createdAt])
+}
+
+// ─── Refund Tracking (Etsy team) ───────────────────
+
+model Refund {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation("RefundSubmitter", fields: [userId], references: [id])
+
+  storeName          String
+  customerName       String
+  etsyRefundAmount   Float    // USD refunded on Etsy order
+  aliexpressRefunded Boolean  @default(false)
+  aliexpressAmount   Float?   // USD recovered from AliExpress (only if refunded)
+
+  notes              String?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
