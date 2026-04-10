@@ -34,6 +34,34 @@ export async function GET(request: NextRequest) {
   return json(leaves);
 }
 
+/**
+ * Parse a YYYY-MM-DD string to a Date at UTC midnight, without relying on
+ * `new Date(str)` which can behave inconsistently across engines/locales.
+ * Returns null if the string is malformed.
+ */
+function parseYMDStrict(input: string): Date | null {
+  if (typeof input !== "string") return null;
+  // Accept either "YYYY-MM-DD" or the datetime form "YYYY-MM-DDTHH:mm..."
+  const ymd = input.slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  // Verify round-trip (catches Feb 30 etc.)
+  if (
+    d.getUTCFullYear() !== year ||
+    d.getUTCMonth() !== month - 1 ||
+    d.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return d;
+}
+
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
@@ -42,10 +70,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = leaveRequestSchema.parse(body);
 
-    const startDate = new Date(parsed.startDate);
-    const endDate = new Date(parsed.endDate);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
+    // Strict YYYY-MM-DD parser to guarantee the stored date matches what
+    // the employee picked — no locale / timezone / engine surprises.
+    const startDate = parseYMDStrict(parsed.startDate);
+    const endDate = parseYMDStrict(parsed.endDate);
+    if (!startDate || !endDate) {
+      return error("Invalid date format. Please pick a date from the calendar.");
+    }
 
     // Reason is required
     if (!parsed.reason || !parsed.reason.trim()) {
@@ -65,6 +96,16 @@ export async function POST(request: NextRequest) {
     const today = todayPKT();
     if (startDate < today) {
       return error("Cannot apply leave for past dates.");
+    }
+
+    // Sanity check: reject leaves more than 30 days in the future. Prevents
+    // accidental submissions where a wrong date slips through (e.g. the
+    // employee types "10-04" meaning April 10 but it's interpreted oddly).
+    const maxFuture = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+    if (startDate > maxFuture) {
+      return error(
+        "Leave date is too far in the future. Please pick a date within the next 30 days."
+      );
     }
 
     // For today's half day (second half only): must have checked in and completed 4h threshold
