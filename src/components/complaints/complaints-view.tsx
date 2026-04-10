@@ -347,31 +347,30 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
     }
   }, [viewing?.messages?.length]);
 
-  // LIVE CHAT POLLING — while the dialog is open, refetch the complaint every 4 seconds
-  // to pick up new messages from the other side in near real-time
+  // LIVE CHAT POLLING — while the dialog is open AND the tab is visible,
+  // refetch the complaint every 15 seconds (was 4s — too aggressive, was exhausting
+  // the Supabase connection pool). Pauses entirely when the tab is in background.
   useEffect(() => {
     if (!viewing) {
       viewingIdRef.current = null;
       return;
     }
     viewingIdRef.current = viewing.id;
-    const interval = setInterval(async () => {
+
+    async function pollOnce() {
       if (!viewingIdRef.current) return;
+      if (typeof document !== "undefined" && document.hidden) return; // pause when hidden
       try {
         const res = await fetch(`/api/complaints/${viewingIdRef.current}`);
         if (!res.ok) return;
         const data: Complaint = await res.json();
-        // Only update if something actually changed to avoid re-renders
         setViewing((prev) => {
           if (!prev || prev.id !== data.id) return prev;
           const prevCount = (prev.messages || []).length;
           const newCount = (data.messages || []).length;
-          if (prevCount === newCount && prev.status === data.status) {
-            return prev;
-          }
+          if (prevCount === newCount && prev.status === data.status) return prev;
           return data;
         });
-        // Also keep the list card in sync
         setComplaints((prev) =>
           prev.map((c) =>
             c.id === data.id
@@ -396,23 +395,40 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
           )
         );
       } catch {}
-    }, 4000);
-    return () => clearInterval(interval);
+    }
+
+    const interval = setInterval(pollOnce, 15000);
+    // Also refetch immediately when the tab becomes visible again
+    const onVis = () => { if (!document.hidden) pollOnce(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [viewing?.id]);
 
-  // LIVE LIST POLLING — refetch the complaint list every 15 seconds when dialog is CLOSED
-  // so new complaints and replies show up without manual refresh
+  // LIVE LIST POLLING — refetch the complaint list every 60 seconds when the
+  // dialog is CLOSED and the tab is visible. Was 15s — too frequent.
   useEffect(() => {
-    if (viewing) return; // don't poll the list while a chat is open (chat poll handles updates)
-    const interval = setInterval(async () => {
+    if (viewing) return;
+
+    async function pollList() {
+      if (typeof document !== "undefined" && document.hidden) return;
       try {
         const res = await fetch("/api/complaints");
         if (!res.ok) return;
         const data = await res.json();
         setComplaints(data);
       } catch {}
-    }, 15000);
-    return () => clearInterval(interval);
+    }
+
+    const interval = setInterval(pollList, 60000);
+    const onVis = () => { if (!document.hidden) pollList(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [viewing]);
 
   const grouped = useMemo(() => {
