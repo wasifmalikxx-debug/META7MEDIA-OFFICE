@@ -233,6 +233,13 @@ export function RefundsView({
         toast.error("Screenshot proof is required when AliExpress refund is Yes");
         return;
       }
+    } else {
+      // When AliExpress refund is NOT applied, the employee must explain why.
+      // Notes becomes mandatory in this case.
+      if (!form.notes.trim() || form.notes.trim().length < 10) {
+        toast.error("Please explain why the refund was not applied on AliExpress (min 10 characters)");
+        return;
+      }
     }
 
     setLoading(true);
@@ -613,17 +620,40 @@ export function RefundsView({
                 )}
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">
-                    Notes <span className="font-normal text-muted-foreground">(optional)</span>
-                  </Label>
-                  <Textarea
-                    value={form.notes}
-                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                    placeholder="Reason, order details, or anything to flag..."
-                    rows={3}
-                    className="resize-none text-xs"
-                    maxLength={500}
-                  />
+                  {form.aliexpressRefunded ? (
+                    <>
+                      <Label className="text-xs font-semibold">
+                        Notes <span className="font-normal text-muted-foreground">(optional)</span>
+                      </Label>
+                      <Textarea
+                        value={form.notes}
+                        onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                        placeholder="Reason, order details, or anything to flag..."
+                        rows={3}
+                        className="resize-none text-xs"
+                        maxLength={1000}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Label className="text-xs font-semibold flex items-center gap-1">
+                        Please explain everything — why the refund is NOT applied on AliExpress
+                        <span className="text-rose-500">*</span>
+                      </Label>
+                      <Textarea
+                        value={form.notes}
+                        onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                        placeholder="Explain in detail why this refund was not applied on AliExpress. Include the order details, reason, and any steps you took..."
+                        rows={5}
+                        className="resize-none text-xs"
+                        maxLength={1000}
+                        required
+                      />
+                      <p className="text-[10px] text-rose-600 dark:text-rose-400">
+                        Required. Provide a clear reason so CEO and Team Lead can review why AliExpress was not charged back.
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-2 border-t">
@@ -635,8 +665,10 @@ export function RefundsView({
                     disabled={
                       loading ||
                       uploadingProof ||
-                      // Block submit when AliExpress = Yes but no proof attached
-                      (form.aliexpressRefunded && !proofImage && !keepExistingProof)
+                      // Yes path: must have proof attached
+                      (form.aliexpressRefunded && !proofImage && !keepExistingProof) ||
+                      // No path: must have an explanation (min 10 chars)
+                      (!form.aliexpressRefunded && form.notes.trim().length < 10)
                     }
                     className="gap-2"
                   >

@@ -105,6 +105,13 @@ export async function POST(request: NextRequest) {
       if (!aliexpressProofUrl.startsWith("data:image/")) {
         return error("Invalid screenshot format");
       }
+    } else {
+      // When AliExpress refund was NOT applied, require a detailed explanation
+      if (!notes || notes.length < 10) {
+        return error(
+          "Please explain why the refund was not applied on AliExpress (at least 10 characters)"
+        );
+      }
     }
 
     const now = nowPKT();
