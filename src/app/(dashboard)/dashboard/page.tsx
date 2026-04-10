@@ -273,6 +273,34 @@ export default async function DashboardPage() {
   const empIsDayOff = empWeekendDays.includes(empDayOfWeek) || !!empHoliday;
   const empDayOffLabel = empHoliday?.name ? `Holiday — ${empHoliday.name}` : empWeekendDays.includes(empDayOfWeek) ? "Sunday — Day Off" : null;
 
+  // Live break-skip fine check — runs on every dashboard load (idempotent).
+  // If the break window has closed and the employee didn't log a break (and has
+  // no half-day leave), create the fine immediately so they see it right away
+  // instead of waiting until checkout.
+  if (todayAttendance?.checkIn && !todayAttendance?.checkOut && !todayAttendance?.breakStart && !empIsDayOff) {
+    try {
+      const { maybeCreateBreakSkipFine } = await import("@/lib/services/break-fine");
+      const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" }, select: { id: true } });
+      if (admin) {
+        // Compute live worked minutes from check-in to now
+        const workedMs = nowPKT().getTime() - todayAttendance.checkIn.getTime();
+        const workedMinutes = Math.max(0, Math.floor(workedMs / 60000));
+        await maybeCreateBreakSkipFine({
+          userId,
+          date: today,
+          breakStart: todayAttendance.breakStart,
+          checkIn: todayAttendance.checkIn,
+          checkOut: null,
+          workedMinutes,
+          adminId: admin.id,
+        });
+      }
+    } catch (e) {
+      // Non-fatal — fine will be created at checkout as fallback
+      console.warn("[dashboard] Live break-skip fine check failed:", e);
+    }
+  }
+
   // Calculate accumulated leave budget (rollover)
   const { getAccumulatedLeaveBudget } = await import("@/lib/services/leave-budget.service");
   const leaveBudgetInfo = await getAccumulatedLeaveBudget(userId, officeSettings?.paidLeavesPerMonth ?? 1);
