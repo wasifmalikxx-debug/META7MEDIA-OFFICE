@@ -46,9 +46,13 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
     );
   }
 
-  // Employees see their own submissions + submit form
+  // Employees see their own submissions for the current PKT month only.
+  // The page refreshes automatically at the start of each month — employees
+  // start each month with a fresh, empty list and submit new reviews for the
+  // new bonus cycle. Past months' records stay in the DB for audit until
+  // the cleanup cron eventually purges them.
   const mySubmissions = await prisma.reviewBonus.findMany({
-    where: { userId },
+    where: { userId, month, year },
     include: {
       approvedBy: { select: { firstName: true, lastName: true } },
     },
