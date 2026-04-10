@@ -23,7 +23,13 @@ export default async function DashboardPage() {
     const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
     const endOfMonth = new Date(Date.UTC(year, month, 0));
 
-    const [allEmployees, todayAttendances, payrollRecords, fines, todayLeaves, officeSettings, todayHoliday, monthAttendances, todayReports, monthFinesDetailed] = await Promise.all([
+    const [
+      allEmployees, todayAttendances, payrollRecords, fines, todayLeaves,
+      officeSettings, todayHoliday, monthAttendances, todayReports,
+      monthFinesDetailed,
+      // CEO Command Center — pending action counts
+      pendingLeavesCount, pendingDevicesCount, pendingReviewBonusesCount, complaintsAwaitingCeoCount,
+    ] = await Promise.all([
       prisma.user.findMany({
         where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
         select: { id: true, firstName: true, lastName: true, employeeId: true, status: true },
@@ -63,6 +69,11 @@ export default async function DashboardPage() {
         where: { month, year },
         select: { date: true, amount: true, type: true },
       }),
+      // Command Center — pending counts (cheap aggregate queries)
+      prisma.leaveRequest.count({ where: { status: "PENDING" } }),
+      prisma.deviceApproval.count({ where: { status: "PENDING" } }),
+      prisma.reviewBonus.count({ where: { status: "PENDING" } }),
+      prisma.complaint.count({ where: { unreadByCeo: true, status: { notIn: ["RESOLVED", "DENIED"] } } }),
     ]);
 
     const totalEmployees = allEmployees.length;
@@ -196,6 +207,12 @@ export default async function DashboardPage() {
         fbTeamSize={fbEmployees.length}
         etsyPresent={etsyPresent}
         fbPresent={fbPresent}
+        commandCenter={{
+          pendingLeaves: pendingLeavesCount,
+          pendingDevices: pendingDevicesCount,
+          pendingReviewBonuses: pendingReviewBonusesCount,
+          complaintsAwaitingReply: complaintsAwaitingCeoCount,
+        }}
       />
     );
   }

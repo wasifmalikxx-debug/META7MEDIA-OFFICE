@@ -27,9 +27,15 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   //
   // Only regenerate for:
   //  1. The current month (past months should be locked / immutable)
-  //  2. Records not already marked PAID (don't overwrite a paid record)
+  //  2. Records not already marked PAID (the service itself skips PAID)
+  //  3. Months not locked via PayrollSnapshot (locked months are frozen)
   const isCurrentMonth = month === currentMonth && year === currentYear;
-  if (isCurrentMonth) {
+  const monthSnapshot = await prisma.payrollSnapshot.findUnique({
+    where: { month_year: { month, year } },
+    include: { lockedBy: { select: { firstName: true, lastName: true } } },
+  });
+  const monthLocked = !!monthSnapshot;
+  if (isCurrentMonth && !monthLocked) {
     try {
       if (isAdmin) {
         await generatePayrollForAll(month, year, session.user.id);
@@ -37,9 +43,9 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
         // Only regenerate the employee's own record (if it's not already PAID)
         const existing = await prisma.payrollRecord.findUnique({
           where: { userId_month_year: { userId: session.user.id, month, year } },
-          select: { status: true },
+          select: { status: true, lockedAt: true },
         });
-        if (!existing || existing.status !== "PAID") {
+        if (!existing || (existing.status !== "PAID" && !existing.lockedAt)) {
           await generatePayrollForEmployee(session.user.id, month, year, session.user.id).catch(() => {});
         }
       }
@@ -96,6 +102,15 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
         isAdmin={isAdmin}
         currentMonth={month}
         currentYear={year}
+        monthLocked={monthLocked}
+        lockInfo={monthSnapshot ? JSON.parse(JSON.stringify({
+          lockedAt: monthSnapshot.lockedAt,
+          lockedBy: monthSnapshot.lockedBy
+            ? `${monthSnapshot.lockedBy.firstName} ${monthSnapshot.lockedBy.lastName || ""}`.trim()
+            : "",
+          totalNet: monthSnapshot.totalNet,
+          recordCount: monthSnapshot.recordCount,
+        })) : null}
       />
     </div>
   );

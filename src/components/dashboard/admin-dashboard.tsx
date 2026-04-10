@@ -16,6 +16,12 @@ import {
   CircleDot,
   TrendingUp,
   Activity,
+  Inbox,
+  Smartphone,
+  Star,
+  MessageSquare,
+  ArrowRight,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +39,13 @@ interface EmployeeStatus {
   liveStatus: string;
   checkIn: string | null;
   checkOut: string | null;
+}
+
+interface CommandCenterCounts {
+  pendingLeaves: number;
+  pendingDevices: number;
+  pendingReviewBonuses: number;
+  complaintsAwaitingReply: number;
 }
 
 interface AdminDashboardProps {
@@ -53,6 +66,7 @@ interface AdminDashboardProps {
   fbTeamSize?: number;
   etsyPresent?: number;
   fbPresent?: number;
+  commandCenter?: CommandCenterCounts;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string; icon: any }> = {
@@ -86,6 +100,7 @@ export function AdminDashboard({
   fbTeamSize = 0,
   etsyPresent = 0,
   fbPresent = 0,
+  commandCenter,
 }: AdminDashboardProps) {
   const router = useRouter();
   const attendanceRate = totalEmployees > 0 ? Math.round((presentToday / totalEmployees) * 100) : 0;
@@ -118,6 +133,131 @@ export function AdminDashboard({
           META7MEDIA Office
         </div>
       </div>
+
+      {/* CEO Command Center — pending actions that need YOU */}
+      {commandCenter && (() => {
+        const items: { label: string; count: number; href: string; icon: any; tone: string }[] = [
+          {
+            label: "Leave requests",
+            count: commandCenter.pendingLeaves,
+            href: "/leaves",
+            icon: Inbox,
+            tone: "violet",
+          },
+          {
+            label: "Login approvals",
+            count: commandCenter.pendingDevices,
+            href: "/login-approvals",
+            icon: Smartphone,
+            tone: "blue",
+          },
+          {
+            label: "Review bonuses",
+            count: commandCenter.pendingReviewBonuses,
+            href: "/review-bonus",
+            icon: Star,
+            tone: "amber",
+          },
+          {
+            label: "Complaints",
+            count: commandCenter.complaintsAwaitingReply,
+            href: "/complaints",
+            icon: MessageSquare,
+            tone: "rose",
+          },
+        ];
+        const totalPending = items.reduce((s, i) => s + i.count, 0);
+        const toneClasses: Record<string, { bg: string; icon: string; ring: string; badge: string }> = {
+          violet: {
+            bg: "bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/40 dark:to-slate-800",
+            icon: "text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/40",
+            ring: "hover:ring-violet-300 dark:hover:ring-violet-700",
+            badge: "bg-violet-600 text-white",
+          },
+          blue: {
+            bg: "bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/40 dark:to-slate-800",
+            icon: "text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40",
+            ring: "hover:ring-blue-300 dark:hover:ring-blue-700",
+            badge: "bg-blue-600 text-white",
+          },
+          amber: {
+            bg: "bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/40 dark:to-slate-800",
+            icon: "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40",
+            ring: "hover:ring-amber-300 dark:hover:ring-amber-700",
+            badge: "bg-amber-600 text-white",
+          },
+          rose: {
+            bg: "bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/40 dark:to-slate-800",
+            icon: "text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/40",
+            ring: "hover:ring-rose-300 dark:hover:ring-rose-700",
+            badge: "bg-rose-600 text-white",
+          },
+        };
+        return (
+          <Card className="border-0 shadow-sm overflow-hidden bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800/50">
+            <CardContent className="py-4 px-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Sparkles className="size-3.5 text-primary" />
+                  </div>
+                  <h3 className="text-sm font-semibold tracking-tight">Needs your attention</h3>
+                </div>
+                {totalPending === 0 ? (
+                  <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                    Inbox zero ✨
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {totalPending} pending
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  const t = toneClasses[item.tone];
+                  const isActive = item.count > 0;
+                  return (
+                    <button
+                      key={item.href}
+                      onClick={() => router.push(item.href)}
+                      className={`group relative text-left rounded-xl border transition-all ring-1 ring-transparent ${t.bg} ${
+                        isActive
+                          ? `${t.ring} hover:shadow-md cursor-pointer`
+                          : "opacity-60 hover:opacity-80 cursor-pointer"
+                      }`}
+                    >
+                      <div className="p-3.5">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className={`size-9 rounded-lg flex items-center justify-center ${t.icon}`}>
+                            <Icon className="size-4" />
+                          </div>
+                          {isActive && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.badge}`}>
+                              NEW
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className={`text-2xl font-bold ${isActive ? "" : "text-muted-foreground"}`}>
+                            {item.count}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">{item.label}</span>
+                        </div>
+                        <div className="flex items-center gap-1 mt-2 text-[10px] text-muted-foreground group-hover:text-foreground transition-colors">
+                          <span>{isActive ? "Review now" : "All clear"}</span>
+                          <ArrowRight className="size-3 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* KPI Cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">

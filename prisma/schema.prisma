@@ -190,6 +190,7 @@ model User {
   complaintsResolved     Complaint[]        @relation("ComplaintResponder")
   complaintMessages      ComplaintMessage[] @relation("ComplaintMessageSender")
   refundsSubmitted       Refund[]           @relation("RefundSubmitter")
+  payrollSnapshotsLocked PayrollSnapshot[]  @relation("PayrollSnapshotLocker")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -357,12 +358,45 @@ model PayrollRecord {
   notes        String?
   generatedBy  String?
 
+  // Lock: when set, the record is immutable — no auto-regen, no status
+  // changes via the normal PATCH endpoint, no recalculation on view.
+  // Unlocking clears this field. Independent from PAID status.
+  lockedAt     DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([userId, month, year])
   @@index([month, year])
   @@index([status])
+}
+
+// Immutable monthly payroll snapshot. Created when an admin locks a month's
+// payroll. Stores the full state of every payroll record plus totals so the
+// audit trail survives even if records are later edited or the employee row
+// is deleted. One snapshot per (month, year).
+model PayrollSnapshot {
+  id           String   @id @default(cuid())
+  month        Int
+  year         Int
+  lockedAt     DateTime @default(now())
+  lockedById   String
+  lockedBy     User     @relation("PayrollSnapshotLocker", fields: [lockedById], references: [id])
+
+  recordCount     Int
+  totalGross      Float
+  totalIncentives Float
+  totalFines      Float
+  totalNet        Float
+
+  // Full payroll rows at time of lock. Stored as JSON so we never lose the
+  // exact values the CEO approved, even if the underlying record changes.
+  data         Json
+
+  createdAt    DateTime @default(now())
+
+  @@unique([month, year])
+  @@index([year, month])
 }
 
 model Incentive {
