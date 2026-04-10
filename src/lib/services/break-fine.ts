@@ -13,7 +13,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { pktMonth, pktYear } from "@/lib/pkt";
+import { pktMonth, pktYear, pktMinutesSinceMidnight, nowPKT } from "@/lib/pkt";
 
 export const BREAK_SKIP_FINE_REASON = "Break skipped — did not log break attendance";
 
@@ -61,11 +61,24 @@ export async function maybeCreateBreakSkipFine(
     return { created: false, reason: "Break fine disabled" };
   }
 
-  // 4. If employee worked less than the break window duration, they couldn't
-  // have skipped the break — they weren't present long enough
-  // Break window is normally 60 minutes, Friday 75 minutes
-  // Only fine if they worked through the break window
-  const minWorkedForFine = 240; // 4 hours — if they worked at least 4h, they were there during break
+  // 4. Only fine if the break window has fully CLOSED. This makes the fine
+  // appear live on the dashboard as soon as the window ends, not later at
+  // checkout. Also prevents fining employees who haven't had the chance yet.
+  const isFriday = nowPKT().getUTCDay() === 5;
+  const breakEndStr = isFriday
+    ? (settings.fridayBreakEndTime || "14:45")
+    : (settings.breakEndTime || "16:00");
+  const [beH, beM] = breakEndStr.split(":").map(Number);
+  const breakEndMin = beH * 60 + beM + (settings.breakGraceMinutes || 0);
+  const currentPktMin = pktMinutesSinceMidnight();
+  if (currentPktMin < breakEndMin) {
+    return { created: false, reason: `Break window still open (closes at ${breakEndStr})` };
+  }
+
+  // 5. Also require they were physically present long enough to have actually
+  // skipped it — covers the power-outage edge case where they checked in then
+  // lost connection before the break window.
+  const minWorkedForFine = 240; // 4 hours
   if (workedMinutes < minWorkedForFine) {
     return { created: false, reason: `Only worked ${workedMinutes}m — too short to fine for skipped break` };
   }
