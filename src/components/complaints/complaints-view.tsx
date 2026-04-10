@@ -1107,12 +1107,31 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
         </DialogContent>
       </Dialog>
 
-      {/* Image lightbox */}
+      {/* Image lightbox — fullscreen preview */}
       <Dialog open={!!lightboxImage} onOpenChange={(o) => !o && setLightboxImage(null)}>
-        <DialogContent className="max-w-4xl p-2 bg-black/95 border-0">
+        <DialogContent
+          className="p-0 bg-black/95 border-0 flex items-center justify-center"
+          style={{ width: "98vw", maxWidth: "98vw", height: "96vh", maxHeight: "96vh" }}
+        >
           <DialogTitle className="sr-only">Attachment preview</DialogTitle>
           {lightboxImage && (
-            <img src={lightboxImage} alt="Attachment" className="w-full h-auto max-h-[80vh] object-contain rounded" />
+            <>
+              <img
+                src={lightboxImage}
+                alt="Attachment"
+                className="max-w-full max-h-full object-contain"
+              />
+              <a
+                href={lightboxImage}
+                download="complaint-attachment.jpg"
+                className="absolute top-3 right-14 text-white bg-white/10 hover:bg-white/20 backdrop-blur px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+                title="Download image"
+              >
+                <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                Download
+              </a>
+            </>
           )}
         </DialogContent>
       </Dialog>
