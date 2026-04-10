@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
     const description = String(body.description || "").trim();
     const category = String(body.category || "").trim();
     const priority = String(body.priority || "MEDIUM").trim();
+    const imageUrl = body.imageUrl ? String(body.imageUrl) : null;
 
     if (!subject || subject.length < 3) {
       return error("Subject must be at least 3 characters");
@@ -68,6 +69,9 @@ export async function POST(request: NextRequest) {
     }
     if (!VALID_PRIORITIES.includes(priority as any)) {
       return error("Invalid priority");
+    }
+    if (imageUrl && !imageUrl.startsWith("data:image/")) {
+      return error("Invalid image");
     }
 
     const role = (session.user as any).role;
@@ -91,6 +95,7 @@ export async function POST(request: NextRequest) {
             senderId: session.user.id,
             senderRole,
             message: description,
+            imageUrl,
             createdAt: now,
           },
         },
