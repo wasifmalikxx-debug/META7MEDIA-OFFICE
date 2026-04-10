@@ -143,11 +143,26 @@ export function EmployeeDashboard({
   const router = useRouter();
 
   // Re-render every 1 second so the live PKT clock and countdowns update in real time.
-  // Full data refresh still happens every 2 minutes (server fetch).
+  // The 1s tick is CLIENT-ONLY (no DB queries, just React state), so it's cheap.
+  // Full data refresh (which hits the DB) happens every 5 minutes and pauses when
+  // the tab is hidden — this is the key to not exhausting the Supabase pool.
   useEffect(() => {
     const tickInterval = setInterval(() => setTick((t) => t + 1), 1000);
-    const refreshInterval = setInterval(() => router.refresh(), 120_000);
-    return () => { clearInterval(tickInterval); clearInterval(refreshInterval); };
+
+    function refreshData() {
+      if (typeof document !== "undefined" && document.hidden) return;
+      router.refresh();
+    }
+    const refreshInterval = setInterval(refreshData, 5 * 60 * 1000);
+
+    const onVis = () => { if (!document.hidden) refreshData(); };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      clearInterval(tickInterval);
+      clearInterval(refreshInterval);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleApplyLeave() {
