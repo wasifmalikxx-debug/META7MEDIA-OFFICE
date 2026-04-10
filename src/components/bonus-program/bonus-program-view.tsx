@@ -605,10 +605,9 @@ export function BonusProgramView({
                           )}
                         </TableCell>
 
-                        {/* Review Bonus — only counts if eligible */}
+                        {/* Review Bonus — independent of 7-criteria eligibility */}
                         <TableCell className="text-center font-medium">
                           {(() => {
-                            if (!isEligible) return <span className="text-red-500">PKR 0</span>;
                             const empReviewTotal = reviewBonuses
                               .filter((rb) => rb.userId === emp.id)
                               .reduce((sum, rb) => sum + rb.amount, 0);
@@ -620,14 +619,14 @@ export function BonusProgramView({
                           })()}
                         </TableCell>
 
-                        {/* Total — zero if not eligible */}
+                        {/* Total — profit bonus only if eligible, review bonus always */}
                         <TableCell className="text-center font-bold">
                           {(() => {
-                            if (!isEligible) return <span className="text-red-500">PKR 0</span>;
                             const empReviewTotal = reviewBonuses
                               .filter((rb) => rb.userId === emp.id)
                               .reduce((sum, rb) => sum + rb.amount, 0);
-                            const total = bonusAmount + empReviewTotal;
+                            const profitPart = isEligible ? bonusAmount : 0;
+                            const total = profitPart + empReviewTotal;
                             return total > 0 ? (
                               <span className="text-green-700">PKR {total.toLocaleString()}</span>
                             ) : (
