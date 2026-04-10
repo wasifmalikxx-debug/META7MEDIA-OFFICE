@@ -1,27 +1,31 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
-import { todayPKT, pktMonth, pktYear, pktMinutesSinceMidnight } from "@/lib/pkt";
+import { todayPKT, nowPKT, pktMonth, pktYear, pktMinutesSinceMidnight } from "@/lib/pkt";
 import { createNotification } from "@/lib/services/notification.service";
 import { resolveAttendanceStatus } from "@/lib/services/attendance-status";
 import { maybeCreateBreakSkipFine } from "@/lib/services/break-fine";
+
+// Build marker — bumped whenever this file is changed. Shows up in every
+// response so we can confirm at a glance which version is live on Vercel.
+const ROUTE_VERSION = "2026-04-10.2";
 
 // GET /api/attendance/auto-checkout — called by Vercel cron only
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}` && process.env.NODE_ENV === "production") {
-    return error("Unauthorized", 401);
+  // GATE 1: In production, CRON_SECRET is mandatory and must match the Bearer header.
+  if (process.env.NODE_ENV === "production") {
+    if (!cronSecret) {
+      return error("Server misconfigured: CRON_SECRET not set", 500);
+    }
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return error("Unauthorized", 401);
+    }
   }
-  // SAFETY: Even via cron, only run if it's actually late in the day (after work end time)
-  // This prevents accidental early checkouts if cron fires at the wrong time
-  const settings = await getCachedSettings();
-  const [weH, weM] = (settings?.workEndTime || "19:00").split(":").map(Number);
-  const workEndMin = weH * 60 + weM;
-  const currentMin = pktMinutesSinceMidnight();
-  if (currentMin < workEndMin) {
-    return error(`Auto-checkout can only run after ${settings?.workEndTime || "19:00"} PKT. Current PKT time: ${Math.floor(currentMin/60)}:${String(currentMin%60).padStart(2,"0")}`, 400);
-  }
+  // GATE 2: Even with a valid secret, only run after workEndTime PKT.
+  const guardError = await timeWindowGuardError();
+  if (guardError) return guardError;
   return handleAutoCheckout();
 }
 
@@ -31,15 +35,26 @@ export async function POST() {
   if (!session) return error("Unauthorized", 401);
   const role = (session.user as any).role;
   if (role !== "SUPER_ADMIN") return error("Forbidden — CEO only", 403);
-  // Also enforce time window for manual POST — no accidental early runs
+  // Same time window guard as cron path — no accidental early runs
+  const guardError = await timeWindowGuardError();
+  if (guardError) return guardError;
+  return handleAutoCheckout();
+}
+
+// Shared time-window guard. Returns an error Response if the call should be
+// rejected, or null if it's allowed to proceed.
+async function timeWindowGuardError() {
   const settings = await getCachedSettings();
   const [weH, weM] = (settings?.workEndTime || "19:00").split(":").map(Number);
   const workEndMin = weH * 60 + weM;
   const currentMin = pktMinutesSinceMidnight();
   if (currentMin < workEndMin) {
-    return error(`Auto-checkout can only run after ${settings?.workEndTime || "19:00"} PKT.`, 400);
+    return error(
+      `Auto-checkout can only run after ${settings?.workEndTime || "19:00"} PKT. Current PKT time: ${Math.floor(currentMin / 60)}:${String(currentMin % 60).padStart(2, "0")}. (route v${ROUTE_VERSION})`,
+      400
+    );
   }
-  return handleAutoCheckout();
+  return null;
 }
 
 async function handleAutoCheckout() {
@@ -59,7 +74,7 @@ async function handleAutoCheckout() {
     });
 
     if (openAttendances.length === 0) {
-      return json({ message: "No open attendances", count: 0 });
+      return json({ message: "No open attendances", version: ROUTE_VERSION, count: 0 });
     }
 
     const settings = await getCachedSettings();
@@ -86,6 +101,15 @@ async function handleAutoCheckout() {
       const workedMinutes = Math.max(0, Math.floor(
         (checkoutTime.getTime() - checkIn.getTime()) / (1000 * 60)
       ) - breakMinutes);
+
+      // DEFENSE IN DEPTH: refuse to auto-checkout employees who would end up
+      // with less than 4h worked (the half-day threshold). Auto-checkout runs
+      // AFTER office hours, so legitimate employees will always have more.
+      // Anyone below this floor is almost certainly the victim of a misfire.
+      if (workedMinutes < 240) {
+        results.push({ name, skipped: true, reason: `workedMinutes=${workedMinutes} below 240 floor`, autoCheckout: false });
+        continue;
+      }
 
       // Resolve status using single source of truth
       const resolved = await resolveAttendanceStatus({
@@ -166,7 +190,7 @@ async function handleAutoCheckout() {
       results.push({ name, workedMinutes, status, autoCheckout: true });
     }
 
-    return json({ mode: "checkout", count: results.length, results });
+    return json({ mode: "checkout", version: ROUTE_VERSION, count: results.length, results });
   } catch (err: any) {
     return error(err.message);
   }
