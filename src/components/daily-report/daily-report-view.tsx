@@ -206,8 +206,11 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
         </div>
       </div>
 
-      {/* Monthly KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Monthly KPI Cards.
+          When there are no FB reports in the dataset (e.g. Izaan's Etsy-
+          scoped view), the FB Posts card is hidden and the grid falls
+          back to 3 columns so the remaining cards stay balanced. */}
+      <div className={`grid grid-cols-2 gap-3 ${fbReports.length > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
           <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
@@ -218,16 +221,18 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
             <p className="text-[10px] text-muted-foreground mt-0.5">{uniqueEtsyEmployees} employees</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Megaphone className="size-3.5 text-blue-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">FB Posts</p>
-            </div>
-            <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{totalFBPosts}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{uniqueFBEmployees} employees</p>
-          </CardContent>
-        </Card>
+        {fbReports.length > 0 && (
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Megaphone className="size-3.5 text-blue-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">FB Posts</p>
+              </div>
+              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{totalFBPosts}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{uniqueFBEmployees} employees</p>
+            </CardContent>
+          </Card>
+        )}
         <Card className="border-0 shadow-sm">
           <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
