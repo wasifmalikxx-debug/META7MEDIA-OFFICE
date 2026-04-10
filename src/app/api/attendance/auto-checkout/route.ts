@@ -1,23 +1,44 @@
 import { NextRequest } from "next/server";
-import { json, error } from "@/lib/api-helpers";
+import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
-import { todayPKT, pktMonth, pktYear } from "@/lib/pkt";
+import { todayPKT, pktMonth, pktYear, pktMinutesSinceMidnight } from "@/lib/pkt";
 import { createNotification } from "@/lib/services/notification.service";
 import { resolveAttendanceStatus } from "@/lib/services/attendance-status";
 import { maybeCreateBreakSkipFine } from "@/lib/services/break-fine";
 
-// GET /api/attendance/auto-checkout — called by Vercel cron
+// GET /api/attendance/auto-checkout — called by Vercel cron only
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader !== `Bearer ${cronSecret}` && process.env.NODE_ENV === "production") {
     return error("Unauthorized", 401);
   }
+  // SAFETY: Even via cron, only run if it's actually late in the day (after work end time)
+  // This prevents accidental early checkouts if cron fires at the wrong time
+  const settings = await getCachedSettings();
+  const [weH, weM] = (settings?.workEndTime || "19:00").split(":").map(Number);
+  const workEndMin = weH * 60 + weM;
+  const currentMin = pktMinutesSinceMidnight();
+  if (currentMin < workEndMin) {
+    return error(`Auto-checkout can only run after ${settings?.workEndTime || "19:00"} PKT. Current PKT time: ${Math.floor(currentMin/60)}:${String(currentMin%60).padStart(2,"0")}`, 400);
+  }
   return handleAutoCheckout();
 }
 
-// POST /api/attendance/auto-checkout — called manually by admin
+// POST /api/attendance/auto-checkout — SUPER_ADMIN only (manual trigger)
 export async function POST() {
+  const session = await requireAuth();
+  if (!session) return error("Unauthorized", 401);
+  const role = (session.user as any).role;
+  if (role !== "SUPER_ADMIN") return error("Forbidden — CEO only", 403);
+  // Also enforce time window for manual POST — no accidental early runs
+  const settings = await getCachedSettings();
+  const [weH, weM] = (settings?.workEndTime || "19:00").split(":").map(Number);
+  const workEndMin = weH * 60 + weM;
+  const currentMin = pktMinutesSinceMidnight();
+  if (currentMin < workEndMin) {
+    return error(`Auto-checkout can only run after ${settings?.workEndTime || "19:00"} PKT.`, 400);
+  }
   return handleAutoCheckout();
 }
 
