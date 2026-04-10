@@ -101,6 +101,35 @@ export function EmployeeDashboard({
   const [leaves, setLeaves] = useState(initialLeaveRequests);
   const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
   const [, setTick] = useState(0);
+
+  // Server time offset: computed as (server UTC ms - client Date.now()) so we can
+  // use authoritative server time even when the user's PC clock is wrong.
+  // Starts at 0 (trusts client) and gets corrected after the first fetch.
+  const [serverTimeOffset, setServerTimeOffset] = useState(0);
+
+  // Sync server time on mount and every 5 minutes so time stays accurate
+  // even for clients with drifted/wrong PC clocks (e.g. remote employees on
+  // anti-detect browsers, manually set system clocks, etc.)
+  useEffect(() => {
+    let cancelled = false;
+    async function syncServerTime() {
+      try {
+        const t0 = Date.now();
+        const res = await fetch("/api/server-time", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const t1 = Date.now();
+        // Account for round-trip latency — assume half of it was each direction
+        const latency = Math.floor((t1 - t0) / 2);
+        const serverNow = data.utcMs + latency;
+        const offset = serverNow - Date.now();
+        if (!cancelled) setServerTimeOffset(offset);
+      } catch {}
+    }
+    syncServerTime();
+    const interval = setInterval(syncServerTime, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
   const [reportOpen, setReportOpen] = useState(false);
   const [hasReport, setHasReport] = useState(!!initialHasReport);
   const [reportForm, setReportForm] = useState({
@@ -194,7 +223,10 @@ export function EmployeeDashboard({
   const breakDone = !!attendance?.breakEnd;
 
   // Check-in window: 30 minutes before office start time (using PKT)
-  const pktNow = new Date(Date.now() + 5 * 60 * 60_000); // PKT time
+  // Use serverTimeOffset so the clock is correct even if the user's PC clock is wrong.
+  // Authoritative UTC = Date.now() + serverTimeOffset, then add 5h for PKT.
+  const trueUtcMs = Date.now() + serverTimeOffset;
+  const pktNow = new Date(trueUtcMs + 5 * 60 * 60_000); // PKT time
   const currentMinutes = pktNow.getUTCHours() * 60 + pktNow.getUTCMinutes();
   const [wsH, wsM] = (workStartTime || "11:00").split(":").map(Number);
   const workStartMin = wsH * 60 + wsM;
@@ -838,7 +870,7 @@ export function EmployeeDashboard({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold">
-            {new Date(Date.now() + 5 * 60 * 60_000).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}
+            {new Date(trueUtcMs + 5 * 60 * 60_000).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}
           </h2>
           <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Resets monthly</span>
         </div>
@@ -897,7 +929,7 @@ export function EmployeeDashboard({
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">This Week</p>
               <div className="flex gap-1.5">
                 {(() => {
-                  const pktNowW = new Date(Date.now() + 5 * 60 * 60_000);
+                  const pktNowW = new Date(trueUtcMs + 5 * 60 * 60_000);
                   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
                   const todayDow = pktNowW.getUTCDay();
                   // Get Monday of this week
@@ -1050,12 +1082,12 @@ export function EmployeeDashboard({
             <div className="space-y-2">
               {leaves.map((leave: any) => {
                 const leaveDate = new Date(leave.startDate);
-                const pktNow = new Date(Date.now() + 5 * 60 * 60_000);
-                const today = new Date(Date.UTC(pktNow.getUTCFullYear(), pktNow.getUTCMonth(), pktNow.getUTCDate()));
+                const pktNowLeave = new Date(trueUtcMs + 5 * 60 * 60_000);
+                const today = new Date(Date.UTC(pktNowLeave.getUTCFullYear(), pktNowLeave.getUTCMonth(), pktNowLeave.getUTCDate()));
                 const isToday = leaveDate.getTime() === today.getTime();
                 const isFuture = leaveDate > today;
                 const createdAt = new Date(leave.createdAt);
-                const minutesSinceCreated = Math.floor((Date.now() - createdAt.getTime()) / 60000);
+                const minutesSinceCreated = Math.floor((trueUtcMs - createdAt.getTime()) / 60000);
                 // 15-minute edit window from creation time
                 const canEdit = minutesSinceCreated <= 15;
                 const cancelTimeLeft = isToday && canEdit ? Math.max(0, 15 - minutesSinceCreated) : null;
@@ -1138,7 +1170,7 @@ export function EmployeeDashboard({
                     <Input
                       type="date"
                       value={leaveForm.date}
-                      min={new Date(Date.now() + 5 * 60 * 60_000).toISOString().split("T")[0]}
+                      min={new Date(trueUtcMs + 5 * 60 * 60_000).toISOString().split("T")[0]}
                       onChange={(e) => setLeaveForm({ ...leaveForm, date: e.target.value })}
                     />
                   </div>
