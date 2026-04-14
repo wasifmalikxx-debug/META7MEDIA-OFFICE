@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { AttendanceCalendarView } from "@/components/attendance/attendance-calendar-view";
+import { autoHealBogusCheckouts } from "@/lib/services/auto-heal-bogus-checkouts";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,9 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
 
   const role = (session.user as any).role;
   if (role !== "SUPER_ADMIN") redirect("/dashboard");
+
+  // SELF-HEAL: revert bogus auto-checkout records (recurring Vercel stale-build bug).
+  await autoHealBogusCheckouts().catch((e) => console.warn("[auto-heal]", e));
 
   const params = await searchParams;
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);

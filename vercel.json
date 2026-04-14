@@ -2,10 +2,6 @@
   "regions": ["syd1"],
   "crons": [
     {
-      "path": "/api/attendance/auto-checkout",
-      "schedule": "0 15 * * 1-6"
-    },
-    {
       "path": "/api/cron/daily-absent",
       "schedule": "3 15 * * 1-6"
     },
