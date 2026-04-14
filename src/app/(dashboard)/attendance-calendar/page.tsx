@@ -68,46 +68,51 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   const SYS_START_MONTH = 3; // 0-indexed: 3 = April
   const sysStart = new Date(Date.UTC(SYS_START_YEAR, SYS_START_MONTH, 1));
 
-  const [coveredFines, halfDayLeaveRequests, allAbsents, allAbsentFines] = await Promise.all([
-    // Covered absences (fines with amount=0) — only from April 2026 onwards
-    prisma.fine.groupBy({
-      by: ["userId"],
-      where: { userId: { in: empIds }, amount: 0, reason: { contains: "Covered by paid leave" }, date: { gte: sysStart } },
-      _count: true,
-    }),
-    // Half-day LEAVE REQUESTS (not attendance status) per employee
+  // Batch-fetch everything we need to compute budget for all employees in
+  // parallel. Logic MUST stay in sync with leave-budget.service.ts — we can't
+  // call the service here because it's per-user (N round trips).
+  const [halfDayLeaveRequests, allAbsents, allAbsentFines] = await Promise.all([
     prisma.leaveRequest.groupBy({
       by: ["userId"],
       where: { userId: { in: empIds }, leaveType: "HALF_DAY", status: "APPROVED", startDate: { gte: sysStart } },
       _count: true,
     }),
-    // ALL absent attendance records from sys start — used to detect orphan absences (no fine)
     prisma.attendance.findMany({
       where: { userId: { in: empIds }, status: "ABSENT", date: { gte: sysStart } },
       select: { userId: true, date: true },
     }),
-    // ALL absent fines (any amount) from sys start — to match against attendances
+    // Need the reason to parse partial vs full coverage (see leave-budget.service.ts)
     prisma.fine.findMany({
       where: { userId: { in: empIds }, type: "ABSENT_WITHOUT_LEAVE", date: { gte: sysStart } },
-      select: { userId: true, date: true },
+      select: { userId: true, date: true, reason: true },
     }),
   ]);
 
-  const coveredMap: Record<string, number> = {};
-  coveredFines.forEach((f: any) => { coveredMap[f.userId] = f._count; });
   const halfDayMap: Record<string, number> = {};
   halfDayLeaveRequests.forEach((a: any) => { halfDayMap[a.userId] = a._count; });
 
-  // Build set of "userId|dateStr" for absent fines (any amount) — fast lookup
-  const absentFineSet = new Set<string>();
+  // Parse each absent fine's reason to determine how many budget days it
+  // consumed (same parsing as leave-budget.service.ts):
+  //   "Partially covered by paid leave (X day used)" → X
+  //   "Covered by paid leave"                        → 1.0
+  //   anything else (uncovered full fine)            → 0
+  const absentDaysUsedMap: Record<string, number> = {};
+  const absentFineDateSet = new Set<string>();
   for (const f of allAbsentFines) {
-    absentFineSet.add(`${f.userId}|${f.date.toISOString().split("T")[0]}`);
+    absentFineDateSet.add(`${f.userId}|${f.date.toISOString().split("T")[0]}`);
+    const r = f.reason || "";
+    const partial = r.match(/Partially covered by paid leave \((\d+(?:\.\d+)?) day used\)/i);
+    let used = 0;
+    if (partial) used = parseFloat(partial[1]);
+    else if (/Covered by paid leave/i.test(r)) used = 1;
+    absentDaysUsedMap[f.userId] = (absentDaysUsedMap[f.userId] || 0) + used;
   }
-  // Count orphan absents per user (absent attendance with NO fine at all)
+
+  // Orphan absents: ABSENT attendance with NO fine at all → count as 1 day used
   const orphanAbsentMap: Record<string, number> = {};
   for (const a of allAbsents) {
     const key = `${a.userId}|${a.date.toISOString().split("T")[0]}`;
-    if (!absentFineSet.has(key)) {
+    if (!absentFineDateSet.has(key)) {
       orphanAbsentMap[a.userId] = (orphanAbsentMap[a.userId] || 0) + 1;
     }
   }
@@ -117,8 +122,10 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   for (const emp of employees) {
     const monthsActive = Math.max(1, (now.getUTCFullYear() - SYS_START_YEAR) * 12 + (now.getUTCMonth() - SYS_START_MONTH) + 1);
     const totalEarned = monthsActive * paidLeavesPerMonth;
-    // Matches leave-budget.service.ts: covered fines + orphan absents + half-day leaves * 0.5
-    const totalUsed = (coveredMap[emp.id] || 0) + (orphanAbsentMap[emp.id] || 0) + (halfDayMap[emp.id] || 0) * 0.5;
+    const totalUsed =
+      (absentDaysUsedMap[emp.id] || 0) +
+      (orphanAbsentMap[emp.id] || 0) +
+      (halfDayMap[emp.id] || 0) * 0.5;
     leaveBudgets[emp.id] = Math.max(0, totalEarned - totalUsed);
   }
 
