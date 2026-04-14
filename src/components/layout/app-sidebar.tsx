@@ -24,6 +24,7 @@ import {
   MessageSquare,
   BarChart3,
   CalendarDays,
+  CalendarMinus,
   AlertOctagon,
   RefreshCcw,
   FileText,
@@ -77,6 +78,7 @@ function getMainNav(userRole: string) {
 const managementNav = [
   { title: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN"] },
   { title: "Departments", href: "/departments", icon: Building2, roles: ["SUPER_ADMIN"] },
+  { title: "Leave Management", href: "/leaves", icon: CalendarMinus, roles: ["SUPER_ADMIN"] },
   { title: "Login Approvals", href: "/login-approvals", icon: ShieldCheck, roles: ["SUPER_ADMIN"] },
 ];
 

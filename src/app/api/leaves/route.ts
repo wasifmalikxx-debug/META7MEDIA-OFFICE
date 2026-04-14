@@ -15,10 +15,12 @@ export async function GET(request: NextRequest) {
   const userId = searchParams.get("userId");
 
   const where: any = {};
-  if (role === "EMPLOYEE") {
+  // Only SUPER_ADMIN / HR_ADMIN can see all leaves.
+  // MANAGER and EMPLOYEE only see their own unless admin passes ?userId=
+  if (role === "SUPER_ADMIN" || role === "HR_ADMIN") {
+    if (userId) where.userId = userId;
+  } else {
     where.userId = session.user.id;
-  } else if (userId) {
-    where.userId = userId;
   }
   if (status) where.status = status;
 
