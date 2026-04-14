@@ -231,65 +231,100 @@ export function LeavesView({ leaves, balance, isAdmin, userId }: LeavesViewProps
         </TabsList>
 
         <TabsContent value="all">
-          <Card>
-            <CardContent className="pt-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {isAdmin && <TableHead>Employee</TableHead>}
-                    <TableHead>Type</TableHead>
-                    <TableHead>Dates</TableHead>
-                    <TableHead>Days</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Reason</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(isAdmin ? otherLeaves : leaves).length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={isAdmin ? 6 : 5}
-                        className="text-center text-muted-foreground"
-                      >
-                        No leave requests found.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    (isAdmin ? otherLeaves : leaves).map((leave) => (
-                      <TableRow key={leave.id}>
-                        {isAdmin && (
-                          <TableCell className="text-sm">
-                            {leave.user.firstName} {leave.user.lastName}
-                          </TableCell>
-                        )}
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {leave.leaveType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {format(new Date(leave.startDate), "MMM d")} —{" "}
-                          {format(new Date(leave.endDate), "MMM d, yyyy")}
-                        </TableCell>
-                        <TableCell className="text-sm">{leave.totalDays}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={statusColors[leave.status] || "outline"}
-                            className="text-xs"
-                          >
-                            {leave.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[200px] truncate">
-                          {leave.reason}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          {(() => {
+            const visibleLeaves = isAdmin ? otherLeaves : leaves;
+            if (visibleLeaves.length === 0) {
+              return (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                    No leave requests found.
+                  </CardContent>
+                </Card>
+              );
+            }
+            // Group by month (newest first). Uses the leave's startDate so a
+            // leave taken in April lands in April regardless of when it was
+            // submitted. Cleanup cron already prunes to the last 3 months.
+            const byMonth: Record<string, any[]> = {};
+            for (const l of visibleLeaves) {
+              const d = new Date(l.startDate);
+              const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+              if (!byMonth[key]) byMonth[key] = [];
+              byMonth[key].push(l);
+            }
+            const monthKeys = Object.keys(byMonth).sort((a, b) => b.localeCompare(a));
+            const monthLabel = (key: string) => {
+              const [y, m] = key.split("-").map(Number);
+              return format(new Date(Date.UTC(y, m - 1, 1)), "MMMM yyyy");
+            };
+
+            return (
+              <div className="space-y-4">
+                {monthKeys.map((key) => {
+                  const rows = byMonth[key];
+                  const totalDays = rows.reduce((s: number, r: any) => s + (r.totalDays || 0), 0);
+                  return (
+                    <Card key={key}>
+                      <CardHeader className="py-3 px-4 border-b bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm font-semibold">{monthLabel(key)}</CardTitle>
+                          <span className="text-xs text-muted-foreground">
+                            {rows.length} request{rows.length === 1 ? "" : "s"} · {totalDays} day{totalDays === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-2 px-0">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              {isAdmin && <TableHead>Employee</TableHead>}
+                              <TableHead>Type</TableHead>
+                              <TableHead>Dates</TableHead>
+                              <TableHead>Days</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Reason</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {rows.map((leave: any) => (
+                              <TableRow key={leave.id}>
+                                {isAdmin && (
+                                  <TableCell className="text-sm">
+                                    {leave.user.firstName} {leave.user.lastName}
+                                  </TableCell>
+                                )}
+                                <TableCell>
+                                  <Badge variant="outline" className="text-xs">
+                                    {leave.leaveType}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-sm">
+                                  {format(new Date(leave.startDate), "MMM d")} —{" "}
+                                  {format(new Date(leave.endDate), "MMM d, yyyy")}
+                                </TableCell>
+                                <TableCell className="text-sm">{leave.totalDays}</TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={statusColors[leave.status] || "outline"}
+                                    className="text-xs"
+                                  >
+                                    {leave.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-sm max-w-[200px] truncate">
+                                  {leave.reason}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </TabsContent>
       </Tabs>
     </div>

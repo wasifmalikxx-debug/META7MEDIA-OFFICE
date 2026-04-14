@@ -25,7 +25,10 @@ export default async function LeavesPage() {
         user: { select: { firstName: true, lastName: true, employeeId: true } },
         approver: { select: { firstName: true, lastName: true } },
       },
-      orderBy: { createdAt: "desc" },
+      // Sort by leave month (newest first) then by createdAt within each month.
+      // Cleanup cron already prunes anything older than 3 months, so this view
+      // naturally shows at most the last 3 months.
+      orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
     }),
     prisma.leaveBalance.findUnique({
       where: {

@@ -28,38 +28,44 @@ export async function getAccumulatedLeaveBudget(
 
   const systemStart = new Date(Date.UTC(SYSTEM_START_YEAR, SYSTEM_START_MONTH, 1));
 
-  // Count covered absences from fines (amount=0, "Covered by paid leave")
-  const coveredAbsenceFines = await prisma.fine.count({
+  // Parse all absence fines. The fine reason encodes how many budget days were
+  // consumed (set by payroll.service.ts normalization and daily-absent cron):
+  //   - "Covered by paid leave (1.0 day used)" / "Covered by paid leave" → 1.0
+  //   - "Partially covered by paid leave (X day used)"                   → X
+  //   - Anything else (uncovered full fine)                              → 0
+  const absentFines = await prisma.fine.findMany({
     where: {
       userId,
-      amount: 0,
-      reason: { contains: "Covered by paid leave" },
+      type: "ABSENT_WITHOUT_LEAVE",
       date: { gte: systemStart },
     },
+    select: { reason: true, date: true },
   });
-
-  // Also count ABSENT attendance records that have NO fine at all
-  // (cron may not have created a fine if salary structure was missing at the time)
-  const absentDates = await prisma.attendance.findMany({
-    where: {
-      userId,
-      status: "ABSENT",
-      date: { gte: systemStart },
-    },
-    select: { date: true },
-  });
-  // Check which absences have no fine record
-  let uncoveredAbsencesWithoutFine = 0;
-  for (const att of absentDates) {
-    const hasFine = await prisma.fine.findFirst({
-      where: { userId, date: att.date, type: "ABSENT_WITHOUT_LEAVE" },
-    });
-    if (!hasFine) {
-      uncoveredAbsencesWithoutFine++;
+  const datesWithFine = new Set(absentFines.map((f) => f.date.toISOString()));
+  let absentDaysUsed = 0;
+  for (const f of absentFines) {
+    const r = f.reason || "";
+    const partial = r.match(/Partially covered by paid leave \((\d+(?:\.\d+)?) day used\)/i);
+    if (partial) {
+      absentDaysUsed += parseFloat(partial[1]);
+    } else if (/Covered by paid leave/i.test(r)) {
+      absentDaysUsed += 1;
     }
+    // else: uncovered — consumes 0 budget days
   }
 
-  // Count ONLY half-day leave requests (not wrongly-marked HALF_DAY attendance)
+  // Orphan absents: ABSENT attendance with NO fine at all. Treat as 1 day
+  // fully used so the budget can't be re-spent later on the same day.
+  const absentDates = await prisma.attendance.findMany({
+    where: { userId, status: "ABSENT", date: { gte: systemStart } },
+    select: { date: true },
+  });
+  let uncoveredAbsencesWithoutFine = 0;
+  for (const att of absentDates) {
+    if (!datesWithFine.has(att.date.toISOString())) uncoveredAbsencesWithoutFine++;
+  }
+
+  // Half-day leave requests — each consumes 0.5 day.
   const halfDayLeaves = await prisma.leaveRequest.count({
     where: {
       userId,
@@ -69,8 +75,7 @@ export async function getAccumulatedLeaveBudget(
     },
   });
 
-  // Each covered absence = 1.0 used, each orphan absence = 1.0 used, each half-day = 0.5 used
-  const totalUsed = coveredAbsenceFines + uncoveredAbsencesWithoutFine + (halfDayLeaves * 0.5);
+  const totalUsed = absentDaysUsed + uncoveredAbsencesWithoutFine + halfDayLeaves * 0.5;
   const available = Math.max(0, totalEarned - totalUsed);
 
   return { totalEarned, totalUsed, available };

@@ -116,14 +116,19 @@ export async function GET(request: NextRequest) {
         const { getAccumulatedLeaveBudget } = await import("@/lib/services/leave-budget.service");
         const { available: accumulatedBudget } = await getAccumulatedLeaveBudget(emp.id, paidLeaveBudget);
 
-        let fineAmount = dailyRate;
-        let fineReason = `Absent on ${dateStr} — PKR ${dailyRate.toLocaleString()} (salary/30) deducted`;
-        let isCoveredByPaidLeave = false;
-
-        if (accumulatedBudget >= 1) {
-          fineAmount = 0;
-          fineReason = `Absent on ${dateStr} — Covered by paid leave (${accumulatedBudget.toFixed(1)} days remaining)`;
-          isCoveredByPaidLeave = true;
+        // Partial-coverage logic: consume as much budget as available (up to 1
+        // day). Same reason format as payroll.service.ts normalization so the
+        // budget service parses both consistently.
+        const coverage = Math.min(1, Math.max(0, accumulatedBudget));
+        const uncoveredFraction = 1 - coverage;
+        const fineAmount = Math.round(dailyRate * uncoveredFraction);
+        let fineReason: string;
+        if (coverage >= 1) {
+          fineReason = `Absent on ${dateStr} — Covered by paid leave (1.0 day used)`;
+        } else if (coverage > 0) {
+          fineReason = `Absent on ${dateStr} — Partially covered by paid leave (${coverage.toFixed(1)} day used); PKR ${fineAmount.toLocaleString()} (salary/30 × ${uncoveredFraction.toFixed(1)}) deducted`;
+        } else {
+          fineReason = `Absent on ${dateStr} — PKR ${fineAmount.toLocaleString()} (salary/30) deducted`;
         }
 
         await prisma.fine.create({
@@ -155,7 +160,9 @@ export async function GET(request: NextRequest) {
           name: `${emp.firstName} ${emp.lastName || ""}`.trim(),
           action: "marked_absent",
           fine: fineAmount,
-          coveredByPaidLeave: isCoveredByPaidLeave,
+          coverage,
+          coveredByPaidLeave: coverage >= 1,
+          partiallyCovered: coverage > 0 && coverage < 1,
         });
       }
     }

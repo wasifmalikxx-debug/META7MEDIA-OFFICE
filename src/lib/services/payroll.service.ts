@@ -125,131 +125,145 @@ export async function generatePayrollForEmployee(
   );
   const totalEarned = monthsActive * paidLeavesPerMonth;
 
-  // Sort absents chronologically so earlier ones get covered first
-  const allUserAbsents = await prisma.attendance.findMany({
-    where: { userId, status: "ABSENT", date: { gte: SYS_START } },
-    select: { date: true },
-    orderBy: { date: "asc" },
-  });
+  // Walk ALL budget consumers in chronological order so earlier events consume
+  // budget first. This is the single source of truth for each absent fine's
+  // amount and reason — daily-absent cron writes the same format, and the
+  // payroll render reads the fine amount directly.
+  const [allHalfDayLeaves, allUserAbsents] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: { userId, leaveType: "HALF_DAY", status: "APPROVED", startDate: { gte: SYS_START } },
+      select: { startDate: true },
+      orderBy: { startDate: "asc" },
+    }),
+    prisma.attendance.findMany({
+      where: { userId, status: "ABSENT", date: { gte: SYS_START } },
+      select: { date: true },
+      orderBy: { date: "asc" },
+    }),
+  ]);
 
-  // Budget remaining as we walk through absents in order
-  let budgetLeft = totalEarned - halfDayLeavesAllTime * 0.5;
+  const events: Array<{ date: Date; kind: "half" | "absent" }> = [
+    ...allHalfDayLeaves.map((l) => ({ date: l.startDate, kind: "half" as const })),
+    ...allUserAbsents.map((a) => ({ date: a.date, kind: "absent" as const })),
+  ];
+  events.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  let budgetLeft = totalEarned;
   const admin = await prisma.user.findFirst({
     where: { role: "SUPER_ADMIN" },
     select: { id: true },
   });
 
-  for (const abs of allUserAbsents) {
-    const dateStr = abs.date.toISOString().split("T")[0];
-    const shouldCover = budgetLeft >= 1;
-    if (shouldCover) budgetLeft -= 1;
+  for (const ev of events) {
+    if (ev.kind === "half") {
+      // Half-day leaves consume 0.5 each; no fine record to normalize.
+      budgetLeft = Math.max(0, budgetLeft - 0.5);
+      continue;
+    }
 
-    // Find existing fine for this absent
+    const dateStr = ev.date.toISOString().split("T")[0];
+
+    // Coverage for this absent: min(1, budgetLeft). Can be 0, partial, or 1.
+    const coverage = Math.min(1, Math.max(0, budgetLeft));
+    budgetLeft = Math.max(0, budgetLeft - coverage);
+
+    const uncoveredFraction = 1 - coverage;
+    const expectedAmount = Math.round(dailyRate * uncoveredFraction);
+
+    let expectedReason: string;
+    if (coverage >= 1) {
+      expectedReason = `Absent on ${dateStr} — Covered by paid leave (1.0 day used)`;
+    } else if (coverage > 0) {
+      expectedReason = `Absent on ${dateStr} — Partially covered by paid leave (${coverage.toFixed(1)} day used); PKR ${expectedAmount.toLocaleString()} (salary/30 × ${uncoveredFraction.toFixed(1)}) deducted`;
+    } else {
+      expectedReason = `Absent on ${dateStr} — PKR ${expectedAmount.toLocaleString()} (salary/30) deducted`;
+    }
+
     const existingFine = await prisma.fine.findFirst({
-      where: { userId, date: abs.date, type: "ABSENT_WITHOUT_LEAVE" },
+      where: { userId, date: ev.date, type: "ABSENT_WITHOUT_LEAVE" },
     });
 
-    if (shouldCover) {
-      // Should be covered (amount = 0)
-      const expectedReason = `Absent on ${dateStr} — Covered by paid leave`;
-      if (!existingFine) {
-        // No fine exists — create the covered one
-        if (admin) {
-          await prisma.fine.create({
-            data: {
-              userId,
-              type: "ABSENT_WITHOUT_LEAVE",
-              amount: 0,
-              reason: expectedReason,
-              date: abs.date,
-              month: abs.date.getUTCMonth() + 1,
-              year: abs.date.getUTCFullYear(),
-              issuedById: admin.id,
-            },
-          });
-        }
-      } else if (existingFine.amount !== 0) {
-        // Fine exists but wrong amount — update to covered
-        await prisma.fine.update({
-          where: { id: existingFine.id },
-          data: { amount: 0, reason: expectedReason },
+    if (!existingFine) {
+      if (admin) {
+        await prisma.fine.create({
+          data: {
+            userId,
+            type: "ABSENT_WITHOUT_LEAVE",
+            amount: expectedAmount,
+            reason: expectedReason,
+            date: ev.date,
+            month: ev.date.getUTCMonth() + 1,
+            year: ev.date.getUTCFullYear(),
+            issuedById: admin.id,
+          },
         });
       }
-      // If existingFine.amount === 0, it's already correct
-    } else {
-      // Should be uncovered (deduct daily rate)
-      const uncoveredAmount = Math.round(salary.monthlySalary / 30);
-      const expectedReason = `Absent on ${dateStr} — PKR ${uncoveredAmount.toLocaleString()} (salary/30) deducted`;
-      if (!existingFine) {
-        if (admin) {
-          await prisma.fine.create({
-            data: {
-              userId,
-              type: "ABSENT_WITHOUT_LEAVE",
-              amount: uncoveredAmount,
-              reason: expectedReason,
-              date: abs.date,
-              month: abs.date.getUTCMonth() + 1,
-              year: abs.date.getUTCFullYear(),
-              issuedById: admin.id,
-            },
-          });
-        }
-      } else if (existingFine.amount !== uncoveredAmount) {
-        await prisma.fine.update({
-          where: { id: existingFine.id },
-          data: { amount: uncoveredAmount, reason: expectedReason },
-        });
-      }
+    } else if (existingFine.amount !== expectedAmount || existingFine.reason !== expectedReason) {
+      await prisma.fine.update({
+        where: { id: existingFine.id },
+        data: { amount: expectedAmount, reason: expectedReason },
+      });
     }
   }
 
-  // After normalization, count the covered fines for THIS month
-  const monthCoveredAbsenceFines = await prisma.fine.findMany({
+  // ── Read the normalized fines for THIS month to compute payroll totals ──
+  // Single source of truth: the loop above set every absent fine's amount and
+  // reason correctly. Parse the reason to extract how much budget each one
+  // consumed, and use amount directly for deduction.
+  const monthAbsentFines = await prisma.fine.findMany({
     where: {
       userId,
-      amount: 0,
       type: "ABSENT_WITHOUT_LEAVE",
-      reason: { contains: "Covered by paid leave" },
       date: { gte: startDate, lte: endDate },
     },
-    select: { date: true },
+    select: { amount: true, reason: true },
   });
-  const alreadyCoveredCount = monthCoveredAbsenceFines.length;
 
-  // Orphan = absent in THIS month that still has a non-zero fine
-  let orphanAbsents = Math.max(0, totalAbsentDays - alreadyCoveredCount);
-
-  const { available: accumulatedAvailable } = await (
-    await import("@/lib/services/leave-budget.service")
-  ).getAccumulatedLeaveBudget(userId, paidLeavesPerMonth);
-
-  let remainingBudget = accumulatedAvailable;
-
-  // Half days consume 0.5 each from remaining budget
-  const coveredHalfDays = Math.min(halfDays, Math.floor(remainingBudget / 0.5));
-  const deductibleHalfDays = halfDays - coveredHalfDays;
-  remainingBudget -= coveredHalfDays * 0.5;
-
-  // At this point, orphan absents should be 0 because we normalized above.
-  // But keep the logic for edge cases.
-  let coveredOrphanAbsents = 0;
-  let partialAbsentCoverage = 0;
-  if (orphanAbsents > 0 && remainingBudget > 0) {
-    if (remainingBudget >= orphanAbsents) {
-      coveredOrphanAbsents = orphanAbsents;
-      remainingBudget -= orphanAbsents;
-    } else {
-      coveredOrphanAbsents = Math.floor(remainingBudget);
-      partialAbsentCoverage = remainingBudget - coveredOrphanAbsents;
-      remainingBudget = 0;
+  let absentPaidLeaveDays = 0; // budget days consumed by absents this month
+  let absentFineTotal = 0;     // PKR deducted for uncovered/partial portions
+  for (const f of monthAbsentFines) {
+    absentFineTotal += f.amount || 0;
+    const reason = f.reason || "";
+    const partial = reason.match(/Partially covered by paid leave \((\d+(?:\.\d+)?) day used\)/i);
+    if (partial) {
+      absentPaidLeaveDays += parseFloat(partial[1]);
+    } else if (/Covered by paid leave/i.test(reason)) {
+      absentPaidLeaveDays += 1;
     }
   }
-  const uncoveredAbsentDays = orphanAbsents - coveredOrphanAbsents;
 
-  // For the payroll record, absentDays = uncovered only
-  let absentDays = uncoveredAbsentDays;
-  const autoPaidLeaves = alreadyCoveredCount + coveredOrphanAbsents + partialAbsentCoverage + coveredHalfDays * 0.5;
+  // For the payroll record:
+  //   - absentDays counts days with ANY uncovered portion (purely informational)
+  //   - deductibleHalfDays is computed below from attendance.HALF_DAY days that
+  //     were NOT backed by a half-day leave (budget already consumed via leave)
+  const fullyUncoveredAbsents = monthAbsentFines.filter(
+    (f) => f.amount > 0 && !/Partially covered/i.test(f.reason || "")
+  ).length;
+  const partiallyCoveredAbsents = monthAbsentFines.filter(
+    (f) => /Partially covered/i.test(f.reason || "")
+  ).length;
+  let absentDays = fullyUncoveredAbsents + partiallyCoveredAbsents;
+
+  // Half days: attendance.HALF_DAY count (line 80) is the raw count of days
+  // marked HALF_DAY. Each corresponds to either a half-day leave request
+  // (budget already consumed via leave) or an orphan half-day (no leave).
+  // Budget for orphan half-days has ALREADY been consumed in the walk above
+  // if there was one — but the walk only processed half-day LEAVES. So orphan
+  // half-days (HALF_DAY status without a matching leave) are effectively
+  // half-day absences and should deduct 0.5 × dailyRate each.
+  const halfDayLeavesThisMonth = await prisma.leaveRequest.count({
+    where: {
+      userId,
+      leaveType: "HALF_DAY",
+      status: "APPROVED",
+      startDate: { gte: startDate, lte: endDate },
+    },
+  });
+  // attendance.HALF_DAY that don't have a matching leave this month
+  const orphanHalfDays = Math.max(0, halfDays - halfDayLeavesThisMonth);
+  const deductibleHalfDays = orphanHalfDays;
+
+  const autoPaidLeaves = absentPaidLeaveDays + halfDayLeavesThisMonth * 0.5;
 
   // Get approved leaves for the month (manual leave requests)
   const leaves = await prisma.leaveRequest.findMany({
@@ -312,13 +326,13 @@ export async function generatePayrollForEmployee(
 
   // Calculate salary
   // Gross = monthly salary
-  // Deductions = uncovered absences + uncovered half days + partial absent + fines + tax
+  // Deductions = uncovered absences (from fine amounts) + uncovered half days + fines + tax
   const halfDayDeductions = roundMoney(deductibleHalfDays * dailyRate * 0.5);
   const leaveDeductions = roundMoney(unpaidLeaveDays * dailyRate);
-  // Uncovered absents deducted fully, partial coverage deducts the uncovered portion
-  const absentDeductions = roundMoney(
-    absentDays * dailyRate + (partialAbsentCoverage > 0 ? (1 - partialAbsentCoverage) * dailyRate : 0)
-  );
+  // Absent deductions come directly from the normalized fine amounts set above.
+  // This handles full (dailyRate), partial (dailyRate × uncoveredFraction), and
+  // covered (0) in one place — no double-counting possible.
+  const absentDeductions = roundMoney(absentFineTotal);
   const earnedSalary = roundMoney(salary.monthlySalary);
   const taxDeduction = roundMoney(earnedSalary * (salary.taxPercent / 100));
   const fixedDeductions = roundMoney(
