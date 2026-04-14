@@ -4,12 +4,17 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { PayrollView } from "@/components/payroll/payroll-view";
 import { generatePayrollForEmployee, generatePayrollForAll } from "@/lib/services/payroll.service";
+import { autoHealBogusCheckouts } from "@/lib/services/auto-heal-bogus-checkouts";
 
 export const dynamic = "force-dynamic";
 
 export default async function PayrollPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+
+  // SELF-HEAL: revert bogus auto-checkout records before regenerating payroll
+  // so the regen reads correct attendance, not the legacy 14:00 UTC stamps.
+  await autoHealBogusCheckouts().catch((e) => console.warn("[auto-heal]", e));
 
   const params = await searchParams;
   const role = (session.user as any).role;

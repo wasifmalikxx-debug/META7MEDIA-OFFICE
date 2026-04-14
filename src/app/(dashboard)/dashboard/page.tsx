@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
 import { todayPKT, nowPKT, pktMonth, pktYear } from "@/lib/pkt";
+import { autoHealBogusCheckouts } from "@/lib/services/auto-heal-bogus-checkouts";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,12 @@ export default async function DashboardPage() {
   const today = todayPKT();
   const month = pktMonth();
   const year = pktYear();
+
+  // SELF-HEAL: revert any bogus auto-checkout records before rendering.
+  // Defends against the recurring stale-Vercel-deploy bug where pre-March-31
+  // auto-checkout code stamps fake 14:00 UTC checkouts on the whole team.
+  // Idempotent — no-op if data is healthy.
+  await autoHealBogusCheckouts().catch((e) => console.warn("[auto-heal]", e));
 
   if (userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN") {
     // Admin dashboard — all queries in ONE batch
