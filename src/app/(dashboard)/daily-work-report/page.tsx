@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { DailyReportView } from "@/components/daily-report/daily-report-view";
+import { computeDuplicates } from "@/lib/services/duplicate-listings";
 
 export const dynamic = "force-dynamic";
 
@@ -37,20 +38,39 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
   const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
   const endOfMonth = new Date(Date.UTC(year, month, 0));
 
+  // Duplicate detection window: last 3 months, ending at the currently-viewed
+  // month's end. Matches the cleanup cron's retention — anything older is
+  // already pruned, so scanning further back would return nothing.
+  const detectionStart = new Date(Date.UTC(year, month - 3, 1));
+
   // Build the where clause. For Izaan, restrict to Etsy team members only
   // (employeeId starts with "EM"). For CEO, no restriction.
-  const where: any = { date: { gte: startOfMonth, lte: endOfMonth } };
-  if (isEtsyTeamLead && !isAdmin) {
-    where.user = { employeeId: { startsWith: "EM" } };
-  }
+  const baseWhere: any = isEtsyTeamLead && !isAdmin
+    ? { user: { employeeId: { startsWith: "EM" } } }
+    : {};
 
-  const reports = await prisma.dailyReport.findMany({
-    where,
-    include: {
-      user: { select: { firstName: true, lastName: true, employeeId: true } },
-    },
-    orderBy: { date: "desc" },
-  });
+  // Fetch the currently-viewed month for display AND the 3-month detection
+  // window for duplicate analysis, in parallel. The detection pool is
+  // ordered oldest-first so the first occurrence of each listing ID is
+  // correctly identified as the canonical origin.
+  const [reports, detectionPool] = await Promise.all([
+    prisma.dailyReport.findMany({
+      where: { ...baseWhere, date: { gte: startOfMonth, lte: endOfMonth } },
+      include: {
+        user: { select: { firstName: true, lastName: true, employeeId: true } },
+      },
+      orderBy: { date: "desc" },
+    }),
+    prisma.dailyReport.findMany({
+      where: { ...baseWhere, date: { gte: detectionStart, lte: endOfMonth } },
+      include: {
+        user: { select: { firstName: true, lastName: true, employeeId: true } },
+      },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
+
+  const duplicatesByReport = computeDuplicates(detectionPool);
 
   return (
     <div className="space-y-6">
@@ -64,6 +84,7 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
       />
       <DailyReportView
         reports={JSON.parse(JSON.stringify(reports))}
+        duplicatesByReport={JSON.parse(JSON.stringify(duplicatesByReport))}
         currentMonth={month}
         currentYear={year}
       />
