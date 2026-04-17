@@ -5,18 +5,26 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   ChevronLeft, ChevronRight, Calendar, ShoppingBag, Megaphone,
-  FileText, Link2, Users, ExternalLink, ClipboardList,
+  FileText, Link2, Users, ExternalLink, ClipboardList, AlertTriangle,
 } from "lucide-react";
+import { extractEtsyListingId, type DuplicateHit } from "@/lib/services/duplicate-listings";
 
 interface DailyReportViewProps {
   reports: any[];
   currentMonth: number;
   currentYear: number;
+  duplicatesByReport?: Record<string, DuplicateHit[]>;
 }
 
-export function DailyReportView({ reports, currentMonth, currentYear }: DailyReportViewProps) {
+export function DailyReportView({
+  reports,
+  currentMonth,
+  currentYear,
+  duplicatesByReport = {},
+}: DailyReportViewProps) {
   const router = useRouter();
   const monthName = format(new Date(currentYear, currentMonth - 1), "MMMM yyyy");
 
@@ -34,6 +42,34 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
   const totalFBPosts = fbReports.reduce((s: number, r: any) => s + (r.postsCount || 0), 0);
   const uniqueEtsyEmployees = new Set(etsyReports.map((r: any) => r.user.employeeId)).size;
   const uniqueFBEmployees = new Set(fbReports.map((r: any) => r.user.employeeId)).size;
+
+  // Count duplicate hits that belong to reports visible in THIS month's view.
+  // The detection window is 3 months (server side), but the KPI is scoped to
+  // what the CEO can see below — so "0" always means "no duplicates on the
+  // current screen". Reports with internal repeats (same link pasted twice)
+  // and reports echoing a link from a prior month both count.
+  const visibleReportIds = new Set(reports.map((r: any) => r.id));
+  let totalDuplicateHits = 0;
+  let reportsWithDuplicates = 0;
+  for (const rid of Object.keys(duplicatesByReport)) {
+    if (!visibleReportIds.has(rid)) continue;
+    const hits = duplicatesByReport[rid] || [];
+    if (hits.length === 0) continue;
+    totalDuplicateHits += hits.length;
+    reportsWithDuplicates += 1;
+  }
+
+  // Helper: duplicate hit for a given link within a given report, if any.
+  function dupHitFor(reportId: string, link: string): DuplicateHit | undefined {
+    const hits = duplicatesByReport[reportId];
+    if (!hits || hits.length === 0) return undefined;
+    const id = extractEtsyListingId(link);
+    if (!id) return undefined;
+    // If the same ID was flagged multiple times in the report (internal
+    // duplicate), the exact string match identifies which instance we're
+    // on. Fall back to ID match for query-param variants.
+    return hits.find((h) => h.link === link.trim()) || hits.find((h) => h.listingId === id);
+  }
 
   // Group ALL reports by date (both teams together)
   const grouped: Record<string, { etsy: any[]; fb: any[] }> = {};
@@ -84,16 +120,40 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
 
     // Regular Etsy employee layout
     const links = r.listingLinks?.split("\n").filter(Boolean) || [];
+    const reportHits = duplicatesByReport[r.id] || [];
+    const hasDuplicates = reportHits.length > 0;
     return (
-      <div key={r.id} className="flex gap-3 py-3 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 px-4 transition-colors">
+      <div
+        key={r.id}
+        className={`flex gap-3 py-3 px-4 transition-colors ${
+          hasDuplicates
+            ? "hover:bg-rose-50/40 dark:hover:bg-rose-950/15"
+            : "hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10"
+        }`}
+      >
         <div className="size-8 rounded-full bg-gradient-to-br from-emerald-100 to-emerald-200 dark:from-emerald-800 dark:to-emerald-700 flex items-center justify-center text-[10px] font-bold text-emerald-700 dark:text-emerald-300 shrink-0">
           {r.user.firstName[0]}{r.user.lastName?.[0] || ""}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-semibold">{r.user.firstName} {r.user.lastName}</span>
               <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">{r.user.employeeId}</span>
+              {hasDuplicates && (
+                <Tooltip>
+                  <TooltipTrigger className="inline-flex items-center">
+                    <Badge className="text-[9px] h-5 bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 border-0 gap-1">
+                      <AlertTriangle className="size-2.5" />
+                      {reportHits.length} duplicate{reportHits.length === 1 ? "" : "s"}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs text-xs">
+                    {reportHits.length === 1
+                      ? "1 listing in this report was already submitted earlier."
+                      : `${reportHits.length} listings in this report were already submitted earlier.`}
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Badge className="text-[9px] h-5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0 gap-1">
@@ -112,12 +172,56 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
               <div className="flex items-start gap-1.5 text-xs">
                 <Link2 className="size-3 text-muted-foreground shrink-0 mt-0.5" />
                 <div className="space-y-0.5 max-h-[80px] overflow-y-auto">
-                  {links.map((link: string, i: number) => (
-                    <a key={i} href={link.trim()} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[450px]">
-                      {link.trim()}
-                      <ExternalLink className="size-2.5 shrink-0" />
-                    </a>
-                  ))}
+                  {links.map((link: string, i: number) => {
+                    const hit = dupHitFor(r.id, link);
+                    return (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <a
+                          href={link.trim()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center gap-1 hover:underline truncate max-w-[450px] ${
+                            hit
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-blue-600 dark:text-blue-400"
+                          }`}
+                        >
+                          {link.trim()}
+                          <ExternalLink className="size-2.5 shrink-0" />
+                        </a>
+                        {hit && (
+                          <Tooltip>
+                            <TooltipTrigger className="inline-flex items-center">
+                              <span className="text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-600 text-white leading-none">
+                                DUP
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs text-xs">
+                              <div className="font-semibold mb-0.5">Duplicate listing</div>
+                              <div>
+                                Listing ID <span className="font-mono">{hit.listingId}</span>{" "}
+                                {hit.firstSubmission.sameReport ? (
+                                  <>was already included earlier in this same report.</>
+                                ) : (
+                                  <>
+                                    was first submitted by{" "}
+                                    <span className="font-semibold">
+                                      {hit.firstSubmission.employeeName}
+                                    </span>{" "}
+                                    ({hit.firstSubmission.employeeId}) on{" "}
+                                    <span className="font-semibold">
+                                      {format(new Date(hit.firstSubmission.date + "T00:00:00"), "MMM d, yyyy")}
+                                    </span>
+                                    .
+                                  </>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -209,8 +313,9 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
       {/* Monthly KPI Cards.
           When there are no FB reports in the dataset (e.g. Izaan's Etsy-
           scoped view), the FB Posts card is hidden and the grid falls
-          back to 3 columns so the remaining cards stay balanced. */}
-      <div className={`grid grid-cols-2 gap-3 ${fbReports.length > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+          back to 4 columns so the remaining cards stay balanced (the
+          Duplicate Listings tile always shows). */}
+      <div className={`grid grid-cols-2 gap-3 ${fbReports.length > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
           <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
@@ -251,6 +356,22 @@ export function DailyReportView({ reports, currentMonth, currentYear }: DailyRep
             </div>
             <p className="text-3xl font-bold text-violet-600 dark:text-violet-400">{sortedDates.length}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Working days with reports</p>
+          </CardContent>
+        </Card>
+        <Card className={`border-0 shadow-sm ${totalDuplicateHits > 0 ? "bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-800" : ""}`}>
+          <CardContent className="py-3.5 px-4">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle className={`size-3.5 ${totalDuplicateHits > 0 ? "text-rose-500" : "text-muted-foreground"}`} />
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Duplicates</p>
+            </div>
+            <p className={`text-3xl font-bold ${totalDuplicateHits > 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"}`}>
+              {totalDuplicateHits}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {totalDuplicateHits === 0
+                ? "No duplicates detected"
+                : `Across ${reportsWithDuplicates} report${reportsWithDuplicates === 1 ? "" : "s"}`}
+            </p>
           </CardContent>
         </Card>
       </div>
