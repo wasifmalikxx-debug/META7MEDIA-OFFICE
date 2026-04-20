@@ -49,6 +49,10 @@ interface EmployeeDashboardProps {
   monthLate: number;
   totalWorkedHours: number;
   monthlySalary: number;
+  /** Prorated salary the employee can actually earn this month based on their
+   *  joining date. Equal to monthlySalary for employees who joined before the
+   *  month started. Less than monthlySalary for mid-month hires. */
+  earnedMonthlySalary?: number;
   leaveRequests: any[];
   workStartTime: string;
   breakStartTime: string;
@@ -79,6 +83,7 @@ export function EmployeeDashboard({
   monthLate,
   totalWorkedHours,
   monthlySalary,
+  earnedMonthlySalary,
   leaveRequests: initialLeaveRequests,
   workStartTime,
   breakStartTime,
@@ -567,8 +572,11 @@ export function EmployeeDashboard({
   const liveWorkedHours = Math.floor(liveTotalMinutes / 60);
   const liveWorkedMins = liveTotalMinutes % 60;
 
-  // Estimated Salary = Monthly Salary + Incentives - Fines
-  const salaryTillNow = Math.round(monthlySalary + totalIncentivesAmount - totalFinesAmount);
+  // Estimated Salary = Earned Salary (prorated for mid-month hires) + Incentives - Fines.
+  // `earnedMonthlySalary` comes from the server with joining-date proration already
+  // applied; falls back to `monthlySalary` for older callers without the new prop.
+  const earnedSalary = typeof earnedMonthlySalary === "number" ? earnedMonthlySalary : monthlySalary;
+  const salaryTillNow = Math.round(earnedSalary + totalIncentivesAmount - totalFinesAmount);
 
   // Live PKT clock values (re-calculated every second via the tick interval)
   const pktClock = pktNow;
@@ -1069,12 +1077,22 @@ export function EmployeeDashboard({
             <CardContent className="py-4">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Salary Breakdown</p>
               <div className="h-4 rounded-full overflow-hidden flex bg-muted/30">
-                {salaryTillNow > 0 && (
-                  <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(100, (salaryTillNow / (monthlySalary + totalIncentivesAmount)) * 100)}%` }} title={`Net: PKR ${salaryTillNow.toLocaleString()}`} />
-                )}
-                {totalFinesAmount > 0 && (
-                  <div className="bg-rose-500 h-full transition-all" style={{ width: `${(totalFinesAmount / (monthlySalary + totalIncentivesAmount)) * 100}%` }} title={`Fines: PKR ${totalFinesAmount.toLocaleString()}`} />
-                )}
+                {(() => {
+                  // Scale the bar to the earned-salary pool (prorated for
+                  // mid-month hires) so the ratio of Net:Fines is visually
+                  // accurate, not squeezed by the full monthlySalary.
+                  const barDenom = Math.max(1, earnedSalary + totalIncentivesAmount);
+                  return (
+                    <>
+                      {salaryTillNow > 0 && (
+                        <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(100, (salaryTillNow / barDenom) * 100)}%` }} title={`Net: PKR ${salaryTillNow.toLocaleString()}`} />
+                      )}
+                      {totalFinesAmount > 0 && (
+                        <div className="bg-rose-500 h-full transition-all" style={{ width: `${Math.min(100, (totalFinesAmount / barDenom) * 100)}%` }} title={`Fines: PKR ${totalFinesAmount.toLocaleString()}`} />
+                      )}
+                    </>
+                  );
+                })()}
               </div>
               <div className="flex items-center justify-between mt-2 text-[10px]">
                 <div className="flex items-center gap-3">
