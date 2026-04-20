@@ -1,53 +1,41 @@
-import twilio from "twilio";
+/**
+ * WhatsApp notification service — Meta Cloud API only.
+ *
+ * Twilio was removed on 2026-04-20 after the Meta direct integration was
+ * validated in production (templates: late_notice, break_fine, absent_fine,
+ * manual_fine, salary_paid, daily_report).
+ *
+ * Kill switch: set OfficeSettings.whatsappEnabled = false in the DB, OR set
+ * META_WA_ENABLED != "true" on Vercel. Either disables ALL WhatsApp sends.
+ */
+
 import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/pkt";
 import {
   isMetaEnabled,
   sendMetaTemplate,
+  sendMetaText,
   META_TEMPLATE_NAMES,
 } from "@/lib/services/whatsapp-meta.service";
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const fromNumber = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+15559046375";
+// Cache the DB-level WhatsApp enabled flag for 60s to avoid a DB hit per
+// message. OfficeSettings rarely changes.
+let whatsappEnabledCache: boolean | null = null;
+let whatsappCacheTime = 0;
 
-// WhatsApp Content Template SIDs (approved templates for business-initiated messages)
-const TEMPLATE_SIDS = {
-  LATE_FINE: "HXfce39a3569ffad47b22625cc16b116c4",
-  BREAK_FINE: "HXf41493217eeb444c2f0464d5050a7ddc",
-  ABSENT_NOTICE: "HX4eff0dadd07b2f8bc12db6382a371273",
-  DAILY_REPORT: "HX218eb0b8d4bf1e215052490f138a8547",
-  SALARY_PAID: "HX81c37b6f4ead2fe7a42a1be56c0b1630",
-  MANUAL_FINE: "HX0eb29332a3268de88d94fac0e34c477f",
-};
-
-// Maps internal template key → Meta-approved template name. Must stay in
-// sync with TEMPLATE_SIDS above and META_TEMPLATE_NAMES in the Meta service.
-const META_NAME_MAP: Record<keyof typeof TEMPLATE_SIDS, string> = {
-  LATE_FINE: META_TEMPLATE_NAMES.LATE_FINE,
-  BREAK_FINE: META_TEMPLATE_NAMES.BREAK_FINE,
-  ABSENT_NOTICE: META_TEMPLATE_NAMES.ABSENT_NOTICE,
-  DAILY_REPORT: META_TEMPLATE_NAMES.DAILY_REPORT,
-  SALARY_PAID: META_TEMPLATE_NAMES.SALARY_PAID,
-  MANUAL_FINE: META_TEMPLATE_NAMES.MANUAL_FINE,
-};
-
-let client: ReturnType<typeof twilio> | null = null;
-
-function getClient() {
-  if (!client && accountSid && authToken) {
-    client = twilio(accountSid, authToken);
+async function isWhatsAppEnabledCached(): Promise<boolean> {
+  const now = Date.now();
+  if (whatsappEnabledCache !== null && now - whatsappCacheTime < 60_000) {
+    return whatsappEnabledCache;
   }
-  return client;
-}
-
-async function isWhatsAppEnabled(): Promise<boolean> {
   try {
     const settings = await prisma.officeSettings.findUnique({ where: { id: "default" } });
-    return settings?.whatsappEnabled ?? true;
+    whatsappEnabledCache = settings?.whatsappEnabled ?? true;
   } catch {
-    return true;
+    whatsappEnabledCache = true;
   }
+  whatsappCacheTime = now;
+  return whatsappEnabledCache;
 }
 
 export async function getAdminPhone(): Promise<string | null> {
@@ -59,106 +47,82 @@ export async function getAdminPhone(): Promise<string | null> {
   }
 }
 
+/**
+ * Send a plain-text WhatsApp message.
+ *
+ * NOTE — Meta Cloud API restriction: free-text messages only succeed within
+ * a 24-hour "customer service window" (opened when the recipient messages
+ * the business first). Outside that window, this call will fail with error
+ * 131047 and return false.
+ *
+ * For any automated / system-initiated message (fines, absences, salary
+ * notices, daily reports), use the `send*Template` functions instead —
+ * those use approved templates and work any time.
+ */
 export async function sendWhatsApp(to: string, message: string): Promise<boolean> {
   const normalized = normalizePhone(to);
-  if (!normalized) { console.warn("Invalid phone:", to); return false; }
-
-  const enabled = await isWhatsAppEnabledCached();
-  if (!enabled) return false;
-
-  const twilioClient = getClient();
-  if (!twilioClient) {
-    console.warn("Twilio not configured, skipping WhatsApp message");
+  if (!normalized) {
+    console.warn("[wa] invalid phone:", to);
     return false;
   }
 
-  try {
-    const toNumber = normalized.startsWith("whatsapp:") ? normalized : `whatsapp:${normalized}`;
-    await twilioClient.messages.create({ body: message, from: fromNumber, to: toNumber });
-    console.log(`WhatsApp sent to ${normalized}`);
-    return true;
-  } catch (err: any) {
-    console.error(`WhatsApp failed to ${normalized}:`, err.message);
+  if (!(await isWhatsAppEnabledCached())) return false;
+
+  if (!isMetaEnabled()) {
+    console.warn("[wa] META_WA_ENABLED / token / phoneId missing — skipping send");
     return false;
   }
-}
 
-// Cache WhatsApp enabled status for 60s to avoid DB hit on every message
-let whatsappEnabledCache: boolean | null = null;
-let whatsappCacheTime = 0;
-
-async function isWhatsAppEnabledCached(): Promise<boolean> {
-  const now = Date.now();
-  if (whatsappEnabledCache !== null && now - whatsappCacheTime < 60_000) {
-    return whatsappEnabledCache;
+  const result = await sendMetaText(normalized, message);
+  if (!result.success) {
+    console.warn(`[wa] meta text FAILED to=${normalized} err="${result.error}"`);
+    return false;
   }
-  whatsappEnabledCache = await isWhatsAppEnabled();
-  whatsappCacheTime = now;
-  return whatsappEnabledCache;
+  console.log(`[wa] meta text sent to=${normalized} id=${result.messageId}`);
+  return true;
 }
 
+/**
+ * Send an approved Meta template message.
+ *
+ * @param to            Recipient phone (any format, gets normalized)
+ * @param templateName  Exact Meta template name (e.g. "late_notice"),
+ *                      must be Approved (not "In review") in WhatsApp Manager
+ * @param variables     {"1": value, "2": value, ...} — positional body params
+ *                      matching {{1}}, {{2}} in the template body
+ */
 export async function sendWhatsAppTemplate(
   to: string,
-  templateSid: string,
+  templateName: string,
   variables: Record<string, string>
 ): Promise<boolean> {
   const normalized = normalizePhone(to);
-  if (!normalized) { console.warn("Invalid phone:", to); return false; }
-
-  const enabled = await isWhatsAppEnabledCached();
-  if (!enabled) return false;
-
-  // ── Meta path (if feature flag + creds are configured) ─────────────
-  // Convert numbered variables { "1": "...", "2": "..." } → positional array
-  // and look up the template name that corresponds to this Twilio SID.
-  if (isMetaEnabled()) {
-    const templateKey = Object.entries(TEMPLATE_SIDS).find(
-      ([, sid]) => sid === templateSid
-    )?.[0] as keyof typeof TEMPLATE_SIDS | undefined;
-
-    if (templateKey) {
-      const metaName = META_NAME_MAP[templateKey];
-      // Build positional args in order {{1}}, {{2}}, ...
-      const positional: string[] = [];
-      const varCount = Object.keys(variables).length;
-      for (let i = 1; i <= varCount; i++) {
-        positional.push(variables[String(i)] ?? "");
-      }
-      const result = await sendMetaTemplate(normalized, metaName, positional);
-      if (result.success) {
-        console.log(`[wa] meta sent template=${metaName} to=${normalized} id=${result.messageId}`);
-        return true;
-      }
-      // Meta failed — log the reason and fall through to Twilio fallback.
-      console.warn(
-        `[wa] meta FAILED template=${metaName} to=${normalized} err="${result.error}" — falling back to Twilio`
-      );
-    } else {
-      console.warn(`[wa] no Meta name mapped for Twilio SID ${templateSid}, using Twilio`);
-    }
-  }
-
-  // ── Twilio path (default + Meta fallback) ─────────────────────────
-  const twilioClient = getClient();
-  if (!twilioClient) {
-    console.warn("Twilio not configured, skipping WhatsApp template");
+  if (!normalized) {
+    console.warn("[wa] invalid phone:", to);
     return false;
   }
 
-  try {
-    const toNumber = normalized.startsWith("whatsapp:") ? normalized : `whatsapp:${normalized}`;
-    await twilioClient.messages.create({
-      contentSid: templateSid,
-      contentVariables: JSON.stringify(variables),
-      from: fromNumber,
-      to: toNumber,
-    });
-    console.log(`WhatsApp template sent to ${normalized}`);
-    return true;
-  } catch (err: any) {
-    console.error(`WhatsApp template failed to ${normalized}:`, err.message);
+  if (!(await isWhatsAppEnabledCached())) return false;
+
+  if (!isMetaEnabled()) {
+    console.warn(`[wa] META_WA_ENABLED off — skipping template=${templateName}`);
     return false;
   }
+
+  // Convert the numbered variables object to a positional array.
+  const varCount = Object.keys(variables).length;
+  const positional: string[] = [];
+  for (let i = 1; i <= varCount; i++) {
+    positional.push(variables[String(i)] ?? "");
+  }
+
+  const result = await sendMetaTemplate(normalized, templateName, positional);
+  if (!result.success) {
+    console.warn(`[wa] meta template=${templateName} FAILED to=${normalized} err="${result.error}"`);
+    return false;
+  }
+  console.log(`[wa] meta template=${templateName} sent to=${normalized} id=${result.messageId}`);
+  return true;
 }
 
 export async function notifyEmployee(userId: string, message: string): Promise<boolean> {
@@ -177,13 +141,122 @@ export async function notifyAdmin(message: string): Promise<boolean> {
   return sendWhatsApp(phone, message);
 }
 
+export async function notifyAdmins(message: string): Promise<boolean> {
+  const settings = await prisma.officeSettings.findUnique({ where: { id: "default" } });
+  if (!settings?.adminPhone) return false;
+  return sendWhatsApp(settings.adminPhone, message);
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🚨 FINE MESSAGES (System Generated — Cannot Be Modified)
+// Template senders — one wrapper per approved Meta template
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export async function sendLateFineTemplate(
+  to: string,
+  name: string,
+  minutes: number,
+  amount: number
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.LATE_FINE, {
+    "1": name,
+    "2": String(minutes),
+    "3": String(amount),
+  });
+}
+
+export async function sendBreakFineTemplate(
+  to: string,
+  name: string,
+  minutes: number,
+  amount: number
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.BREAK_FINE, {
+    "1": name,
+    "2": String(minutes),
+    "3": String(amount),
+  });
+}
+
+export async function sendAbsentTemplate(
+  to: string,
+  name: string,
+  amount: number
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.ABSENT_NOTICE, {
+    "1": name,
+    "2": String(amount),
+  });
+}
+
+export async function sendManualFineTemplate(
+  to: string,
+  name: string,
+  amount: number,
+  reason: string
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.MANUAL_FINE, {
+    "1": name,
+    "2": String(amount),
+    "3": reason,
+  });
+}
+
+export async function sendSalaryPaidTemplate(
+  to: string,
+  name: string,
+  amount: number,
+  monthName: string
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.SALARY_PAID, {
+    "1": name,
+    "2": monthName,
+    "3": String(amount),
+  });
+}
+
+/**
+ * Daily sales report — 11-variable Meta template.
+ * Today + month-to-date totals plus a multi-line per-employee breakdown.
+ */
+export interface DailyReportData {
+  date: string;
+  monthName: string;
+  monthly: { orders: number; sale: number; cost: number; profit: number };
+  today: { orders: number; sale: number; cost: number; profit: number };
+  /** Multi-line breakdown — one block per employee with newlines. Goes into {{11}}. */
+  breakdown: string;
+}
+
+export async function sendDailyReportTemplate(
+  to: string,
+  data: DailyReportData
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.DAILY_REPORT, {
+    "1": data.date,
+    "2": data.monthName,
+    "3": String(data.monthly.orders),
+    "4": data.monthly.sale.toFixed(2),
+    "5": data.monthly.cost.toFixed(2),
+    "6": data.monthly.profit.toFixed(2),
+    "7": String(data.today.orders),
+    "8": data.today.sale.toFixed(2),
+    "9": data.today.cost.toFixed(2),
+    "10": data.today.profit.toFixed(2),
+    "11": data.breakdown,
+  });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Legacy plain-text message builders (for `sendWhatsApp` free-form sends)
+//
+// These build nicely-formatted strings that CAN be sent via sendWhatsApp —
+// but ONLY within an active 24h customer service window. For automated
+// crons, always prefer the `send*Template` functions above.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function lateFineMsg(name: string, minutes: number, amount: number): string {
   return [
-    `🚨 *META7MEDIA — FINE ALERT*`,
+    `🚨 *META7MEDIA — LATE FINE*`,
     `━━━━━━━━━━━━━━━━━━━━`,
     ``,
     `Hi ${name},`,
@@ -199,12 +272,6 @@ export function lateFineMsg(name: string, minutes: number, amount: number): stri
     `━━━━━━━━━━━━━━━━━━━━`,
     `META7 AI | Office Manager`,
   ].join("\n");
-}
-
-export async function sendLateFineTemplate(to: string, name: string, minutes: number, amount: number): Promise<boolean> {
-  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.LATE_FINE, {
-    "1": name, "2": String(minutes), "3": String(amount),
-  });
 }
 
 export function breakFineMsg(name: string, minutes: number, amount: number): string {
@@ -225,12 +292,6 @@ export function breakFineMsg(name: string, minutes: number, amount: number): str
     `━━━━━━━━━━━━━━━━━━━━`,
     `META7 AI | Office Manager`,
   ].join("\n");
-}
-
-export async function sendBreakFineTemplate(to: string, name: string, minutes: number, amount: number): Promise<boolean> {
-  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.BREAK_FINE, {
-    "1": name, "2": String(minutes), "3": String(amount),
-  });
 }
 
 export function manualFineMsg(name: string, amount: number, reason: string): string {
@@ -272,87 +333,8 @@ export function absentFineMsg(name: string, amount: number): string {
   ].join("\n");
 }
 
-export async function sendAbsentTemplate(to: string, name: string, amount: number): Promise<boolean> {
-  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.ABSENT_NOTICE, {
-    "1": name, "2": String(amount),
-  });
-}
-
-/**
- * Daily sales report — two possible payload shapes depending on which
- * WhatsApp provider is live:
- *
- *  - Meta (new template, 11 variables): date, monthName, monthly totals,
- *    today's totals, and a multi-line per-employee breakdown with emojis.
- *  - Twilio (legacy template, 5 variables): date, today's orders/sale/
- *    profit, and a flat single-line breakdown with `|` separators.
- *
- * The cron builds both breakdown strings and passes the full data object —
- * this function picks the right path based on the META_WA_ENABLED flag.
- */
-export interface DailyReportData {
-  date: string;
-  monthName: string;
-  monthly: { orders: number; sale: number; cost: number; profit: number };
-  today: { orders: number; sale: number; cost: number; profit: number };
-  breakdownMultiline: string; // Meta's {{11}} — with emojis + newlines
-  breakdownFlat: string;      // Twilio's legacy 5th variable — single line
-}
-
-export async function sendDailyReportTemplate(to: string, data: DailyReportData): Promise<boolean> {
-  const normalized = normalizePhone(to);
-  if (!normalized) { console.warn("Invalid phone:", to); return false; }
-
-  const enabled = await isWhatsAppEnabledCached();
-  if (!enabled) return false;
-
-  // Meta path: new 11-variable daily_report template
-  if (isMetaEnabled()) {
-    const positional = [
-      data.date,                           // {{1}} date
-      data.monthName,                      // {{2}} month name
-      String(data.monthly.orders),         // {{3}} monthly orders
-      data.monthly.sale.toFixed(2),        // {{4}} monthly sale
-      data.monthly.cost.toFixed(2),        // {{5}} monthly cost
-      data.monthly.profit.toFixed(2),      // {{6}} monthly profit
-      String(data.today.orders),           // {{7}} today orders
-      data.today.sale.toFixed(2),          // {{8}} today sale
-      data.today.cost.toFixed(2),          // {{9}} today cost
-      data.today.profit.toFixed(2),        // {{10}} today profit
-      data.breakdownMultiline,             // {{11}} individual breakdown
-    ];
-    const result = await sendMetaTemplate(normalized, META_TEMPLATE_NAMES.DAILY_REPORT, positional);
-    if (result.success) {
-      console.log(`[wa] meta daily_report sent to=${normalized} id=${result.messageId}`);
-      return true;
-    }
-    console.warn(`[wa] meta daily_report FAILED err="${result.error}" — falling back to Twilio`);
-  }
-
-  // Twilio path: legacy 5-variable template (today-only, flat breakdown)
-  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.DAILY_REPORT, {
-    "1": data.date,
-    "2": String(data.today.orders),
-    "3": `$${data.today.sale.toFixed(2)}`,
-    "4": `$${data.today.profit.toFixed(2)}`,
-    "5": data.breakdownFlat,
-  });
-}
-
-export async function sendManualFineTemplate(to: string, name: string, amount: number, reason: string): Promise<boolean> {
-  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.MANUAL_FINE, {
-    "1": name, "2": String(amount), "3": reason,
-  });
-}
-
-export async function sendSalaryPaidTemplate(to: string, name: string, amount: number, monthName: string): Promise<boolean> {
-  return sendWhatsAppTemplate(to, TEMPLATE_SIDS.SALARY_PAID, {
-    "1": name, "2": monthName, "3": String(amount),
-  });
-}
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎉 BONUS MESSAGES (Motivational)
+// 🎉 BONUS MESSAGES (Motivational — plain-text only for now)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function bonusEligibleMsg(name: string, profit: number, bonus: number): string {
@@ -407,34 +389,26 @@ export function teamLeadBonusMsg(name: string, eligibleCount: number, bonus: num
     `member${eligibleCount !== 1 ? "s" : ""} hit their targets this month!`,
     ``,
     `Keep leading by example — the team follows`,
-    `your energy! 🔥`,
+    `your pace! 🚀`,
     ``,
     `━━━━━━━━━━━━━━━━━━━━`,
     `META7MEDIA Management 🏢`,
   ].join("\n");
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💰 SALARY MESSAGES
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-export function salaryPaidMsg(name: string, amount: number, monthName: string): string {
+export function autoCheckoutMsg(name: string, timeStr: string): string {
   return [
-    `💰 *META7MEDIA — SALARY CREDITED!*`,
+    `🔔 *META7MEDIA — AUTO-CHECKOUT*`,
     `━━━━━━━━━━━━━━━━━━━━`,
     ``,
-    `Hi *${name}*,`,
+    `Hi ${name},`,
     ``,
-    `📅 Month: *${monthName}*`,
-    `💵 Net Salary: *PKR ${amount.toLocaleString()}*`,
-    `✅ Status: *PAID*`,
+    `You were automatically checked out at *${timeStr}* because`,
+    `you did not check out manually before office closing.`,
     ``,
-    `🏦 Payment processed via Bank Alfalah.`,
-    `Check your payroll for full breakdown.`,
-    ``,
-    `🙏 Thank you for your dedication!`,
+    `📌 Please remember to check out at the end of each day.`,
     ``,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `META7MEDIA Management 🏢`,
+    `META7 AI | Office Manager`,
   ].join("\n");
 }

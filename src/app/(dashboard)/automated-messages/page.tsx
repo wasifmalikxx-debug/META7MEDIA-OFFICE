@@ -28,13 +28,11 @@ import {
   Clock,
 } from "lucide-react";
 
-interface TwilioStatus {
-  connected: boolean;
-  accountSid: string | null;
-  fromNumber: string;
-  status?: string;
-  friendlyName?: string;
-  error?: string;
+interface MetaStatus {
+  metaEnabled: boolean;
+  hasToken: boolean;
+  hasPhoneId: boolean;
+  featureFlag: string;
 }
 
 interface MessageTemplate {
@@ -86,9 +84,9 @@ function HighlightedTemplate({ text }: { text: string }) {
 export const dynamic = "force-dynamic";
 
 export default function AutomatedMessagesPage() {
-  // Twilio status
-  const [twilioStatus, setTwilioStatus] = useState<TwilioStatus | null>(null);
-  const [twilioLoading, setTwilioLoading] = useState(true);
+  // Meta WhatsApp status
+  const [metaStatus, setMetaStatus] = useState<MetaStatus | null>(null);
+  const [metaLoading, setMetaLoading] = useState(true);
   const [testSending, setTestSending] = useState(false);
 
   // Templates
@@ -107,21 +105,21 @@ export default function AutomatedMessagesPage() {
 
   // Load all data
   useEffect(() => {
-    fetchTwilioStatus();
+    fetchMetaStatus();
     fetchTemplates();
     fetchEmployees();
     fetchMessageHistory();
   }, []);
 
-  async function fetchTwilioStatus() {
-    setTwilioLoading(true);
+  async function fetchMetaStatus() {
+    setMetaLoading(true);
     try {
-      const res = await fetch("/api/twilio-status");
-      if (res.ok) setTwilioStatus(await res.json());
+      const res = await fetch("/api/test-whatsapp-meta");
+      if (res.ok) setMetaStatus(await res.json());
     } catch {
-      setTwilioStatus({ connected: false, accountSid: null, fromNumber: "", error: "Failed to check" });
+      setMetaStatus({ metaEnabled: false, hasToken: false, hasPhoneId: false, featureFlag: "" });
     } finally {
-      setTwilioLoading(false);
+      setMetaLoading(false);
     }
   }
 
@@ -155,24 +153,29 @@ export default function AutomatedMessagesPage() {
   }
 
   async function handleTestMessage() {
+    const to = window.prompt(
+      "Enter recipient phone (with country code, e.g. 923001234567):"
+    );
+    if (!to) return;
     setTestSending(true);
     try {
-      const res = await fetch("/api/whatsapp/test", {
+      const res = await fetch("/api/test-whatsapp-meta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: twilioStatus?.fromNumber?.replace("whatsapp:", "") || "",
-          message: "META7 AI: Test message from Automated Messages settings. Connection verified!",
+          to,
+          template: "late_notice",
+          variables: ["Test User", "15", "100"],
         }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success("Test message sent successfully!");
+        toast.success(`Test sent via Meta — messageId: ${data.messageId?.slice(0, 20)}...`);
       } else {
-        toast.error("Failed to send test message");
+        toast.error(`Failed: ${data.error || "unknown"}`);
       }
-    } catch {
-      toast.error("Failed to send test message");
+    } catch (err: any) {
+      toast.error(`Failed to send test: ${err.message}`);
     } finally {
       setTestSending(false);
     }
@@ -253,63 +256,85 @@ export default function AutomatedMessagesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Automated Messages"
-        description="Manage WhatsApp/Twilio message templates and send custom messages"
+        description="WhatsApp templates and custom messages, powered by Meta Cloud API"
       />
 
-      {/* ─── Section 1: Twilio Configuration ─── */}
+      {/* ─── Section 1: Meta WhatsApp status ─── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Phone className="size-5" />
-            Twilio Configuration
+            Meta WhatsApp Cloud API
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {twilioLoading ? (
+          {metaLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
               Checking connection...
             </div>
-          ) : twilioStatus ? (
+          ) : metaStatus ? (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <Label className="text-xs text-muted-foreground">Account SID</Label>
-                  <p className="font-mono text-sm mt-1">
-                    {twilioStatus.accountSid || "Not configured"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">WhatsApp From</Label>
-                  <p className="font-mono text-sm mt-1">{twilioStatus.fromNumber}</p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Status</Label>
+                  <Label className="text-xs text-muted-foreground">Access Token</Label>
                   <div className="mt-1">
-                    {twilioStatus.connected ? (
+                    {metaStatus.hasToken ? (
                       <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 gap-1">
                         <CheckCircle2 className="size-3" />
-                        Connected
+                        Configured
                       </Badge>
                     ) : (
                       <Badge variant="destructive" className="gap-1">
                         <XCircle className="size-3" />
-                        Disconnected
+                        Missing
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Phone Number ID</Label>
+                  <div className="mt-1">
+                    {metaStatus.hasPhoneId ? (
+                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 gap-1">
+                        <CheckCircle2 className="size-3" />
+                        Configured
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="gap-1">
+                        <XCircle className="size-3" />
+                        Missing
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Feature Flag</Label>
+                  <div className="mt-1">
+                    {metaStatus.metaEnabled ? (
+                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 gap-1">
+                        <CheckCircle2 className="size-3" />
+                        Live
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="gap-1">
+                        <XCircle className="size-3" />
+                        Disabled
                       </Badge>
                     )}
                   </div>
                 </div>
               </div>
-              {twilioStatus.friendlyName && (
-                <p className="text-sm text-muted-foreground">
-                  Account: {twilioStatus.friendlyName}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Env vars: <code className="font-mono">META_WA_TOKEN</code>,{" "}
+                <code className="font-mono">META_WA_PHONE_NUMBER_ID</code>,{" "}
+                <code className="font-mono">META_WA_ENABLED</code>
+              </p>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleTestMessage}
-                disabled={testSending || !twilioStatus.connected}
+                disabled={testSending || !metaStatus.metaEnabled}
               >
                 {testSending ? (
                   <Loader2 className="size-4 animate-spin mr-2" />
@@ -320,7 +345,7 @@ export default function AutomatedMessagesPage() {
               </Button>
             </div>
           ) : (
-            <p className="text-muted-foreground">Unable to check Twilio status</p>
+            <p className="text-muted-foreground">Unable to check Meta status</p>
           )}
         </CardContent>
       </Card>
