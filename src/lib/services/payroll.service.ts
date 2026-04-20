@@ -47,6 +47,12 @@ export async function generatePayrollForEmployee(
   });
   if (!salary) throw new Error(`No salary structure for user ${userId}`);
 
+  // Need the employee's joining date to prorate salary for mid-month hires.
+  const employee = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { joiningDate: true },
+  });
+
   const workingDays = await getWorkingDaysInMonth(month, year);
   // Fixed 30-day formula: 30K salary = 1K/day deduction
   const dailyRate = roundMoney(salary.monthlySalary / 30);
@@ -325,7 +331,7 @@ export async function generatePayrollForEmployee(
   totalIncentives = roundMoney(totalIncentives);
 
   // Calculate salary
-  // Gross = monthly salary
+  // Gross = prorated monthly salary based on joining date
   // Deductions = uncovered absences (from fine amounts) + uncovered half days + fines + tax
   const halfDayDeductions = roundMoney(deductibleHalfDays * dailyRate * 0.5);
   const leaveDeductions = roundMoney(unpaidLeaveDays * dailyRate);
@@ -333,7 +339,25 @@ export async function generatePayrollForEmployee(
   // This handles full (dailyRate), partial (dailyRate × uncoveredFraction), and
   // covered (0) in one place — no double-counting possible.
   const absentDeductions = roundMoney(absentFineTotal);
-  const earnedSalary = roundMoney(salary.monthlySalary);
+
+  // PRORATION: an employee who joined mid-month earns salary only from their
+  // joining date forward, not the full month. Everyone whose joining date is
+  // on or before the month start earns their full monthlySalary (no change
+  // from previous behaviour).
+  //
+  // The 30-day divisor matches `dailyRate = monthlySalary / 30` used for
+  // per-day deductions throughout this file. A 31-day month pays the same
+  // as a 30-day month for full-month employees (no one is overpaid in
+  // long months, no one is underpaid in short months like February).
+  let daysPayable = 30;
+  if (employee?.joiningDate && employee.joiningDate.getTime() > startDate.getTime()) {
+    const joinMs = employee.joiningDate.getTime();
+    const endMs = endDate.getTime();
+    // daysApplicable = (endDate - joiningDate) / 1-day + 1, inclusive of both ends
+    const raw = Math.floor((endMs - joinMs) / (24 * 60 * 60 * 1000)) + 1;
+    daysPayable = Math.min(30, Math.max(0, raw));
+  }
+  const earnedSalary = roundMoney(dailyRate * daysPayable);
   const taxDeduction = roundMoney(earnedSalary * (salary.taxPercent / 100));
   const fixedDeductions = roundMoney(
     salary.socialSecurity + salary.otherDeductions
@@ -343,7 +367,7 @@ export async function generatePayrollForEmployee(
   );
 
   const netSalary = roundMoney(
-    Math.max(0, salary.monthlySalary + totalIncentives - totalDeductions)
+    Math.max(0, earnedSalary + totalIncentives - totalDeductions)
   );
 
   // Check if record already exists and is immutable.
