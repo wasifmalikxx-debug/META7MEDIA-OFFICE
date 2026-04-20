@@ -48,10 +48,16 @@ function getTodayDateStr(): string {
 interface EmployeeReport {
   empId: string;
   name: string;
-  orders: number;
-  totalSale: number;
-  totalCost: number;
-  profit: number;
+  // Today's numbers (filtered by date column match)
+  todayOrders: number;
+  todaySale: number;
+  todayCost: number;
+  todayProfit: number;
+  // Month-to-date numbers (sum of every row in the current month tab)
+  monthOrders: number;
+  monthSale: number;
+  monthCost: number;
+  monthProfit: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -97,7 +103,8 @@ export async function GET(request: NextRequest) {
     });
 
     const reports: EmployeeReport[] = [];
-    let allOrders = 0, allSale = 0, allCost = 0, allProfit = 0;
+    let allOrdersToday = 0, allSaleToday = 0, allCostToday = 0, allProfitToday = 0;
+    let allOrdersMonth = 0, allSaleMonth = 0, allCostMonth = 0, allProfitMonth = 0;
 
     // Sort employee IDs naturally
     const sortedIds = Object.keys(SHEET_MAP).sort((a, b) => {
@@ -122,7 +129,11 @@ export async function GET(request: NextRequest) {
         const profitCol = headers.findIndex((h: string) => h.includes("profit"));
 
         if (dateCol === -1) {
-          reports.push({ empId, name: nameMap[empId] || empId, orders: 0, totalSale: 0, totalCost: 0, profit: 0 });
+          reports.push({
+            empId, name: nameMap[empId] || empId,
+            todayOrders: 0, todaySale: 0, todayCost: 0, todayProfit: 0,
+            monthOrders: 0, monthSale: 0, monthCost: 0, monthProfit: 0,
+          });
           continue;
         }
 
@@ -133,66 +144,82 @@ export async function GET(request: NextRequest) {
         });
         const rows = dataRes.data.values || [];
 
-        let empOrders = 0, empSale = 0, empCost = 0, empProfit = 0;
+        let todayOrders = 0, todaySale = 0, todayCost = 0, todayProfit = 0;
+        let monthOrders = 0, monthSale = 0, monthCost = 0, monthProfit = 0;
 
         for (const row of rows) {
           const dateVal = (row[dateCol] || "").toString().trim();
+          if (!dateVal) continue; // skip empty rows
+
+          const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
+          const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
+          const rowProfit = profitCol >= 0 ? parseDollar(row[profitCol]) : 0;
+
+          // Every row in the current month tab counts toward month-to-date
+          monthOrders++;
+          monthSale += rowSale;
+          monthCost += rowCost;
+          monthProfit += rowProfit;
+
+          // Rows matching today's date string also count toward today's totals
           if (dateVal.toLowerCase() === todayStr.toLowerCase()) {
-            empOrders++;
-            if (priceCol >= 0) empSale += parseDollar(row[priceCol]);
-            if (costCol >= 0) empCost += parseDollar(row[costCol]);
-            if (profitCol >= 0) empProfit += parseDollar(row[profitCol]);
+            todayOrders++;
+            todaySale += rowSale;
+            todayCost += rowCost;
+            todayProfit += rowProfit;
           }
         }
 
         reports.push({
           empId,
           name: nameMap[empId] || empId,
-          orders: empOrders,
-          totalSale: empSale,
-          totalCost: empCost,
-          profit: empProfit,
+          todayOrders, todaySale, todayCost, todayProfit,
+          monthOrders, monthSale, monthCost, monthProfit,
         });
 
-        allOrders += empOrders;
-        allSale += empSale;
-        allCost += empCost;
-        allProfit += empProfit;
+        allOrdersToday += todayOrders;
+        allSaleToday += todaySale;
+        allCostToday += todayCost;
+        allProfitToday += todayProfit;
+        allOrdersMonth += monthOrders;
+        allSaleMonth += monthSale;
+        allCostMonth += monthCost;
+        allProfitMonth += monthProfit;
       } catch (sheetErr: any) {
-        reports.push({ empId, name: nameMap[empId] || empId, orders: 0, totalSale: 0, totalCost: 0, profit: 0 });
+        reports.push({
+          empId, name: nameMap[empId] || empId,
+          todayOrders: 0, todaySale: 0, todayCost: 0, todayProfit: 0,
+          monthOrders: 0, monthSale: 0, monthCost: 0, monthProfit: 0,
+        });
       }
     }
 
     // Build the message
     const now = nowPKT();
     const dateFormatted = `${now.getUTCDate()}/${now.getUTCMonth() + 1}/${now.getUTCFullYear()}`;
+    const monthNamesFull = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    const monthNameFormatted = `${monthNamesFull[now.getUTCMonth()]} ${now.getUTCFullYear()}`;
 
-    let msg = `📊 *META7MEDIA — DAILY SALES REPORT*\n`;
-    msg += `📅 Date: *${dateFormatted}*\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-    msg += `🏢 *ALL OFFICE COMBINED*\n`;
-    msg += `├ 📦 Total Orders: *${allOrders}*\n`;
-    msg += `├ 💰 Total Sale: *$${allSale.toFixed(2)}*\n`;
-    msg += `├ 📉 Total Cost: *$${allCost.toFixed(2)}*\n`;
-    msg += `└ 📈 Profit Today: *$${allProfit.toFixed(2)}*\n\n`;
-
-    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `👥 *INDIVIDUAL BREAKDOWN*\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-
+    // ── Build breakdown strings — two shapes for two provider templates ──
+    // breakdownMultiline: emoji + newlines per employee (new Meta template {{11}})
+    // breakdownFlat:      pipe-separated single line (legacy Twilio template {{5}})
+    // Both include only employees with orders today.
+    const multilineParts: string[] = [];
+    const flatParts: string[] = [];
     for (const r of reports) {
-      const emoji = r.profit > 0 ? "🟢" : r.profit < 0 ? "🔴" : "⚪";
-      msg += `${emoji} *${r.empId} — ${r.name}*\n`;
-      msg += `├ 📦 Orders: *${r.orders}*\n`;
-      msg += `├ 💰 Sale: *$${r.totalSale.toFixed(2)}*\n`;
-      msg += `├ 📉 Cost: *$${r.totalCost.toFixed(2)}*\n`;
-      msg += `└ 📈 Profit: *$${r.profit.toFixed(2)}*\n\n`;
+      if (r.todayOrders > 0) {
+        multilineParts.push(
+          `📌 *${r.empId}*\n📦 Total Orders: ${r.todayOrders}\n💰 Total Sale: $${r.todaySale.toFixed(2)}`
+        );
+        const emoji = r.todayProfit > 0 ? "🟢" : r.todayProfit < 0 ? "🔴" : "⚪";
+        flatParts.push(`${emoji} ${r.empId} ${r.name}: ${r.todayOrders} orders $${r.todayProfit.toFixed(2)}`);
+      }
     }
-
-    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `🤖 _Automated by META7MEDIA AI_\n`;
-    msg += `_Report generated at 8:01 PM PKT_`;
+    const breakdownMultiline = multilineParts.join("\n\n");
+    const breakdownFlat = flatParts.join(" | ");
 
     // Get CEO's phone numbers
     const ceo = await prisma.user.findFirst({
@@ -203,22 +230,31 @@ export async function GET(request: NextRequest) {
     const { sendDailyReportTemplate } = await import("@/lib/services/whatsapp.service");
     const sent: string[] = [];
 
-    // Build breakdown string for template (no newlines — templates don't allow them in variables)
-    const breakdownParts: string[] = [];
-    for (const r of reports) {
-      if (r.orders > 0) {
-        const emoji = r.profit > 0 ? "🟢" : r.profit < 0 ? "🔴" : "⚪";
-        breakdownParts.push(`${emoji} ${r.empId} ${r.name}: ${r.orders} orders $${r.profit.toFixed(2)}`);
-      }
-    }
-    const breakdown = breakdownParts.join(" | ");
+    const payload = {
+      date: dateFormatted,
+      monthName: monthNameFormatted,
+      monthly: {
+        orders: allOrdersMonth,
+        sale: allSaleMonth,
+        cost: allCostMonth,
+        profit: allProfitMonth,
+      },
+      today: {
+        orders: allOrdersToday,
+        sale: allSaleToday,
+        cost: allCostToday,
+        profit: allProfitToday,
+      },
+      breakdownMultiline,
+      breakdownFlat,
+    };
 
     if (ceo?.phone) {
-      await sendDailyReportTemplate(ceo.phone, dateFormatted, String(allOrders), `$${allSale.toFixed(2)}`, `$${allProfit.toFixed(2)}`, breakdown.trim());
+      await sendDailyReportTemplate(ceo.phone, payload);
       sent.push(ceo.phone);
     }
     if (ceo?.phone2) {
-      await sendDailyReportTemplate(ceo.phone2, dateFormatted, String(allOrders), `$${allSale.toFixed(2)}`, `$${allProfit.toFixed(2)}`, breakdown.trim());
+      await sendDailyReportTemplate(ceo.phone2, payload);
       sent.push(ceo.phone2);
     }
 
@@ -226,7 +262,9 @@ export async function GET(request: NextRequest) {
       success: true,
       sentTo: sent,
       date: dateFormatted,
-      summary: { orders: allOrders, sale: allSale, cost: allCost, profit: allProfit },
+      month: monthNameFormatted,
+      monthly: { orders: allOrdersMonth, sale: allSaleMonth, cost: allCostMonth, profit: allProfitMonth },
+      today: { orders: allOrdersToday, sale: allSaleToday, cost: allCostToday, profit: allProfitToday },
       employees: reports,
     });
   } catch (err: any) {

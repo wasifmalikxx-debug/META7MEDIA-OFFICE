@@ -1,6 +1,11 @@
 import twilio from "twilio";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/pkt";
+import {
+  isMetaEnabled,
+  sendMetaTemplate,
+  META_TEMPLATE_NAMES,
+} from "@/lib/services/whatsapp-meta.service";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -14,6 +19,17 @@ const TEMPLATE_SIDS = {
   DAILY_REPORT: "HX218eb0b8d4bf1e215052490f138a8547",
   SALARY_PAID: "HX81c37b6f4ead2fe7a42a1be56c0b1630",
   MANUAL_FINE: "HX0eb29332a3268de88d94fac0e34c477f",
+};
+
+// Maps internal template key → Meta-approved template name. Must stay in
+// sync with TEMPLATE_SIDS above and META_TEMPLATE_NAMES in the Meta service.
+const META_NAME_MAP: Record<keyof typeof TEMPLATE_SIDS, string> = {
+  LATE_FINE: META_TEMPLATE_NAMES.LATE_FINE,
+  BREAK_FINE: META_TEMPLATE_NAMES.BREAK_FINE,
+  ABSENT_NOTICE: META_TEMPLATE_NAMES.ABSENT_NOTICE,
+  DAILY_REPORT: META_TEMPLATE_NAMES.DAILY_REPORT,
+  SALARY_PAID: META_TEMPLATE_NAMES.SALARY_PAID,
+  MANUAL_FINE: META_TEMPLATE_NAMES.MANUAL_FINE,
 };
 
 let client: ReturnType<typeof twilio> | null = null;
@@ -92,6 +108,37 @@ export async function sendWhatsAppTemplate(
   const enabled = await isWhatsAppEnabledCached();
   if (!enabled) return false;
 
+  // ── Meta path (if feature flag + creds are configured) ─────────────
+  // Convert numbered variables { "1": "...", "2": "..." } → positional array
+  // and look up the template name that corresponds to this Twilio SID.
+  if (isMetaEnabled()) {
+    const templateKey = Object.entries(TEMPLATE_SIDS).find(
+      ([, sid]) => sid === templateSid
+    )?.[0] as keyof typeof TEMPLATE_SIDS | undefined;
+
+    if (templateKey) {
+      const metaName = META_NAME_MAP[templateKey];
+      // Build positional args in order {{1}}, {{2}}, ...
+      const positional: string[] = [];
+      const varCount = Object.keys(variables).length;
+      for (let i = 1; i <= varCount; i++) {
+        positional.push(variables[String(i)] ?? "");
+      }
+      const result = await sendMetaTemplate(normalized, metaName, positional);
+      if (result.success) {
+        console.log(`[wa] meta sent template=${metaName} to=${normalized} id=${result.messageId}`);
+        return true;
+      }
+      // Meta failed — log the reason and fall through to Twilio fallback.
+      console.warn(
+        `[wa] meta FAILED template=${metaName} to=${normalized} err="${result.error}" — falling back to Twilio`
+      );
+    } else {
+      console.warn(`[wa] no Meta name mapped for Twilio SID ${templateSid}, using Twilio`);
+    }
+  }
+
+  // ── Twilio path (default + Meta fallback) ─────────────────────────
   const twilioClient = getClient();
   if (!twilioClient) {
     console.warn("Twilio not configured, skipping WhatsApp template");
@@ -231,9 +278,64 @@ export async function sendAbsentTemplate(to: string, name: string, amount: numbe
   });
 }
 
-export async function sendDailyReportTemplate(to: string, date: string, orders: string, sale: string, profit: string, breakdown: string): Promise<boolean> {
+/**
+ * Daily sales report — two possible payload shapes depending on which
+ * WhatsApp provider is live:
+ *
+ *  - Meta (new template, 11 variables): date, monthName, monthly totals,
+ *    today's totals, and a multi-line per-employee breakdown with emojis.
+ *  - Twilio (legacy template, 5 variables): date, today's orders/sale/
+ *    profit, and a flat single-line breakdown with `|` separators.
+ *
+ * The cron builds both breakdown strings and passes the full data object —
+ * this function picks the right path based on the META_WA_ENABLED flag.
+ */
+export interface DailyReportData {
+  date: string;
+  monthName: string;
+  monthly: { orders: number; sale: number; cost: number; profit: number };
+  today: { orders: number; sale: number; cost: number; profit: number };
+  breakdownMultiline: string; // Meta's {{11}} — with emojis + newlines
+  breakdownFlat: string;      // Twilio's legacy 5th variable — single line
+}
+
+export async function sendDailyReportTemplate(to: string, data: DailyReportData): Promise<boolean> {
+  const normalized = normalizePhone(to);
+  if (!normalized) { console.warn("Invalid phone:", to); return false; }
+
+  const enabled = await isWhatsAppEnabledCached();
+  if (!enabled) return false;
+
+  // Meta path: new 11-variable daily_report template
+  if (isMetaEnabled()) {
+    const positional = [
+      data.date,                           // {{1}} date
+      data.monthName,                      // {{2}} month name
+      String(data.monthly.orders),         // {{3}} monthly orders
+      data.monthly.sale.toFixed(2),        // {{4}} monthly sale
+      data.monthly.cost.toFixed(2),        // {{5}} monthly cost
+      data.monthly.profit.toFixed(2),      // {{6}} monthly profit
+      String(data.today.orders),           // {{7}} today orders
+      data.today.sale.toFixed(2),          // {{8}} today sale
+      data.today.cost.toFixed(2),          // {{9}} today cost
+      data.today.profit.toFixed(2),        // {{10}} today profit
+      data.breakdownMultiline,             // {{11}} individual breakdown
+    ];
+    const result = await sendMetaTemplate(normalized, META_TEMPLATE_NAMES.DAILY_REPORT, positional);
+    if (result.success) {
+      console.log(`[wa] meta daily_report sent to=${normalized} id=${result.messageId}`);
+      return true;
+    }
+    console.warn(`[wa] meta daily_report FAILED err="${result.error}" — falling back to Twilio`);
+  }
+
+  // Twilio path: legacy 5-variable template (today-only, flat breakdown)
   return sendWhatsAppTemplate(to, TEMPLATE_SIDS.DAILY_REPORT, {
-    "1": date, "2": orders, "3": sale, "4": profit, "5": breakdown,
+    "1": data.date,
+    "2": String(data.today.orders),
+    "3": `$${data.today.sale.toFixed(2)}`,
+    "4": `$${data.today.profit.toFixed(2)}`,
+    "5": data.breakdownFlat,
   });
 }
 
