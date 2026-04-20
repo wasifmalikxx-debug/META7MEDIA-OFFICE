@@ -38,7 +38,10 @@ export async function GET(request: NextRequest) {
         departmentId: etsyDept.id,
         status: { in: ["HIRED"] },
         googleSheetUrl: { not: null },
-        employeeId: { not: "EM-4" }, // Exclude team lead
+        // Exclusions:
+        //  - EM-4  (Izaan, team lead — has his own team-lead bonus formula)
+        //  - EM-4L (Abdullah, hired for non-Etsy ecom work — not in bonus program)
+        employeeId: { notIn: ["EM-4", "EM-4L"] },
       },
       select: { id: true, firstName: true, lastName: true, employeeId: true, googleSheetUrl: true },
     });

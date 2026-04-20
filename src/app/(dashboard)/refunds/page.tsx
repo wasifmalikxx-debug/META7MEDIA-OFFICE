@@ -29,6 +29,12 @@ export default async function RefundsPage({
   const isManager = user.employeeId === "EM-4";
   const canSeeAll = isAdmin || isManager;
 
+  // EM-4L (Abdullah) was hired for non-Etsy ecom work and is not part of
+  // the Etsy bonus/refund program. Block direct URL access.
+  if (user.employeeId === "EM-4L") {
+    redirect("/dashboard");
+  }
+
   // Only Etsy team + admins may view this page
   if (!isEtsyMember && !isAdmin) {
     redirect("/dashboard");

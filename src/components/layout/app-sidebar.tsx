@@ -262,8 +262,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Etsy Program — only for Etsy employees (EM-), Manager (EM-4), and CEO */}
-        {(user.role === "SUPER_ADMIN" || user.role === "MANAGER" || user.employeeId?.startsWith("EM")) &&
+        {/* Etsy Program — only for Etsy employees (EM-), Manager (EM-4), and CEO.
+            EM-4L (Abdullah) is excluded because he was hired for non-Etsy ecom
+            work and is not part of the Etsy bonus program. */}
+        {(user.role === "SUPER_ADMIN" ||
+          user.role === "MANAGER" ||
+          (user.employeeId?.startsWith("EM") && user.employeeId !== "EM-4L")) &&
           getEtsyNav(user.role, user.employeeId || "").some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
             <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>

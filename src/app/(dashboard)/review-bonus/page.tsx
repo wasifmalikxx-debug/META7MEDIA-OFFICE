@@ -14,7 +14,12 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
   const params = await searchParams;
   const role = (session.user as any).role;
   const userId = session.user.id;
+  const employeeId = (session.user as any).employeeId;
   const isManagerOrAdmin = role === "SUPER_ADMIN" || role === "MANAGER";
+
+  // EM-4L (Abdullah) was hired for non-Etsy ecom work and is not part of
+  // the Etsy bonus program. Block direct URL access.
+  if (employeeId === "EM-4L") redirect("/dashboard");
 
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
   const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;

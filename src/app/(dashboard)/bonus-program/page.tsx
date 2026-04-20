@@ -31,7 +31,10 @@ export default async function BonusProgramPage({ searchParams }: { searchParams:
         where: {
           departmentId: etsyDept.id,
           status: { in: ["HIRED", "PROBATION"] },
-          employeeId: { not: "EM-4" }, // Exclude team lead Izaan
+          // Exclusions:
+          //  - EM-4  (Izaan, team lead — has his own team-lead bonus formula)
+          //  - EM-4L (Abdullah, hired for non-Etsy ecom work — not in this program)
+          employeeId: { notIn: ["EM-4", "EM-4L"] },
         },
         select: {
           id: true,
