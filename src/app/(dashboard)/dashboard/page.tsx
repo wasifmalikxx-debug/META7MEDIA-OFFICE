@@ -283,7 +283,7 @@ export default async function DashboardPage() {
     prisma.salaryStructure.findUnique({ where: { userId } }),
     prisma.user.findUnique({
       where: { id: userId },
-      select: { firstName: true, lastName: true, status: true, employeeId: true },
+      select: { firstName: true, lastName: true, status: true, employeeId: true, joiningDate: true },
     }),
     getCachedSettings(),
     prisma.officeSettings.findUnique({ where: { id: "default" }, select: { weekendDays: true } }),
@@ -388,6 +388,20 @@ export default async function DashboardPage() {
       monthLate={monthLate}
       totalWorkedHours={totalWorkedHours}
       monthlySalary={salaryStructure?.monthlySalary || 0}
+      earnedMonthlySalary={(() => {
+        // Prorate the earnable salary for mid-month hires — same formula as
+        // payroll.service.ts. Employees who joined before the month start
+        // earn their full monthlySalary (daysPayable = 30).
+        const monthlySal = salaryStructure?.monthlySalary || 0;
+        const dailyR = monthlySal / 30;
+        const joinDate = currentUser?.joiningDate;
+        let daysPay = 30;
+        if (joinDate && joinDate.getTime() > startOfMonth.getTime()) {
+          const raw = Math.floor((endOfMonth.getTime() - joinDate.getTime()) / 86_400_000) + 1;
+          daysPay = Math.min(30, Math.max(0, raw));
+        }
+        return Math.round(dailyR * daysPay);
+      })()}
       leaveRequests={JSON.parse(JSON.stringify(leaveRequests))}
       workStartTime={officeSettings?.workStartTime || "11:00"}
       breakStartTime={nowPKT().getUTCDay() === 5 ? (officeSettings?.fridayBreakStartTime || "13:30") : (officeSettings?.breakStartTime || "15:00")}
