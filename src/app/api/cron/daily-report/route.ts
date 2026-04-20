@@ -203,23 +203,19 @@ export async function GET(request: NextRequest) {
     ];
     const monthNameFormatted = `${monthNamesFull[now.getUTCMonth()]} ${now.getUTCFullYear()}`;
 
-    // ── Build breakdown strings — two shapes for two provider templates ──
-    // breakdownMultiline: emoji + newlines per employee (new Meta template {{11}})
-    // breakdownFlat:      pipe-separated single line (legacy Twilio template {{5}})
-    // Both include only employees with orders today.
-    const multilineParts: string[] = [];
-    const flatParts: string[] = [];
+    // Build the per-employee breakdown that goes into {{11}} of the Meta
+    // daily_report template. Multi-line, one block per employee with
+    // orders > 0. Meta renders the \n characters as real line breaks on
+    // the delivered message.
+    const breakdownParts: string[] = [];
     for (const r of reports) {
       if (r.todayOrders > 0) {
-        multilineParts.push(
+        breakdownParts.push(
           `📌 *${r.empId}*\n📦 Total Orders: ${r.todayOrders}\n💰 Total Sale: $${r.todaySale.toFixed(2)}`
         );
-        const emoji = r.todayProfit > 0 ? "🟢" : r.todayProfit < 0 ? "🔴" : "⚪";
-        flatParts.push(`${emoji} ${r.empId} ${r.name}: ${r.todayOrders} orders $${r.todayProfit.toFixed(2)}`);
       }
     }
-    const breakdownMultiline = multilineParts.join("\n\n");
-    const breakdownFlat = flatParts.join(" | ");
+    const breakdown = breakdownParts.join("\n\n");
 
     // Get CEO's phone numbers
     const ceo = await prisma.user.findFirst({
@@ -245,8 +241,7 @@ export async function GET(request: NextRequest) {
         cost: allCostToday,
         profit: allProfitToday,
       },
-      breakdownMultiline,
-      breakdownFlat,
+      breakdown,
     };
 
     if (ceo?.phone) {
