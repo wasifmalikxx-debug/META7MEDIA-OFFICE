@@ -38,6 +38,18 @@ export async function checkIn(
   const now = nowPKT();
   const today = todayPKT();
 
+  // Join-date guard: an employee cannot check in before their joining date.
+  // Prevents an accidentally-future-joining employee (e.g. admin sets joining
+  // date = tomorrow) from starting to check in today.
+  const employee = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { joiningDate: true },
+  });
+  if (employee && employee.joiningDate && employee.joiningDate.getTime() > today.getTime()) {
+    const dateStr = employee.joiningDate.toISOString().slice(0, 10);
+    throw new Error(`Check-in not allowed yet — your joining date is ${dateStr}.`);
+  }
+
   // Check if already checked in today or marked absent by system
   const existing = await prisma.attendance.findUnique({
     where: { userId_date: { userId, date: today } },
