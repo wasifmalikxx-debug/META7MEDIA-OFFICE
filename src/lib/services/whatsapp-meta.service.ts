@@ -25,10 +25,13 @@ const GRAPH_API_VERSION = "v21.0";
 
 // Meta template names — must match exactly what's approved in WhatsApp Manager.
 // These correspond 1:1 with the Twilio ContentSid map in whatsapp.service.ts.
+// Must match EXACTLY the approved template names in Meta WhatsApp Manager
+// on the WABA that owns +923407928956. Verified live via a successful send
+// to late_notice on 2026-04-20 (wamid.HBgMOTIzMjA4ODg4NDQ1...).
 export const META_TEMPLATE_NAMES = {
-  LATE_FINE: "late_fine",
+  LATE_FINE: "late_notice",
   BREAK_FINE: "break_fine",
-  ABSENT_NOTICE: "absent_notice",
+  ABSENT_NOTICE: "absent_fine",
   MANUAL_FINE: "manual_fine",
   SALARY_PAID: "salary_paid",
   DAILY_REPORT: "daily_report",
