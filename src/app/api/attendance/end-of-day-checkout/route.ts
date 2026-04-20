@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   if (process.env.NODE_ENV === "production") {
     if (!cronSecret) {
-      return error(`Server misconfigured: CRON_SECRET not set (route v${ROUTE_VERSION})`, 500);
+      return error(`Server misconfigured: CRON_SECRET not set (route ${ROUTE_VERSION})`, 500);
     }
     if (authHeader !== `Bearer ${cronSecret}`) {
       return error("Unauthorized", 401);
@@ -77,14 +77,14 @@ async function timeWindowGuard() {
 
   if (currentMin < workEndMin) {
     return error(
-      `Auto-checkout can only run after ${settings?.workEndTime || "19:00"} PKT. Current PKT: ${Math.floor(currentMin / 60)}:${String(currentMin % 60).padStart(2, "0")}. (route v${ROUTE_VERSION})`,
+      `Auto-checkout can only run after ${settings?.workEndTime || "19:00"} PKT. Current PKT: ${Math.floor(currentMin / 60)}:${String(currentMin % 60).padStart(2, "0")}. (route ${ROUTE_VERSION})`,
       400
     );
   }
 
   // Upper bound — refuse to run after midnight PKT (current day boundary)
   if (currentMin > 23 * 60 + 59) {
-    return error(`Auto-checkout window has closed for the day. (route v${ROUTE_VERSION})`, 400);
+    return error(`Auto-checkout window has closed for the day. (route ${ROUTE_VERSION})`, 400);
   }
 
   return null;
@@ -104,7 +104,7 @@ async function runCheckout(triggerSource: string) {
       checkoutTime.getUTCSeconds() === 0
     ) {
       return error(
-        `Refusing to write the legacy bug sentinel time (14:00 UTC). (route v${ROUTE_VERSION})`,
+        `Refusing to write the legacy bug sentinel time (14:00 UTC). (route ${ROUTE_VERSION})`,
         500
       );
     }
@@ -208,7 +208,7 @@ async function runCheckout(triggerSource: string) {
           overtimeMinutes: overtimeMinutes > 0 ? overtimeMinutes : null,
           earlyLeaveMin: earlyLeaveMin > 0 ? earlyLeaveMin : null,
           status,
-          notes: `End-of-day auto-checkout (${triggerSource}, route v${ROUTE_VERSION})`,
+          notes: `End-of-day auto-checkout (${triggerSource}, route ${ROUTE_VERSION})`,
         },
       });
 
@@ -285,6 +285,6 @@ async function runCheckout(triggerSource: string) {
       results,
     });
   } catch (err: any) {
-    return error(`${err.message} (route v${ROUTE_VERSION})`);
+    return error(`${err.message} (route ${ROUTE_VERSION})`);
   }
 }
