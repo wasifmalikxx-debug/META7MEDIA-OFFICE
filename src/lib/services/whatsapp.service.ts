@@ -91,6 +91,18 @@ export async function sendWhatsApp(to: string, message: string): Promise<boolean
  * @param variables     {"1": value, "2": value, ...} — positional body params
  *                      matching {{1}}, {{2}} in the template body
  */
+// Meta rejects template parameters with newlines, tabs, >4 consecutive
+// spaces, or empty values (error #132018). This sanitizer runs on every
+// template param so a stray multi-line CEO input or DB value never breaks
+// a send. Kept here (the single choke point) rather than per-caller.
+function sanitizeTemplateParam(value: string): string {
+  const cleaned = value
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/ {2,}/g, " ")
+    .trim();
+  return cleaned.length > 0 ? cleaned : "-";
+}
+
 export async function sendWhatsAppTemplate(
   to: string,
   templateName: string,
@@ -109,11 +121,11 @@ export async function sendWhatsAppTemplate(
     return false;
   }
 
-  // Convert the numbered variables object to a positional array.
+  // Convert the numbered variables object to a positional array, sanitizing each.
   const varCount = Object.keys(variables).length;
   const positional: string[] = [];
   for (let i = 1; i <= varCount; i++) {
-    positional.push(variables[String(i)] ?? "");
+    positional.push(sanitizeTemplateParam(variables[String(i)] ?? ""));
   }
 
   const result = await sendMetaTemplate(normalized, templateName, positional);
