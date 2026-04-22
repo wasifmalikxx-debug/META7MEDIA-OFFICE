@@ -204,18 +204,17 @@ export async function GET(request: NextRequest) {
     const monthNameFormatted = `${monthNamesFull[now.getUTCMonth()]} ${now.getUTCFullYear()}`;
 
     // Build the per-employee breakdown that goes into {{11}} of the Meta
-    // daily_report template. Multi-line, one block per employee with
-    // orders > 0. Meta renders the \n characters as real line breaks on
-    // the delivered message.
+    // daily_report template. Meta rejects template parameters that contain
+    // \n, \t, or >4 consecutive spaces (error #132018), so we keep this on
+    // a single line with inline separators. If no employee had orders, send
+    // a dash so the parameter is never empty (Meta also rejects empty vars).
     const breakdownParts: string[] = [];
     for (const r of reports) {
       if (r.todayOrders > 0) {
-        breakdownParts.push(
-          `📌 *${r.empId}*\n📦 Total Orders: ${r.todayOrders}\n💰 Total Sale: $${r.todaySale.toFixed(2)}`
-        );
+        breakdownParts.push(`${r.empId}: ${r.todayOrders} orders, $${r.todaySale.toFixed(2)}`);
       }
     }
-    const breakdown = breakdownParts.join("\n\n");
+    const breakdown = breakdownParts.length > 0 ? breakdownParts.join(" | ") : "No orders today";
 
     // Get CEO's phone numbers
     const ceo = await prisma.user.findFirst({
