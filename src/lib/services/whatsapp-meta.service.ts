@@ -5,18 +5,10 @@
  * Routes through graph.facebook.com/v21.0/<phoneId>/messages with a
  * Bearer access token. No SDK needed — plain fetch.
  *
- * Why direct Meta instead of Twilio: eliminates the per-message middleman
- * markup (~$0.005/msg + conversation fee), and the first 1,000 utility
- * conversations/month are free on Meta's side. Saves ~$40/mo at current
- * message volume.
- *
  * Env vars required (production):
  *   META_WA_TOKEN               — access token (permanent via System User)
  *   META_WA_PHONE_NUMBER_ID     — sender phone number ID
- *   META_WA_ENABLED             — "true" to route through Meta instead of Twilio
- *
- * The wrapper in whatsapp.service.ts checks META_WA_ENABLED and falls back
- * to Twilio if Meta is disabled, misconfigured, or a call fails.
+ *   META_WA_ENABLED             — "true" to enable WhatsApp sending
  */
 
 import { normalizePhone } from "@/lib/pkt";
@@ -24,17 +16,12 @@ import { normalizePhone } from "@/lib/pkt";
 const GRAPH_API_VERSION = "v21.0";
 
 // Meta template names — must match exactly what's approved in WhatsApp Manager.
-// These correspond 1:1 with the Twilio ContentSid map in whatsapp.service.ts.
-// Must match EXACTLY the approved template names in Meta WhatsApp Manager
-// on the WABA that owns +923407928956. Verified live via a successful send
-// to late_notice on 2026-04-20 (wamid.HBgMOTIzMjA4ODg4NDQ1...).
 export const META_TEMPLATE_NAMES = {
   LATE_FINE: "late_notice",
   BREAK_FINE: "break_fine",
   ABSENT_NOTICE: "absent_fine",
   MANUAL_FINE: "manual_fine",
   SALARY_PAID: "salary_paid",
-  DAILY_REPORT: "daily_report",
 } as const;
 
 export interface MetaSendResult {
@@ -46,8 +33,6 @@ export interface MetaSendResult {
 
 /**
  * True if the Meta path is fully configured AND the feature flag is on.
- * Used by callers to decide whether to try Meta (and fall back to Twilio
- * on any failure) vs. skip Meta entirely.
  */
 export function isMetaEnabled(): boolean {
   return (

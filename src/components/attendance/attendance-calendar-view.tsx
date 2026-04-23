@@ -113,9 +113,6 @@ export function AttendanceCalendarView({
   const totalHalfDay = employees.reduce((s, e) => s + e.halfDay, 0);
   const totalOnLeave = employees.reduce((s, e) => s + e.onLeave, 0);
 
-  // Split by team
-  const etsyEmployees = employees.filter((e) => e.employeeId.startsWith("EM"));
-  const fbEmployees = employees.filter((e) => e.employeeId.startsWith("SMM"));
 
   function renderTeamGrid(teamEmployees: EmployeeSummary[], teamName: string, teamColor: string) {
     if (teamEmployees.length === 0) return null;
@@ -310,9 +307,8 @@ export function AttendanceCalendarView({
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-slate-300 dark:bg-slate-600" /><span>Day Off</span></div>
       </div>
 
-      {/* Team Grids — Separate Cards */}
-      {renderTeamGrid(etsyEmployees, "Etsy Team", "bg-emerald-50/40 dark:bg-emerald-950/15")}
-      {renderTeamGrid(fbEmployees, "Facebook Team", "bg-blue-50/40 dark:bg-blue-950/15")}
+      {/* All Employees */}
+      {renderTeamGrid(employees, "All Employees", "bg-muted/40")}
     </div>
   );
 }

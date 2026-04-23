@@ -182,11 +182,11 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Employee ID</Label>
-                    <Input placeholder="EM-11 or SMM-8" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} required className="h-9" />
+                    <Input placeholder="EMP-001" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} required className="h-9" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Email</Label>
-                    <Input type="email" placeholder="name@meta7.media" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required className="h-9" />
+                    <Input type="email" placeholder="name@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required className="h-9" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -300,7 +300,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                 <Input
                   value={editForm.employeeId}
                   onChange={(e) => setEditForm({ ...editForm, employeeId: e.target.value })}
-                  placeholder="e.g. EM-1, SMM-1"
+                  placeholder="e.g. EMP-001"
                 />
               </div>
 
@@ -478,21 +478,13 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
           if (!grouped[dept]) grouped[dept] = [];
           grouped[dept].push(emp);
         });
-        const deptOrder = ["Etsy", "Facebook"];
-        const sortedKeys = Object.keys(grouped).sort((a, b) => {
-          const ai = deptOrder.indexOf(a);
-          const bi = deptOrder.indexOf(b);
-          if (ai !== -1 && bi !== -1) return ai - bi;
-          if (ai !== -1) return -1;
-          if (bi !== -1) return 1;
-          return a.localeCompare(b);
-        });
+        const sortedKeys = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
 
         const sections = sortedKeys.map((dept) => (
           <Card key={dept} className="border-0 shadow-sm overflow-hidden">
-            <div className={`flex items-center justify-between px-5 py-2.5 border-b ${dept === "Etsy" ? "bg-emerald-50/40 dark:bg-emerald-950/10" : dept === "Facebook" ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-muted/20"}`}>
+            <div className="flex items-center justify-between px-5 py-2.5 border-b bg-muted/20">
               <div className="flex items-center gap-2.5">
-                <div className={`size-7 rounded-lg flex items-center justify-center ${dept === "Etsy" ? "bg-emerald-100 dark:bg-emerald-900/30" : dept === "Facebook" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-slate-100 dark:bg-slate-800"}`}>
+                <div className="size-7 rounded-lg flex items-center justify-center bg-slate-100 dark:bg-slate-800">
                   <span className="text-[10px] font-bold">{dept[0]}</span>
                 </div>
                 <h3 className="text-xs font-bold">{dept} Team</h3>

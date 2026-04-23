@@ -13,8 +13,6 @@ import { nowPKT } from "@/lib/pkt";
  * - Incentive records
  * - Payroll records
  * - Leave requests
- * - Bonus eligibility records
- * - Review bonus records
  * - Notifications
  */
 export async function GET(request: NextRequest) {
@@ -77,28 +75,6 @@ export async function GET(request: NextRequest) {
       where: { startDate: { lt: cutoffDate } },
     });
     results.leaves = leaves.count;
-
-    // Delete old bonus eligibility
-    const bonus = await prisma.bonusEligibility.deleteMany({
-      where: {
-        OR: [
-          { year: { lt: cutoffYear } },
-          { year: cutoffYear, month: { lt: cutoffMonth } },
-        ],
-      },
-    });
-    results.bonusEligibility = bonus.count;
-
-    // Delete old review bonuses
-    const reviews = await prisma.reviewBonus.deleteMany({
-      where: {
-        OR: [
-          { year: { lt: cutoffYear } },
-          { year: cutoffYear, month: { lt: cutoffMonth } },
-        ],
-      },
-    });
-    results.reviewBonuses = reviews.count;
 
     // Delete old notifications (older than 3 months)
     const notifs = await prisma.notification.deleteMany({

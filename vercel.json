@@ -1,5 +1,4 @@
 {
-  "regions": ["syd1"],
   "crons": [
     {
       "path": "/api/attendance/end-of-day-checkout",
@@ -8,14 +7,6 @@
     {
       "path": "/api/cron/daily-absent",
       "schedule": "3 15 * * 1-6"
-    },
-    {
-      "path": "/api/cron/sync-profits",
-      "schedule": "15 15 * * 1-6"
-    },
-    {
-      "path": "/api/cron/daily-report",
-      "schedule": "45 15 * * 1-6"
     },
     {
       "path": "/api/cron/cleanup",

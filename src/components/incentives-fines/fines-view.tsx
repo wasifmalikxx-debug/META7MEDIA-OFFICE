@@ -120,9 +120,14 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
     OTHER: AlertTriangle,
   };
 
-  const etsyEmployees = employees.filter((e: any) => e.department?.name === "Etsy");
-  const fbEmployees = employees.filter((e: any) => e.department?.name === "Facebook");
-  const otherEmployees = employees.filter((e: any) => !e.department?.name || (e.department.name !== "Etsy" && e.department.name !== "Facebook"));
+  // Group employees by department name for the Select dropdown.
+  const employeesByDept: Record<string, any[]> = {};
+  employees.forEach((e: any) => {
+    const name = e.department?.name || "Other";
+    if (!employeesByDept[name]) employeesByDept[name] = [];
+    employeesByDept[name].push(e);
+  });
+  const deptKeys = Object.keys(employeesByDept).sort();
 
   // Group fines + leaves by date
   const grouped: Record<string, any[]> = {};
@@ -169,30 +174,14 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                   <Select value={form.userId} onValueChange={(v) => v && setForm({ ...form, userId: v })}>
                     <SelectTrigger className="w-full h-10"><SelectValue placeholder="Select employee..." /></SelectTrigger>
                     <SelectContent className="max-h-[300px]">
-                      {etsyEmployees.length > 0 && (
-                        <>
-                          <div className="px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/50">Etsy Team</div>
-                          {etsyEmployees.map((emp: any) => (
+                      {deptKeys.map((dept, i) => (
+                        <div key={dept}>
+                          <div className={`px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/50 ${i > 0 ? "mt-1" : ""}`}>{dept}</div>
+                          {employeesByDept[dept].map((emp: any) => (
                             <SelectItem key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} ({emp.employeeId})</SelectItem>
                           ))}
-                        </>
-                      )}
-                      {fbEmployees.length > 0 && (
-                        <>
-                          <div className="px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/50 mt-1">Facebook Team</div>
-                          {fbEmployees.map((emp: any) => (
-                            <SelectItem key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} ({emp.employeeId})</SelectItem>
-                          ))}
-                        </>
-                      )}
-                      {otherEmployees.length > 0 && (
-                        <>
-                          <div className="px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/50 mt-1">Other</div>
-                          {otherEmployees.map((emp: any) => (
-                            <SelectItem key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} ({emp.employeeId})</SelectItem>
-                          ))}
-                        </>
-                      )}
+                        </div>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -326,7 +315,7 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                         )}
                         <p className="text-[9px] text-muted-foreground mt-0.5">
                           {fine.reason?.startsWith("Auto-generated") || fine.reason?.startsWith("Late from break") || fine.reason?.startsWith("Absent") || fine.reason?.startsWith("Break skipped") || fine.reason?.startsWith("Daily report")
-                            ? "META7 AI"
+                            ? "System"
                             : `${fine.issuedBy?.firstName || ""} ${fine.issuedBy?.lastName || ""}`}
                         </p>
                       </div>

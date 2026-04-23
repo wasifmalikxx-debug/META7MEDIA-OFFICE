@@ -38,7 +38,7 @@ export default function PayslipPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">
-              META7MEDIA — Monthly Salary Statement
+              Monthly Salary Statement
             </CardTitle>
             <Badge variant={data.status === "PAID" ? "default" : "outline"}>
               {data.status}

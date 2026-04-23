@@ -1,10 +1,10 @@
 {
-  "name": "meta7media-office",
+  "name": "office-manager",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push && next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "prisma generate",
@@ -25,7 +25,6 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.3.1",
-    "googleapis": "^171.4.0",
     "lucide-react": "^1.0.1",
     "next": "16.2.1",
     "next-auth": "^5.0.0-beta.30",

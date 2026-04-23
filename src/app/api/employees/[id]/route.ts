@@ -161,8 +161,6 @@ export async function DELETE(
   await prisma.$transaction([
     // 1. Null out nullable approver/updater refs on other records
     prisma.leaveRequest.updateMany({ where: { approverId: id }, data: { approverId: null } }),
-    prisma.bonusEligibility.updateMany({ where: { updatedById: id }, data: { updatedById: null } }),
-    prisma.reviewBonus.updateMany({ where: { approvedById: id }, data: { approvedById: null } }),
     prisma.complaint.updateMany({ where: { resolvedById: id }, data: { resolvedById: null } }),
 
     // 2. Delete all records owned by this user (order matters for FK chains)
@@ -177,9 +175,6 @@ export async function DELETE(
     prisma.salaryStructure.deleteMany({ where: { userId: id } }),
     prisma.dailyReport.deleteMany({ where: { userId: id } }),
     prisma.deviceApproval.deleteMany({ where: { userId: id } }),
-    prisma.bonusEligibility.deleteMany({ where: { userId: id } }),
-    prisma.reviewBonus.deleteMany({ where: { userId: id } }),
-    prisma.refund.deleteMany({ where: { userId: id } }),
     // Complaints — messages cascade-delete via schema relation
     prisma.complaint.deleteMany({ where: { userId: id } }),
 

@@ -1,14 +1,11 @@
 /**
- * Sort employees by ID: EM-1, EM-2, ..., EM-10, EM-4 (Manager last)
- * Also handles SMM-1, SMM-2, ..., SMM-10
- * Groups by prefix (EM first, then SMM), sorted numerically within each group.
+ * Sort employees by ID. Groups by prefix, sorted numerically within each
+ * group. Handles patterns like EMP-1, EMP-2, ..., HR-1, HR-2, etc.
  */
 
 function parseEmployeeId(id: string | null | undefined) {
   if (!id) return { prefix: "ZZZ", num: 998, suffix: "" };
-  // EM-4 (Manager) goes to the very end of EM group
-  if (id === "EM-4") return { prefix: "EM", num: 999, suffix: "" };
-  // Match patterns like EM-1, EM-4B, SMM-1, SMM-10
+  // Match patterns like EMP-1, EMP-4B, HR-1, HR-10
   const match = id.match(/^([A-Z]+)-(\d+)(.*)/i);
   if (!match) return { prefix: "ZZZ", num: 998, suffix: "" };
   return { prefix: match[1].toUpperCase(), num: parseInt(match[2]), suffix: match[3] || "" };

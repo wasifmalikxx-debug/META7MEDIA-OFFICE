@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
-import { todayPKT, nowPKT, pktMonth, pktYear, pktMinutesSinceMidnight } from "@/lib/pkt";
-import { createNotification } from "@/lib/services/notification.service";
+import { todayPKT, nowPKT, pktMinutesSinceMidnight } from "@/lib/pkt";
 import { resolveAttendanceStatus } from "@/lib/services/attendance-status";
 import { maybeCreateBreakSkipFine } from "@/lib/services/break-fine";
 
@@ -211,51 +210,6 @@ async function runCheckout(triggerSource: string) {
           notes: `End-of-day auto-checkout (${triggerSource}, route ${ROUTE_VERSION})`,
         },
       });
-
-      // Daily-report missing fine — same logic as the old endpoint
-      const hasFirstHalf = resolved.halfDayPeriod === "FIRST_HALF";
-      if (!hasFirstHalf) {
-        const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
-        const month = pktMonth();
-        const year = pktYear();
-        const dailyReport = await prisma.dailyReport.findUnique({
-          where: { userId_date: { userId: att.user.id, date: today } },
-        });
-        const existingReportFine = await prisma.fine.findFirst({
-          where: {
-            userId: att.user.id,
-            date: today,
-            reason: "Daily report not submitted before auto-checkout",
-          },
-        });
-        if (
-          !dailyReport &&
-          !existingReportFine &&
-          settings &&
-          settings.noReportFineAmt > 0 &&
-          admin
-        ) {
-          await prisma.fine.create({
-            data: {
-              userId: att.user.id,
-              type: "POLICY_VIOLATION",
-              amount: settings.noReportFineAmt,
-              reason: "Daily report not submitted before auto-checkout",
-              date: today,
-              month,
-              year,
-              issuedById: admin.id,
-            },
-          });
-          await createNotification(
-            att.user.id,
-            "FINE_ISSUED",
-            "Fine: Report Not Submitted",
-            `PKR ${settings.noReportFineAmt} fine — daily report was not submitted. You were auto-checked out.`,
-            "/fines"
-          );
-        }
-      }
 
       // Break-skip fine — single source of truth helper
       const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });

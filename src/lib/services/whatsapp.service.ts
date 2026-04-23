@@ -1,12 +1,11 @@
 /**
- * WhatsApp notification service — Meta Cloud API only.
+ * WhatsApp notification service — Meta Cloud API.
  *
- * Twilio was removed on 2026-04-20 after the Meta direct integration was
- * validated in production (templates: late_notice, break_fine, absent_fine,
- * manual_fine, salary_paid, daily_report).
+ * Templates used: late_notice, break_fine, absent_fine, manual_fine,
+ * salary_paid. All must be pre-approved in Meta WhatsApp Manager.
  *
  * Kill switch: set OfficeSettings.whatsappEnabled = false in the DB, OR set
- * META_WA_ENABLED != "true" on Vercel. Either disables ALL WhatsApp sends.
+ * META_WA_ENABLED != "true" in env. Either disables ALL WhatsApp sends.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -226,38 +225,6 @@ export async function sendSalaryPaidTemplate(
   });
 }
 
-/**
- * Daily sales report — 11-variable Meta template.
- * Today + month-to-date totals plus a multi-line per-employee breakdown.
- */
-export interface DailyReportData {
-  date: string;
-  monthName: string;
-  monthly: { orders: number; sale: number; cost: number; profit: number };
-  today: { orders: number; sale: number; cost: number; profit: number };
-  /** Multi-line breakdown — one block per employee with newlines. Goes into {{11}}. */
-  breakdown: string;
-}
-
-export async function sendDailyReportTemplate(
-  to: string,
-  data: DailyReportData
-): Promise<boolean> {
-  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.DAILY_REPORT, {
-    "1": data.date,
-    "2": data.monthName,
-    "3": String(data.monthly.orders),
-    "4": data.monthly.sale.toFixed(2),
-    "5": data.monthly.cost.toFixed(2),
-    "6": data.monthly.profit.toFixed(2),
-    "7": String(data.today.orders),
-    "8": data.today.sale.toFixed(2),
-    "9": data.today.cost.toFixed(2),
-    "10": data.today.profit.toFixed(2),
-    "11": data.breakdown,
-  });
-}
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Legacy plain-text message builders (for `sendWhatsApp` free-form sends)
 //
@@ -268,7 +235,7 @@ export async function sendDailyReportTemplate(
 
 export function lateFineMsg(name: string, minutes: number, amount: number): string {
   return [
-    `🚨 *META7MEDIA — LATE FINE*`,
+    `🚨 *Office — LATE FINE*`,
     `━━━━━━━━━━━━━━━━━━━━`,
     ``,
     `Hi ${name},`,
@@ -282,13 +249,13 @@ export function lateFineMsg(name: string, minutes: number, amount: number): stri
     ``,
     `⚙️ _System-generated alert — cannot be modified._`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `META7 AI | Office Manager`,
+    `Office Manager`,
   ].join("\n");
 }
 
 export function breakFineMsg(name: string, minutes: number, amount: number): string {
   return [
-    `🚨 *META7MEDIA — BREAK FINE*`,
+    `🚨 *Office — BREAK FINE*`,
     `━━━━━━━━━━━━━━━━━━━━`,
     ``,
     `Hi ${name},`,
@@ -302,13 +269,13 @@ export function breakFineMsg(name: string, minutes: number, amount: number): str
     ``,
     `⚙️ _System-generated alert — cannot be modified._`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `META7 AI | Office Manager`,
+    `Office Manager`,
   ].join("\n");
 }
 
 export function manualFineMsg(name: string, amount: number, reason: string): string {
   return [
-    `🚨 *META7MEDIA — FINE NOTICE*`,
+    `🚨 *Office — FINE NOTICE*`,
     `━━━━━━━━━━━━━━━━━━━━`,
     ``,
     `Hi ${name},`,
@@ -321,13 +288,13 @@ export function manualFineMsg(name: string, amount: number, reason: string): str
     ``,
     `⚙️ _System-generated alert — cannot be modified._`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `META7 AI | Office Manager`,
+    `Office Manager`,
   ].join("\n");
 }
 
 export function absentFineMsg(name: string, amount: number): string {
   return [
-    `🔴 *META7MEDIA — ABSENT NOTICE*`,
+    `🔴 *Office — ABSENT NOTICE*`,
     `━━━━━━━━━━━━━━━━━━━━`,
     ``,
     `Hi ${name},`,
@@ -341,76 +308,13 @@ export function absentFineMsg(name: string, amount: number): string {
     ``,
     `⚙️ _System-generated alert — cannot be modified._`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `META7 AI | Office Manager`,
-  ].join("\n");
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎉 BONUS MESSAGES (Motivational — plain-text only for now)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-export function bonusEligibleMsg(name: string, profit: number, bonus: number): string {
-  return [
-    `🎉 *META7MEDIA — BONUS ACHIEVED!*`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    ``,
-    `Congratulations, *${name}*! 🏆`,
-    ``,
-    `🚀 Monthly Profit: *$${profit.toLocaleString()}*`,
-    `💰 Bonus Earned: *PKR ${bonus.toLocaleString()}*`,
-    ``,
-    `🌟 Your hard work is paying off!`,
-    `Keep pushing — every dollar counts towards`,
-    `your next bonus tier! 📈`,
-    ``,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    `META7MEDIA Management 🏢`,
-  ].join("\n");
-}
-
-export function reviewBonusApprovedMsg(name: string, storeName: string, amount: number): string {
-  return [
-    `⭐ *META7MEDIA — REVIEW BONUS APPROVED!*`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    ``,
-    `Great work, *${name}*! 👏`,
-    ``,
-    `🏪 Store: *${storeName}*`,
-    `💰 Bonus: *PKR ${amount.toLocaleString()}*`,
-    `✅ Status: *APPROVED*`,
-    ``,
-    `🌟 Every positive review strengthens our brand.`,
-    `Keep delivering excellence! 💪`,
-    ``,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    `META7MEDIA Management 🏢`,
-  ].join("\n");
-}
-
-export function teamLeadBonusMsg(name: string, eligibleCount: number, bonus: number): string {
-  return [
-    `👑 *META7MEDIA — TEAM LEAD BONUS!*`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    ``,
-    `Outstanding, *${name}*! 🎯`,
-    ``,
-    `👥 Eligible Members: *${eligibleCount}*`,
-    `💰 Your Bonus: *PKR ${bonus.toLocaleString()}*`,
-    ``,
-    `🏆 Your leadership helped ${eligibleCount} team`,
-    `member${eligibleCount !== 1 ? "s" : ""} hit their targets this month!`,
-    ``,
-    `Keep leading by example — the team follows`,
-    `your pace! 🚀`,
-    ``,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    `META7MEDIA Management 🏢`,
+    `Office Manager`,
   ].join("\n");
 }
 
 export function autoCheckoutMsg(name: string, timeStr: string): string {
   return [
-    `🔔 *META7MEDIA — AUTO-CHECKOUT*`,
+    `🔔 *Office — AUTO-CHECKOUT*`,
     `━━━━━━━━━━━━━━━━━━━━`,
     ``,
     `Hi ${name},`,
@@ -421,6 +325,6 @@ export function autoCheckoutMsg(name: string, timeStr: string): string {
     `📌 Please remember to check out at the end of each day.`,
     ``,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `META7 AI | Office Manager`,
+    `Office Manager`,
   ].join("\n");
 }

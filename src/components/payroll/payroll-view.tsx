@@ -174,17 +174,13 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear, month
   for (const dept of Object.keys(grouped)) {
     grouped[dept] = sortByNestedEmployeeId(grouped[dept]);
   }
-  const deptOrder = Object.keys(grouped).sort((a, b) => {
-    if (a === "Etsy") return -1;
-    if (b === "Etsy") return 1;
-    return a.localeCompare(b);
-  });
+  const deptOrder = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
 
   function renderTable(deptRecords: any[], deptName: string) {
     const deptTotal = deptRecords.reduce((s: number, r: any) => s + r.netSalary, 0);
     return (
       <Card key={deptName} className="overflow-hidden border-0 shadow-sm">
-        <CardHeader className={`pb-2 border-b ${deptName === "Etsy" ? "bg-emerald-50/40 dark:bg-emerald-950/10" : deptName === "Facebook" ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-muted/30"}`}>
+        <CardHeader className="pb-2 border-b bg-muted/30">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-bold">{deptName} Team</CardTitle>
             <div className="flex items-center gap-2">

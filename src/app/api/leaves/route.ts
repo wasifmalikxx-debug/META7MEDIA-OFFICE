@@ -112,13 +112,6 @@ export async function POST(request: NextRequest) {
 
     // For today's half day (second half only): must have checked in and completed 4h threshold
     if (parsed.leaveType === "HALF_DAY" && startDate.getTime() === today.getTime() && parsed.halfDayPeriod !== "FIRST_HALF") {
-      // Check daily report submitted
-      const dailyReport = await prisma.dailyReport.findUnique({
-        where: { userId_date: { userId: session.user.id, date: today } },
-      });
-      if (!dailyReport) {
-        return error("Please submit your daily report first.");
-      }
       const todayAttendance = await prisma.attendance.findUnique({
         where: { userId_date: { userId: session.user.id, date: today } },
       });

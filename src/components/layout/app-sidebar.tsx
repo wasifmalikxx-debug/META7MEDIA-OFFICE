@@ -10,24 +10,16 @@ import {
   Users,
   Building2,
   Wallet,
-  AlertTriangle,
   CalendarClock,
   Settings,
   User,
   LogOut,
   ShieldCheck,
   HelpCircle,
-  Target,
-  Star,
-  BookOpen,
-  Rocket,
   MessageSquare,
-  BarChart3,
   CalendarDays,
   CalendarMinus,
   AlertOctagon,
-  RefreshCcw,
-  FileText,
 } from "lucide-react";
 import {
   Sidebar,
@@ -67,10 +59,8 @@ function getMainNav(userRole: string) {
     { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
     { title: "Daily Activities", href: "/fines", icon: CalendarClock, roles: ["all"] },
     { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
-    { title: "My Reports", href: "/my-reports", icon: BarChart3, roles: ["EMPLOYEE", "MANAGER"] },
-    { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
     { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN"] },
-    // CEO sees "Complaints", employees see "Launch Complaint"
+    // Admin sees "Complaints", employees see "Launch Complaint"
     { title: isAdmin ? "Complaints" : "Launch Complaint", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
   ];
 }
@@ -86,43 +76,6 @@ const financeNav = [
   { title: "Payroll", href: "/payroll", icon: Wallet, roles: ["all"] },
 ];
 
-function getEtsyNav(userRole: string, employeeId: string) {
-  const isAdminOrManager = userRole === "SUPER_ADMIN" || userRole === "MANAGER";
-  // Izaan (EM-4) is Etsy team lead — gets the admin-style label even though
-  // his role is EMPLOYEE, because he sees all refunds but doesn't submit
-  const isTeamLead = employeeId === "EM-4";
-  const nav: { title: string; href: string; icon: any; roles: string[] }[] = [
-    { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER"] },
-    { title: "Analytics", href: "/etsy-analytics", icon: BarChart3, roles: ["SUPER_ADMIN"] },
-  ];
-  // Izaan only: Etsy team reports view (scoped to EM-* employees on the server)
-  if (isTeamLead) {
-    nav.push({
-      title: "Team Reports",
-      href: "/daily-work-report",
-      icon: FileText,
-      roles: ["all"],
-    });
-  }
-  nav.push(
-    {
-      title: isAdminOrManager ? "Review Approvals" : "Submit Review",
-      href: "/review-bonus",
-      icon: Star,
-      roles: ["all"],
-    },
-    // Refunds: CEO + Izaan see 'Refunds' (all), other Etsy employees see 'Submit Refund'
-    {
-      title: isAdminOrManager || isTeamLead ? "Refunds" : "Submit Refund",
-      href: "/refunds",
-      icon: RefreshCcw,
-      roles: ["all"],
-    },
-    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] }
-  );
-  return nav;
-}
-
 const settingsNav = [
   { title: "Office Timings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
   { title: "How It Works", href: "/how-it-works", icon: HelpCircle, roles: ["all"] },
@@ -136,10 +89,9 @@ function hasAccess(roles: string[], userRole: string) {
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
   const [pendingDevices, setPendingDevices] = useState(0);
-  const [pendingReviews, setPendingReviews] = useState(0);
   const [openComplaints, setOpenComplaints] = useState(0);
 
-  // Poll for pending device approvals every 30 seconds (CEO only)
+  // Poll for pending device approvals every 2 minutes (admin only)
   useEffect(() => {
     if (user.role !== "SUPER_ADMIN") return;
     async function fetchPending() {
@@ -156,24 +108,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role]);
 
-  // Poll for pending review bonus submissions every 2 minutes (CEO/Manager only)
-  useEffect(() => {
-    if (user.role !== "SUPER_ADMIN" && user.role !== "MANAGER") return;
-    async function fetchPendingReviews() {
-      try {
-        const res = await fetch("/api/review-bonus?status=PENDING&count=true");
-        if (res.ok) {
-          const data = await res.json();
-          setPendingReviews(typeof data.count === "number" ? data.count : 0);
-        }
-      } catch {}
-    }
-    fetchPendingReviews();
-    const interval = setInterval(fetchPendingReviews, 120_000);
-    return () => clearInterval(interval);
-  }, [user.role]);
-
-  // Poll for open complaints (CEO only — shows OPEN + IN_PROGRESS)
+  // Poll for open complaints (admin only)
   useEffect(() => {
     if (user.role !== "SUPER_ADMIN" && user.role !== "HR_ADMIN") return;
     async function fetchComplaints() {
@@ -205,11 +140,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   {pendingDevices}
                 </Badge>
               )}
-              {item.href === "/review-bonus" && pendingReviews > 0 && (
-                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
-                  {pendingReviews}
-                </Badge>
-              )}
               {item.href === "/complaints" && openComplaints > 0 && (user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN") && (
                 <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
                   {openComplaints}
@@ -229,11 +159,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
     <Sidebar>
       <SidebarHeader className="border-b px-4 py-3">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <img src="/logo.png" alt="META7MEDIA" className="h-8 w-auto" />
+          <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
           <div className="flex flex-col">
-            <span className="text-sm font-bold">META7MEDIA AI</span>
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Office Manager</span>
-            <span className="text-[8px] text-muted-foreground/60">Powered By: Google</span>
+            <span className="text-sm font-bold">{process.env.NEXT_PUBLIC_APP_NAME || "Office Manager"}</span>
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">HR & Attendance</span>
           </div>
         </Link>
       </SidebarHeader>
@@ -262,38 +191,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Etsy Program — only for Etsy employees (EM-), Manager (EM-4), and CEO.
-            EM-4L (Abdullah) is excluded because he was hired for non-Etsy ecom
-            work and is not part of the Etsy bonus program. */}
-        {(user.role === "SUPER_ADMIN" ||
-          user.role === "MANAGER" ||
-          (user.employeeId?.startsWith("EM") && user.employeeId !== "EM-4L")) &&
-          getEtsyNav(user.role, user.employeeId || "").some((item) => hasAccess(item.roles, user.role)) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>{renderNavItems(getEtsyNav(user.role, user.employeeId || ""))}</SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* FB Program — only for FB employees (SMM-) and CEO */}
-        {(user.role === "SUPER_ADMIN" || user.employeeId?.startsWith("SMM")) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>FB Program</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton isActive={pathname === "/fb-program"} render={<Link href="/fb-program" />}>
-                    <Rocket className="size-4" />
-                    <span>Bonus Program</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
         {settingsNav.some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
             <SidebarGroupLabel>Settings</SidebarGroupLabel>
@@ -312,11 +209,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuButton className="w-full" />}>
                   <Avatar className="size-6">
-                    {(user as any).role === "SUPER_ADMIN" ? (
-                      <img src="/logo.png" alt="CEO" className="size-6 object-contain" />
-                    ) : (
-                      <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                    )}
+                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col items-start text-left">
                     <span className="text-sm">{user.name}</span>

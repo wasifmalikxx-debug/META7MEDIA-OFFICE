@@ -32,10 +32,10 @@ export default async function DashboardPage() {
 
     const [
       allEmployees, todayAttendances, payrollRecords, fines, todayLeaves,
-      officeSettings, todayHoliday, monthAttendances, todayReports,
+      officeSettings, todayHoliday, monthAttendances,
       monthFinesDetailed,
-      // CEO Command Center — pending action counts
-      pendingLeavesCount, pendingDevicesCount, pendingReviewBonusesCount, complaintsAwaitingCeoCount,
+      // Command Center — pending action counts
+      pendingLeavesCount, pendingDevicesCount, complaintsAwaitingCeoCount,
     ] = await Promise.all([
       prisma.user.findMany({
         where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
@@ -69,8 +69,6 @@ export default async function DashboardPage() {
         where: { date: { gte: startOfMonth, lte: endOfMonth } },
         select: { date: true, status: true, userId: true },
       }),
-      // Today's daily reports count
-      prisma.dailyReport.count({ where: { date: today } }),
       // Monthly fines with dates for chart
       prisma.fine.findMany({
         where: { month, year },
@@ -79,7 +77,6 @@ export default async function DashboardPage() {
       // Command Center — pending counts (cheap aggregate queries)
       prisma.leaveRequest.count({ where: { status: "PENDING" } }),
       prisma.deviceApproval.count({ where: { status: "PENDING" } }),
-      prisma.reviewBonus.count({ where: { status: "PENDING" } }),
       prisma.complaint.count({ where: { unreadByCeo: true, status: { notIn: ["RESOLVED", "DENIED"] } } }),
     ]);
 
@@ -189,12 +186,6 @@ export default async function DashboardPage() {
     });
     const topAbsent = Object.values(absentCounts).sort((a, b) => b.count - a.count).slice(0, 5);
 
-    // Team productivity
-    const etsyEmployees = allEmployees.filter((e) => e.employeeId.startsWith("EM"));
-    const fbEmployees = allEmployees.filter((e) => e.employeeId.startsWith("SMM"));
-    const etsyPresent = monthAttendances.filter((a: any) => (a.status === "PRESENT" || a.status === "LATE") && etsyEmployees.some((e) => e.id === a.userId)).length;
-    const fbPresent = monthAttendances.filter((a: any) => (a.status === "PRESENT" || a.status === "LATE") && fbEmployees.some((e) => e.id === a.userId)).length;
-
     return (
       <AdminDashboard
         totalEmployees={totalEmployees}
@@ -208,16 +199,10 @@ export default async function DashboardPage() {
         dayOffLabel={holidayName ? `Holiday — ${holidayName}` : isWeekend ? "Sunday" : null}
         attendanceTrend={attendanceTrend}
         finesTrend={finesTrend}
-        todayReports={todayReports}
         topAbsent={topAbsent}
-        etsyTeamSize={etsyEmployees.length}
-        fbTeamSize={fbEmployees.length}
-        etsyPresent={etsyPresent}
-        fbPresent={fbPresent}
         commandCenter={{
           pendingLeaves: pendingLeavesCount,
           pendingDevices: pendingDevicesCount,
-          pendingReviewBonuses: pendingReviewBonusesCount,
           complaintsAwaitingReply: complaintsAwaitingCeoCount,
         }}
       />
@@ -242,7 +227,6 @@ export default async function DashboardPage() {
     officeSettings,
     empOfficeSettings,
     empHoliday,
-    todayReport,
   ] = await Promise.all([
     prisma.attendance.findUnique({
       where: { userId_date: { userId, date: today } },
@@ -288,7 +272,6 @@ export default async function DashboardPage() {
     getCachedSettings(),
     prisma.officeSettings.findUnique({ where: { id: "default" }, select: { weekendDays: true } }),
     prisma.holiday.findFirst({ where: { date: today } }),
-    prisma.dailyReport.findUnique({ where: { userId_date: { userId, date: today } } }),
   ]);
 
   // Detect weekend/holiday for employee
@@ -409,7 +392,6 @@ export default async function DashboardPage() {
       workEndTime={officeSettings?.workEndTime || "19:00"}
       isDayOff={empIsDayOff}
       dayOffLabel={empDayOffLabel}
-      hasSubmittedReport={!!todayReport}
       pendingLeaves={leaveBudgetInfo.available}
       attendanceRate={attendanceRate}
       monthHalfDay={monthHalfDay}

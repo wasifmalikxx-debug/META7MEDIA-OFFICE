@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "META7MEDIA AI — Office Manager",
-  description: "Office attendance, payroll, and employee management system — Powered by Google",
+  title: process.env.NEXT_PUBLIC_APP_NAME || "Office Manager",
+  description: "HR, attendance, payroll, and employee management system",
   icons: {
     icon: "/logo.png",
     apple: "/logo.png",

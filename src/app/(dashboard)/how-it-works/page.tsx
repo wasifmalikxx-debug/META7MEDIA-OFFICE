@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Clock, Calendar, Wallet, AlertTriangle, Coffee, ShieldCheck,
-  Smartphone, Ban, CreditCard, Timer, FileText, CalendarDays,
+  Smartphone, Ban, CreditCard, Timer, CalendarDays,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +44,7 @@ export default async function HowItWorksPage() {
     <div className="space-y-5 max-w-4xl">
       <PageHeader
         title="How It Works"
-        description="Complete guide to META7MEDIA office policies, rules, and system behavior"
+        description="Complete guide to office policies, rules, and system behavior"
       />
 
       <PolicyCard icon={Clock} title="Working Hours" color="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400">
@@ -61,7 +61,6 @@ export default async function HowItWorksPage() {
         <Rule>Hours tracked = check-out time - check-in time - break time</Rule>
         <Rule>If you work less than <strong>6 hours</strong> (75% of full day), it counts as half day</Rule>
         <Rule>Minimum <strong>4 hours</strong> required before you can check out</Rule>
-        <Rule><strong>Daily work report must be submitted</strong> before checking out</Rule>
         <Rule>Grace period: <strong>10 minutes</strong> after 11:00 AM before late fine applies</Rule>
       </PolicyCard>
 
@@ -126,23 +125,8 @@ export default async function HowItWorksPage() {
         <Rule><strong>Today&apos;s date:</strong> only Second Half allowed (must check in and work 4 hours first)</Rule>
         <Rule><strong>Future dates:</strong> both First Half and Second Half available</Rule>
         <Rule>First Half leave: you check in after break time — <strong>no late fine</strong></Rule>
-        <Rule>Second Half leave: requires <strong>daily report submission</strong> before applying</Rule>
         <Rule>Half day = <strong>0.5</strong> from your paid leave budget</Rule>
         <Rule><strong>15-minute cancel window</strong> for same-day leaves</Rule>
-      </PolicyCard>
-
-      <PolicyCard icon={FileText} title="Daily Work Report" color="bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400">
-        <Rule>You <strong>must submit a daily report before checking out</strong></Rule>
-        <Rule><strong>Etsy team (EM-):</strong> How many listings, store name, listing links</Rule>
-        <Rule><strong>Facebook team (SMM-):</strong> How many posts, page names</Rule>
-        <Rule>Optional notes field available for both teams</Rule>
-        <Rule>One report per day — can be updated if submitted again</Rule>
-        <div className="rounded-lg border bg-rose-50 dark:bg-rose-950/20 p-3 my-1">
-          <p className="text-xs font-semibold text-rose-700 dark:text-rose-400">
-            If you are auto-checked out at 8:00 PM without submitting your report, a PKR 100 fine is applied automatically and you will receive a notification.
-          </p>
-        </div>
-        <Rule>CEO sees all reports grouped by date and team</Rule>
       </PolicyCard>
 
       <PolicyCard icon={Wallet} title="Salary Formula" color="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400">
@@ -159,7 +143,7 @@ export default async function HowItWorksPage() {
       <PolicyCard icon={CreditCard} title="Payroll" color="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400">
         <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 mb-2">
           <p className="font-semibold text-emerald-700 dark:text-emerald-400 text-xs">
-            Salaries are processed through Bank Alfalah between the 5th-10th of every month
+            Salaries are processed through your registered bank between the 5th-10th of every month
           </p>
         </div>
         <Rule>Payment proofs are automatically added from banking partner</Rule>
@@ -168,7 +152,7 @@ export default async function HowItWorksPage() {
         <Rule>View payroll history for any month from the Payroll page</Rule>
         <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 p-3 mt-2">
           <p className="font-semibold text-rose-700 dark:text-rose-400 text-[11px]">
-            META7MEDIA is not responsible for payments sent to incorrect bank details. Ensure your details are correct before the 5th.
+            The company is not responsible for payments sent to incorrect bank details. Ensure your details are correct before the 5th.
           </p>
         </div>
       </PolicyCard>
@@ -184,14 +168,9 @@ export default async function HowItWorksPage() {
         <Rule>Late arrival fine notification</Rule>
         <Rule>Break late / skip fine notification</Rule>
         <Rule>Absence notification</Rule>
-        <Rule>No report fine notification</Rule>
+        <Rule>Manual fine notification</Rule>
         <Rule>Salary paid notification with breakdown</Rule>
-        <Rule>You must send &quot;hi&quot; to the business WhatsApp number first to receive messages</Rule>
       </PolicyCard>
-
-      <p className="text-[10px] text-center text-muted-foreground/40 pb-4 pt-2">
-        META7MEDIA AI Office Manager — Developed by Wasif Malik, CEO
-      </p>
     </div>
   );
 }

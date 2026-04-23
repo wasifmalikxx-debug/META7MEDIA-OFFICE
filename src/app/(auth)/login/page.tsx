@@ -125,10 +125,10 @@ export default function LoginPage() {
         {/* Logo & Branding */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-white dark:bg-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-slate-950/50 mb-5 border border-slate-100 dark:border-slate-700">
-            <img src="/logo.png" alt="META7MEDIA" className="size-10 object-contain" />
+            <img src="/logo.png" alt="Logo" className="size-10 object-contain" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">META7MEDIA</h1>
-          <p className="text-sm text-muted-foreground mt-1">AI-Powered Office Management System</p>
+          <h1 className="text-2xl font-bold tracking-tight">{process.env.NEXT_PUBLIC_APP_NAME || "Office Manager"}</h1>
+          <p className="text-sm text-muted-foreground mt-1">HR & Attendance Management</p>
         </div>
 
         {/* Login Card */}
@@ -198,7 +198,7 @@ export default function LoginPage() {
                     <Input
                       id="email"
                       type="email"
-                      placeholder="employee@meta7.media"
+                      placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -251,11 +251,8 @@ export default function LoginPage() {
         <div className="text-center mt-6 space-y-1">
           <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground/40">
             <Building2 className="size-3" />
-            <span>META7MEDIA Private Limited</span>
+            <span>{process.env.NEXT_PUBLIC_APP_NAME || "Office Manager"}</span>
           </div>
-          <p className="text-[9px] text-muted-foreground/30">
-            Powered by META7MEDIA AI
-          </p>
         </div>
       </div>
     </div>

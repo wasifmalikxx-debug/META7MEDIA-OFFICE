@@ -82,10 +82,7 @@ export function DepartmentsView({ departments }: DepartmentsViewProps) {
   }
 
   const totalEmployees = departments.reduce((s: number, d: any) => s + (d._count?.users || 0), 0);
-  const deptColors: Record<string, string> = {
-    Etsy: "from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800 border-emerald-200 dark:border-emerald-800",
-    Facebook: "from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800 border-blue-200 dark:border-blue-800",
-  };
+  const deptColors: Record<string, string> = {};
 
   return (
     <div className="space-y-6">

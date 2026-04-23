@@ -60,7 +60,6 @@ interface EmployeeDashboardProps {
   workEndTime: string;
   isDayOff?: boolean;
   dayOffLabel?: string | null;
-  hasSubmittedReport?: boolean;
   pendingLeaves?: number;
   attendanceRate?: number;
   monthHalfDay?: number;
@@ -91,7 +90,6 @@ export function EmployeeDashboard({
   workEndTime,
   isDayOff,
   dayOffLabel,
-  hasSubmittedReport: initialHasReport,
   pendingLeaves = 1,
   attendanceRate = 100,
   monthHalfDay = 0,
@@ -135,16 +133,6 @@ export function EmployeeDashboard({
     const interval = setInterval(syncServerTime, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
-  const [reportOpen, setReportOpen] = useState(false);
-  const [hasReport, setHasReport] = useState(!!initialHasReport);
-  const [reportForm, setReportForm] = useState({
-    listingsCount: 0, storeName: "", listingLinks: "",
-    postsCount: 0, pageNames: "", notes: "",
-  });
-  const isEtsy = employeeId.startsWith("EM");
-  const isFB = employeeId.startsWith("SMM");
-  const isManager = employeeId === "EM-4"; // Izaan — managerial report
-
   const router = useRouter();
 
   // Re-render every 1 second so the live PKT clock and countdowns update in real time.
@@ -434,27 +422,6 @@ export function EmployeeDashboard({
     return null;
   }
   const leaveBlockMsg = getLeaveBlockMessage();
-
-  async function handleSubmitReport() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/daily-work-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(reportForm),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success("Daily report submitted!");
-      setHasReport(true);
-      setReportOpen(false);
-      router.refresh();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function handleCheckIn() {
     setLoading(true);
@@ -765,93 +732,6 @@ export function EmployeeDashboard({
               <Badge variant="outline" className="text-xs py-1.5 px-3 gap-1.5">
                 <Coffee className="size-3" />
                 Break ended at {formatPKTTime(attendance.breakEnd)}
-              </Badge>
-            )}
-            {hasCheckedIn && !hasCheckedOut && !hasReport && (
-              <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-                <DialogTrigger render={<Button variant="default" size="sm" className="gap-2" />}>
-                  <CalendarPlus className="size-4" />
-                  Submit Report
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[440px] max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle className="text-lg">End of Day Report</DialogTitle>
-                  </DialogHeader>
-                  <div className="rounded-lg border bg-muted/30 p-3 mb-1">
-                    <p className="text-[11px] text-muted-foreground">
-                      Complete your daily report before checking out. This is <strong>mandatory</strong> — auto-checkout without a report results in a fine.
-                    </p>
-                  </div>
-                  <div className="space-y-4">
-                    {/* Manager (Izaan / EM-4) uses a simple single-textarea template — same as FB */}
-                    {isManager && (
-                      <div className="rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 p-3">
-                        <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Team Lead / Manager Report</p>
-                      </div>
-                    )}
-                    {isEtsy && !isManager && (
-                      <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Total Listings Completed</Label>
-                          <Input type="number" min="0" value={reportForm.listingsCount} onChange={(e) => setReportForm({ ...reportForm, listingsCount: parseInt(e.target.value) || 0 })} placeholder="0" />
-                          <p className="text-[10px] text-muted-foreground">Number of product listings you created or updated today</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Store Name</Label>
-                          <Input value={reportForm.storeName} onChange={(e) => setReportForm({ ...reportForm, storeName: e.target.value })} placeholder="e.g. META7 Crafts, VintageFinds..." />
-                          <p className="text-[10px] text-muted-foreground">Which Etsy store did you work on today?</p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-semibold">Listing URLs</Label>
-                          <Textarea value={reportForm.listingLinks} onChange={(e) => setReportForm({ ...reportForm, listingLinks: e.target.value })} placeholder={"https://etsy.com/listing/...\nhttps://etsy.com/listing/...\nhttps://etsy.com/listing/..."} rows={5} className="font-mono text-[10px] break-all" />
-                          <p className="text-[10px] text-muted-foreground">Paste each listing link on a new line</p>
-                        </div>
-                      </div>
-                    )}
-                    {isFB && (
-                      <div className="space-y-4">
-                        <div className="rounded-lg border bg-blue-50/50 dark:bg-blue-950/20 p-3">
-                          <p className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">Social Media Daily Report</p>
-                        </div>
-                      </div>
-                    )}
-                    {/* Main textarea: FB and Manager use it as the primary content, Etsy employees as optional notes */}
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">
-                        {isFB || isManager ? "What did you do today?" : "Additional Notes"}
-                        {!isFB && !isManager && <span className="font-normal text-muted-foreground"> (optional)</span>}
-                      </Label>
-                      <Textarea
-                        value={reportForm.notes}
-                        onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })}
-                        placeholder={
-                          isFB
-                            ? "Describe your work today in detail \u2014 tasks completed, content created, campaigns managed, client interactions, designs, scheduling..."
-                            : isManager
-                            ? "Describe your managerial tasks, reviews, escalations, stores supervised, team oversight, and decisions..."
-                            : "Any challenges, achievements, or things to flag..."
-                        }
-                        rows={isFB || isManager ? 5 : 2}
-                        className="text-xs"
-                      />
-                      {(isFB || isManager) && (
-                        <p className="text-[10px] text-muted-foreground">
-                          Provide a clear summary of all tasks and activities you completed today
-                        </p>
-                      )}
-                    </div>
-                    <Button onClick={handleSubmitReport} disabled={loading} className="w-full gap-2" size="lg">
-                      <CheckCircle className="size-4" />
-                      {loading ? "Submitting..." : "Submit Daily Report"}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
-            {hasCheckedIn && !hasCheckedOut && hasReport && (
-              <Badge variant="secondary" className="text-xs py-1.5 px-3 gap-1.5 bg-green-100 text-green-700">
-                <CheckCircle className="size-3" />
-                Report Submitted
               </Badge>
             )}
             {hasCheckedIn && !hasCheckedOut && !onBreak && (

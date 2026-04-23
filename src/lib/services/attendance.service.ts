@@ -166,14 +166,6 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
   const today = todayPKT();
   const settings = await getOfficeSettings();
 
-  // Check if daily report is submitted before allowing checkout
-  const dailyReport = await prisma.dailyReport.findUnique({
-    where: { userId_date: { userId, date: today } },
-  });
-  if (!dailyReport) {
-    throw new Error("Please submit your daily report before checking out.");
-  }
-
   const attendance = await prisma.attendance.findUnique({
     where: { userId_date: { userId, date: today } },
   });
