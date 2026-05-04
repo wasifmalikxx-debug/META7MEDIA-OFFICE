@@ -6,6 +6,12 @@ export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
+  // Partners and CEO are not employees — no attendance, no checkout.
+  const role = (session.user as any).role;
+  if (role === "PARTNER" || role === "SUPER_ADMIN") {
+    return error("Checkout is not applicable to your role", 403);
+  }
+
   const ip = getClientIp(request);
 
   try {

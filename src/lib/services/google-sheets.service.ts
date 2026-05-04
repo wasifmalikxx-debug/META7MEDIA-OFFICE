@@ -40,6 +40,23 @@ function getAlternativeTabNames(month: number, year: number): string[] {
   ];
 }
 
+/**
+ * Normalize a tab name for fuzzy comparison. Collapses whitespace around the
+ * separator dash so all of these match each other:
+ *   "MAY - 2K26", "MAY- 2K26", "MAY -2K26", "MAY-2K26", "May - 2k26", " MAY  -  2K26 "
+ *
+ * Without this, partners sometimes name their tabs with inconsistent spacing
+ * (e.g. Nabeel's "May- 2K26") and the cron silently fails for them. Strict
+ * tab-format compliance is brittle as more sheets get onboarded.
+ */
+function normalizeTabName(s: string): string {
+  return s
+    .trim()
+    .toUpperCase()
+    .replace(/\s*-\s*/g, "-")  // collapse whitespace around any dash
+    .replace(/\s+/g, " ");      // collapse internal whitespace
+}
+
 async function getAuthClient() {
   // Support env var (Vercel) or file (local dev)
   if (process.env.GOOGLE_CREDENTIALS) {
@@ -93,14 +110,14 @@ export async function fetchProfitFromSheet(
     const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
     const sheetTabs = spreadsheet.data.sheets?.map((s) => s.properties?.title || "") || [];
 
-    // Try to find the correct monthly tab
+    // Try to find the correct monthly tab. Use fuzzy comparison so tabs with
+    // inconsistent dash/whitespace formatting (e.g. "May- 2K26") still match.
     const tabNames = getAlternativeTabNames(month, year);
     let matchedTab: string | null = null;
 
     for (const tabName of tabNames) {
-      const found = sheetTabs.find(
-        (t) => t.trim().toUpperCase() === tabName.toUpperCase()
-      );
+      const target = normalizeTabName(tabName);
+      const found = sheetTabs.find((t) => normalizeTabName(t) === target);
       if (found) {
         matchedTab = found;
         break;
@@ -213,7 +230,8 @@ export async function fetchSheetAnalytics(
     const tabNames = getAlternativeTabNames(month, year);
     let matchedTab: string | null = null;
     for (const tabName of tabNames) {
-      const found = sheetTabs.find((t) => t.trim().toUpperCase() === tabName.toUpperCase());
+      const target = normalizeTabName(tabName);
+      const found = sheetTabs.find((t) => normalizeTabName(t) === target);
       if (found) { matchedTab = found; break; }
     }
     if (!matchedTab) {

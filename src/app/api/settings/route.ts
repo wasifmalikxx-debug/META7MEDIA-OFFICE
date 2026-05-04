@@ -2,18 +2,32 @@ import { NextRequest } from "next/server";
 import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
 import { prisma, invalidateSettingsCache } from "@/lib/prisma";
 
+// Phase 3: settings are per-office. Each request resolves the caller's
+// office and reads/writes that office's settings row. Phase 5 will allow
+// CEO to query a different office via ?officeId=... query param.
+async function getCallerOfficeId(userId: string): Promise<string | null> {
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { officeId: true },
+  });
+  return me?.officeId ?? null;
+}
+
 export async function GET() {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
   try {
+    const officeId = await getCallerOfficeId(session.user.id);
+    if (!officeId) return error("Your account has no office assigned", 400);
+
     let settings = await prisma.officeSettings.findUnique({
-      where: { id: "default" },
+      where: { officeId },
     });
 
     if (!settings) {
       settings = await prisma.officeSettings.create({
-        data: { id: "default" },
+        data: { officeId },
       });
     }
 
@@ -29,10 +43,12 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const officeId = await getCallerOfficeId(session.user.id);
+    if (!officeId) return error("Your account has no office assigned", 400);
 
     const settings = await prisma.officeSettings.upsert({
-      where: { id: "default" },
-      create: { id: "default", ...body },
+      where: { officeId },
+      create: { officeId, ...body },
       update: body,
     });
 

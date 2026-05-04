@@ -18,11 +18,26 @@ export async function GET(request: NextRequest) {
   const where: any = { month, year };
 
   if (role === "EMPLOYEE") {
-    // Employees see only their own record
     where.userId = session.user.id;
+  } else if (role === "PARTNER") {
+    // PARTNER sees bonus records for their team's Etsy employees only.
+    const myTeam = await prisma.team.findFirst({
+      where: { partnerId: session.user.id },
+      select: { departmentId: true, department: { select: { name: true } } },
+    });
+    if (!myTeam || !myTeam.department.name.toLowerCase().includes("etsy")) {
+      // Non-Etsy partner (Zain) — no records to show
+      return json([]);
+    }
+    where.user = { departmentId: myTeam.departmentId };
   } else {
-    // SUPER_ADMIN / MANAGER see all Etsy department employees
-    const etsyDept = await prisma.department.findUnique({ where: { name: "Etsy" } });
+    // SUPER_ADMIN / MANAGER → primary office's Etsy department.
+    const etsyDept = await prisma.department.findFirst({
+      where: {
+        office: { isPrimary: true },
+        OR: [{ name: "Etsy - EM" }, { name: "Etsy" }],
+      },
+    });
     if (etsyDept) {
       where.user = { departmentId: etsyDept.id };
     }
@@ -52,13 +67,22 @@ export async function POST(request: NextRequest) {
   if (!session) return error("Unauthorized", 401);
 
   const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN" && role !== "MANAGER") {
+  if (role !== "SUPER_ADMIN" && role !== "MANAGER" && role !== "PARTNER") {
     return error("Forbidden", 403);
   }
 
   try {
     const body = await request.json();
     const parsed = bonusEligibilitySchema.parse(body);
+
+    // PARTNER scope: target user must be on one of their teams.
+    if (role === "PARTNER") {
+      const { getCallerScope, assertCanActOnUser } = await import("@/lib/api-helpers");
+      const scope = await getCallerScope(session);
+      if (!scope) return error("Forbidden", 403);
+      const denied = await assertCanActOnUser(scope, parsed.userId);
+      if (denied) return denied;
+    }
 
     // Auto-compute eligibility and bonus amount in PKR
     const result = calculateEligibility({
@@ -169,10 +193,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Sync Team Lead bonus for Izaan (EM-4)
-    const izaan = await prisma.user.findFirst({ where: { employeeId: "EM-4" } });
+    // IMPORTANT: scope to Izaan's OWN department (Etsy - EM). AE and ME teams
+    // have their own partners (Awais / Mubeen) who aren't on payroll and don't
+    // get a team-lead bonus, so their eligible counts must NOT inflate Izaan's
+    // payout. Pre-multi-office this filter wasn't needed because there was
+    // only one Etsy team.
+    const izaan = await prisma.user.findFirst({
+      where: { employeeId: "EM-4" },
+      select: { id: true, departmentId: true },
+    });
     if (izaan) {
       const allEligible = await prisma.bonusEligibility.findMany({
-        where: { month: parsed.month, year: parsed.year, isEligible: true },
+        where: {
+          month: parsed.month,
+          year: parsed.year,
+          isEligible: true,
+          user: { departmentId: izaan.departmentId },
+        },
         include: { user: { select: { employeeId: true } } },
       });
       const eligibleCount = allEligible.filter(e => e.user.employeeId !== "EM-4").length;

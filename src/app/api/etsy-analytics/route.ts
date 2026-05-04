@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import {
   fetchAllSheetAnalytics,
@@ -77,8 +77,16 @@ interface QuickStats {
 // ─── GET handler ───────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const session = await requireRole("SUPER_ADMIN");
-  if (!session) return error("Forbidden", 403);
+  const session = await requireAuth();
+  if (!session) return error("Unauthorized", 401);
+
+  const role = (session.user as any).role;
+  // CEO + MANAGER (Izaan) view OFFICE 1's Etsy team analytics.
+  // Etsy PARTNERs (Awais, Mubeen) view their own team's analytics.
+  // Non-Etsy partner (Zain/FB) and EMPLOYEEs are forbidden.
+  if (role !== "SUPER_ADMIN" && role !== "MANAGER" && role !== "PARTNER") {
+    return error("Forbidden", 403);
+  }
 
   const { searchParams } = new URL(request.url);
   // Default to PKT month/year
@@ -90,19 +98,44 @@ export async function GET(request: NextRequest) {
     return error("Invalid month or year");
   }
 
-  // Check cache
-  const cacheKey = `etsy-analytics-${month}-${year}`;
+  // Resolve which Etsy department to scope to based on caller.
+  //   PARTNER → their team's department (must be Etsy-flavored).
+  //   CEO / MANAGER → primary office's Etsy team (Etsy - EM, with legacy
+  //     "Etsy" fallback if old data still uses the pre-Phase-6 name).
+  let scopedDept: { id: string; name: string } | null = null;
+
+  if (role === "PARTNER") {
+    const team = await prisma.team.findFirst({
+      where: { partnerId: session.user.id },
+      select: { department: { select: { id: true, name: true } } },
+    });
+    if (!team || !team.department) return error("No team found for this partner", 404);
+    if (!team.department.name.toLowerCase().includes("etsy")) {
+      // Non-Etsy partner (Zain/FB) — analytics doesn't apply.
+      return error("Analytics is only available for Etsy teams", 403);
+    }
+    scopedDept = team.department;
+  } else {
+    const dept = await prisma.department.findFirst({
+      where: {
+        office: { isPrimary: true },
+        OR: [{ name: "Etsy - EM" }, { name: "Etsy" }],
+      },
+      select: { id: true, name: true },
+    });
+    if (!dept) return error("Etsy department not found");
+    scopedDept = dept;
+  }
+
+  // Cache key MUST include the scope so Awais doesn't get Mubeen's cached data.
+  const cacheKey = `etsy-analytics-${month}-${year}-${scopedDept.id}`;
   const cached = getCached(cacheKey);
   if (cached) return json(cached);
 
-  // Get Etsy department
-  const etsyDept = await prisma.department.findFirst({ where: { name: "Etsy" } });
-  if (!etsyDept) return error("Etsy department not found");
-
-  // Get all Etsy employees with sheets
+  // Get all employees on the scoped department who have sheets.
   const employees = await prisma.user.findMany({
     where: {
-      departmentId: etsyDept.id,
+      departmentId: scopedDept.id,
       status: { in: ["HIRED", "PROBATION"] },
       googleSheetUrl: { not: null },
     },

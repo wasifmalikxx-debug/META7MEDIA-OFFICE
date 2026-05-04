@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, requireAuth, getCallerScope } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { leaveRequestSchema } from "@/lib/validations/leave";
 import { createNotification, notifyAdmins } from "@/lib/services/notification.service";
@@ -14,10 +14,16 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status");
   const userId = searchParams.get("userId");
 
+  const scope = await getCallerScope(session);
+  if (!scope) return error("Unauthorized", 401);
+
   const where: any = {};
-  // Only SUPER_ADMIN / HR_ADMIN can see all leaves.
-  // MANAGER and EMPLOYEE only see their own unless admin passes ?userId=
-  if (role === "SUPER_ADMIN" || role === "HR_ADMIN") {
+  // CEO + HR_ADMIN see all; PARTNER sees their team's leaves only;
+  // MANAGER and EMPLOYEE see their own.
+  if (scope.isCeo || role === "HR_ADMIN") {
+    if (userId) where.userId = userId;
+  } else if (scope.isPartner) {
+    where.user = { officeId: scope.officeId, teamId: { in: [...(scope.teamIds ?? [])] } };
     if (userId) where.userId = userId;
   } else {
     where.userId = session.user.id;

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
+import { json, error, requireAuth, requireRole, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { updateEmployeeSchema } from "@/lib/validations/employee";
 import bcrypt from "bcryptjs";
@@ -12,11 +12,13 @@ export async function GET(
   if (!session) return error("Unauthorized", 401);
 
   const { id } = await params;
-  const role = (session.user as any).role;
+  const scope = await getCallerScope(session);
+  if (!scope) return error("Forbidden", 403);
 
-  if (role === "EMPLOYEE" && id !== session.user.id) {
-    return error("Forbidden", 403);
-  }
+  // PARTNER can read members of their own team(s) only. CEO unrestricted.
+  // Employee can read self.
+  const denied = await assertCanActOnUser(scope, id);
+  if (denied) return denied;
 
   const employee = await prisma.user.findUnique({
     where: { id },
@@ -48,10 +50,16 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireRole("SUPER_ADMIN");
+  // Phase 5: PARTNER can edit their team's employees (including salary).
+  const session = await requireRole("SUPER_ADMIN", "PARTNER");
   if (!session) return error("Forbidden", 403);
 
   const { id } = await params;
+  const scope = await getCallerScope(session);
+  if (!scope) return error("Forbidden", 403);
+
+  const denied = await assertCanActOnUser(scope, id);
+  if (denied) return denied;
 
   try {
     const body = await request.json();
@@ -103,10 +111,16 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireRole("SUPER_ADMIN");
+  // Phase 5: PARTNER can delete employees on their team(s). CEO unrestricted.
+  const session = await requireRole("SUPER_ADMIN", "PARTNER");
   if (!session) return error("Forbidden", 403);
 
   const { id } = await params;
+  const scope = await getCallerScope(session);
+  if (!scope) return error("Forbidden", 403);
+
+  const denied = await assertCanActOnUser(scope, id);
+  if (denied) return denied;
 
   // Safety: the signed-in admin can't delete their own account this way.
   if (id === session.user.id) {

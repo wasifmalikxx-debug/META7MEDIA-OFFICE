@@ -11,30 +11,71 @@ export default async function BonusProgramPage({ searchParams }: { searchParams:
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN" && role !== "MANAGER") {
+  // CEO + MANAGER (Izaan) + Etsy PARTNERs (Awais, Mubeen) all access this page,
+  // each scoped to their own Etsy team.
+  if (role !== "SUPER_ADMIN" && role !== "MANAGER" && role !== "PARTNER") {
     redirect("/dashboard");
   }
+  const isPartner = role === "PARTNER";
 
   const params = await searchParams;
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
   const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;
   const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
 
-  // Find the Etsy department
-  const etsyDept = await prisma.department.findUnique({
-    where: { name: "Etsy" },
-  });
+  // Resolve which department + employees this viewer manages.
+  //
+  // CEO / MANAGER → OFFICE 1's "Etsy - EM" department (excluding Izaan as team
+  //                  lead and EM-4L who's on non-Etsy ecom work).
+  // PARTNER       → their own Etsy department (Etsy - AE for Awais, Etsy - ME
+  //                  for Mubeen). No employee exclusions — AE/ME teams don't
+  //                  have a team-lead employee since the partner isn't on the team.
+  let departmentId: string | null = null;
+  let employeeIdExclusions: string[] = [];
+  let pageTitle = "E-Commerce Bonus Program";
 
-  // Fetch Etsy employees
-  const employees = etsyDept
+  if (isPartner) {
+    const myTeam = await prisma.team.findFirst({
+      where: { partnerId: session.user.id },
+      select: {
+        name: true,
+        department: { select: { id: true, name: true } },
+      },
+    });
+    if (!myTeam || !myTeam.department) {
+      // PARTNER without an Etsy team (e.g. Zain on Facebook) — bonus program
+      // doesn't apply. Send them home.
+      redirect("/dashboard");
+    }
+    // Only Etsy-style departments use the bonus program. If a PARTNER's
+    // department isn't Etsy-flavored, redirect them out.
+    if (!myTeam.department.name.toLowerCase().includes("etsy")) {
+      redirect("/dashboard");
+    }
+    departmentId = myTeam.department.id;
+    pageTitle = `${myTeam.department.name} Bonus Program`;
+  } else {
+    // CEO / MANAGER — primary office Etsy team. Match either "Etsy - EM" (post
+    // Phase 6 rename) or legacy "Etsy" so old data still works.
+    const etsyDept = await prisma.department.findFirst({
+      where: {
+        office: { isPrimary: true },
+        OR: [{ name: "Etsy - EM" }, { name: "Etsy" }],
+      },
+    });
+    departmentId = etsyDept?.id ?? null;
+    // OFFICE 1-specific exclusions: Izaan (team lead) and EM-4L (non-Etsy ecom).
+    employeeIdExclusions = ["EM-4", "EM-4L"];
+  }
+
+  const employees = departmentId
     ? await prisma.user.findMany({
         where: {
-          departmentId: etsyDept.id,
+          departmentId,
           status: { in: ["HIRED", "PROBATION"] },
-          // Exclusions:
-          //  - EM-4  (Izaan, team lead — has his own team-lead bonus formula)
-          //  - EM-4L (Abdullah, hired for non-Etsy ecom work — not in this program)
-          employeeId: { notIn: ["EM-4", "EM-4L"] },
+          ...(employeeIdExclusions.length > 0
+            ? { employeeId: { notIn: employeeIdExclusions } }
+            : {}),
         },
         select: {
           id: true,
@@ -46,34 +87,40 @@ export default async function BonusProgramPage({ searchParams }: { searchParams:
       })
     : [];
 
-  // Sort by employee ID: EM-1, EM-2, ..., EM-10, EM-4 (Manager last)
   const { sortByEmployeeId } = await import("@/lib/utils/sort-employees");
   const sortedEmployees = sortByEmployeeId(employees);
   employees.length = 0;
   employees.push(...sortedEmployees);
 
-  // Fetch bonus eligibilities for the current month
-  const bonusEligibilities = await prisma.bonusEligibility.findMany({
-    where: { month, year },
-    include: {
-      user: { select: { firstName: true, lastName: true, employeeId: true } },
-      updatedBy: { select: { firstName: true, lastName: true } },
-    },
-  });
-
-  // Fetch review bonuses for the current month
-  const reviewBonuses = await prisma.reviewBonus.findMany({
-    where: { month, year, status: "APPROVED" },
-    include: {
-      user: { select: { firstName: true, lastName: true } },
-    },
-  });
+  // Bonus eligibility + review bonuses, scoped to this department's employees.
+  const memberIds = employees.map((e) => e.id);
+  const [bonusEligibilities, reviewBonuses] = await Promise.all([
+    memberIds.length > 0
+      ? prisma.bonusEligibility.findMany({
+          where: { month, year, userId: { in: memberIds } },
+          include: {
+            user: { select: { firstName: true, lastName: true, employeeId: true } },
+            updatedBy: { select: { firstName: true, lastName: true } },
+          },
+        })
+      : Promise.resolve([]),
+    memberIds.length > 0
+      ? prisma.reviewBonus.findMany({
+          where: { month, year, status: "APPROVED", userId: { in: memberIds } },
+          include: { user: { select: { firstName: true, lastName: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="E-Commerce Bonus Program"
-        description="Manage monthly bonus eligibility for Etsy department employees"
+        title={pageTitle}
+        description={
+          isPartner
+            ? "Manage monthly bonus eligibility for your team"
+            : "Manage monthly bonus eligibility for Etsy department employees"
+        }
       />
       <BonusProgramView
         employees={JSON.parse(JSON.stringify(employees))}
@@ -82,7 +129,7 @@ export default async function BonusProgramPage({ searchParams }: { searchParams:
         currentMonth={month}
         currentYear={year}
         userRole={role}
-        canToggleProfit={role === "SUPER_ADMIN"}
+        canToggleProfit={role === "SUPER_ADMIN" || isPartner}
       />
     </div>
   );

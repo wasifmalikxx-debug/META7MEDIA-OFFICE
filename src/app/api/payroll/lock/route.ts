@@ -25,9 +25,15 @@ export async function POST(request: NextRequest) {
       return error("Invalid month/year");
     }
 
-    // Collect the records that will be in the snapshot
+    // Phase 3: snapshots are now per-office. CEO lock currently targets the
+    // primary office (OFFICE 1). Phase 5 will let partners lock their own
+    // office independently.
+    const primaryOffice = await prisma.office.findFirst({ where: { isPrimary: true } });
+    if (!primaryOffice) return error("Primary office not configured");
+
+    // Collect the records that will be in the snapshot — scoped to the office
     const records = await prisma.payrollRecord.findMany({
-      where: { month, year },
+      where: { month, year, user: { officeId: primaryOffice.id } },
       include: {
         user: {
           select: {
@@ -59,10 +65,11 @@ export async function POST(request: NextRequest) {
     // Snapshot (idempotent upsert) + lock records in a single transaction
     const [snapshot] = await prisma.$transaction([
       prisma.payrollSnapshot.upsert({
-        where: { month_year: { month, year } },
+        where: { month_year_officeId: { month, year, officeId: primaryOffice.id } },
         create: {
           month,
           year,
+          officeId: primaryOffice.id,
           lockedById: session.user.id,
           lockedAt: now,
           recordCount: records.length,
@@ -85,7 +92,7 @@ export async function POST(request: NextRequest) {
         },
       }),
       prisma.payrollRecord.updateMany({
-        where: { month, year, lockedAt: null },
+        where: { month, year, lockedAt: null, user: { officeId: primaryOffice.id } },
         data: { lockedAt: now },
       }),
     ]);

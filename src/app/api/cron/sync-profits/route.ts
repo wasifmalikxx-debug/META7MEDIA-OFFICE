@@ -29,21 +29,33 @@ export async function GET(request: NextRequest) {
     const month = now.getUTCMonth() + 1;
     const year = now.getUTCFullYear();
 
-    // Get Etsy employees with sheets
-    const etsyDept = await prisma.department.findFirst({ where: { name: "Etsy" } });
-    if (!etsyDept) return json({ message: "No Etsy department found" });
+    // Get all Etsy-flavored employees with sheets across every office.
+    // Post multi-office (May 2026) the single "Etsy" department was split into:
+    //   - OFFICE 1: "Etsy - EM"  (Izaan-led)
+    //   - OFFICE 2: "Etsy - AE"  (Awais-led)
+    //   - OFFICE 2: "Etsy - ME"  (Mubeen-led)
+    // Match `startsWith: "Etsy"` to cover all three plus legacy "Etsy" rows
+    // if any older snapshot still uses the old name.
+    const etsyDepts = await prisma.department.findMany({
+      where: { name: { startsWith: "Etsy" } },
+      select: { id: true },
+    });
+    if (etsyDepts.length === 0) return json({ message: "No Etsy departments found" });
+    const etsyDeptIds = etsyDepts.map((d) => d.id);
 
     const employees = await prisma.user.findMany({
       where: {
-        departmentId: etsyDept.id,
+        departmentId: { in: etsyDeptIds },
         status: { in: ["HIRED"] },
         googleSheetUrl: { not: null },
         // Exclusions:
         //  - EM-4  (Izaan, team lead — has his own team-lead bonus formula)
         //  - EM-4L (Abdullah, hired for non-Etsy ecom work — not in bonus program)
+        // AE-* and ME-* have no analogous exclusions: partners aren't employees
+        // and don't draw a team-lead bonus.
         employeeId: { notIn: ["EM-4", "EM-4L"] },
       },
-      select: { id: true, firstName: true, lastName: true, employeeId: true, googleSheetUrl: true },
+      select: { id: true, firstName: true, lastName: true, employeeId: true, googleSheetUrl: true, departmentId: true },
     });
 
     const employeeSheets = employees
@@ -157,13 +169,22 @@ export async function GET(request: NextRequest) {
         profit,
         eligible: result.isEligible,
         bonus: result.bonusAmountPKR,
+        departmentId: emp.departmentId,
       });
     }
 
     // Sync Team Lead bonus for Izaan (EM-4): PKR 5,000 per eligible employee
-    const izaan = await prisma.user.findFirst({ where: { employeeId: "EM-4" } });
+    // IMPORTANT: scope to Izaan's OWN department (Etsy - EM) only. AE and ME
+    // partners aren't employees and have no team-lead bonus, so their eligible
+    // counts must NOT inflate Izaan's payout.
+    const izaan = await prisma.user.findFirst({
+      where: { employeeId: "EM-4" },
+      select: { id: true, departmentId: true },
+    });
     if (izaan) {
-      const eligibleCount = results.filter((r: any) => r.eligible).length;
+      const eligibleCount = results.filter(
+        (r: any) => r.eligible && r.departmentId === izaan.departmentId,
+      ).length;
       const teamLeadBonus = eligibleCount * 5000;
 
       const existingTLBonus = await prisma.incentive.findFirst({

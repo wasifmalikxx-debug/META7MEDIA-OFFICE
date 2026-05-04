@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
+import { json, error, requireAuth, requireRole, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/lib/services/notification.service";
 
@@ -50,7 +50,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireRole("SUPER_ADMIN");
+  // Phase 5: PARTNER can mark their team's payroll PAID. CEO can do anything.
+  const session = await requireRole("SUPER_ADMIN", "PARTNER");
   if (!session) return error("Forbidden", 403);
 
   const { id } = await params;
@@ -59,7 +60,12 @@ export async function PATCH(
   const record = await prisma.payrollRecord.findUnique({ where: { id } });
   if (!record) return error("Not found", 404);
 
-  // CEO can override anything
+  // Scope check: PARTNER can only act on payrolls of their team members.
+  const scope = await getCallerScope(session);
+  if (!scope) return error("Forbidden", 403);
+  const denied = await assertCanActOnUser(scope, record.userId);
+  if (denied) return denied;
+
   const updateData: any = {};
   if (body.status !== undefined) {
     updateData.status = body.status;

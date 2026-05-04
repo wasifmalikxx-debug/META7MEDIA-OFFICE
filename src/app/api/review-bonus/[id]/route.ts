@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, requireAuth, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT, formatPKTDate } from "@/lib/pkt";
 import { reviewBonusActionSchema } from "@/lib/validations/bonus";
@@ -13,7 +13,7 @@ export async function PATCH(
   if (!session) return error("Unauthorized", 401);
 
   const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN" && role !== "MANAGER") {
+  if (role !== "SUPER_ADMIN" && role !== "MANAGER" && role !== "PARTNER") {
     return error("Forbidden", 403);
   }
 
@@ -30,6 +30,15 @@ export async function PATCH(
     if (!submission) return error("Review bonus not found", 404);
     if (submission.status !== "PENDING") {
       return error("This submission has already been processed");
+    }
+
+    // PARTNER scope: target submission's user must be on one of the
+    // partner's teams. CEO + MANAGER pass without scope check.
+    if (role === "PARTNER") {
+      const scope = await getCallerScope(session);
+      if (!scope) return error("Forbidden", 403);
+      const denied = await assertCanActOnUser(scope, submission.userId);
+      if (denied) return denied;
     }
 
     const updated = await prisma.reviewBonus.update({
@@ -151,10 +160,19 @@ export async function DELETE(
   const submission = await prisma.reviewBonus.findUnique({ where: { id } });
   if (!submission) return error("Not found", 404);
 
-  const isAdminOrManager = role === "SUPER_ADMIN" || role === "MANAGER";
+  const isReviewer = role === "SUPER_ADMIN" || role === "MANAGER" || role === "PARTNER";
 
-  if (isAdminOrManager) {
-    // CEO/Manager can delete any submission and reverse incentive
+  if (isReviewer) {
+    // PARTNER scope: must own the target user's team. CEO + MANAGER pass through.
+    if (role === "PARTNER") {
+      const scope = await getCallerScope(session);
+      if (!scope) return error("Forbidden", 403);
+      const denied = await assertCanActOnUser(scope, submission.userId);
+      if (denied) return denied;
+    }
+
+    // Reviewer (CEO/Manager/Partner) can delete the submission and reverse
+    // any incentive that was already created on approval.
     if (submission.status === "APPROVED") {
       // Remove the associated incentive
       await prisma.incentive.deleteMany({
@@ -172,9 +190,14 @@ export async function DELETE(
       } catch {}
     }
     // Soft-delete: mark as REMOVED (keeps audit trail)
+    const removerLabel =
+      role === "SUPER_ADMIN" ? "CEO" : role === "MANAGER" ? "Manager" : "Partner";
     await prisma.reviewBonus.update({
       where: { id },
-      data: { status: "REMOVED", rejectionReason: `Removed by ${role === "SUPER_ADMIN" ? "CEO" : "Manager"} on ${formatPKTDate(nowPKT())}` },
+      data: {
+        status: "REMOVED",
+        rejectionReason: `Removed by ${removerLabel} on ${formatPKTDate(nowPKT())}`,
+      },
     });
     return json({ success: true });
   }

@@ -21,10 +21,14 @@ async function main() {
   });
   console.log(`  ✓ Izaan Kashif upgraded to MANAGER (${izaan.email})`);
 
-  // 2. Find Etsy department
-  const etsyDept = await prisma.department.findUnique({
-    where: { name: "Etsy" },
-  });
+  // 2. Find Etsy department in the primary office. (Department.name is no
+  // longer globally unique post-multi-office; uniqueness is per-office now.)
+  const primaryOffice = await prisma.office.findFirst({ where: { isPrimary: true } });
+  const etsyDept = primaryOffice
+    ? await prisma.department.findFirst({
+        where: { name: "Etsy", officeId: primaryOffice.id },
+      })
+    : null;
 
   if (!etsyDept) {
     console.error("Etsy department not found!");

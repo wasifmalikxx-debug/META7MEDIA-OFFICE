@@ -125,9 +125,9 @@ export async function PATCH(
     return json(updated);
   }
 
-  // Admin approve/reject
+  // Admin / Partner approve/reject. PARTNER can only act on their team's leaves.
   const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN") return error("Forbidden", 403);
+  if (role !== "SUPER_ADMIN" && role !== "PARTNER") return error("Forbidden", 403);
 
   try {
     const parsed = leaveActionSchema.parse(body);
@@ -138,6 +138,15 @@ export async function PATCH(
     });
     if (!leave) return error("Leave request not found", 404);
     if (leave.status !== "PENDING") return error("Leave already processed");
+
+    // Partner scope check: leave's owner must be on one of partner's teams
+    if (role === "PARTNER") {
+      const { getCallerScope, assertCanActOnUser } = await import("@/lib/api-helpers");
+      const scope = await getCallerScope(session);
+      if (!scope) return error("Forbidden", 403);
+      const denied = await assertCanActOnUser(scope, leave.userId);
+      if (denied) return denied;
+    }
 
     const updated = await prisma.leaveRequest.update({
       where: { id },

@@ -13,6 +13,7 @@ datasource db {
 enum Role {
   SUPER_ADMIN
   HR_ADMIN
+  PARTNER // multi-office partner: scoped admin for assigned teams within one office
   MANAGER
   EMPLOYEE
 }
@@ -134,6 +135,28 @@ enum ReviewBonusStatus {
 
 // ─── Models ──────────────────────────────────────────
 
+// Multi-office support. Each Office is a physical location with its own
+// settings, holidays, departments, and partner-scoped teams. OFFICE 1 is
+// the original (pre-multi-office) location, isPrimary=true. OFFICE 2+ are
+// branches managed by partners. CEO (SUPER_ADMIN) has god-mode across all.
+model Office {
+  id        String  @id @default(cuid())
+  slug      String  @unique // "office-1", "office-2"
+  name      String // "META7MEDIA HQ", "Lahore Branch"
+  isPrimary Boolean @default(false) // exactly one true; OFFICE 1 = true
+  ownerId   String? // CEO for OFFICE 1, optional for branches
+  owner     User?   @relation("OfficeOwner", fields: [ownerId], references: [id])
+
+  users            User[]            @relation("OfficeUsers")
+  departments      Department[]
+  settings         OfficeSettings?
+  holidays         Holiday[]
+  payrollSnapshots PayrollSnapshot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model User {
   id           String         @id @default(cuid())
   employeeId   String         @unique // e.g. "M7M-001"
@@ -158,6 +181,14 @@ model User {
   // Google Sheet URL for profit tracking
   googleSheetUrl String?
 
+  // Office assignment. Backfilled in Phase 2; made NOT NULL in Phase 3.
+  officeId         String
+  office           Office            @relation("OfficeUsers", fields: [officeId], references: [id])
+  ownedOffices     Office[]          @relation("OfficeOwner")
+  partnerTeams     Team[]            @relation("TeamPartner")
+  auditLogs        AuditLog[]
+  teamPayrollMarks TeamPayrollMark[]
+
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
   teamId       String?
@@ -166,25 +197,25 @@ model User {
   manager      User?       @relation("ManagerSubordinates", fields: [managerId], references: [id])
   subordinates User[]      @relation("ManagerSubordinates")
 
-  attendances        Attendance[]
-  leaveRequests      LeaveRequest[]  @relation("LeaveRequester")
-  leaveApprovals     LeaveRequest[]  @relation("LeaveApprover")
-  salaryStructure    SalaryStructure?
-  payrollRecords     PayrollRecord[]
-  incentivesReceived Incentive[]     @relation("IncentiveRecipient")
-  incentivesGiven    Incentive[]     @relation("IncentiveGiver")
-  finesReceived      Fine[]          @relation("FineRecipient")
-  finesIssuedBy      Fine[]          @relation("FineIssuer")
-  warningsReceived   Warning[]       @relation("WarningRecipient")
-  warningsIssuedBy   Warning[]       @relation("WarningIssuer")
-  notifications      Notification[]
-  announcements      Announcement[]
-  leaveBalances      LeaveBalance[]
-  deviceApprovals    DeviceApproval[]
-  bonusEligibilities BonusEligibility[] @relation("BonusEmployee")
-  bonusUpdatedBy     BonusEligibility[] @relation("BonusUpdater")
-  reviewBonusesSubmitted ReviewBonus[]  @relation("ReviewBonusSubmitter")
-  reviewBonusesApproved  ReviewBonus[]  @relation("ReviewBonusApprover")
+  attendances            Attendance[]
+  leaveRequests          LeaveRequest[]     @relation("LeaveRequester")
+  leaveApprovals         LeaveRequest[]     @relation("LeaveApprover")
+  salaryStructure        SalaryStructure?
+  payrollRecords         PayrollRecord[]
+  incentivesReceived     Incentive[]        @relation("IncentiveRecipient")
+  incentivesGiven        Incentive[]        @relation("IncentiveGiver")
+  finesReceived          Fine[]             @relation("FineRecipient")
+  finesIssuedBy          Fine[]             @relation("FineIssuer")
+  warningsReceived       Warning[]          @relation("WarningRecipient")
+  warningsIssuedBy       Warning[]          @relation("WarningIssuer")
+  notifications          Notification[]
+  announcements          Announcement[]
+  leaveBalances          LeaveBalance[]
+  deviceApprovals        DeviceApproval[]
+  bonusEligibilities     BonusEligibility[] @relation("BonusEmployee")
+  bonusUpdatedBy         BonusEligibility[] @relation("BonusUpdater")
+  reviewBonusesSubmitted ReviewBonus[]      @relation("ReviewBonusSubmitter")
+  reviewBonusesApproved  ReviewBonus[]      @relation("ReviewBonusApprover")
   dailyReports           DailyReport[]
   complaintsSubmitted    Complaint[]        @relation("ComplaintSubmitter")
   complaintsResolved     Complaint[]        @relation("ComplaintResponder")
@@ -198,17 +229,26 @@ model User {
   @@index([departmentId])
   @@index([managerId])
   @@index([status])
+  @@index([officeId])
 }
 
 model Department {
   id     String  @id @default(cuid())
-  name   String  @unique
+  name   String // No longer globally unique; uniqueness is per-office (see @@unique below)
   headId String?
   teams  Team[]
   users  User[]
 
+  // Office scoping. Backfilled Phase 2, made NOT NULL Phase 3. The composite
+  // unique allows OFFICE 2 to have its own "Etsy" / "Facebook" department.
+  officeId String
+  office   Office @relation(fields: [officeId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([name, officeId])
+  @@index([officeId])
 }
 
 model Team {
@@ -219,11 +259,67 @@ model Team {
   leadId       String?
   members      User[]
 
+  // Multi-office partner ownership. Set when a partner manages this team.
+  // OFFICE 1 (CEO-managed) teams stay NULL — falls back to leadId where used.
+  partnerId String?
+  partner   User?   @relation("TeamPartner", fields: [partnerId], references: [id])
+
+  // Per-team Google Sheet for profit / bonus tracking. Each Etsy team has
+  // its own sheet (Wasif's = EM-, Awais's = AE-, Mubeen's = ME-).
+  googleSheetId String?
+
+  // Bonus rate paid to the team-lead/partner per eligible employee per month.
+  // OFFICE 1 default 5000 (matches existing Izaan formula). NULL = no team-lead bonus
+  // (used for partner-led teams where the partner isn't an employee).
+  leadBonusPerEligible Float?
+
+  payrollMarks TeamPayrollMark[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([name, departmentId])
   @@index([departmentId])
+  @@index([partnerId])
+}
+
+// Per-team payroll close state. Each partner closes their own team's
+// monthly payroll independently. The office-level snapshot is the
+// aggregate of all team marks for that office/month.
+model TeamPayrollMark {
+  id         String    @id @default(cuid())
+  teamId     String
+  team       Team      @relation(fields: [teamId], references: [id])
+  month      Int
+  year       Int
+  status     String // "READY" | "PAID"
+  markedById String
+  markedBy   User      @relation(fields: [markedById], references: [id])
+  paidAt     DateTime?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, month, year])
+  @@index([month, year])
+}
+
+// Forensic audit trail for partner-scoped writes. Used to spot-check
+// that authorization scoping is working and to give Wasif a "what did
+// each partner do this week" view. Cheap to insert, never updated.
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  actor     User     @relation(fields: [actorId], references: [id])
+  action    String // "PAYROLL_LOCK", "FINE_ISSUE", "USER_DELETE", etc.
+  targetId  String?
+  officeId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([officeId, createdAt])
 }
 
 model Attendance {
@@ -250,8 +346,8 @@ model Attendance {
   overtimeMinutes Int?
 
   // Break tracking
-  breakStart DateTime?
-  breakEnd   DateTime?
+  breakStart   DateTime?
+  breakEnd     DateTime?
   breakMinutes Int?
 
   informedAbsent Boolean @default(false) // employee informed about absence
@@ -270,19 +366,19 @@ model Attendance {
 }
 
 model LeaveRequest {
-  id        String      @id @default(cuid())
-  userId    String
-  user      User        @relation("LeaveRequester", fields: [userId], references: [id])
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation("LeaveRequester", fields: [userId], references: [id])
   leaveType     LeaveType
-  halfDayPeriod String?   // "FIRST_HALF" or "SECOND_HALF" — only for HALF_DAY leave type
-  startDate     DateTime  @db.Date
-  endDate       DateTime  @db.Date
-  totalDays     Float     // supports 0.5 for half-day
+  halfDayPeriod String? // "FIRST_HALF" or "SECOND_HALF" — only for HALF_DAY leave type
+  startDate     DateTime    @db.Date
+  endDate       DateTime    @db.Date
+  totalDays     Float // supports 0.5 for half-day
   reason        String
-  status    LeaveStatus @default(PENDING)
+  status        LeaveStatus @default(PENDING)
 
   approverId      String?
-  approver        User?    @relation("LeaveApprover", fields: [approverId], references: [id])
+  approver        User?     @relation("LeaveApprover", fields: [approverId], references: [id])
   approvedAt      DateTime?
   rejectionReason String?
 
@@ -295,14 +391,14 @@ model LeaveRequest {
 }
 
 model LeaveBalance {
-  id         String @id @default(cuid())
-  userId     String
-  user       User   @relation(fields: [userId], references: [id])
-  year       Int
-  casualTotal Int   @default(12)
-  casualUsed  Float @default(0)
-  sickTotal   Int   @default(10)
-  sickUsed    Float @default(0)
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id])
+  year        Int
+  casualTotal Int    @default(12)
+  casualUsed  Float  @default(0)
+  sickTotal   Int    @default(10)
+  sickUsed    Float  @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -361,7 +457,7 @@ model PayrollRecord {
   // Lock: when set, the record is immutable — no auto-regen, no status
   // changes via the normal PATCH endpoint, no recalculation on view.
   // Unlocking clears this field. Independent from PAID status.
-  lockedAt     DateTime?
+  lockedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -376,12 +472,18 @@ model PayrollRecord {
 // audit trail survives even if records are later edited or the employee row
 // is deleted. One snapshot per (month, year).
 model PayrollSnapshot {
-  id           String   @id @default(cuid())
-  month        Int
-  year         Int
-  lockedAt     DateTime @default(now())
-  lockedById   String
-  lockedBy     User     @relation("PayrollSnapshotLocker", fields: [lockedById], references: [id])
+  id         String   @id @default(cuid())
+  month      Int
+  year       Int
+  lockedAt   DateTime @default(now())
+  lockedById String
+  lockedBy   User     @relation("PayrollSnapshotLocker", fields: [lockedById], references: [id])
+
+  // Multi-office: each office locks its month independently. Backfilled in
+  // Phase 2; required from Phase 3. The composite unique allows OFFICE 1 and
+  // OFFICE 2 to lock the same month independently.
+  officeId String
+  office   Office @relation(fields: [officeId], references: [id])
 
   recordCount     Int
   totalGross      Float
@@ -391,12 +493,13 @@ model PayrollSnapshot {
 
   // Full payroll rows at time of lock. Stored as JSON so we never lose the
   // exact values the CEO approved, even if the underlying record changes.
-  data         Json
+  data Json
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  @@unique([month, year])
+  @@unique([month, year, officeId])
   @@index([year, month])
+  @@index([officeId])
 }
 
 model Incentive {
@@ -411,7 +514,7 @@ model Incentive {
   year       Int
 
   givenById String
-  givenBy   User @relation("IncentiveGiver", fields: [givenById], references: [id])
+  givenBy   User   @relation("IncentiveGiver", fields: [givenById], references: [id])
 
   createdAt DateTime @default(now())
 
@@ -430,7 +533,7 @@ model Fine {
   year   Int
 
   issuedById String
-  issuedBy   User @relation("FineIssuer", fields: [issuedById], references: [id])
+  issuedBy   User   @relation("FineIssuer", fields: [issuedById], references: [id])
 
   linkedAttendanceId String?
   linkedWarningId    String?
@@ -442,16 +545,16 @@ model Fine {
 }
 
 model Warning {
-  id       String       @id @default(cuid())
-  userId   String
-  user     User         @relation("WarningRecipient", fields: [userId], references: [id])
-  level    WarningLevel
-  reason   String
-  details  String?
-  date     DateTime     @db.Date
+  id      String       @id @default(cuid())
+  userId  String
+  user    User         @relation("WarningRecipient", fields: [userId], references: [id])
+  level   WarningLevel
+  reason  String
+  details String?
+  date    DateTime     @db.Date
 
   issuedById String
-  issuedBy   User @relation("WarningIssuer", fields: [issuedById], references: [id])
+  issuedBy   User   @relation("WarningIssuer", fields: [issuedById], references: [id])
 
   acknowledged   Boolean   @default(false)
   acknowledgedAt DateTime?
@@ -472,7 +575,7 @@ model Announcement {
   author   User   @relation(fields: [authorId], references: [id])
 
   expiresAt DateTime?
-  isActive  Boolean @default(true)
+  isActive  Boolean   @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -497,8 +600,15 @@ model Notification {
 }
 
 model OfficeSettings {
-  id         String @id @default("default")
+  // ID is cuid for new offices; the legacy OFFICE 1 row keeps id="default" so
+  // any straggler `findUnique({where:{id:"default"}})` lookup still works
+  // during the transition.
+  id         String @id @default(cuid())
   officeName String @default("META7MEDIA")
+
+  // One settings row per office. Backfilled in Phase 2; required from Phase 3.
+  officeId String @unique
+  office   Office @relation(fields: [officeId], references: [id])
 
   workStartTime       String @default("11:00") // HH:mm
   workEndTime         String @default("19:00")
@@ -514,27 +624,27 @@ model OfficeSettings {
 
   autoAbsentAfterMin Int @default(240) // no check-in after 4hrs
 
-  paidLeavesPerMonth   Int @default(1)  // auto-applied to first absence each month
+  paidLeavesPerMonth Int @default(1) // auto-applied to first absence each month
 
   allowedIps           String  @default("")
   ipRestrictionEnabled Boolean @default(false)
 
-  officeLat        Float?
-  officeLng        Float?
-  geoFenceRadiusM  Int     @default(200)
-  geoFenceEnabled  Boolean @default(false)
+  officeLat       Float?
+  officeLng       Float?
+  geoFenceRadiusM Int     @default(200)
+  geoFenceEnabled Boolean @default(false)
 
   selfieRequired Boolean @default(false)
 
   // Break timings
-  breakStartTime      String @default("15:00") // HH:mm (3:00 PM PKT)
-  breakEndTime        String @default("16:00") // (4:00 PM PKT)
-  breakDurationMin    Int    @default(60)
-  breakGraceMinutes      Int    @default(5)   // grace after break end
-  breakLateFineAmt       Float  @default(100) // fine for returning late from break OR skipping break (PKR 100)
-  fridayBreakStartTime   String @default("13:30") // Friday Jummah+break start (1:30 PM)
-  fridayBreakEndTime     String @default("14:45") // Friday Jummah+break end (2:45 PM)
-  noReportFineAmt        Float  @default(100) // fine for not submitting daily report at auto-checkout
+  breakStartTime       String @default("15:00") // HH:mm (3:00 PM PKT)
+  breakEndTime         String @default("16:00") // (4:00 PM PKT)
+  breakDurationMin     Int    @default(60)
+  breakGraceMinutes    Int    @default(5) // grace after break end
+  breakLateFineAmt     Float  @default(100) // fine for returning late from break OR skipping break (PKR 100)
+  fridayBreakStartTime String @default("13:30") // Friday Jummah+break start (1:30 PM)
+  fridayBreakEndTime   String @default("14:45") // Friday Jummah+break end (2:45 PM)
+  noReportFineAmt      Float  @default(100) // fine for not submitting daily report at auto-checkout
 
   workingDaysPerWeek Int    @default(6) // Mon-Sat
   weekendDays        String @default("0") // 0=Sunday
@@ -549,12 +659,22 @@ model OfficeSettings {
 model Holiday {
   id   String   @id @default(cuid())
   name String
-  date DateTime @unique @db.Date
+  date DateTime @db.Date
   year Int
+
+  // Optional office scope. NULL = global (applies to all offices).
+  // Set to a specific officeId when a holiday is local to one branch.
+  // Note: removed the legacy `@unique` on `date` — same date can now exist
+  // once globally + once per office. Uniqueness is enforced via the composite
+  // index below.
+  officeId String?
+  office   Office? @relation(fields: [officeId], references: [id])
 
   createdAt DateTime @default(now())
 
+  @@unique([date, officeId])
   @@index([year])
+  @@index([officeId])
 }
 
 enum DeviceStatus {
@@ -564,15 +684,15 @@ enum DeviceStatus {
 }
 
 model DeviceApproval {
-  id            String       @id @default(cuid())
-  userId        String
-  user          User         @relation(fields: [userId], references: [id])
-  fingerprint   String       // browser fingerprint hash
-  deviceName    String?      // e.g. "Chrome on Windows", "Safari on iPhone"
-  ipAddress     String?
-  status        DeviceStatus @default(PENDING)
-  approvedAt    DateTime?
-  rejectedAt    DateTime?
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  fingerprint String // browser fingerprint hash
+  deviceName  String? // e.g. "Chrome on Windows", "Safari on iPhone"
+  ipAddress   String?
+  status      DeviceStatus @default(PENDING)
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -585,28 +705,33 @@ model DeviceApproval {
 // ─── Bonus Program ──────────────────────────────────
 
 model BonusEligibility {
-  id                    String  @id @default(cuid())
-  userId                String
-  user                  User    @relation("BonusEmployee", fields: [userId], references: [id])
-  month                 Int
-  year                  Int
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("BonusEmployee", fields: [userId], references: [id])
+  month  Int
+  year   Int
 
   // 7 Eligibility Criteria
-  dailyListingsComplete Boolean @default(false)  // 1. Daily 5 listings
+  dailyListingsComplete  Boolean @default(false) // 1. Daily 5 listings
   ordersProcessedSameDay Boolean @default(false) // 2. All orders processed daily
-  messagesCleared       Boolean @default(false)  // 3. All messages cleared daily
-  zeroWrongOrders       Boolean @default(false)  // 4. Zero wrong orders
-  listingsRemovedCount  Int     @default(0)      // 5. Max 3 allowed
-  allStoresAbove4Stars  Boolean @default(false)  // 6. All stores >= 4 stars
-  totalProfit           Float   @default(0)      // 7. Monthly profit in USD
+  messagesCleared        Boolean @default(false) // 3. All messages cleared daily
+  zeroWrongOrders        Boolean @default(false) // 4. Zero wrong orders
+  listingsRemovedCount   Int     @default(0) // 5. Max 3 allowed
+  allStoresAbove4Stars   Boolean @default(false) // 6. All stores >= 4 stars
+  totalProfit            Float   @default(0) // 7. Monthly profit in USD
 
   // Computed
-  isEligible            Boolean @default(false)
-  bonusAmount           Float   @default(0)      // Calculated bonus in PKR
-  notes                 String?
+  isEligible  Boolean @default(false)
+  bonusAmount Float   @default(0) // Calculated bonus in PKR
+  notes       String?
 
-  updatedById           String?
-  updatedBy             User?   @relation("BonusUpdater", fields: [updatedById], references: [id])
+  updatedById String?
+  updatedBy   User?   @relation("BonusUpdater", fields: [updatedById], references: [id])
+
+  // Multi-office: who finalized this bonus row. Used by partners to mark
+  // their team's bonuses as approved before payroll lock. NULL = pending.
+  approvedById String?
+  approvedAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -616,25 +741,25 @@ model BonusEligibility {
 }
 
 model ReviewBonus {
-  id               String            @id @default(cuid())
-  userId           String
-  user             User              @relation("ReviewBonusSubmitter", fields: [userId], references: [id])
-  month            Int
-  year             Int
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("ReviewBonusSubmitter", fields: [userId], references: [id])
+  month  Int
+  year   Int
 
   storeName        String
   customerName     String?
-  originalRating   Int               // 1-3
-  newRating        Int               // 4-5
-  beforeScreenshot String            // file path
-  afterScreenshot  String            // file path
-  amount           Float             @default(500) // Rs. 500 per review
+  originalRating   Int // 1-3
+  newRating        Int // 4-5
+  beforeScreenshot String // file path
+  afterScreenshot  String // file path
+  amount           Float   @default(500) // Rs. 500 per review
 
-  status           ReviewBonusStatus @default(PENDING)
-  approvedById     String?
-  approvedBy       User?             @relation("ReviewBonusApprover", fields: [approvedById], references: [id])
-  approvedAt       DateTime?
-  rejectionReason  String?
+  status          ReviewBonusStatus @default(PENDING)
+  approvedById    String?
+  approvedBy      User?             @relation("ReviewBonusApprover", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  rejectionReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -649,7 +774,7 @@ model MessageTemplate {
   id        String   @id @default(cuid())
   type      String   @unique // e.g., "LATE_FINE_10", "BREAK_FINE", "ABSENT", "SALARY_PAID"
   title     String
-  template  String   // message with {name}, {amount}, {minutes}, {month} placeholders
+  template  String // message with {name}, {amount}, {minutes}, {month} placeholders
   enabled   Boolean  @default(true)
   updatedAt DateTime @updatedAt
 }
@@ -657,7 +782,7 @@ model MessageTemplate {
 model CustomMessage {
   id      String   @id @default(cuid())
   message String
-  sentTo  String   // "ALL" or employee ID
+  sentTo  String // "ALL" or employee ID
   sentBy  String
   sentAt  DateTime @default(now())
 }
@@ -699,18 +824,18 @@ model Complaint {
   priority    ComplaintPriority @default(MEDIUM)
   status      ComplaintStatus   @default(OPEN)
 
-  resolvedAt     DateTime?
-  resolvedById   String?
-  resolvedBy     User?          @relation("ComplaintResponder", fields: [resolvedById], references: [id])
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("ComplaintResponder", fields: [resolvedById], references: [id])
 
   // Unread counters for quick lookups
-  unreadByCeo      Boolean @default(true)   // new message from employee
-  unreadByEmployee Boolean @default(false)  // new message from CEO
+  unreadByCeo      Boolean @default(true) // new message from employee
+  unreadByEmployee Boolean @default(false) // new message from CEO
 
-  messages    ComplaintMessage[]
+  messages ComplaintMessage[]
 
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, status])
   @@index([status])
@@ -723,9 +848,9 @@ model ComplaintMessage {
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   senderId    String
   sender      User      @relation("ComplaintMessageSender", fields: [senderId], references: [id])
-  senderRole  String    // "EMPLOYEE" or "CEO"
+  senderRole  String // "EMPLOYEE" or "CEO"
   message     String
-  imageUrl    String?   // optional attached screenshot (base64 data URL)
+  imageUrl    String? // optional attached screenshot (base64 data URL)
   createdAt   DateTime  @default(now())
 
   @@index([complaintId, createdAt])
@@ -734,21 +859,21 @@ model ComplaintMessage {
 // ─── Refund Tracking (Etsy team) ───────────────────
 
 model Refund {
-  id                 String   @id @default(cuid())
-  userId             String
-  user               User     @relation("RefundSubmitter", fields: [userId], references: [id])
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("RefundSubmitter", fields: [userId], references: [id])
 
   storeName          String
   customerName       String
-  etsyRefundAmount   Float    // USD refunded on Etsy order
-  aliexpressRefunded Boolean  @default(false)
-  aliexpressAmount   Float?   // USD recovered from AliExpress (only if refunded)
-  aliexpressProofUrl String?  // screenshot proof (base64 data URL) — required when aliexpressRefunded
+  etsyRefundAmount   Float // USD refunded on Etsy order
+  aliexpressRefunded Boolean @default(false)
+  aliexpressAmount   Float? // USD recovered from AliExpress (only if refunded)
+  aliexpressProofUrl String? // screenshot proof (base64 data URL) — required when aliexpressRefunded
 
-  notes              String?
+  notes String?
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
   @@index([createdAt])

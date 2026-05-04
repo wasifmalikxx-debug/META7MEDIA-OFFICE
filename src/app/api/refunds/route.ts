@@ -6,18 +6,28 @@ import { notifyAdmins } from "@/lib/services/notification.service";
 
 export const dynamic = "force-dynamic";
 
-// Access rule: who can see all refunds vs just their own
-// - CEO (SUPER_ADMIN / HR_ADMIN) → all
-// - Etsy manager (EM-4 / Izaan)    → all
-// - Etsy employees (EM-*)          → only their own
-// - Everyone else                  → forbidden
-function canSeeAll(user: { role?: string; employeeId?: string }) {
+// Access rules (post multi-office, May 2026):
+//   - CEO (SUPER_ADMIN / HR_ADMIN)        → all refunds
+//   - Izaan (EM-4, MANAGER)                → all refunds
+//   - PARTNER (Awais / Mubeen / Zain)      → only their team members' refunds
+//   - Etsy-style shop owners (EM-*/AE-*/ME-*, NOT EM-4)
+//                                          → only their own refunds, can submit
+//   - Anyone else                          → forbidden
+function canSeeAllUnscoped(user: { role?: string; employeeId?: string }) {
   return user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN" || user.employeeId === "EM-4";
 }
 
 function canSubmit(user: { employeeId?: string }) {
-  // Only Etsy employees who own shops — not the team lead (EM-4 Izaan)
-  return !!user.employeeId && user.employeeId.startsWith("EM") && user.employeeId !== "EM-4";
+  // Etsy-style shop owners across all offices, except the EM team lead Izaan.
+  // Pre multi-office this only included EM-*; AE-* and ME-* are Awais's and
+  // Mubeen's teams added in May 2026.
+  if (!user.employeeId) return false;
+  if (user.employeeId === "EM-4") return false;
+  return (
+    user.employeeId.startsWith("EM") ||
+    user.employeeId.startsWith("AE") ||
+    user.employeeId.startsWith("ME")
+  );
 }
 
 // GET /api/refunds — list refunds (scoped by role)
@@ -32,30 +42,31 @@ export async function GET(request: NextRequest) {
 
   const where: any = {};
 
-  if (canSeeAll(user)) {
-    // Admin / manager sees all
-    // Optionally scope to a month
-    if (month && year) {
-      const m = parseInt(month);
-      const y = parseInt(year);
-      where.createdAt = {
-        gte: new Date(Date.UTC(y, m - 1, 1)),
-        lt: new Date(Date.UTC(y, m, 1)),
-      };
-    }
+  // Apply month window if provided (shared across all access paths).
+  if (month && year) {
+    const m = parseInt(month);
+    const y = parseInt(year);
+    where.createdAt = {
+      gte: new Date(Date.UTC(y, m - 1, 1)),
+      lt: new Date(Date.UTC(y, m, 1)),
+    };
+  }
+
+  if (canSeeAllUnscoped(user)) {
+    // Admin / Izaan — no userId filter.
+  } else if (user.role === "PARTNER") {
+    // PARTNER — scope to their team members. Empty team surfaces empty list
+    // rather than leaking other partners' refunds.
+    const teams = await prisma.team.findMany({
+      where: { partnerId: user.id },
+      select: { members: { select: { id: true } } },
+    });
+    const memberIds = teams.flatMap((t) => t.members.map((m) => m.id));
+    where.userId = { in: memberIds.length > 0 ? memberIds : ["__none__"] };
   } else if (canSubmit(user)) {
-    // Etsy employee sees own only
+    // Etsy-style employee — own only.
     where.userId = user.id;
-    if (month && year) {
-      const m = parseInt(month);
-      const y = parseInt(year);
-      where.createdAt = {
-        gte: new Date(Date.UTC(y, m - 1, 1)),
-        lt: new Date(Date.UTC(y, m, 1)),
-      };
-    }
   } else {
-    // FB team / others → no access
     return error("Forbidden", 403);
   }
 

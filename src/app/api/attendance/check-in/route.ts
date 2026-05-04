@@ -7,6 +7,12 @@ export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
+  // Partners and CEO are not employees — no attendance, no check-in.
+  const role = (session.user as any).role;
+  if (role === "PARTNER" || role === "SUPER_ADMIN") {
+    return error("Check-in is not applicable to your role", 403);
+  }
+
   const ip = getClientIp(request);
   const isValidIp = await validateIp(ip);
   if (!isValidIp) {

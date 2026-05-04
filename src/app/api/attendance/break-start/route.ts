@@ -6,6 +6,12 @@ export async function POST() {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
+  // Partners and CEO are not employees — no attendance, no breaks.
+  const role = (session.user as any).role;
+  if (role === "PARTNER" || role === "SUPER_ADMIN") {
+    return error("Break tracking is not applicable to your role", 403);
+  }
+
   try {
     const now = nowPKT();
     const today = todayPKT();

@@ -27,8 +27,16 @@ export async function POST(request: NextRequest) {
 
     if (!name) return error("Department name is required");
 
+    // Phase 3: every department belongs to an office. Default to the
+    // session user's office (OFFICE 1 for the CEO until partners go live).
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { officeId: true },
+    });
+    if (!me?.officeId) return error("User has no office assigned", 400);
+
     const department = await prisma.department.create({
-      data: { name, headId },
+      data: { name, headId, officeId: me.officeId },
     });
 
     return json(department, 201);

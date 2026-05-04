@@ -170,6 +170,13 @@ export function DepartmentsView({ departments }: DepartmentsViewProps) {
                           <Users className="size-3 text-muted-foreground" />
                           <span className="text-xs text-muted-foreground">{dept._count?.users || 0} employees</span>
                         </div>
+                        {dept.office?.name && (
+                          <div className="mt-1.5">
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-5 font-normal">
+                              {dept.office.name}
+                            </Badge>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-1">

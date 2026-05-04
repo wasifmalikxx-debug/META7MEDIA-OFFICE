@@ -12,7 +12,9 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN") redirect("/dashboard");
+  // Partners also access this page — scoped to their team(s) below.
+  if (role !== "SUPER_ADMIN" && role !== "PARTNER") redirect("/dashboard");
+  const isPartner = role === "PARTNER";
 
   // SELF-HEAL: revert bogus auto-checkout records (recurring Vercel stale-build bug).
   await autoHealBogusCheckouts().catch((e) => console.warn("[auto-heal]", e));
@@ -25,14 +27,47 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
   const endOfMonth = new Date(Date.UTC(year, month, 0));
 
+  // Resolve PARTNER's team member ids; CEO sees everyone.
+  let partnerMemberIds: string[] | null = null;
+  if (isPartner) {
+    const teams = await prisma.team.findMany({
+      where: { partnerId: session.user.id },
+      select: {
+        members: {
+          where: { status: { in: ["HIRED", "PROBATION"] } },
+          select: { id: true },
+        },
+      },
+    });
+    partnerMemberIds = teams.flatMap((t) => t.members.map((m) => m.id));
+  }
+  console.log(`[calendar] role=${role} isPartner=${isPartner} partnerMemberIds=${partnerMemberIds?.length ?? "n/a"}`);
+
+  // Where-clause fragments scoped to partner's team (or unrestricted for CEO).
+  const empWhere: any = isPartner
+    ? (partnerMemberIds && partnerMemberIds.length > 0
+        ? { id: { in: partnerMemberIds } }
+        : { id: "__none__" })
+    : { role: { not: "SUPER_ADMIN" as const } };
+
+  const userIdScope: any = isPartner
+    ? (partnerMemberIds && partnerMemberIds.length > 0
+        ? { in: partnerMemberIds }
+        : "__none__")
+    : undefined;
+
+  console.log(`[calendar] empWhere=${JSON.stringify(empWhere)} userIdScope=${JSON.stringify(userIdScope)}`);
   const [employees, attendances, holidays, settings, monthCoveredFines] = await Promise.all([
     prisma.user.findMany({
-      where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
+      where: { status: { in: ["HIRED", "PROBATION"] }, ...empWhere },
       select: { id: true, firstName: true, lastName: true, employeeId: true, status: true },
       orderBy: { employeeId: "asc" },
     }),
     prisma.attendance.findMany({
-      where: { date: { gte: startOfMonth, lte: endOfMonth } },
+      where: {
+        date: { gte: startOfMonth, lte: endOfMonth },
+        ...(userIdScope ? { userId: userIdScope } : {}),
+      },
       select: {
         userId: true, date: true, status: true, checkIn: true, checkOut: true,
         workedMinutes: true, lateMinutes: true,
@@ -42,17 +77,19 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
       where: { date: { gte: startOfMonth, lte: endOfMonth } },
       select: { date: true, name: true },
     }),
-    prisma.officeSettings.findUnique({
-      where: { id: "default" },
+    // Phase 3: settings are per-office. Reads the viewer's own office row.
+    prisma.officeSettings.findFirst({
+      where: { office: { users: { some: { id: session.user.id } } } },
       select: { weekendDays: true, paidLeavesPerMonth: true },
     }),
-    // Fetch per-date covered fines for the month — used to mark covered absents with "C"
+    // Per-date covered fines for the month — marks covered absents with "C"
     prisma.fine.findMany({
       where: {
         amount: 0,
         type: "ABSENT_WITHOUT_LEAVE",
         reason: { contains: "Covered by paid leave" },
         date: { gte: startOfMonth, lte: endOfMonth },
+        ...(userIdScope ? { userId: userIdScope } : {}),
       },
       select: { userId: true, date: true },
     }),

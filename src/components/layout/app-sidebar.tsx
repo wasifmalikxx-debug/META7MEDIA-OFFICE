@@ -52,12 +52,22 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 
 
+interface PartnerTeamInfo {
+  id: string;
+  name: string;
+  departmentName: string;
+}
+
 interface AppSidebarProps {
   user: {
     name: string;
     email: string;
     role: string;
     employeeId: string;
+    officeId?: string;
+    officeName?: string;
+    isPrimaryOffice?: boolean;
+    partnerTeams?: PartnerTeamInfo[];
   };
 }
 
@@ -69,16 +79,19 @@ function getMainNav(userRole: string) {
     { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
     { title: "My Reports", href: "/my-reports", icon: BarChart3, roles: ["EMPLOYEE", "MANAGER"] },
     { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
-    { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN"] },
-    // CEO sees "Complaints", employees see "Launch Complaint"
+    { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN", "PARTNER"] },
+    // CEO/HR sees "Complaints" inbox; PARTNER and employees see "Launch Complaint"
+    // — partners can submit complaints to the CEO but never see other people's
+    // complaints (the CEO is the only inbox per office rule).
     { title: isAdmin ? "Complaints" : "Launch Complaint", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
   ];
 }
 
 const managementNav = [
-  { title: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN"] },
+  // PARTNER also sees Employees + Leave Management — server-side scoped to their team
+  { title: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN", "PARTNER"] },
   { title: "Departments", href: "/departments", icon: Building2, roles: ["SUPER_ADMIN"] },
-  { title: "Leave Management", href: "/leaves", icon: CalendarMinus, roles: ["SUPER_ADMIN"] },
+  { title: "Leave Management", href: "/leaves", icon: CalendarMinus, roles: ["SUPER_ADMIN", "PARTNER"] },
   { title: "Login Approvals", href: "/login-approvals", icon: ShieldCheck, roles: ["SUPER_ADMIN"] },
 ];
 
@@ -88,12 +101,17 @@ const financeNav = [
 
 function getEtsyNav(userRole: string, employeeId: string) {
   const isAdminOrManager = userRole === "SUPER_ADMIN" || userRole === "MANAGER";
+  const isPartner = userRole === "PARTNER";
   // Izaan (EM-4) is Etsy team lead — gets the admin-style label even though
   // his role is EMPLOYEE, because he sees all refunds but doesn't submit
   const isTeamLead = employeeId === "EM-4";
+  // Etsy partners (Awais/Mubeen) get the same admin-style nav as CEO/Manager,
+  // but every page is server-side scoped to their team's employees.
+  const isAdminLikeView = isAdminOrManager || isPartner;
+
   const nav: { title: string; href: string; icon: any; roles: string[] }[] = [
-    { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER"] },
-    { title: "Analytics", href: "/etsy-analytics", icon: BarChart3, roles: ["SUPER_ADMIN"] },
+    { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER", "PARTNER"] },
+    { title: "Analytics", href: "/etsy-analytics", icon: BarChart3, roles: ["SUPER_ADMIN", "PARTNER"] },
   ];
   // Izaan only: Etsy team reports view (scoped to EM-* employees on the server)
   if (isTeamLead) {
@@ -106,14 +124,14 @@ function getEtsyNav(userRole: string, employeeId: string) {
   }
   nav.push(
     {
-      title: isAdminOrManager ? "Review Approvals" : "Submit Review",
+      title: isAdminLikeView ? "Review Approvals" : "Submit Review",
       href: "/review-bonus",
       icon: Star,
       roles: ["all"],
     },
-    // Refunds: CEO + Izaan see 'Refunds' (all), other Etsy employees see 'Submit Refund'
+    // Refunds: CEO/Manager/Partner/Izaan see 'Refunds' (all), other Etsy employees see 'Submit Refund'
     {
-      title: isAdminOrManager || isTeamLead ? "Refunds" : "Submit Refund",
+      title: isAdminLikeView || isTeamLead ? "Refunds" : "Submit Refund",
       href: "/refunds",
       icon: RefreshCcw,
       roles: ["all"],
@@ -123,9 +141,24 @@ function getEtsyNav(userRole: string, employeeId: string) {
   return nav;
 }
 
+// Returns true if the partner manages an Etsy-style team (department name contains "Etsy")
+function isPartnerOfEtsyTeam(partnerTeams?: PartnerTeamInfo[]): boolean {
+  if (!partnerTeams || partnerTeams.length === 0) return false;
+  return partnerTeams.some((t) => t.departmentName.toLowerCase().includes("etsy"));
+}
+
+// Returns true if the partner manages a Facebook-style team
+function isPartnerOfFbTeam(partnerTeams?: PartnerTeamInfo[]): boolean {
+  if (!partnerTeams || partnerTeams.length === 0) return false;
+  return partnerTeams.some((t) => t.departmentName.toLowerCase().includes("facebook"));
+}
+
 const settingsNav = [
+  // Office settings: only CEO can edit. Partners don't see settings — office
+  // hours/holidays are controlled globally per Wasif's policy.
   { title: "Office Timings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
   { title: "How It Works", href: "/how-it-works", icon: HelpCircle, roles: ["all"] },
+  // Automated messages: CEO only.
   { title: "Automated Messages", href: "/automated-messages", icon: MessageSquare, roles: ["SUPER_ADMIN"] },
 ];
 
@@ -156,9 +189,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role]);
 
-  // Poll for pending review bonus submissions every 2 minutes (CEO/Manager only)
+  // Poll for pending review bonus submissions every 2 minutes
+  // (CEO / Manager / Etsy PARTNERs). The API scopes the count by role —
+  // PARTNERs only see their own team's pending count.
   useEffect(() => {
-    if (user.role !== "SUPER_ADMIN" && user.role !== "MANAGER") return;
+    if (
+      user.role !== "SUPER_ADMIN" &&
+      user.role !== "MANAGER" &&
+      user.role !== "PARTNER"
+    ) return;
     async function fetchPendingReviews() {
       try {
         const res = await fetch("/api/review-bonus?status=PENDING&count=true");
@@ -262,12 +301,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Etsy Program — only for Etsy employees (EM-), Manager (EM-4), and CEO.
-            EM-4L (Abdullah) is excluded because he was hired for non-Etsy ecom
-            work and is not part of the Etsy bonus program. */}
+        {/* Etsy Program — visible to:
+            - CEO (sees all Etsy across both offices)
+            - MANAGER (Izaan, OFFICE 1 Etsy team lead)
+            - PARTNER who manages an Etsy team (Awais/Mubeen)
+            - Etsy employees (EM-/AE-/ME- prefix) excluding EM-4L (non-Etsy ecom hire) */}
         {(user.role === "SUPER_ADMIN" ||
           user.role === "MANAGER" ||
-          (user.employeeId?.startsWith("EM") && user.employeeId !== "EM-4L")) &&
+          (user.role === "PARTNER" && isPartnerOfEtsyTeam(user.partnerTeams)) ||
+          ((user.employeeId?.startsWith("EM") || user.employeeId?.startsWith("AE") || user.employeeId?.startsWith("ME")) && user.employeeId !== "EM-4L")) &&
           getEtsyNav(user.role, user.employeeId || "").some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
             <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>
@@ -277,7 +319,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroup>
         )}
 
-        {/* FB Program — only for FB employees (SMM-) and CEO */}
+        {/* FB Program — visible to:
+            - CEO (sees all)
+            - FB employees (SMM- prefix)
+            - PARTNER who manages a Facebook team (Zain) — but Zain's view is intentionally
+              minimal: just employees + payroll, no bonus program. So we hide this section
+              for the FB partner per Wasif's "Facebook is simple" instruction. */}
         {(user.role === "SUPER_ADMIN" || user.employeeId?.startsWith("SMM")) && (
           <SidebarGroup>
             <SidebarGroupLabel>FB Program</SidebarGroupLabel>

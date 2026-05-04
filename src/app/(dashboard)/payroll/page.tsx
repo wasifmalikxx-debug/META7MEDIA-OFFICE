@@ -19,33 +19,63 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   const params = await searchParams;
   const role = (session.user as any).role;
   const isAdmin = role === "SUPER_ADMIN";
+  const isPartner = role === "PARTNER";
+  // CEO + Partner both get the manager view (table of all team payroll +
+  // Mark Paid actions). Employees see their own salary only.
+  const isManagerView = isAdmin || isPartner;
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
   const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;
   const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
   const currentMonth = _pkt.getUTCMonth() + 1;
   const currentYear = _pkt.getUTCFullYear();
 
-  // AUTO-REGENERATE payroll on view so stored records always match the latest
-  // calculation logic. Without this, a change to payroll.service.ts leaves
-  // stored records stale — exactly what caused Rana Hamza's covered absence
-  // to keep showing as a fine after the fine-exclusion fix shipped.
-  //
-  // Only regenerate for:
-  //  1. The current month (past months should be locked / immutable)
-  //  2. Records not already marked PAID (the service itself skips PAID)
-  //  3. Months not locked via PayrollSnapshot (locked months are frozen)
-  const isCurrentMonth = month === currentMonth && year === currentYear;
-  const monthSnapshot = await prisma.payrollSnapshot.findUnique({
-    where: { month_year: { month, year } },
+  // Resolve PARTNER scope: which user ids do they manage?
+  let partnerMemberIds: string[] | null = null;
+  let partnerOfficeId: string | null = null;
+  if (isPartner) {
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        officeId: true,
+        partnerTeams: {
+          select: {
+            members: {
+              where: { status: { in: ["HIRED", "PROBATION"] } },
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+    partnerOfficeId = me?.officeId ?? null;
+    partnerMemberIds = me?.partnerTeams.flatMap((t) => t.members.map((m) => m.id)) ?? [];
+  }
+
+  // Look up the office snapshot for this view (CEO sees primary office;
+  // PARTNER sees their own office). Snapshots are per-office in Phase 3.
+  const snapshotOfficeFilter = isPartner
+    ? { id: partnerOfficeId ?? "__none__" }
+    : { isPrimary: true };
+  const monthSnapshot = await prisma.payrollSnapshot.findFirst({
+    where: { month, year, office: snapshotOfficeFilter },
     include: { lockedBy: { select: { firstName: true, lastName: true } } },
   });
   const monthLocked = !!monthSnapshot;
+
+  const isCurrentMonth = month === currentMonth && year === currentYear;
   if (isCurrentMonth && !monthLocked) {
     try {
       if (isAdmin) {
         await generatePayrollForAll(month, year, session.user.id);
+      } else if (isPartner && partnerMemberIds && partnerMemberIds.length > 0) {
+        // Regenerate every member's record (skips PAID/locked internally)
+        await Promise.all(
+          partnerMemberIds.map((id) =>
+            generatePayrollForEmployee(id, month, year, session.user.id).catch(() => {})
+          )
+        );
       } else {
-        // Only regenerate the employee's own record (if it's not already PAID)
+        // Regular employee view — own record only
         const existing = await prisma.payrollRecord.findUnique({
           where: { userId_month_year: { userId: session.user.id, month, year } },
           select: { status: true, lockedAt: true },
@@ -60,7 +90,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   }
 
   // Only show employees who joined ON or BEFORE the last day of the payroll month
-  const payrollMonthEnd = new Date(Date.UTC(year, month, 0)); // last day of month
+  const payrollMonthEnd = new Date(Date.UTC(year, month, 0));
 
   const where: any = {
     month,
@@ -70,7 +100,10 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
       status: { not: "RESIGNED" },
     },
   };
-  if (!isAdmin) {
+  if (isPartner) {
+    // Scope to partner's team members only
+    where.userId = partnerMemberIds && partnerMemberIds.length > 0 ? { in: partnerMemberIds } : "__none__";
+  } else if (!isAdmin) {
     where.userId = session.user.id;
   } else {
     where.user.role = { not: "SUPER_ADMIN" };
@@ -100,11 +133,17 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
     <div className="space-y-6">
       <PageHeader
         title="Payroll"
-        description={isAdmin ? "Generate and manage monthly payroll" : "Your salary details"}
+        description={
+          isAdmin
+            ? "Generate and manage monthly payroll"
+            : isPartner
+            ? "Manage your team's monthly payroll"
+            : "Your salary details"
+        }
       />
       <PayrollView
         records={JSON.parse(JSON.stringify(records))}
-        isAdmin={isAdmin}
+        isAdmin={isManagerView}
         currentMonth={month}
         currentYear={year}
         monthLocked={monthLocked}

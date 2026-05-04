@@ -224,7 +224,23 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
         </Card>
       )}
 
-      {data && !loading && (
+      {/* Cold-load placeholder. Reading 7–14 employee Google Sheets takes
+          30–60s on the first request per scope. Without this banner, the
+          page is just a header and a blank space — users assume it's
+          broken and refresh, which restarts the load. */}
+      {!data && loading && !error && (
+        <Card>
+          <CardContent className="py-12 text-center space-y-2">
+            <RefreshCw className="size-6 animate-spin mx-auto text-muted-foreground" />
+            <p className="text-sm font-medium">Reading sheet data…</p>
+            <p className="text-xs text-muted-foreground">
+              First load can take up to a minute. Subsequent views are cached.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {data && (
         <>
           {/* Section 1: Key Metrics (merged Overview + Quick Stats) */}
           <KeyMetrics overview={data.overview} quickStats={data.quickStats} show={showValues} />

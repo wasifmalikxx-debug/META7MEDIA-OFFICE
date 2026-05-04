@@ -3,6 +3,7 @@ import { prisma, getCachedSettings } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { EmployeeDashboard } from "@/components/dashboard/employee-dashboard";
+import { PartnerDashboard } from "@/components/dashboard/partner-dashboard";
 import { todayPKT, nowPKT, pktMonth, pktYear } from "@/lib/pkt";
 import { autoHealBogusCheckouts } from "@/lib/services/auto-heal-bogus-checkouts";
 
@@ -24,6 +25,197 @@ export default async function DashboardPage() {
   // auto-checkout code stamps fake 14:00 UTC checkouts on the whole team.
   // Idempotent — no-op if data is healthy.
   await autoHealBogusCheckouts().catch((e) => console.warn("[auto-heal]", e));
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // PARTNER dashboard — team-scoped KPIs only. Partners aren't employees,
+  // so no check-in widgets, no personal attendance, no salary slip. They
+  // see roll-ups for the team(s) they manage (Team.partnerId = their id).
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (userRole === "PARTNER") {
+    const partner = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        firstName: true,
+        lastName: true,
+        office: { select: { name: true } },
+      },
+    });
+    const teams = await prisma.team.findMany({
+      where: { partnerId: userId },
+      include: {
+        department: { select: { name: true } },
+        members: {
+          where: { status: { in: ["HIRED", "PROBATION"] } },
+          select: { id: true, firstName: true, lastName: true, employeeId: true, status: true },
+        },
+      },
+    });
+
+    const allMemberIds: string[] = teams.flatMap((t) => t.members.map((m) => m.id));
+
+    const officeSettings = await getCachedSettings();
+    const weekendDays = (officeSettings?.weekendDays || "0").split(",").map((d: string) => parseInt(d.trim()));
+    const isWeekend = weekendDays.includes(nowPKT().getUTCDay());
+    const todayHoliday = await prisma.holiday.findFirst({ where: { date: today } });
+
+    // Fetch detailed per-employee state (drives the Live Status grid, same
+    // shape AdminDashboard expects).
+    const todayAttendancesAll = allMemberIds.length
+      ? await prisma.attendance.findMany({
+          where: { date: today, userId: { in: allMemberIds } },
+          select: {
+            userId: true,
+            status: true,
+            checkIn: true,
+            checkOut: true,
+            breakStart: true,
+            breakEnd: true,
+            lateMinutes: true,
+          },
+        })
+      : [];
+
+    const todayLeavesAll = allMemberIds.length
+      ? await prisma.leaveRequest.findMany({
+          where: {
+            userId: { in: allMemberIds },
+            status: "APPROVED",
+            startDate: { lte: today },
+            endDate: { gte: today },
+          },
+          select: { userId: true, leaveType: true },
+        })
+      : [];
+
+    // Per-team aggregates (KPI cards)
+    const teamSummaries = await Promise.all(
+      teams.map(async (team) => {
+        const memberIds = team.members.map((m) => m.id);
+        if (memberIds.length === 0) {
+          return {
+            teamId: team.id,
+            teamName: team.name,
+            departmentName: team.department.name,
+            totalMembers: 0,
+            presentToday: 0,
+            absentToday: 0,
+            lateToday: 0,
+            onLeaveToday: 0,
+            monthFines: 0,
+            monthPayroll: 0,
+            pendingLeaves: 0,
+          };
+        }
+
+        const todayAtts = todayAttendancesAll.filter((a) => memberIds.includes(a.userId));
+        const todayLeaves = todayLeavesAll.filter((l) => memberIds.includes(l.userId));
+
+        const [monthFines, monthPayroll, pendingLeaves] = await Promise.all([
+          prisma.fine.aggregate({
+            where: { userId: { in: memberIds }, month, year },
+            _sum: { amount: true },
+          }),
+          prisma.payrollRecord.aggregate({
+            where: { userId: { in: memberIds }, month, year },
+            _sum: { netSalary: true },
+          }),
+          prisma.leaveRequest.count({
+            where: { userId: { in: memberIds }, status: "PENDING" },
+          }),
+        ]);
+
+        const presentToday = todayAtts.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
+        const lateToday = todayAtts.filter((a) => a.status === "LATE").length;
+        const absentToday = memberIds.length - todayAtts.filter((a) => a.status !== "ABSENT").length;
+        const onLeaveToday = todayLeaves.length;
+
+        return {
+          teamId: team.id,
+          teamName: team.name,
+          departmentName: team.department.name,
+          totalMembers: memberIds.length,
+          presentToday,
+          absentToday,
+          lateToday,
+          onLeaveToday,
+          monthFines: monthFines._sum.amount ?? 0,
+          monthPayroll: monthPayroll._sum.netSalary ?? 0,
+          pendingLeaves,
+        };
+      })
+    );
+
+    const dayOffLabel = todayHoliday
+      ? `Holiday — ${todayHoliday.name}`
+      : isWeekend
+      ? "Weekend"
+      : null;
+
+    // Build per-employee live status (same algorithm as AdminDashboard).
+    const attendanceMap: Record<string, any> = {};
+    for (const att of todayAttendancesAll) attendanceMap[att.userId] = att;
+    const leaveMap: Record<string, string> = {};
+    for (const lv of todayLeavesAll) leaveMap[lv.userId] = lv.leaveType;
+    const isDayOff = isWeekend || !!todayHoliday;
+
+    const flatMembers = teams.flatMap((t) =>
+      t.members.map((m) => ({ ...m, teamName: t.name }))
+    );
+    const employeeStatuses = flatMembers.map((emp) => {
+      const att = attendanceMap[emp.id];
+      const leave = leaveMap[emp.id];
+      let liveStatus = isDayOff ? "DAY_OFF" : "NOT_CHECKED_IN";
+      let checkInTime: any = null;
+      let checkOutTime: any = null;
+
+      if (att) {
+        if (att.checkOut) {
+          liveStatus = "CHECKED_OUT";
+          checkInTime = att.checkIn;
+          checkOutTime = att.checkOut;
+        } else if (att.breakStart && !att.breakEnd) {
+          liveStatus = "ON_BREAK";
+          checkInTime = att.checkIn;
+        } else if (att.status === "PRESENT" || att.status === "LATE") {
+          liveStatus = att.status === "LATE" ? "LATE" : "PRESENT";
+          checkInTime = att.checkIn;
+        } else if (att.status === "ABSENT") {
+          liveStatus = "ABSENT";
+        } else if (att.status === "HALF_DAY") {
+          liveStatus = "HALF_DAY";
+          checkInTime = att.checkIn;
+        }
+      }
+
+      if (leave) {
+        if (leave === "HALF_DAY" && liveStatus !== "CHECKED_OUT" && liveStatus !== "PRESENT" && liveStatus !== "LATE") {
+          liveStatus = "HALF_DAY_LEAVE";
+        }
+      }
+
+      return {
+        id: emp.id,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        employeeId: emp.employeeId,
+        empStatus: emp.status,
+        teamName: emp.teamName,
+        liveStatus,
+        checkIn: checkInTime,
+        checkOut: checkOutTime,
+      };
+    });
+
+    return (
+      <PartnerDashboard
+        partnerName={`${partner?.firstName ?? ""} ${partner?.lastName ?? ""}`.trim()}
+        officeName={partner?.office?.name ?? ""}
+        dayOffLabel={dayOffLabel}
+        teams={JSON.parse(JSON.stringify(teamSummaries))}
+        employeeStatuses={JSON.parse(JSON.stringify(employeeStatuses))}
+      />
+    );
+  }
 
   if (userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN") {
     // Admin dashboard — all queries in ONE batch

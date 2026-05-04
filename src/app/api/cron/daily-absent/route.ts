@@ -1,13 +1,21 @@
 import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
-import { todayPKT, pktMonth, pktYear, nowPKT, startOfMonthPKT } from "@/lib/pkt";
+import { todayPKT, pktMonth, pktYear, nowPKT } from "@/lib/pkt";
 
 /**
- * Daily cron — runs at 7:33 PM PKT
- * Marks employees who didn't check in today as ABSENT
- * Creates an absent fine (salary/30) for each absent employee
- * Respects paid leave budget (configurable per month)
+ * Daily cron — runs after work hours each day.
+ * Marks employees who didn't check in today as ABSENT and writes the
+ * appropriate fine (covered or deducted, per the per-month allowance rule).
+ *
+ * MULTI-OFFICE behavior (Phase 7):
+ *   - Loops every Office row.
+ *   - Per-office settings drive the weekend/holiday checks (each office can
+ *     have its own working days and its own holidays).
+ *   - PARTNER role is excluded from the employee scan — partners aren't
+ *     paid employees, they have no salary, no attendance.
+ *   - The fine "issuedById" is always the CEO (SUPER_ADMIN), regardless of
+ *     office, per Wasif's rule that he controls all WhatsApp / fine routing.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -21,144 +29,149 @@ export async function GET(request: NextRequest) {
     const month = pktMonth();
     const year = pktYear();
     const dayOfWeek = nowPKT().getUTCDay();
-    const monthStart = startOfMonthPKT();
-
-    // Check weekend
-    const settings = await prisma.officeSettings.findUnique({ where: { id: "default" } });
-    const weekendDays = (settings?.weekendDays || "0").split(",").map((d: string) => parseInt(d.trim()));
-    if (weekendDays.includes(dayOfWeek)) {
-      return json({ message: "Weekend — skipped" });
-    }
-
-    // Check holiday
-    const holiday = await prisma.holiday.findFirst({ where: { date: today } });
-    if (holiday) {
-      return json({ message: `Holiday (${holiday.name}) — skipped` });
-    }
-
-    // BATCH LOAD: Get all data upfront instead of querying per employee
-    const [employees, todayAttendances, todayLeaves, monthAttendances, monthFines, admin] = await Promise.all([
-      prisma.user.findMany({
-        where: {
-          role: { not: "SUPER_ADMIN" },
-          status: { in: ["HIRED", "PROBATION"] },
-          // CRITICAL: Only consider employees whose joining date is on or before today.
-          // Prevents marking new hires as absent for days before they were employed.
-          joiningDate: { lte: today },
-        },
-        select: { id: true, firstName: true, lastName: true, employeeId: true, phone: true, joiningDate: true, salaryStructure: { select: { monthlySalary: true } } },
-      }),
-      prisma.attendance.findMany({
-        where: { date: today },
-        select: { userId: true, status: true },
-      }),
-      prisma.leaveRequest.findMany({
-        where: { startDate: { lte: today }, endDate: { gte: today }, status: "APPROVED", leaveType: "HALF_DAY" },
-        select: { userId: true },
-      }),
-      prisma.attendance.findMany({
-        where: { date: { gte: monthStart, lte: today }, status: { in: ["ABSENT", "HALF_DAY"] } },
-        select: { userId: true, status: true },
-      }),
-      prisma.fine.findMany({
-        where: { month, year, reason: { contains: "Covered by paid leave" } },
-        select: { userId: true },
-      }),
-      prisma.user.findFirst({ where: { role: "SUPER_ADMIN" }, select: { id: true } }),
-    ]);
-
-    // Build lookup maps
-    const attendanceMap = new Set(todayAttendances.map((a) => a.userId));
-    const halfDayLeaveSet = new Set(todayLeaves.map((l) => l.userId));
-    const paidLeaveBudget = settings?.paidLeavesPerMonth ?? 1;
-
-    // Count month absents/half-days per user
-    const monthAbsentCount: Record<string, number> = {};
-    const monthHalfDayCount: Record<string, number> = {};
-    for (const a of monthAttendances) {
-      if (a.status === "ABSENT") monthAbsentCount[a.userId] = (monthAbsentCount[a.userId] || 0) + 1;
-      if (a.status === "HALF_DAY") monthHalfDayCount[a.userId] = (monthHalfDayCount[a.userId] || 0) + 1;
-    }
-    // Count paid leave fines per user
-    const paidLeaveUsed: Record<string, number> = {};
-    for (const f of monthFines) {
-      paidLeaveUsed[f.userId] = (paidLeaveUsed[f.userId] || 0) + 1;
-    }
-
-    const results: any[] = [];
     const dateStr = today.toISOString().split("T")[0];
 
-    for (const emp of employees) {
-      // Already has attendance record — skip
-      if (attendanceMap.has(emp.id)) {
+    const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" }, select: { id: true } });
+    const offices = await prisma.office.findMany({
+      include: { settings: true },
+      orderBy: { isPrimary: "desc" },
+    });
+
+    const perOfficeResults: any[] = [];
+
+    for (const office of offices) {
+      const settings = office.settings;
+      const weekendDays = (settings?.weekendDays || "0").split(",").map((d) => parseInt(d.trim()));
+      if (weekendDays.includes(dayOfWeek)) {
+        perOfficeResults.push({ office: office.slug, skipped: "weekend" });
         continue;
       }
 
-      // Has approved half-day leave — mark as half day
-      if (halfDayLeaveSet.has(emp.id)) {
-        await prisma.attendance.create({
-          data: { userId: emp.id, date: today, status: "HALF_DAY" },
-        });
-        results.push({ employeeId: emp.employeeId, action: "half_day_leave" });
+      // Office-specific holiday OR global (officeId=null)
+      const holiday = await prisma.holiday.findFirst({
+        where: {
+          date: today,
+          OR: [{ officeId: office.id }, { officeId: null }],
+        },
+      });
+      if (holiday) {
+        perOfficeResults.push({ office: office.slug, skipped: `holiday: ${holiday.name}` });
         continue;
       }
 
-      // No check-in, no leave — mark as ABSENT
-      await prisma.attendance.create({
-        data: { userId: emp.id, date: today, status: "ABSENT" },
+      // Employees in this office (excludes CEO + partners)
+      const employees = await prisma.user.findMany({
+        where: {
+          officeId: office.id,
+          role: { in: ["EMPLOYEE", "MANAGER"] },
+          status: { in: ["HIRED", "PROBATION"] },
+          joiningDate: { lte: today },
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          employeeId: true,
+          phone: true,
+          salaryStructure: { select: { monthlySalary: true } },
+        },
       });
 
-      const monthlySalary = emp.salaryStructure?.monthlySalary || 0;
-      const dailyRate = Math.round(monthlySalary / 30);
+      const todayAttendances = await prisma.attendance.findMany({
+        where: { date: today, userId: { in: employees.map((e) => e.id) } },
+        select: { userId: true },
+      });
+      const todayLeaves = await prisma.leaveRequest.findMany({
+        where: {
+          userId: { in: employees.map((e) => e.id) },
+          startDate: { lte: today },
+          endDate: { gte: today },
+          status: "APPROVED",
+          leaveType: "HALF_DAY",
+        },
+        select: { userId: true },
+      });
 
-      if (dailyRate > 0) {
-        // Per-month auto-paid-absence allowance: each month, the FIRST
-        // absent is fully covered (no deduction); subsequent absents in the
-        // same month are deducted at salary/30. This is independent of the
-        // employee's half-day-leave budget shown on their dashboard.
-        const { hasMonthlyAbsenceCoverageBeenUsed } = await import("@/lib/services/leave-budget.service");
-        const allowanceUsed = await hasMonthlyAbsenceCoverageBeenUsed(emp.id, month, year);
-        const covered = !allowanceUsed;
-        const fineAmount = covered ? 0 : dailyRate;
-        const fineReason = covered
-          ? `Absent on ${dateStr} — Covered by paid leave (1.0 day used)`
-          : `Absent on ${dateStr} — PKR ${fineAmount.toLocaleString()} (salary/30) deducted`;
+      const attendanceMap = new Set(todayAttendances.map((a) => a.userId));
+      const halfDayLeaveSet = new Set(todayLeaves.map((l) => l.userId));
 
-        await prisma.fine.create({
-          data: {
-            userId: emp.id,
-            type: "ABSENT_WITHOUT_LEAVE",
-            amount: fineAmount,
-            reason: fineReason,
-            date: today,
-            month,
-            year,
-            issuedById: admin?.id || emp.id,
-          },
-        });
+      const officeResults: any[] = [];
 
-        // WhatsApp notification (only if actual deduction)
-        if (fineAmount > 0 && emp.phone) {
-          try {
-            const { sendAbsentTemplate } = await import("@/lib/services/whatsapp.service");
-            const empName = `${emp.firstName} ${emp.lastName || ""}`.trim();
-            sendAbsentTemplate(emp.phone, empName, fineAmount).catch((err: any) =>
-              console.warn(`WhatsApp absent failed for ${emp.employeeId}:`, err.message)
-            );
-          } catch {}
+      for (const emp of employees) {
+        if (attendanceMap.has(emp.id)) continue;
+
+        if (halfDayLeaveSet.has(emp.id)) {
+          await prisma.attendance.create({
+            data: { userId: emp.id, date: today, status: "HALF_DAY" },
+          });
+          officeResults.push({ employeeId: emp.employeeId, action: "half_day_leave" });
+          continue;
         }
 
-        results.push({
-          employeeId: emp.employeeId,
-          name: `${emp.firstName} ${emp.lastName || ""}`.trim(),
-          action: "marked_absent",
-          fine: fineAmount,
-          coveredByPaidLeave: covered,
+        await prisma.attendance.create({
+          data: { userId: emp.id, date: today, status: "ABSENT" },
         });
+
+        const monthlySalary = emp.salaryStructure?.monthlySalary || 0;
+        const dailyRate = Math.round(monthlySalary / 30);
+
+        if (dailyRate > 0) {
+          const { hasMonthlyAbsenceCoverageBeenUsed } = await import("@/lib/services/leave-budget.service");
+          const allowanceUsed = await hasMonthlyAbsenceCoverageBeenUsed(emp.id, month, year);
+          const covered = !allowanceUsed;
+          const fineAmount = covered ? 0 : dailyRate;
+          const fineReason = covered
+            ? `Absent on ${dateStr} — Covered by paid leave (1.0 day used)`
+            : `Absent on ${dateStr} — PKR ${fineAmount.toLocaleString()} (salary/30) deducted`;
+
+          await prisma.fine.create({
+            data: {
+              userId: emp.id,
+              type: "ABSENT_WITHOUT_LEAVE",
+              amount: fineAmount,
+              reason: fineReason,
+              date: today,
+              month,
+              year,
+              issuedById: admin?.id || emp.id,
+            },
+          });
+
+          // WhatsApp: only employee gets notified directly. Partners don't
+          // receive copies (per Wasif: "DAILY REPORT WILL ONLY BE SENT TO MY
+          // NUMBERS NO THEM"). Admin alerts continue to route via CEO settings.
+          if (fineAmount > 0 && emp.phone) {
+            try {
+              const { sendAbsentTemplate } = await import("@/lib/services/whatsapp.service");
+              const empName = `${emp.firstName} ${emp.lastName || ""}`.trim();
+              sendAbsentTemplate(emp.phone, empName, fineAmount).catch((err: any) =>
+                console.warn(`WhatsApp absent failed for ${emp.employeeId}:`, err.message)
+              );
+            } catch {}
+          }
+
+          officeResults.push({
+            employeeId: emp.employeeId,
+            name: `${emp.firstName} ${emp.lastName || ""}`.trim(),
+            action: "marked_absent",
+            fine: fineAmount,
+            coveredByPaidLeave: covered,
+          });
+        }
       }
+
+      perOfficeResults.push({
+        office: office.slug,
+        processed: officeResults.length,
+        results: officeResults,
+      });
     }
 
-    return json({ message: `Processed ${results.length} employees`, date: today.toISOString(), results });
+    return json({
+      message: `Processed ${offices.length} office(s)`,
+      date: today.toISOString(),
+      offices: perOfficeResults,
+    });
   } catch (err: any) {
     return error(err.message, 500);
   }

@@ -9,10 +9,15 @@ async function main() {
   const password = await bcrypt.hash("password123", 12);
   const year = new Date().getFullYear();
 
-  // Ensure office settings exist
+  // Ensure the primary office (OFFICE 1) exists, then ensure settings exist for it.
+  const office1 = await prisma.office.upsert({
+    where: { slug: "office-1" },
+    create: { slug: "office-1", name: "META7MEDIA HQ", isPrimary: true },
+    update: {},
+  });
   await prisma.officeSettings.upsert({
-    where: { id: "default" },
-    create: { id: "default" },
+    where: { officeId: office1.id },
+    create: { id: "default", office: { connect: { id: office1.id } } },
     update: {},
   });
 
@@ -22,8 +27,12 @@ async function main() {
   await prisma.team.deleteMany({});
   await prisma.department.deleteMany({});
 
-  const etsyDept = await prisma.department.create({ data: { name: "Etsy" } });
-  const fbDept = await prisma.department.create({ data: { name: "Facebook" } });
+  const etsyDept = await prisma.department.create({
+    data: { name: "Etsy", office: { connect: { id: office1.id } } },
+  });
+  const fbDept = await prisma.department.create({
+    data: { name: "Facebook", office: { connect: { id: office1.id } } },
+  });
 
   // Delete all non-admin users (keep admin account)
   const admin = await prisma.user.findUnique({ where: { email: "admin@meta7media.com" } });
@@ -324,6 +333,7 @@ async function main() {
         status: emp.status,
         joiningDate: emp.joiningDate,
         departmentId: emp.dept,
+        officeId: office1.id,
         bankName: emp.bankName,
         accountNumber: emp.accountNumber,
         accountTitle: emp.accountTitle,

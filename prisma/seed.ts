@@ -6,11 +6,19 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("Seeding database...");
 
-  // Create office settings
+  // Multi-office: ensure the primary office (OFFICE 1) exists first.
+  const office1 = await prisma.office.upsert({
+    where: { slug: "office-1" },
+    create: { slug: "office-1", name: "META7MEDIA HQ", isPrimary: true },
+    update: {},
+  });
+
+  // Create office settings (one per office)
   await prisma.officeSettings.upsert({
-    where: { id: "default" },
+    where: { officeId: office1.id },
     create: {
       id: "default",
+      officeId: office1.id,
       officeName: "META7MEDIA",
       workStartTime: "11:00",
       workEndTime: "19:00",
@@ -31,22 +39,22 @@ async function main() {
     update: {},
   });
 
-  // Create departments
+  // Create departments (scoped to OFFICE 1)
   const devDept = await prisma.department.upsert({
-    where: { name: "Development" },
-    create: { name: "Development" },
+    where: { name_officeId: { name: "Development", officeId: office1.id } },
+    create: { name: "Development", officeId: office1.id },
     update: {},
   });
 
   const designDept = await prisma.department.upsert({
-    where: { name: "Design" },
-    create: { name: "Design" },
+    where: { name_officeId: { name: "Design", officeId: office1.id } },
+    create: { name: "Design", officeId: office1.id },
     update: {},
   });
 
   const marketingDept = await prisma.department.upsert({
-    where: { name: "Marketing" },
-    create: { name: "Marketing" },
+    where: { name_officeId: { name: "Marketing", officeId: office1.id } },
+    create: { name: "Marketing", officeId: office1.id },
     update: {},
   });
 
@@ -66,6 +74,7 @@ async function main() {
       status: "HIRED",
       designation: "Owner / CEO",
       joiningDate: new Date("2023-01-01"),
+      officeId: office1.id,
       leaveBalances: { create: { year } },
       salaryStructure: {
         create: { monthlySalary: 200000, effectiveFrom: new Date("2023-01-01") },
@@ -87,6 +96,7 @@ async function main() {
       status: "HIRED",
       designation: "HR Manager",
       departmentId: devDept.id,
+      officeId: office1.id,
       joiningDate: new Date("2023-03-15"),
       leaveBalances: { create: { year } },
       salaryStructure: {
@@ -109,6 +119,7 @@ async function main() {
       status: "HIRED",
       designation: "Project Manager",
       departmentId: devDept.id,
+      officeId: office1.id,
       joiningDate: new Date("2023-06-01"),
       leaveBalances: { create: { year } },
       salaryStructure: {
@@ -143,6 +154,7 @@ async function main() {
         designation: emp.designation,
         departmentId: emp.dept,
         managerId: manager.id,
+        officeId: office1.id,
         joiningDate: new Date("2024-01-15"),
         leaveBalances: { create: { year } },
         salaryStructure: {
@@ -163,26 +175,18 @@ async function main() {
     },
   });
 
-  // Create a holiday
-  await prisma.holiday.upsert({
-    where: { date: new Date(`${year}-03-23`) },
-    create: {
-      name: "Pakistan Day",
-      date: new Date(`${year}-03-23`),
-      year,
-    },
-    update: {},
-  });
-
-  await prisma.holiday.upsert({
-    where: { date: new Date(`${year}-08-14`) },
-    create: {
-      name: "Independence Day",
-      date: new Date(`${year}-08-14`),
-      year,
-    },
-    update: {},
-  });
+  // Create global holidays (officeId=null = applies to all offices).
+  // Prisma's compound-unique types don't accept NULL in the `where` clause,
+  // so we use findFirst+create instead of upsert.
+  const ensureGlobalHoliday = async (name: string, dateStr: string) => {
+    const date = new Date(dateStr);
+    const existing = await prisma.holiday.findFirst({ where: { date, officeId: null } });
+    if (!existing) {
+      await prisma.holiday.create({ data: { name, date, year: date.getUTCFullYear() } });
+    }
+  };
+  await ensureGlobalHoliday("Pakistan Day", `${year}-03-23`);
+  await ensureGlobalHoliday("Independence Day", `${year}-08-14`);
 
   console.log("Seed completed!");
   console.log("");

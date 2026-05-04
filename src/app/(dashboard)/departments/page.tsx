@@ -16,8 +16,9 @@ export default async function DepartmentsPage() {
   const departments = await prisma.department.findMany({
     include: {
       _count: { select: { users: true } },
+      office: { select: { name: true, slug: true, isPrimary: true } },
     },
-    orderBy: { name: "asc" },
+    orderBy: [{ office: { isPrimary: "desc" } }, { name: "asc" }],
   });
 
   return (

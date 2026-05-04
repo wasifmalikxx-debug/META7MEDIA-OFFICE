@@ -20,6 +20,15 @@ export async function GET(request: NextRequest) {
 
   if (role === "EMPLOYEE") {
     where.userId = session.user.id;
+  } else if (role === "PARTNER") {
+    // Scope to PARTNER's team members. Used by both the page-level fetch and
+    // the sidebar pending-review badge polling.
+    const teams = await prisma.team.findMany({
+      where: { partnerId: session.user.id },
+      select: { members: { select: { id: true } } },
+    });
+    const memberIds = teams.flatMap((t) => t.members.map((m) => m.id));
+    where.userId = { in: memberIds.length > 0 ? memberIds : ["__none__"] };
   }
 
   if (status) {

@@ -13,22 +13,54 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
   const params = await searchParams;
   const role = (session.user as any).role;
   const isAdmin = role === "SUPER_ADMIN";
+  const isPartner = role === "PARTNER";
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
   const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;
   const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
 
+  // Resolve scope for PARTNER → list of user ids on the partner's team(s).
+  // CEO sees all (no filter), employees see self.
+  let scopedUserIds: string[] | null = null;
+  if (isPartner) {
+    const teams = await prisma.team.findMany({
+      where: { partnerId: session.user.id },
+      select: {
+        members: {
+          where: { status: { in: ["HIRED", "PROBATION"] } },
+          select: { id: true },
+        },
+      },
+    });
+    scopedUserIds = teams.flatMap((t) => t.members.map((m) => m.id));
+    console.log(`[fines page] partner=${session.user.id} teams=${teams.length} scopedUserIds=${scopedUserIds.length}`);
+  }
+  console.log(`[fines page] role=${role} isPartner=${isPartner} month=${month} year=${year}`);
+
+  // Build the userId filter that applies to fines / attendance / leaves.
+  // For partners with empty teams, force "no rows" via a non-existent id.
+  const partnerUserFilter =
+    scopedUserIds && scopedUserIds.length > 0 ? { in: scopedUserIds } : "__none__";
+
   const where: any = { month, year };
-  if (!isAdmin) where.userId = session.user.id;
+  if (isPartner) where.userId = partnerUserFilter;
+  else if (!isAdmin) where.userId = session.user.id;
 
   const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
   const endOfMonth = new Date(Date.UTC(year, month, 0));
 
   const attWhere: any = { date: { gte: startOfMonth, lte: endOfMonth } };
   const leaveWhere: any = { startDate: { gte: startOfMonth, lte: endOfMonth } };
-  if (!isAdmin) {
+  if (isPartner) {
+    attWhere.userId = partnerUserFilter;
+    leaveWhere.userId = partnerUserFilter;
+  } else if (!isAdmin) {
     attWhere.userId = session.user.id;
     leaveWhere.userId = session.user.id;
   }
+
+  // Treat PARTNER like the admin view of FinesView (employee filter dropdown,
+  // team-wide stats), since they're managing their team's daily activities.
+  const isManagerView = isAdmin || isPartner;
 
   const [fines, employees, attendances, leaves] = await Promise.all([
     prisma.fine.findMany({
@@ -42,6 +74,12 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
     isAdmin
       ? prisma.user.findMany({
           where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
+          select: { id: true, firstName: true, lastName: true, employeeId: true, department: { select: { name: true } } },
+          orderBy: { employeeId: "asc" },
+        })
+      : isPartner && scopedUserIds && scopedUserIds.length > 0
+      ? prisma.user.findMany({
+          where: { id: { in: scopedUserIds } },
           select: { id: true, firstName: true, lastName: true, employeeId: true, department: { select: { name: true } } },
           orderBy: { employeeId: "asc" },
         })
@@ -72,7 +110,7 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
       <FinesView
         fines={JSON.parse(JSON.stringify(fines))}
         employees={JSON.parse(JSON.stringify(employees))}
-        isAdmin={isAdmin}
+        isAdmin={isManagerView}
         currentMonth={month}
         currentYear={year}
         attendances={JSON.parse(JSON.stringify(attendances))}
