@@ -40,6 +40,10 @@ interface ReviewBonusManagerProps {
   submissions: Submission[];
   currentMonth: number;
   currentYear: number;
+  // Whether the viewer can delete submissions (admin powers). Partners can
+  // approve/reject (PATCH) but cannot delete (DELETE blocked at API). Defaults
+  // to true for backward compat with CEO/MANAGER callers.
+  canDelete?: boolean;
 }
 
 const MONTHS = [
@@ -51,6 +55,7 @@ export function ReviewBonusManager({
   submissions,
   currentMonth,
   currentYear,
+  canDelete = true,
 }: ReviewBonusManagerProps) {
   const router = useRouter();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -156,16 +161,18 @@ export function ReviewBonusManager({
                   </div>
                 </div>
               </div>
-              <Button size="sm" variant="ghost" className="size-7 p-0 text-muted-foreground/40 hover:text-rose-600" onClick={async () => {
-                if (!confirm(`Remove this submission${sub.status === "APPROVED" ? " and reverse the incentive" : ""}?`)) return;
-                try {
-                  const res = await fetch(`/api/review-bonus/${sub.id}`, { method: "DELETE" });
-                  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
-                  toast.success("Removed"); router.refresh();
-                } catch (err: any) { toast.error(err.message); }
-              }} disabled={isLoading}>
-                <Trash2 className="size-3.5" />
-              </Button>
+              {canDelete && (
+                <Button size="sm" variant="ghost" className="size-7 p-0 text-muted-foreground/40 hover:text-rose-600" onClick={async () => {
+                  if (!confirm(`Remove this submission${sub.status === "APPROVED" ? " and reverse the incentive" : ""}?`)) return;
+                  try {
+                    const res = await fetch(`/api/review-bonus/${sub.id}`, { method: "DELETE" });
+                    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed"); }
+                    toast.success("Removed"); router.refresh();
+                  } catch (err: any) { toast.error(err.message); }
+                }} disabled={isLoading}>
+                  <Trash2 className="size-3.5" />
+                </Button>
+              )}
             </div>
           </div>
 

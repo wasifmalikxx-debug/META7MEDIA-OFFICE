@@ -68,6 +68,9 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
           submissions={JSON.parse(JSON.stringify(submissions))}
           currentMonth={month}
           currentYear={year}
+          // PARTNER can approve/reject but not delete — keep the trash button
+          // out of their UI to match the API gate.
+          canDelete={role !== "PARTNER"}
         />
       </div>
     );

@@ -113,6 +113,10 @@ export default async function RefundsPage({
       <RefundsView
         initialRefunds={JSON.parse(JSON.stringify(refunds))}
         canSeeAll={canSeeAll}
+        // Partners see their team's refunds but the API does NOT authorize
+        // partner deletes — separate the two prop semantics so the Delete
+        // button doesn't render for partners and trigger 403 toasts.
+        canDeleteAny={isAdmin || isManager}
         canSubmit={canSubmit}
         currentUserId={user.id}
         currentMonth={month}

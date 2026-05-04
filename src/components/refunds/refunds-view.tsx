@@ -101,6 +101,11 @@ async function compressImage(file: File): Promise<string> {
 interface RefundsViewProps {
   initialRefunds: Refund[];
   canSeeAll: boolean;
+  // Whether the viewer can delete any refund (admin powers). Defaults to
+  // canSeeAll for backward compat — partners pass false explicitly because
+  // they view their team's refunds but the API does not authorize partner
+  // deletes.
+  canDeleteAny?: boolean;
   canSubmit: boolean;
   currentUserId: string;
   currentMonth: number;
@@ -110,11 +115,14 @@ interface RefundsViewProps {
 export function RefundsView({
   initialRefunds,
   canSeeAll,
+  canDeleteAny,
   canSubmit,
   currentUserId,
   currentMonth,
   currentYear,
 }: RefundsViewProps) {
+  // Backward compat: if not provided, fall back to canSeeAll (the original behavior).
+  const effectiveCanDeleteAny = canDeleteAny ?? canSeeAll;
   const router = useRouter();
   const [refunds, setRefunds] = useState<Refund[]>(initialRefunds);
   const [open, setOpen] = useState(false);
@@ -748,6 +756,7 @@ export function RefundsView({
                       refund={r}
                       currentUserId={currentUserId}
                       canSeeAll={canSeeAll}
+                      canDeleteAny={effectiveCanDeleteAny}
                       onEdit={() => openEditDialog(r)}
                       onDelete={() => handleDelete(r.id)}
                       onViewProof={(url) => setLightboxImage(url)}
@@ -785,6 +794,7 @@ function RefundCard({
   refund: r,
   currentUserId,
   canSeeAll,
+  canDeleteAny,
   onEdit,
   onDelete,
   onViewProof,
@@ -793,6 +803,7 @@ function RefundCard({
   refund: Refund;
   currentUserId: string;
   canSeeAll: boolean;
+  canDeleteAny: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onViewProof: (url: string) => void;
@@ -812,8 +823,11 @@ function RefundCard({
   // Edit is ONLY allowed by the original submitter within the 15-minute window.
   // CEO / Izaan cannot edit — they can only delete. This keeps refund records
   // authoritative to the employee who submitted them.
+  // canDeleteAny: admin powers to delete any refund. Owner can also delete
+  // their own within the 15-min window. Partners pass canDeleteAny=false:
+  // they view their team's refunds but the API will 403 a partner delete.
   const canEdit = isOwner && withinWindow;
-  const canDelete = canSeeAll || (isOwner && withinWindow);
+  const canDelete = canDeleteAny || (isOwner && withinWindow);
 
   return (
     <Card className="border-0 shadow-sm hover:shadow-md transition-all">

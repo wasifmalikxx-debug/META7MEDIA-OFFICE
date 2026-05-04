@@ -68,10 +68,13 @@ async function main() {
   }
 
   // 3. Departments under OFFICE 2
+  // Names match what prod is currently using post-rename (Etsy - AE / Etsy - ME).
+  // Re-running phase6 must produce this final state, NOT the original "Etsy AE"/"Etsy ME"
+  // names which would create duplicates next to the renamed real ones.
   const deptDefs = [
     { name: "Facebook", note: "Zain's FB team (moved from OFFICE 1)" },
-    { name: "Etsy AE", note: "Awais's Etsy team (AE-* employees)" },
-    { name: "Etsy ME", note: "Mubeen's Etsy team (ME-* employees)" },
+    { name: "Etsy - AE", note: "Awais's Etsy team (AE-* employees)" },
+    { name: "Etsy - ME", note: "Mubeen's Etsy team (ME-* employees)" },
   ];
   const departments: Record<string, string> = {};
   for (const d of deptDefs) {
@@ -85,10 +88,12 @@ async function main() {
   }
 
   // 4. Teams (one per department)
+  // Team names match prod (Awais Team / Mubeen Team) — re-running phase6 must
+  // not create empty duplicates next to the personalized real ones.
   const teamDefs = [
-    { name: "Facebook Team",     deptName: "Facebook",  partnerEmail: "zain@meta7.media",   leadBonus: null },
-    { name: "Etsy AE Team",      deptName: "Etsy AE",   partnerEmail: "awais@meta7.media",  leadBonus: null },
-    { name: "Etsy ME Team",      deptName: "Etsy ME",   partnerEmail: "mubeen@meta7.media", leadBonus: null },
+    { name: "Facebook Team", deptName: "Facebook",  partnerEmail: "zain@meta7.media",   leadBonus: null },
+    { name: "Awais Team",    deptName: "Etsy - AE", partnerEmail: "awais@meta7.media",  leadBonus: null },
+    { name: "Mubeen Team",   deptName: "Etsy - ME", partnerEmail: "mubeen@meta7.media", leadBonus: null },
   ];
 
   // 5. Partner users (PARTNER role, no salary, no team membership)
@@ -196,7 +201,7 @@ async function main() {
   console.log(`  OFFICE 2 teams:                  ${office2Teams}`);
   console.log(`  FB employees (SMM-*) on OFFICE 2: ${smmEmployees.length} (moved=${moved}, already=${alreadyMoved})`);
 
-  console.log(`\n  ✅ OFFICE 2 provisioned. Partners: zain@, awais@, mubeen@meta7media.com — password "partner123"`);
+  console.log(`\n  ✅ OFFICE 2 provisioned. Partners: zain@, awais@, mubeen@meta7.media — password "Meta@123"`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
