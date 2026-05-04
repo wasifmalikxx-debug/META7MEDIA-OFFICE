@@ -1,54 +1,44 @@
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 
-const SYSTEM_START_YEAR = 2026;
-const SYSTEM_START_MONTH = 3; // 0-indexed: 3 = April
-
 /**
- * Calculate accumulated paid leave budget shown to the employee.
+ * Monthly leave entitlement shown to the employee on their dashboard.
  *
- * RULE (set by Wasif on 2026-05-04, replacing the older "absences also
- * consume budget" model):
+ * RULE (set by Wasif on 2026-05-04):
+ *   - Each month, every employee gets `paidLeavesPerMonth` of leave (default 1.0).
+ *   - **No rollover.** At the start of a new month, balance resets to the full
+ *     monthly entitlement regardless of last month's usage.
+ *   - Only explicit half-day leave applications consume the displayed budget
+ *     (each half-day = 0.5). Auto-paid absences use a separate per-month
+ *     allowance — see hasMonthlyAbsenceCoverageBeenUsed() below.
  *
- *   - Each month an employee earns `paidLeavesPerMonth` of leave entitlement.
- *   - Unused entitlement rolls forward indefinitely.
- *   - ONLY explicit half-day leave applications (LeaveRequest with
- *     leaveType=HALF_DAY, status=APPROVED) consume 0.5 each from this pool.
- *   - Auto-paid absences (where the daily-absent cron covers the first absent
- *     of the month) do NOT consume from this pool — they have their own
- *     per-month allowance, see hasMonthlyAbsenceCoverageBeenUsed() below.
- *
- * Examples (all assume 1 leave/month, system started April 2026):
- *   - Izaan: no leaves taken → in May has 2.0 (April + May, both unused)
- *   - Talha: 1 half-day in April → in May has 1.5 (2.0 earned − 0.5 used)
- *   - Maira: 0 half-day leaves, just absences → in May has 2.0
- *     (her covered absent uses the per-month allowance, not this pool)
+ * Examples (1.0/month, viewed any time in May):
+ *   - Izaan: 0 May half-days → 1.0 available (April history irrelevant)
+ *   - Talha: 0 May half-days → 1.0 available
+ *   - Anyone who takes a half-day on May 10 → 0.5 available afterward
  */
 export async function getAccumulatedLeaveBudget(
   userId: string,
   paidLeavesPerMonth: number = 1.0
 ): Promise<{ totalEarned: number; totalUsed: number; available: number }> {
   const now = nowPKT();
-  const monthsActive = Math.max(
-    1,
-    (now.getUTCFullYear() - SYSTEM_START_YEAR) * 12 +
-      (now.getUTCMonth() - SYSTEM_START_MONTH) +
-      1
-  );
-  const totalEarned = monthsActive * paidLeavesPerMonth;
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth(); // 0-indexed
 
-  const systemStart = new Date(Date.UTC(SYSTEM_START_YEAR, SYSTEM_START_MONTH, 1));
+  const monthStart = new Date(Date.UTC(year, month, 1));
+  const monthEnd = new Date(Date.UTC(year, month + 1, 0)); // last day of month
 
-  const halfDayLeaves = await prisma.leaveRequest.count({
+  const halfDayLeavesThisMonth = await prisma.leaveRequest.count({
     where: {
       userId,
       leaveType: "HALF_DAY",
       status: "APPROVED",
-      startDate: { gte: systemStart },
+      startDate: { gte: monthStart, lte: monthEnd },
     },
   });
 
-  const totalUsed = halfDayLeaves * 0.5;
+  const totalEarned = paidLeavesPerMonth;
+  const totalUsed = halfDayLeavesThisMonth * 0.5;
   const available = Math.max(0, totalEarned - totalUsed);
 
   return { totalEarned, totalUsed, available };
@@ -61,10 +51,9 @@ export async function getAccumulatedLeaveBudget(
  * such absence each month is covered (no salary deduction); subsequent
  * absences in the same month are deducted at salary/30.
  *
- * This allowance is SEPARATE from the half-day-leave budget above —
- * it doesn't roll over, doesn't carry forward, doesn't show on the
- * employee's leave-balance dashboard. It's purely a decision input
- * for the daily-absent cron and the payroll absent-fine normalizer.
+ * Independent of the half-day-leave entitlement above — using the
+ * monthly auto-cover does NOT subtract from the dashboard leave balance,
+ * and using a half-day leave does NOT consume the auto-cover allowance.
  *
  * Returns true if the user has already had a covered absence this month
  * (i.e. allowance is used), false if it's still available.

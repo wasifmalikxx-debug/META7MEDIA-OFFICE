@@ -1287,19 +1287,14 @@ export function EmployeeDashboard({
                 <span className="font-medium">{monthAbsent}</span>
               </div>
             </div>
-            {pendingLeaves > 1 && (
-              <p className="text-xs text-green-600 dark:text-green-400">
-                You have {pendingLeaves.toFixed(1)} pending leaves (unused leaves roll over monthly).
-              </p>
-            )}
-            {pendingLeaves > 0 && pendingLeaves <= 1 && (
+            {pendingLeaves > 0 && (
               <p className="text-xs text-amber-600 dark:text-amber-400">
-                {pendingLeaves.toFixed(1)} leave remaining. Use wisely!
+                {pendingLeaves.toFixed(1)} leave remaining this month. Resets on the 1st.
               </p>
             )}
             {pendingLeaves === 0 && (
               <p className="text-xs text-red-500">
-                No pending leaves. Further absences/half days will be deducted from salary.
+                No leave remaining this month. Further half days will be deducted from salary. Resets on the 1st.
               </p>
             )}
           </div>

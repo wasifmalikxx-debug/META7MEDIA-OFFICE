@@ -103,21 +103,20 @@ export default async function HowItWorksPage() {
         <Rule>Weekends (Sunday) and official holidays are <strong>never</strong> marked absent</Rule>
       </PolicyCard>
 
-      <PolicyCard icon={CalendarDays} title="Paid Leave (Rollover)" color="bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400">
-        <Rule><strong>1 paid leave per month</strong> — earned automatically</Rule>
-        <Rule>Unused leaves <strong>roll over</strong> to the next month and accumulate</Rule>
+      <PolicyCard icon={CalendarDays} title="Paid Leave (Monthly Reset)" color="bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400">
+        <Rule><strong>1.0 paid leave per month</strong> — fresh allotment on the 1st</Rule>
+        <Rule><strong>No rollover.</strong> Unused leave does NOT carry into the next month</Rule>
         <div className="rounded-lg border bg-violet-50 dark:bg-violet-950/20 p-3 my-1">
           <p className="text-xs font-semibold text-violet-700 dark:text-violet-400 mb-1">Example:</p>
           <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-            <span>Month 1 — no leave taken</span><span className="text-right font-medium">1.0 day saved</span>
-            <span>Month 2 — no leave taken</span><span className="text-right font-medium">2.0 days available</span>
-            <span>Month 3 — took 1 day off</span><span className="text-right font-medium">2.0 days remaining</span>
-            <span>Month 4 — no leave taken</span><span className="text-right font-medium">3.0 days available</span>
+            <span>Month 1 — no leave taken</span><span className="text-right font-medium">resets to 1.0 next month</span>
+            <span>Month 2 — took 1 half-day</span><span className="text-right font-medium">0.5 remaining this month</span>
+            <span>Month 3 — fresh start</span><span className="text-right font-medium">1.0 available</span>
           </div>
         </div>
-        <Rule>Half days consume <strong>0.5</strong> from your budget each</Rule>
-        <Rule>Auto-applied to absences — <strong>no application needed</strong> for full-day coverage</Rule>
-        <Rule>Your pending leave balance is shown on your dashboard</Rule>
+        <Rule>Half days consume <strong>0.5</strong> from this month&apos;s budget</Rule>
+        <Rule>Separate from absence coverage: 1 absence per month is auto-covered without touching this budget</Rule>
+        <Rule>Your remaining leave for the current month is shown on your dashboard</Rule>
         <Rule>If budget is <strong>0</strong>, the &quot;Apply Half Day&quot; button is hidden</Rule>
       </PolicyCard>
 
