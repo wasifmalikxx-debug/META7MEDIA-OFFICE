@@ -112,24 +112,17 @@ export async function GET(request: NextRequest) {
       const dailyRate = Math.round(monthlySalary / 30);
 
       if (dailyRate > 0) {
-        // Use accumulated leave budget (rollover from unused months)
-        const { getAccumulatedLeaveBudget } = await import("@/lib/services/leave-budget.service");
-        const { available: accumulatedBudget } = await getAccumulatedLeaveBudget(emp.id, paidLeaveBudget);
-
-        // Partial-coverage logic: consume as much budget as available (up to 1
-        // day). Same reason format as payroll.service.ts normalization so the
-        // budget service parses both consistently.
-        const coverage = Math.min(1, Math.max(0, accumulatedBudget));
-        const uncoveredFraction = 1 - coverage;
-        const fineAmount = Math.round(dailyRate * uncoveredFraction);
-        let fineReason: string;
-        if (coverage >= 1) {
-          fineReason = `Absent on ${dateStr} — Covered by paid leave (1.0 day used)`;
-        } else if (coverage > 0) {
-          fineReason = `Absent on ${dateStr} — Partially covered by paid leave (${coverage.toFixed(1)} day used); PKR ${fineAmount.toLocaleString()} (salary/30 × ${uncoveredFraction.toFixed(1)}) deducted`;
-        } else {
-          fineReason = `Absent on ${dateStr} — PKR ${fineAmount.toLocaleString()} (salary/30) deducted`;
-        }
+        // Per-month auto-paid-absence allowance: each month, the FIRST
+        // absent is fully covered (no deduction); subsequent absents in the
+        // same month are deducted at salary/30. This is independent of the
+        // employee's half-day-leave budget shown on their dashboard.
+        const { hasMonthlyAbsenceCoverageBeenUsed } = await import("@/lib/services/leave-budget.service");
+        const allowanceUsed = await hasMonthlyAbsenceCoverageBeenUsed(emp.id, month, year);
+        const covered = !allowanceUsed;
+        const fineAmount = covered ? 0 : dailyRate;
+        const fineReason = covered
+          ? `Absent on ${dateStr} — Covered by paid leave (1.0 day used)`
+          : `Absent on ${dateStr} — PKR ${fineAmount.toLocaleString()} (salary/30) deducted`;
 
         await prisma.fine.create({
           data: {
@@ -160,9 +153,7 @@ export async function GET(request: NextRequest) {
           name: `${emp.firstName} ${emp.lastName || ""}`.trim(),
           action: "marked_absent",
           fine: fineAmount,
-          coverage,
-          coveredByPaidLeave: coverage >= 1,
-          partiallyCovered: coverage > 0 && coverage < 1,
+          coveredByPaidLeave: covered,
         });
       }
     }
