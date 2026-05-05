@@ -25,14 +25,18 @@ interface PayrollLockInfo {
 
 interface PayrollViewProps {
   records: any[];
+  // Manager view (CEO + Partners) — shows the team table, Mark Paid, account info, etc.
   isAdmin: boolean;
+  // CEO-only — gates Generate Payroll / Lock / Unlock buttons. Partners auto-regen
+  // on page load (server-side) but cannot manually generate or lock snapshots.
+  isCeo?: boolean;
   currentMonth: number;
   currentYear: number;
   monthLocked?: boolean;
   lockInfo?: PayrollLockInfo | null;
 }
 
-export function PayrollView({ records, isAdmin, currentMonth, currentYear, monthLocked = false, lockInfo = null }: PayrollViewProps) {
+export function PayrollView({ records, isAdmin, isCeo = false, currentMonth, currentYear, monthLocked = false, lockInfo = null }: PayrollViewProps) {
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
   const [locking, setLocking] = useState(false);
@@ -366,7 +370,7 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear, month
             <ChevronRight className="size-4" />
           </Button>
         </div>
-        {isAdmin && (
+        {isCeo && (
           <div className="flex items-center gap-2">
             <Button
               onClick={handleGenerate}
@@ -405,8 +409,8 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear, month
         )}
       </div>
 
-      {/* Lock banner */}
-      {isAdmin && monthLocked && lockInfo && (
+      {/* Lock banner — CEO only since only CEO sees lock controls */}
+      {isCeo && monthLocked && lockInfo && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/30">
           <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/50">
             <Lock className="size-4 text-amber-700 dark:text-amber-400" />
@@ -482,7 +486,7 @@ export function PayrollView({ records, isAdmin, currentMonth, currentYear, month
             </div>
             <p className="text-muted-foreground font-semibold">No Payroll Records</p>
             <p className="text-xs text-muted-foreground/60 mt-1">
-              {isAdmin ? "Click 'Generate Payroll' to calculate salaries for " + monthName : "Payroll for " + monthName + " has not been generated yet"}
+              {isCeo ? "Click 'Generate Payroll' to calculate salaries for " + monthName : "Payroll for " + monthName + " has not been generated yet"}
             </p>
           </CardContent>
         </Card>

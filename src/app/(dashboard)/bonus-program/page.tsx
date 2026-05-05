@@ -82,6 +82,7 @@ export default async function BonusProgramPage({ searchParams }: { searchParams:
           firstName: true,
           lastName: true,
           employeeId: true,
+          status: true,
         },
         orderBy: { employeeId: "asc" },
       })

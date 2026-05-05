@@ -30,6 +30,7 @@ interface Employee {
   firstName: string;
   lastName: string;
   employeeId: string;
+  status: "HIRED" | "PROBATION" | "RESIGNED";
 }
 
 interface BonusEligibility {
@@ -302,21 +303,29 @@ export function BonusProgramView({
     }
   }
 
-  // Calculate totals
+  // Calculate totals — PROBATION employees are excluded from bonuses entirely.
   const totalBonuses = employees.reduce((sum, emp) => {
+    if (emp.status === "PROBATION") return sum;
     const state = rowStates[emp.id];
     if (!state) return sum;
     return sum + calculateBonus(state).bonusAmount;
   }, 0);
 
-  // Team Lead bonus: PKR 5,000 per eligible employee (excluding team lead EM-4)
+  // Team Lead bonus: PKR 5,000 per eligible employee (excluding team lead EM-4
+  // and any PROBATION employees, who can't earn bonuses).
   const eligibleCount = employees.reduce((count, emp) => {
     if (emp.employeeId === "EM-4") return count; // Skip Izaan himself
+    if (emp.status === "PROBATION") return count;
     const state = rowStates[emp.id];
     if (!state) return count;
     return count + (calculateBonus(state).isEligible ? 1 : 0);
   }, 0);
   const teamLeadBonus = eligibleCount * 5000;
+
+  // Team Lead Bonus only applies to the EM team (Izaan as MANAGER on OFFICE 1).
+  // AE / ME teams have partners (Awais / Mubeen) who aren't on payroll, so no
+  // team-lead bonus exists — hide the section entirely for them.
+  const showTeamLeadBonus = userRole !== "PARTNER";
 
   const totalReviewBonuses = reviewBonuses.reduce((sum, rb) => sum + rb.amount, 0);
 
@@ -381,8 +390,8 @@ export function BonusProgramView({
         </Button>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* KPI Cards — Team Lead card hidden for partners (no team-lead employee on AE/ME teams) */}
+      <div className={`grid grid-cols-2 ${showTeamLeadBonus ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-3`}>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
           <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
@@ -411,15 +420,17 @@ export function BonusProgramView({
             <p className="text-2xl font-bold text-violet-600 dark:text-violet-400">PKR {totalReviewBonuses.toLocaleString()}</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Users className="size-3.5 text-amber-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Team Lead</p>
-            </div>
-            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">PKR {teamLeadBonus.toLocaleString()}</p>
-          </CardContent>
-        </Card>
+        {showTeamLeadBonus && (
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
+            <CardContent className="py-3.5 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="size-3.5 text-amber-500" />
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Team Lead</p>
+              </div>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">PKR {teamLeadBonus.toLocaleString()}</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Bonus Table */}
@@ -474,13 +485,25 @@ export function BonusProgramView({
                     const state = rowStates[emp.id];
                     if (!state) return null;
 
-                    const { isEligible, bonusAmount, profitTier } = calculateBonus(state);
+                    const calc = calculateBonus(state);
+                    const isProbation = emp.status === "PROBATION";
+                    // PROBATION employees are never eligible for bonuses, regardless of criteria.
+                    const isEligible = isProbation ? false : calc.isEligible;
+                    const bonusAmount = isProbation ? 0 : calc.bonusAmount;
+                    const profitTier = calc.profitTier;
                     const isSaving = savingRows[emp.id] || false;
 
                     return (
-                      <TableRow key={emp.id}>
+                      <TableRow key={emp.id} className={isProbation ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}>
                         <TableCell className="text-sm font-medium">
-                          {emp.firstName} {emp.lastName}
+                          <div className="flex items-center gap-2">
+                            <span>{emp.firstName} {emp.lastName}</span>
+                            {isProbation && (
+                              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-[9px] h-4 px-1.5">
+                                PROBATION
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground">{emp.employeeId}</div>
                         </TableCell>
 
@@ -585,7 +608,11 @@ export function BonusProgramView({
 
                         {/* Eligible Badge */}
                         <TableCell className="text-center">
-                          {isEligible ? (
+                          {isProbation ? (
+                            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100" title="Probation employees cannot earn bonuses">
+                              Probation — Withheld
+                            </Badge>
+                          ) : isEligible ? (
                             <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
                               Eligible
                             </Badge>
@@ -653,32 +680,35 @@ export function BonusProgramView({
         </CardContent>
       </Card>
 
-      {/* Team Lead Bonus Summary */}
-      <Card className="border-0 shadow-sm overflow-hidden bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-800">
-        <CardContent className="py-4 px-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="size-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                <Trophy className="size-5 text-amber-600 dark:text-amber-400" />
+      {/* Team Lead Bonus Summary — only shown for EM team (CEO + Izaan as MANAGER).
+          Partners (Awais/Mubeen) aren't employees and don't earn a team-lead bonus. */}
+      {showTeamLeadBonus && (
+        <Card className="border-0 shadow-sm overflow-hidden bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-800">
+          <CardContent className="py-4 px-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                  <Trophy className="size-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Team Lead Bonus — Izaan Kashif (EM-4)</p>
+                  <p className="text-2xl font-bold mt-0.5">
+                    {teamLeadBonus > 0 ? (
+                      <span className="text-amber-600 dark:text-amber-400">PKR {teamLeadBonus.toLocaleString()}</span>
+                    ) : (
+                      <span className="text-muted-foreground">PKR 0</span>
+                    )}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Team Lead Bonus — Izaan Kashif (EM-4)</p>
-                <p className="text-2xl font-bold mt-0.5">
-                  {teamLeadBonus > 0 ? (
-                    <span className="text-amber-600 dark:text-amber-400">PKR {teamLeadBonus.toLocaleString()}</span>
-                  ) : (
-                    <span className="text-muted-foreground">PKR 0</span>
-                  )}
-                </p>
+              <div className="text-right">
+                <p className="text-sm font-semibold">{eligibleCount} eligible</p>
+                <p className="text-xs text-muted-foreground">{eligibleCount} x PKR 5,000</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold">{eligibleCount} eligible</p>
-              <p className="text-xs text-muted-foreground">{eligibleCount} x PKR 5,000</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

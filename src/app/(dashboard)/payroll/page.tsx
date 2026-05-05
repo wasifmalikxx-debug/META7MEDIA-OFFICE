@@ -144,6 +144,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
       <PayrollView
         records={JSON.parse(JSON.stringify(records))}
         isAdmin={isManagerView}
+        isCeo={isAdmin}
         currentMonth={month}
         currentYear={year}
         monthLocked={monthLocked}
