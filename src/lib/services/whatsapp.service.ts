@@ -258,6 +258,88 @@ export async function sendDailyReportTemplate(
   });
 }
 
+/**
+ * CEO-only daily summary — 37-variable Meta template.
+ *
+ * Combined-then-per-team view: ALL OFFICES totals at the top, then EM, AE,
+ * ME blocks each with their own monthly+today numerics and a per-employee
+ * breakdown. Used by the daily-report cron's CEO send so Wasif gets the
+ * full picture in one message instead of three. Partners (Awais/Mubeen)
+ * stay on the simpler 11-param DAILY_REPORT template.
+ *
+ * The exact template body is committed in the daily-report cron file as
+ * a comment block — submit that to Meta WhatsApp Manager as
+ * `ceo_daily_summary` to get it approved before this helper sends will
+ * succeed.
+ */
+export interface CeoDailySummaryTeamData {
+  monthly: { orders: number; sale: number; cost: number; profit: number };
+  today: { orders: number; sale: number; cost: number; profit: number };
+  /** Single-line per-employee breakdown — Meta rejects \n / \t / >4 spaces. */
+  breakdown: string;
+}
+
+export interface CeoDailySummaryData {
+  date: string;
+  monthName: string;
+  combined: {
+    monthly: { orders: number; sale: number; cost: number; profit: number };
+    today: { orders: number; sale: number; cost: number; profit: number };
+  };
+  em: CeoDailySummaryTeamData;
+  ae: CeoDailySummaryTeamData;
+  me: CeoDailySummaryTeamData;
+}
+
+export async function sendCeoDailySummaryTemplate(
+  to: string,
+  data: CeoDailySummaryData
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.CEO_DAILY_SUMMARY, {
+    "1": data.date,
+    "2": data.monthName,
+    // Combined (all offices)
+    "3": String(data.combined.monthly.orders),
+    "4": data.combined.monthly.sale.toFixed(2),
+    "5": data.combined.monthly.cost.toFixed(2),
+    "6": data.combined.monthly.profit.toFixed(2),
+    "7": String(data.combined.today.orders),
+    "8": data.combined.today.sale.toFixed(2),
+    "9": data.combined.today.cost.toFixed(2),
+    "10": data.combined.today.profit.toFixed(2),
+    // EM (Izaan)
+    "11": String(data.em.monthly.orders),
+    "12": data.em.monthly.sale.toFixed(2),
+    "13": data.em.monthly.cost.toFixed(2),
+    "14": data.em.monthly.profit.toFixed(2),
+    "15": String(data.em.today.orders),
+    "16": data.em.today.sale.toFixed(2),
+    "17": data.em.today.cost.toFixed(2),
+    "18": data.em.today.profit.toFixed(2),
+    "19": data.em.breakdown,
+    // AE (Awais)
+    "20": String(data.ae.monthly.orders),
+    "21": data.ae.monthly.sale.toFixed(2),
+    "22": data.ae.monthly.cost.toFixed(2),
+    "23": data.ae.monthly.profit.toFixed(2),
+    "24": String(data.ae.today.orders),
+    "25": data.ae.today.sale.toFixed(2),
+    "26": data.ae.today.cost.toFixed(2),
+    "27": data.ae.today.profit.toFixed(2),
+    "28": data.ae.breakdown,
+    // ME (Mubeen)
+    "29": String(data.me.monthly.orders),
+    "30": data.me.monthly.sale.toFixed(2),
+    "31": data.me.monthly.cost.toFixed(2),
+    "32": data.me.monthly.profit.toFixed(2),
+    "33": String(data.me.today.orders),
+    "34": data.me.today.sale.toFixed(2),
+    "35": data.me.today.cost.toFixed(2),
+    "36": data.me.today.profit.toFixed(2),
+    "37": data.me.breakdown,
+  });
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Legacy plain-text message builders (for `sendWhatsApp` free-form sends)
 //

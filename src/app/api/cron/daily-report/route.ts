@@ -326,36 +326,20 @@ export async function GET(request: NextRequest) {
     ];
     const monthNameFormatted = `${monthNamesFull[now.getUTCMonth()]} ${now.getUTCFullYear()}`;
 
-    // Build the per-employee breakdown that goes into {{11}} of the Meta
-    // daily_report template. Meta rejects template parameters that contain
-    // \n, \t, or >4 consecutive spaces (error #132018), so we keep this on
-    // a single line with inline separators. If no employee had orders, send
-    // a dash so the parameter is never empty (Meta also rejects empty vars).
-    // Show every team member in the breakdown (not just today's order-havers)
-    // so the CEO sees who's idle as well as who's shipping. Same format as
-    // the partner breakdown below for visual consistency.
-    const breakdownParts: string[] = [];
+    // Build the EM per-employee breakdown for {{19}} of the new CEO template.
+    // Single-line, " | " separated. Every team member listed (not just today's
+    // shippers) so the CEO sees idle members as well.
+    const emBreakdownParts: string[] = [];
     for (const r of reports) {
-      breakdownParts.push(
+      emBreakdownParts.push(
         r.todayOrders > 0
           ? `${r.empId}: ${r.todayOrders} ($${r.todaySale.toFixed(2)})`
           : `${r.empId}: 0`
       );
     }
-    const breakdown = breakdownParts.length > 0 ? breakdownParts.join(" | ") : "No team members";
+    const emBreakdown = emBreakdownParts.length > 0 ? emBreakdownParts.join(" | ") : "No team members";
 
-    // Get CEO's phone numbers
-    const ceo = await prisma.user.findFirst({
-      where: { role: "SUPER_ADMIN" },
-      select: { phone: true, phone2: true },
-    });
-
-    const { sendDailyReportTemplate } = await import("@/lib/services/whatsapp.service");
-    const sent: string[] = [];
-
-    const payload = {
-      date: dateFormatted,
-      monthName: monthNameFormatted,
+    const emTotals = {
       monthly: {
         orders: allOrdersMonth,
         sale: allSaleMonth,
@@ -368,24 +352,35 @@ export async function GET(request: NextRequest) {
         cost: allCostToday,
         profit: allProfitToday,
       },
-      breakdown,
+      breakdown: emBreakdown,
     };
 
-    if (ceo?.phone) {
-      await sendDailyReportTemplate(ceo.phone, payload);
-      sent.push(ceo.phone);
-    }
-    if (ceo?.phone2) {
-      await sendDailyReportTemplate(ceo.phone2, payload);
-      sent.push(ceo.phone2);
-    }
+    const ceo = await prisma.user.findFirst({
+      where: { role: "SUPER_ADMIN" },
+      select: { phone: true, phone2: true },
+    });
+
+    const { sendDailyReportTemplate, sendCeoDailySummaryTemplate } = await import(
+      "@/lib/services/whatsapp.service"
+    );
+    const sent: string[] = [];
 
     // ─── Partner reports (AE → Awais, ME → Mubeen) ─────────────────────
-    // Each Etsy partner gets their own team's daily report on their WhatsApp.
-    // Same daily_report Meta template — just with their team's numbers
-    // instead of the CEO's company-wide EM aggregate. CEO's numbers above
-    // remain whatever the SHEET_MAP yields and are unaffected by this block.
+    // Each Etsy partner gets their team's daily_report (single-team, 11
+    // params). We also stash each team's stats so we can fold them into
+    // the CEO's combined message after this loop.
     const partnerReports: any[] = [];
+    type TeamSummary = {
+      monthly: { orders: number; sale: number; cost: number; profit: number };
+      today: { orders: number; sale: number; cost: number; profit: number };
+      breakdown: string;
+    };
+    const emptyTeam: TeamSummary = {
+      monthly: { orders: 0, sale: 0, cost: 0, profit: 0 },
+      today: { orders: 0, sale: 0, cost: 0, profit: 0 },
+      breakdown: "No team members",
+    };
+    const partnerTeamStats: { ae?: TeamSummary; me?: TeamSummary } = {};
     try {
       const partners = await prisma.user.findMany({
         where: {
@@ -477,12 +472,24 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const partnerPayload = {
-          date: dateFormatted,
-          monthName: monthNameFormatted,
+        const teamSummary: TeamSummary = {
           monthly: { orders: mOrders, sale: mSale, cost: mCost, profit: mProfit },
           today: { orders: tOrders, sale: tSale, cost: tCost, profit: tProfit },
           breakdown: breakdownParts.length > 0 ? breakdownParts.join(" | ") : "No team members",
+        };
+
+        // Stash by team key so the CEO send below can fold AE + ME into the
+        // combined block. Department name has the suffix (e.g. "Etsy - AE").
+        const deptName = partner.partnerTeams[0]?.department?.name || "";
+        if (deptName.includes(" - AE")) partnerTeamStats.ae = teamSummary;
+        else if (deptName.includes(" - ME")) partnerTeamStats.me = teamSummary;
+
+        const partnerPayload = {
+          date: dateFormatted,
+          monthName: monthNameFormatted,
+          monthly: teamSummary.monthly,
+          today: teamSummary.today,
+          breakdown: teamSummary.breakdown,
         };
 
         const partnerSent: string[] = [];
@@ -499,10 +506,10 @@ export async function GET(request: NextRequest) {
 
         partnerReports.push({
           partner: partner.firstName,
-          team: partner.partnerTeams[0]?.department?.name,
+          team: deptName,
           sentTo: partnerSent,
-          today: { orders: tOrders, sale: tSale, cost: tCost, profit: tProfit },
-          monthly: { orders: mOrders, sale: mSale, cost: mCost, profit: mProfit },
+          today: teamSummary.today,
+          monthly: teamSummary.monthly,
           members: memberStats,
         });
       }
@@ -511,15 +518,72 @@ export async function GET(request: NextRequest) {
       partnerReports.push({ error: partnerErr?.message });
     }
 
+    // ─── CEO multi-team summary ──────────────────────────────────────────
+    // 37-param template stitches Combined + EM + AE + ME into one message.
+    // Replaces the old EM-only daily_report send to the CEO. Wrapped in a
+    // try-block so a not-yet-approved Meta template (or any send error)
+    // doesn't poison the response — partner sends already happened above.
+    const ae = partnerTeamStats.ae ?? emptyTeam;
+    const me = partnerTeamStats.me ?? emptyTeam;
+    const combined = {
+      monthly: {
+        orders: emTotals.monthly.orders + ae.monthly.orders + me.monthly.orders,
+        sale: emTotals.monthly.sale + ae.monthly.sale + me.monthly.sale,
+        cost: emTotals.monthly.cost + ae.monthly.cost + me.monthly.cost,
+        profit: emTotals.monthly.profit + ae.monthly.profit + me.monthly.profit,
+      },
+      today: {
+        orders: emTotals.today.orders + ae.today.orders + me.today.orders,
+        sale: emTotals.today.sale + ae.today.sale + me.today.sale,
+        cost: emTotals.today.cost + ae.today.cost + me.today.cost,
+        profit: emTotals.today.profit + ae.today.profit + me.today.profit,
+      },
+    };
+
+    const ceoPayload = {
+      date: dateFormatted,
+      monthName: monthNameFormatted,
+      combined,
+      em: emTotals,
+      ae,
+      me,
+    };
+
+    const ceoSent: string[] = [];
+    let ceoError: string | null = null;
+    try {
+      if (ceo?.phone) {
+        const ok = await sendCeoDailySummaryTemplate(ceo.phone, ceoPayload);
+        if (ok) {
+          ceoSent.push(ceo.phone);
+          sent.push(ceo.phone);
+        }
+      }
+      if (ceo?.phone2) {
+        const ok = await sendCeoDailySummaryTemplate(ceo.phone2, ceoPayload);
+        if (ok) {
+          ceoSent.push(ceo.phone2);
+          sent.push(ceo.phone2);
+        }
+      }
+    } catch (ceoErr: any) {
+      ceoError = ceoErr?.message || String(ceoErr);
+      console.error("[daily-report] CEO send failed (template approved on Meta?):", ceoError);
+    }
+
     return json({
       success: true,
       sentTo: sent,
       date: dateFormatted,
       month: monthNameFormatted,
-      monthly: { orders: allOrdersMonth, sale: allSaleMonth, cost: allCostMonth, profit: allProfitMonth },
-      today: { orders: allOrdersToday, sale: allSaleToday, cost: allCostToday, profit: allProfitToday },
+      combined,
+      em: emTotals,
+      ae,
+      me,
       employees: reports,
       partners: partnerReports,
+      ceoSent,
+      ceoError,
     });
   } catch (err: any) {
     return error(err.message, 500);

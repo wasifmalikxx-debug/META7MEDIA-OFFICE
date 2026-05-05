@@ -35,6 +35,11 @@ export const META_TEMPLATE_NAMES = {
   MANUAL_FINE: "manual_fine",
   SALARY_PAID: "salary_paid",
   DAILY_REPORT: "daily_report",
+  // CEO-only multi-team summary (37 params: combined + EM + AE + ME). Submit
+  // this body to Meta WhatsApp Manager exactly as documented in the cron
+  // route or it'll fail with template-not-found. Partners stay on
+  // DAILY_REPORT — only the CEO receives this richer one.
+  CEO_DAILY_SUMMARY: "ceo_daily_summary",
 } as const;
 
 export interface MetaSendResult {
