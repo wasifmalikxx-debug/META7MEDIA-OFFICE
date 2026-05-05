@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { pktMonth, pktYear } from "@/lib/pkt";
 import { reviewBonusSubmitSchema } from "@/lib/validations/bonus";
 import { createNotification, notifyAdmins } from "@/lib/services/notification.service";
+import { resolveEtsyScope } from "@/lib/etsy-team-scope";
 
 export async function GET(request: NextRequest) {
   const session = await requireAuth();
@@ -41,6 +42,17 @@ export async function GET(request: NextRequest) {
       where.user = { departmentId: me.departmentId };
     } else {
       where.userId = { in: ["__none__"] };
+    }
+  } else if (role === "SUPER_ADMIN") {
+    // CEO can optionally scope to one Etsy team via ?team=em|ae|me. No param
+    // = see everything (legacy behavior). Used by per-section sidebar badges
+    // and by the /review-bonus page when CEO clicks into a partner section.
+    const teamParam = searchParams.get("team");
+    if (teamParam) {
+      const scope = await resolveEtsyScope(role, session.user.id, teamParam);
+      if (scope) {
+        where.user = { departmentId: scope.departmentId };
+      }
     }
   }
 

@@ -324,10 +324,11 @@ export function BonusProgramView({
   }, 0);
   const teamLeadBonus = eligibleCount * 5000;
 
-  // Team Lead Bonus only applies to the EM team (Izaan as MANAGER on OFFICE 1).
-  // AE / ME teams have partners (Awais / Mubeen) who aren't on payroll, so no
-  // team-lead bonus exists — hide the section entirely for them.
-  const showTeamLeadBonus = userRole !== "PARTNER";
+  // Team Lead Bonus only applies to the EM team (Izaan leads it). AE / ME
+  // teams have partners (Awais / Mubeen) who aren't on payroll, so there's no
+  // team-lead bonus there. Gate strictly on teamKey so CEO viewing AE/ME
+  // doesn't see Izaan's bonus card on the wrong team's page.
+  const showTeamLeadBonus = teamKey === "em";
 
   const totalReviewBonuses = reviewBonuses.reduce((sum, rb) => sum + rb.amount, 0);
 

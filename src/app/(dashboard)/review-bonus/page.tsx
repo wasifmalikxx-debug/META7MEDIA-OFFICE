@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { ReviewBonusSubmit } from "@/components/review-bonus/review-bonus-submit";
 import { ReviewBonusManager } from "@/components/review-bonus/review-bonus-manager";
+import { resolveEtsyScope } from "@/lib/etsy-team-scope";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReviewBonusPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
+export default async function ReviewBonusPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string; team?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
@@ -31,10 +32,11 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
     // Scope rules:
     //   PARTNER → only their team's submissions (already in place)
     //   MANAGER (Izaan) → only employees in his own department (Etsy - EM).
-    //     He must NOT see Awais's AE team or Mubeen's ME team submissions.
-    //   SUPER_ADMIN (CEO) → no filter, sees everything.
+    //   SUPER_ADMIN (CEO) → defaults to everything; ?team=em|ae|me filters
+    //     to that one team's submissions (used by per-partner sidebar links).
     let userIdFilter: { in: string[] } | undefined;
     let userRelationFilter: { departmentId: string } | undefined;
+    let scopedTeamName: string | null = null;
     if (role === "PARTNER") {
       const teams = await prisma.team.findMany({
         where: { partnerId: userId },
@@ -58,6 +60,12 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
         // than leaking everything.
         userIdFilter = { in: ["__none__"] };
       }
+    } else if (role === "SUPER_ADMIN" && params.team) {
+      const scope = await resolveEtsyScope(role, userId, params.team);
+      if (scope) {
+        userRelationFilter = { departmentId: scope.departmentId };
+        scopedTeamName = scope.departmentName;
+      }
     }
 
     const submissions = await prisma.reviewBonus.findMany({
@@ -77,10 +85,12 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Review Approvals"
+          title={scopedTeamName ? `${scopedTeamName} — Review Approvals` : "Review Approvals"}
           description={
             role === "PARTNER"
               ? "Approve or reject your team's review bonus submissions"
+              : scopedTeamName
+              ? `Approve or reject review bonus submissions from ${scopedTeamName}`
               : "Approve or reject employee review bonus submissions"
           }
         />

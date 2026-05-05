@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { RefundsView } from "@/components/refunds/refunds-view";
+import { resolveEtsyScope } from "@/lib/etsy-team-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function RefundsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; year?: string }>;
+  searchParams: Promise<{ month?: string; year?: string; team?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -85,6 +86,18 @@ export default async function RefundsPage({
   const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
   const endOfMonth = new Date(Date.UTC(year, month, 1));
 
+  // CEO can scope refunds to one Etsy team via ?team=em|ae|me. No param =
+  // see all teams (legacy behavior).
+  let scopedTeamName: string | null = null;
+  if (isAdmin && params.team) {
+    const scope = await resolveEtsyScope("SUPER_ADMIN", user.id, params.team);
+    if (scope) {
+      scopedTeamName = scope.departmentName;
+      // managerDepartmentId reuses the same Prisma relation filter shape below
+      managerDepartmentId = scope.departmentId;
+    }
+  }
+
   const where: any = {
     createdAt: { gte: startOfMonth, lt: endOfMonth },
   };
@@ -98,6 +111,9 @@ export default async function RefundsPage({
     } else {
       where.userId = { in: ["__none__"] };
     }
+  } else if (isAdmin && managerDepartmentId) {
+    // CEO with ?team= active — scope to the resolved department.
+    where.user = { departmentId: managerDepartmentId };
   } else if (!canSeeAll) {
     where.userId = user.id;
   }
@@ -119,10 +135,12 @@ export default async function RefundsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Refunds"
+        title={scopedTeamName ? `${scopedTeamName} — Refunds` : "Refunds"}
         description={
           isPartner
             ? "All refunds submitted by your team"
+            : scopedTeamName
+            ? `All refunds submitted by ${scopedTeamName}`
             : canSeeAll
             ? "All refunds submitted by the Etsy team"
             : "Submit and track refunds for your assigned Etsy shops"

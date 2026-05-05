@@ -130,15 +130,50 @@ function getEtsyNav(userRole: string, employeeId: string) {
   ];
 }
 
-// Per-partner sidebar sections. Each partner gets their own group with their
-// team's Bonus Program + Analytics. CEO sees all three groups; partners see
-// only their own; Izaan (MANAGER) sees the EM group with an extra Team Reports
-// entry. The query param ?team=em|ae|me drives server-side scoping.
+// Per-partner sidebar sections. Each partner section is a self-contained
+// home for that team: Bonus Program, Analytics, Review Approvals, Refunds,
+// Bonus Guide (+ Team Reports for Izaan). CEO sees all three sections;
+// partners see only their own; Izaan (MANAGER) sees the EM section.
+//
+// The query param ?team=em|ae|me drives server-side scoping on every page —
+// CEO clicking "Refunds" under Awais sees only AE-team refunds.
+type PartnerSectionItem = {
+  title: string;
+  href: string;
+  icon: any;
+  // Marks the Review Approvals link so the badge renders on it. Set on
+  // exactly one item per section.
+  isReviewLink?: boolean;
+};
+
 type PartnerSection = {
   key: "em" | "ae" | "me";
   label: string;
-  items: { title: string; href: string; icon: any }[];
+  items: PartnerSectionItem[];
 };
+
+function teamItems(key: "em" | "ae" | "me", isIzaan: boolean): PartnerSectionItem[] {
+  const items: PartnerSectionItem[] = [
+    { title: "Bonus Program", href: `/bonus-program?team=${key}`, icon: Target },
+    { title: "Analytics", href: `/etsy-analytics?team=${key}`, icon: BarChart3 },
+  ];
+  // Izaan only: dedicated team-reports view scoped to EM-* on the server.
+  // CEO already gets all-team Daily Reports in the main nav, so no duplicate.
+  if (key === "em" && isIzaan) {
+    items.push({ title: "Team Reports", href: "/daily-work-report", icon: FileText });
+  }
+  items.push(
+    {
+      title: "Review Approvals",
+      href: `/review-bonus?team=${key}`,
+      icon: Star,
+      isReviewLink: true,
+    },
+    { title: "Refunds", href: `/refunds?team=${key}`, icon: RefreshCcw },
+    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen },
+  );
+  return items;
+}
 
 function getPartnerSections(
   userRole: string,
@@ -152,58 +187,17 @@ function getPartnerSections(
 
   const sections: PartnerSection[] = [];
 
-  // EM group — visible to CEO and Izaan. (No partner currently manages EM,
-  // but partnerDeptHas covers it for future flexibility.)
   if (isCeo || isIzaan || partnerDeptHas(" - EM")) {
-    const items: { title: string; href: string; icon: any }[] = [
-      { title: "Bonus Program", href: "/bonus-program?team=em", icon: Target },
-      { title: "Analytics", href: "/etsy-analytics?team=em", icon: BarChart3 },
-    ];
-    // Izaan only: dedicated team-reports view scoped to EM-* on the server.
-    // CEO already gets all-team Daily Reports in the main nav, so no duplicate.
-    if (isIzaan) {
-      items.push({ title: "Team Reports", href: "/daily-work-report", icon: FileText });
-    }
-    sections.push({ key: "em", label: "Izaan (EM)", items });
+    sections.push({ key: "em", label: "Izaan (EM)", items: teamItems("em", isIzaan) });
   }
-
-  // AE group — visible to CEO and Awais.
   if (isCeo || partnerDeptHas(" - AE")) {
-    sections.push({
-      key: "ae",
-      label: "Awais (AE)",
-      items: [
-        { title: "Bonus Program", href: "/bonus-program?team=ae", icon: Target },
-        { title: "Analytics", href: "/etsy-analytics?team=ae", icon: BarChart3 },
-      ],
-    });
+    sections.push({ key: "ae", label: "Awais (AE)", items: teamItems("ae", false) });
   }
-
-  // ME group — visible to CEO and Mubeen.
   if (isCeo || partnerDeptHas(" - ME")) {
-    sections.push({
-      key: "me",
-      label: "Mubeen (ME)",
-      items: [
-        { title: "Bonus Program", href: "/bonus-program?team=me", icon: Target },
-        { title: "Analytics", href: "/etsy-analytics?team=me", icon: BarChart3 },
-      ],
-    });
+    sections.push({ key: "me", label: "Mubeen (ME)", items: teamItems("me", false) });
   }
 
   return sections;
-}
-
-// Returns true if the partner manages an Etsy-style team (department name contains "Etsy")
-function isPartnerOfEtsyTeam(partnerTeams?: PartnerTeamInfo[]): boolean {
-  if (!partnerTeams || partnerTeams.length === 0) return false;
-  return partnerTeams.some((t) => t.departmentName.toLowerCase().includes("etsy"));
-}
-
-// Returns true if the partner manages a Facebook-style team
-function isPartnerOfFbTeam(partnerTeams?: PartnerTeamInfo[]): boolean {
-  if (!partnerTeams || partnerTeams.length === 0) return false;
-  return partnerTeams.some((t) => t.departmentName.toLowerCase().includes("facebook"));
 }
 
 const settingsNav = [
@@ -224,7 +218,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const searchParams = useSearchParams();
   const currentTeam = searchParams.get("team");
   const [pendingDevices, setPendingDevices] = useState(0);
-  const [pendingReviews, setPendingReviews] = useState(0);
+  // Pending review counts per Etsy team. CEO populates all three; partners
+  // populate just their own; Izaan (MANAGER) populates EM only. Drives the
+  // badge on each partner section's "Review Approvals" link.
+  const [pendingByTeam, setPendingByTeam] = useState<{ em?: number; ae?: number; me?: number }>({});
   const [openComplaints, setOpenComplaints] = useState(0);
 
   // Active-state check that handles ?team= query params on /bonus-program and
@@ -255,28 +252,50 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role]);
 
-  // Poll for pending review bonus submissions every 2 minutes
-  // (CEO / Manager / Etsy PARTNERs). The API scopes the count by role —
-  // PARTNERs only see their own team's pending count.
+  // Poll per-team pending review counts every 2 minutes. CEO fetches all
+  // three Etsy teams; partners and Izaan fetch their own. The API ignores
+  // ?team= for partners/managers (they're already pinned to their scope), so
+  // passing it is harmless and keeps the fetch logic uniform.
   useEffect(() => {
     if (
       user.role !== "SUPER_ADMIN" &&
       user.role !== "MANAGER" &&
       user.role !== "PARTNER"
     ) return;
-    async function fetchPendingReviews() {
-      try {
-        const res = await fetch("/api/review-bonus?status=PENDING&count=true");
-        if (res.ok) {
-          const data = await res.json();
-          setPendingReviews(typeof data.count === "number" ? data.count : 0);
-        }
-      } catch {}
+
+    const teams: ("em" | "ae" | "me")[] = [];
+    if (user.role === "SUPER_ADMIN") {
+      teams.push("em", "ae", "me");
+    } else if (user.role === "MANAGER" && user.employeeId === "EM-4") {
+      teams.push("em");
+    } else if (user.role === "PARTNER" && user.partnerTeams) {
+      for (const t of user.partnerTeams) {
+        if (t.departmentName.includes(" - EM")) teams.push("em");
+        else if (t.departmentName.includes(" - AE")) teams.push("ae");
+        else if (t.departmentName.includes(" - ME")) teams.push("me");
+      }
     }
-    fetchPendingReviews();
-    const interval = setInterval(fetchPendingReviews, 120_000);
+    if (teams.length === 0) return;
+
+    async function fetchAll() {
+      const entries = await Promise.all(
+        teams.map(async (key) => {
+          try {
+            const res = await fetch(`/api/review-bonus?status=PENDING&count=true&team=${key}`);
+            if (res.ok) {
+              const data = await res.json();
+              return [key, typeof data.count === "number" ? data.count : 0] as const;
+            }
+          } catch {}
+          return [key, 0] as const;
+        })
+      );
+      setPendingByTeam(Object.fromEntries(entries));
+    }
+    fetchAll();
+    const interval = setInterval(fetchAll, 120_000);
     return () => clearInterval(interval);
-  }, [user.role]);
+  }, [user.role, user.employeeId, user.partnerTeams]);
 
   // Poll for open complaints (CEO only — shows OPEN + IN_PROGRESS)
   useEffect(() => {
@@ -308,11 +327,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
               {item.href === "/login-approvals" && pendingDevices > 0 && (
                 <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
                   {pendingDevices}
-                </Badge>
-              )}
-              {item.href === "/review-bonus" && pendingReviews > 0 && (
-                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
-                  {pendingReviews}
                 </Badge>
               )}
               {item.href === "/complaints" && openComplaints > 0 && (user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN") && (
@@ -367,42 +381,63 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Per-partner sections — one collapsible group per Etsy team. Each
-            renders only when relevant: CEO sees all three; partners see only
-            their own; Izaan (MANAGER) sees the EM group with Team Reports. */}
-        {getPartnerSections(user.role, user.employeeId || "", user.partnerTeams).map((section) => (
-          <SidebarGroup key={section.key}>
-            <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {section.items.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton render={<Link href={item.href} />} isActive={isItemActive(item.href)}>
-                      <item.icon className="size-4" />
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {/* Per-partner sections — one group per Etsy team. CEO sees all three;
+            partners see only their own; Izaan (MANAGER) sees the EM group.
+            Each section is self-contained: Bonus Program, Analytics, Review
+            Approvals, Refunds, Bonus Guide (+ Team Reports for Izaan). */}
+        {(() => {
+          const partnerSections = getPartnerSections(user.role, user.employeeId || "", user.partnerTeams);
+          const hasPartnerSections = partnerSections.length > 0;
+          const isEtsyEmployee =
+            !hasPartnerSections &&
+            (user.employeeId?.startsWith("EM") ||
+              user.employeeId?.startsWith("AE") ||
+              user.employeeId?.startsWith("ME")) &&
+            user.employeeId !== "EM-4L";
 
-        {/* Etsy common — Reviews / Refunds / Bonus Guide. Visible to anyone in
-            the Etsy program: CEO, Izaan (MANAGER), Etsy partners, and EM/AE/ME
-            employees (excluding EM-4L who's on non-Etsy ecom work). */}
-        {(user.role === "SUPER_ADMIN" ||
-          user.role === "MANAGER" ||
-          (user.role === "PARTNER" && isPartnerOfEtsyTeam(user.partnerTeams)) ||
-          ((user.employeeId?.startsWith("EM") || user.employeeId?.startsWith("AE") || user.employeeId?.startsWith("ME")) && user.employeeId !== "EM-4L")) &&
-          getEtsyNav(user.role, user.employeeId || "").some((item) => hasAccess(item.roles, user.role)) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Etsy</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>{renderNavItems(getEtsyNav(user.role, user.employeeId || ""))}</SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+          return (
+            <>
+              {partnerSections.map((section) => (
+                <SidebarGroup key={section.key}>
+                  <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {section.items.map((item) => {
+                        const teamPending = item.isReviewLink ? pendingByTeam[section.key] ?? 0 : 0;
+                        return (
+                          <SidebarMenuItem key={`${section.key}-${item.href}`}>
+                            <SidebarMenuButton render={<Link href={item.href} />} isActive={isItemActive(item.href)}>
+                              <item.icon className="size-4" />
+                              <span>{item.title}</span>
+                              {item.isReviewLink && teamPending > 0 && (
+                                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
+                                  {teamPending}
+                                </Badge>
+                              )}
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ))}
+
+              {/* Shared Etsy group — only renders for plain Etsy employees who
+                  don't have a partner section. Gives them Submit Review /
+                  Submit Refund / Bonus Guide. */}
+              {isEtsyEmployee &&
+                getEtsyNav(user.role, user.employeeId || "").some((item) => hasAccess(item.roles, user.role)) && (
+                  <SidebarGroup>
+                    <SidebarGroupLabel>Etsy</SidebarGroupLabel>
+                    <SidebarGroupContent>
+                      <SidebarMenu>{renderNavItems(getEtsyNav(user.role, user.employeeId || ""))}</SidebarMenu>
+                    </SidebarGroupContent>
+                  </SidebarGroup>
+                )}
+            </>
+          );
+        })()}
 
         {/* FB Program — visible to:
             - CEO (sees all)
