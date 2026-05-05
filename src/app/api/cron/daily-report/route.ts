@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
+import { extractSheetId } from "@/lib/services/google-sheets.service";
 import { google } from "googleapis";
 import path from "path";
 import fs from "fs";
@@ -58,6 +59,77 @@ interface EmployeeReport {
   monthSale: number;
   monthCost: number;
   monthProfit: number;
+}
+
+/**
+ * Read one employee's sheet and return today + month-to-date aggregates.
+ *
+ * Mirrors the inline logic the CEO loop has used since day 1 — same column
+ * matching, same date-equality check, same swallow-and-zero on failure. Used
+ * by the partner-routing path below so Awais/Mubeen get sheet data computed
+ * the exact same way the CEO's report does.
+ */
+async function readEmployeeSheetReport(
+  sheets: ReturnType<typeof google.sheets>,
+  sheetId: string,
+  tabName: string,
+  todayStr: string
+): Promise<{
+  todayOrders: number; todaySale: number; todayCost: number; todayProfit: number;
+  monthOrders: number; monthSale: number; monthCost: number; monthProfit: number;
+}> {
+  const empty = {
+    todayOrders: 0, todaySale: 0, todayCost: 0, todayProfit: 0,
+    monthOrders: 0, monthSale: 0, monthCost: 0, monthProfit: 0,
+  };
+  try {
+    const headerRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `'${tabName}'!A1:J1`,
+    });
+    const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
+    const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
+    const priceCol = headers.findIndex((h: string) => h.includes("price"));
+    const costCol = headers.findIndex((h: string) => h.includes("cost"));
+    const profitCol = headers.findIndex((h: string) => h.includes("profit"));
+    if (dateCol === -1) return empty;
+
+    const dataRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `'${tabName}'!A2:J1000`,
+    });
+    const rows = dataRes.data.values || [];
+
+    let todayOrders = 0, todaySale = 0, todayCost = 0, todayProfit = 0;
+    let monthOrders = 0, monthSale = 0, monthCost = 0, monthProfit = 0;
+
+    for (const row of rows) {
+      const dateVal = (row[dateCol] || "").toString().trim();
+      if (!dateVal) continue;
+      const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
+      const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
+      const rowProfit = profitCol >= 0 ? parseDollar(row[profitCol]) : 0;
+
+      monthOrders++;
+      monthSale += rowSale;
+      monthCost += rowCost;
+      monthProfit += rowProfit;
+
+      if (dateVal.toLowerCase() === todayStr.toLowerCase()) {
+        todayOrders++;
+        todaySale += rowSale;
+        todayCost += rowCost;
+        todayProfit += rowProfit;
+      }
+    }
+
+    return {
+      todayOrders, todaySale, todayCost, todayProfit,
+      monthOrders, monthSale, monthCost, monthProfit,
+    };
+  } catch {
+    return empty;
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -252,6 +324,131 @@ export async function GET(request: NextRequest) {
       sent.push(ceo.phone2);
     }
 
+    // ─── Partner reports (AE → Awais, ME → Mubeen) ─────────────────────
+    // Each Etsy partner gets their own team's daily report on their WhatsApp.
+    // Same daily_report Meta template — just with their team's numbers
+    // instead of the CEO's company-wide EM aggregate. CEO's numbers above
+    // remain whatever the SHEET_MAP yields and are unaffected by this block.
+    const partnerReports: any[] = [];
+    try {
+      const partners = await prisma.user.findMany({
+        where: {
+          role: "PARTNER",
+          partnerTeams: {
+            some: {
+              department: { name: { startsWith: "Etsy - " } },
+            },
+          },
+        },
+        select: {
+          id: true,
+          firstName: true,
+          phone: true,
+          phone2: true,
+          partnerTeams: {
+            where: {
+              department: { name: { startsWith: "Etsy - " } },
+            },
+            select: {
+              department: { select: { name: true } },
+              members: {
+                where: {
+                  status: { in: ["HIRED", "PROBATION"] },
+                  googleSheetUrl: { not: null },
+                },
+                select: {
+                  employeeId: true,
+                  firstName: true,
+                  lastName: true,
+                  googleSheetUrl: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const partner of partners) {
+        if (!partner.phone && !partner.phone2) {
+          partnerReports.push({ partner: partner.firstName, skipped: "no phone numbers" });
+          continue;
+        }
+
+        const teamMembers = partner.partnerTeams.flatMap((t) => t.members);
+        if (teamMembers.length === 0) {
+          partnerReports.push({ partner: partner.firstName, skipped: "no members with sheets" });
+          continue;
+        }
+
+        // Aggregate this team's numbers + per-employee breakdown.
+        let tOrders = 0, tSale = 0, tCost = 0, tProfit = 0;
+        let mOrders = 0, mSale = 0, mCost = 0, mProfit = 0;
+        const breakdownParts: string[] = [];
+        const memberStats: any[] = [];
+
+        // Sort members by employeeId numeric suffix so the breakdown reads
+        // AE-1, AE-2, AE-3 rather than alphabetic order.
+        teamMembers.sort((a, b) => {
+          const an = parseInt((a.employeeId || "").replace(/\D/g, "")) || 0;
+          const bn = parseInt((b.employeeId || "").replace(/\D/g, "")) || 0;
+          return an - bn;
+        });
+
+        for (const member of teamMembers) {
+          const sheetId = member.googleSheetUrl ? extractSheetId(member.googleSheetUrl) : null;
+          if (!sheetId) {
+            memberStats.push({ empId: member.employeeId, error: "invalid_sheet_url" });
+            continue;
+          }
+          const stats = await readEmployeeSheetReport(sheets, sheetId, tabName, todayStr);
+          tOrders += stats.todayOrders;
+          tSale += stats.todaySale;
+          tCost += stats.todayCost;
+          tProfit += stats.todayProfit;
+          mOrders += stats.monthOrders;
+          mSale += stats.monthSale;
+          mCost += stats.monthCost;
+          mProfit += stats.monthProfit;
+          memberStats.push({ empId: member.employeeId, ...stats });
+          if (stats.todayOrders > 0) {
+            breakdownParts.push(`${member.employeeId}: ${stats.todayOrders} orders, $${stats.todaySale.toFixed(2)}`);
+          }
+        }
+
+        const partnerPayload = {
+          date: dateFormatted,
+          monthName: monthNameFormatted,
+          monthly: { orders: mOrders, sale: mSale, cost: mCost, profit: mProfit },
+          today: { orders: tOrders, sale: tSale, cost: tCost, profit: tProfit },
+          breakdown: breakdownParts.length > 0 ? breakdownParts.join(" | ") : "No orders today",
+        };
+
+        const partnerSent: string[] = [];
+        if (partner.phone) {
+          await sendDailyReportTemplate(partner.phone, partnerPayload);
+          partnerSent.push(partner.phone);
+          sent.push(partner.phone);
+        }
+        if (partner.phone2) {
+          await sendDailyReportTemplate(partner.phone2, partnerPayload);
+          partnerSent.push(partner.phone2);
+          sent.push(partner.phone2);
+        }
+
+        partnerReports.push({
+          partner: partner.firstName,
+          team: partner.partnerTeams[0]?.department?.name,
+          sentTo: partnerSent,
+          today: { orders: tOrders, sale: tSale, cost: tCost, profit: tProfit },
+          monthly: { orders: mOrders, sale: mSale, cost: mCost, profit: mProfit },
+          members: memberStats,
+        });
+      }
+    } catch (partnerErr: any) {
+      console.error("[daily-report] partner block failed:", partnerErr?.message);
+      partnerReports.push({ error: partnerErr?.message });
+    }
+
     return json({
       success: true,
       sentTo: sent,
@@ -260,6 +457,7 @@ export async function GET(request: NextRequest) {
       monthly: { orders: allOrdersMonth, sale: allSaleMonth, cost: allCostMonth, profit: allProfitMonth },
       today: { orders: allOrdersToday, sale: allSaleToday, cost: allCostToday, profit: allProfitToday },
       employees: reports,
+      partners: partnerReports,
     });
   } catch (err: any) {
     return error(err.message, 500);
