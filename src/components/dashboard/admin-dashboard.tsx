@@ -65,7 +65,13 @@ interface TeamGroup {
   lateToday: number;
   absentToday: number;
   onLeaveToday: number;
+  // Total salary liability this month (every PayrollRecord, paid or not).
   monthPayable: number;
+  // Salary still owed this month (status !== "PAID"). Drives the dedicated
+  // "Salaries Pending" section so the CEO sees what's left to pay per team.
+  monthPending: number;
+  unpaidCount: number;
+  paidCount: number;
   monthFines: number;
 }
 
@@ -452,6 +458,84 @@ export function AdminDashboard({
           </CardContent>
         </Card>
       </div>
+
+      {/* Salaries Pending — per-team breakdown of UNPAID salary this month.
+          Renders only when at least one team has a pending balance. The
+          "Total Payable" KPI was removed from the top row; this is where
+          the CEO actually sees what's left to pay, broken down by team
+          (per Wasif's "separately on the dashboard for each partner/team"
+          rule). Each card is clickable and routes to /payroll. */}
+      {teamGroups.length > 0 && teamGroups.some((tg) => tg.monthPending > 0) && (() => {
+        const totalPending = teamGroups.reduce((s, tg) => s + tg.monthPending, 0);
+        const teamsWithPending = teamGroups.filter((tg) => tg.monthPending > 0);
+        return (
+          <Card className="border-0 shadow-sm overflow-hidden bg-gradient-to-br from-amber-50/40 via-white to-white dark:from-amber-950/15 dark:via-slate-900 dark:to-slate-900">
+            <CardHeader className="pb-3 border-b">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="rounded-xl bg-amber-100 dark:bg-amber-900/30 p-2.5 shrink-0">
+                    <Wallet className="size-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <CardTitle className="text-lg font-bold">Salaries Pending</CardTitle>
+                    <p className="text-[11px] text-muted-foreground">
+                      Per-team breakdown of unpaid salaries · {format(new Date(), "MMMM yyyy")}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Combined</p>
+                  <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                    PKR {Math.round(totalPending).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {teamsWithPending.map((tg) => (
+                  <button
+                    key={tg.key}
+                    type="button"
+                    onClick={() => router.push("/payroll")}
+                    className="text-left rounded-lg border bg-card hover:bg-amber-50/60 dark:hover:bg-amber-950/20 hover:border-amber-300 dark:hover:border-amber-800 transition-all p-3.5 group"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-bold truncate">{tg.name}</h4>
+                        <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                          {tg.partnerName ? tg.partnerName : "CEO direct"}
+                          <span className="mx-1 text-muted-foreground/40">·</span>
+                          {tg.officeName}
+                        </p>
+                      </div>
+                      <ArrowRight className="size-3.5 text-muted-foreground group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all shrink-0 mt-0.5" />
+                    </div>
+                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                      PKR {Math.round(tg.monthPending).toLocaleString()}
+                    </p>
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-1 flex-wrap">
+                      <span className="font-medium">{tg.unpaidCount} unpaid</span>
+                      {tg.paidCount > 0 && (
+                        <>
+                          <span className="text-muted-foreground/40">·</span>
+                          <span>{tg.paidCount} paid</span>
+                        </>
+                      )}
+                      {tg.monthPayable > tg.monthPending && (
+                        <>
+                          <span className="text-muted-foreground/40">·</span>
+                          <span>of PKR {Math.round(tg.monthPayable).toLocaleString()} total</span>
+                        </>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Teams Overview — one card per team across both offices.
           Replaces the old hardcoded Etsy/Facebook split. CEO can see at a

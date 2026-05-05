@@ -262,8 +262,11 @@ export default async function DashboardPage() {
       }),
       prisma.payrollRecord.findMany({
         where: { month, year },
-        // userId needed so we can roll up per-team payable in the Teams Overview
-        select: { userId: true, netSalary: true },
+        // userId + status so we can roll up per-team payable AND per-team
+        // PENDING (unpaid) totals in the dashboard's "Salaries Pending"
+        // section. status === "PAID" → already paid out; anything else
+        // (DRAFT/CALCULATED/APPROVED/DISPUTED) is still owed.
+        select: { userId: true, netSalary: true, status: true },
       }),
       prisma.fine.findMany({
         where: { month, year },
@@ -427,13 +430,30 @@ export default async function DashboardPage() {
       lateToday: number;
       absentToday: number;
       onLeaveToday: number;
-      monthPayable: number;
+      monthPayable: number;       // total salary liability this month (every record)
+      monthPending: number;       // salary still owed (status !== PAID)
+      unpaidCount: number;        // employees on this team whose salary isn't paid yet
+      paidCount: number;          // employees on this team already paid this month
       monthFines: number;
     };
 
-    // Index payroll + fines by userId for O(1) lookup during aggregation
+    // Index payroll + fines by userId for O(1) lookup during aggregation.
+    // payrollByUser keeps the FULL netSalary regardless of status; the
+    // pending split is tracked separately so the Teams Overview shows total
+    // monthly liability while the new "Salaries Pending" section shows
+    // unpaid only.
     const payrollByUser: Record<string, number> = {};
-    for (const p of payrollRecords) payrollByUser[p.userId] = (payrollByUser[p.userId] ?? 0) + p.netSalary;
+    const pendingByUser: Record<string, number> = {};
+    const paidStatusByUser: Record<string, "PAID" | "PENDING"> = {};
+    for (const p of payrollRecords) {
+      payrollByUser[p.userId] = (payrollByUser[p.userId] ?? 0) + p.netSalary;
+      if (p.status !== "PAID") {
+        pendingByUser[p.userId] = (pendingByUser[p.userId] ?? 0) + p.netSalary;
+        paidStatusByUser[p.userId] = "PENDING";
+      } else if (!paidStatusByUser[p.userId]) {
+        paidStatusByUser[p.userId] = "PAID";
+      }
+    }
     const finesByUser: Record<string, number> = {};
     for (const f of fines) finesByUser[f.userId] = (finesByUser[f.userId] ?? 0) + f.amount;
 
@@ -462,6 +482,9 @@ export default async function DashboardPage() {
           absentToday: 0,
           onLeaveToday: 0,
           monthPayable: 0,
+          monthPending: 0,
+          unpaidCount: 0,
+          paidCount: 0,
           monthFines: 0,
         };
         groupMap.set(key, group);
@@ -469,6 +492,9 @@ export default async function DashboardPage() {
 
       group.memberCount += 1;
       group.monthPayable += payrollByUser[emp.id] ?? 0;
+      group.monthPending += pendingByUser[emp.id] ?? 0;
+      if (paidStatusByUser[emp.id] === "PAID") group.paidCount += 1;
+      else if (paidStatusByUser[emp.id] === "PENDING") group.unpaidCount += 1;
       group.monthFines += finesByUser[emp.id] ?? 0;
 
       const att = attendanceMap[emp.id];
