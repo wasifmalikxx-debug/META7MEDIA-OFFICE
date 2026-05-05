@@ -13,18 +13,30 @@ export default async function DepartmentsPage() {
   const role = (session.user as any).role;
   if (role !== "SUPER_ADMIN") redirect("/dashboard");
 
-  const departments = await prisma.department.findMany({
-    include: {
-      _count: { select: { users: true } },
-      office: { select: { name: true, slug: true, isPrimary: true } },
-    },
-    orderBy: [{ office: { isPrimary: "desc" } }, { name: "asc" }],
-  });
+  const [departments, offices] = await Promise.all([
+    prisma.department.findMany({
+      include: {
+        _count: { select: { users: true } },
+        office: { select: { id: true, name: true, slug: true, isPrimary: true } },
+      },
+      orderBy: [{ office: { isPrimary: "desc" } }, { name: "asc" }],
+    }),
+    // Offices powering the New / Edit Department dialog Office picker. The
+    // CEO needs to be able to file a department under either office. Order:
+    // primary office first, then alphabetical by name.
+    prisma.office.findMany({
+      select: { id: true, name: true, slug: true, isPrimary: true },
+      orderBy: [{ isPrimary: "desc" }, { name: "asc" }],
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Departments" description="Manage office departments" />
-      <DepartmentsView departments={JSON.parse(JSON.stringify(departments))} />
+      <DepartmentsView
+        departments={JSON.parse(JSON.stringify(departments))}
+        offices={JSON.parse(JSON.stringify(offices))}
+      />
     </div>
   );
 }

@@ -15,12 +15,23 @@ export async function PATCH(
   if (!body.name) return error("Department name is required");
 
   try {
+    // Allow the CEO to move a department between offices via the Edit
+    // dialog. If `officeId` is missing the office assignment stays put.
+    const updateData: { name: string; officeId?: string } = { name: body.name };
+    if (typeof body.officeId === "string" && body.officeId.length > 0) {
+      const exists = await prisma.office.findUnique({ where: { id: body.officeId }, select: { id: true } });
+      if (!exists) return error("Invalid office", 400);
+      updateData.officeId = body.officeId;
+    }
     const department = await prisma.department.update({
       where: { id },
-      data: { name: body.name },
+      data: updateData,
     });
     return json(department);
   } catch (err: any) {
+    if (typeof err?.message === "string" && err.message.includes("Unique constraint")) {
+      return error("A department with that name already exists in the target office.");
+    }
     return error(err.message);
   }
 }

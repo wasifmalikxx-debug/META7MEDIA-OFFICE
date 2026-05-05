@@ -11,20 +11,38 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Plus, Pencil, Trash2, Building2, Users } from "lucide-react";
+
+interface OfficeOption {
+  id: string;
+  name: string;
+  slug: string;
+  isPrimary: boolean;
+}
 
 interface DepartmentsViewProps {
   departments: any[];
+  // Offices powering the Office picker on add + edit dialogs. Multi-office
+  // (May 2026): CEO can file a department under either OFFICE 1 or OFFICE 2.
+  offices: OfficeOption[];
 }
 
-export function DepartmentsView({ departments }: DepartmentsViewProps) {
+export function DepartmentsView({ departments, offices }: DepartmentsViewProps) {
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
+  // Default the Add Department office to the primary office (OFFICE 1) so
+  // the CEO doesn't have to pick every time when filing under HQ.
+  const defaultOfficeId = offices.find((o) => o.isPrimary)?.id ?? offices[0]?.id ?? "";
+  const [officeId, setOfficeId] = useState(defaultOfficeId);
   const [editId, setEditId] = useState("");
   const [editName, setEditName] = useState("");
+  const [editOfficeId, setEditOfficeId] = useState("");
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -33,13 +51,14 @@ export function DepartmentsView({ departments }: DepartmentsViewProps) {
       const res = await fetch("/api/departments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, officeId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success("Department added!");
       setAddOpen(false);
       setName("");
+      setOfficeId(defaultOfficeId);
       router.refresh();
     } catch (err: any) {
       toast.error(err.message);
@@ -55,7 +74,7 @@ export function DepartmentsView({ departments }: DepartmentsViewProps) {
       const res = await fetch(`/api/departments/${editId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName }),
+        body: JSON.stringify({ name: editName, officeId: editOfficeId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -114,7 +133,20 @@ export function DepartmentsView({ departments }: DepartmentsViewProps) {
                 <Label className="text-xs font-semibold">Department Name</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Development, Marketing, Sales..." required className="h-10" />
               </div>
-              <Button type="submit" className="w-full h-10 gap-2 rounded-lg" disabled={loading}>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Office</Label>
+                <Select value={officeId} onValueChange={(v: string | null) => v && setOfficeId(v)}>
+                  <SelectTrigger className="h-10"><SelectValue placeholder="Select office" /></SelectTrigger>
+                  <SelectContent>
+                    {offices.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>
+                        {o.name}{o.isPrimary ? " (HQ)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" className="w-full h-10 gap-2 rounded-lg" disabled={loading || !officeId}>
                 <Building2 className="size-4" />
                 {loading ? "Creating..." : "Create Department"}
               </Button>
@@ -134,7 +166,23 @@ export function DepartmentsView({ departments }: DepartmentsViewProps) {
               <Label className="text-xs font-semibold">Department Name</Label>
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} required className="h-10" />
             </div>
-            <Button type="submit" className="w-full h-10 rounded-lg" disabled={loading}>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Office</Label>
+              <Select value={editOfficeId} onValueChange={(v: string | null) => v && setEditOfficeId(v)}>
+                <SelectTrigger className="h-10"><SelectValue placeholder="Select office" /></SelectTrigger>
+                <SelectContent>
+                  {offices.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.name}{o.isPrimary ? " (HQ)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Moves the department + all its employees to the selected office. Composite name+office uniqueness still applies.
+              </p>
+            </div>
+            <Button type="submit" className="w-full h-10 rounded-lg" disabled={loading || !editOfficeId}>
               {loading ? "Saving..." : "Save Changes"}
             </Button>
           </form>
@@ -180,7 +228,20 @@ export function DepartmentsView({ departments }: DepartmentsViewProps) {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" className="size-8 p-0" onClick={() => { setEditId(dept.id); setEditName(dept.name); setEditOpen(true); }}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="size-8 p-0"
+                        onClick={() => {
+                          setEditId(dept.id);
+                          setEditName(dept.name);
+                          // Pre-fill the office picker with the dept's
+                          // current office so the CEO can change it (or
+                          // leave as-is for a name-only edit).
+                          setEditOfficeId(dept.office?.id ?? defaultOfficeId);
+                          setEditOpen(true);
+                        }}
+                      >
                         <Pencil className="size-3.5" />
                       </Button>
                       <Button size="sm" variant="ghost" className="size-8 p-0 text-rose-400 hover:text-rose-600" onClick={() => handleDelete(dept.id, dept.name)}>
