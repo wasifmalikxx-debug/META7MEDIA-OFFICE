@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,7 +36,30 @@ export default async function EtsyBonusGuidePage() {
   const userRole = (session.user as any).role;
   const employeeId = (session.user as any).employeeId || "";
 
-  if (userRole !== "SUPER_ADMIN" && userRole !== "MANAGER" && !employeeId.startsWith("EM")) {
+  // Access:
+  //   - CEO / MANAGER (Izaan)                   → always
+  //   - Etsy-style employees (EM-/AE-/ME-)      → guide is for them
+  //   - PARTNER managing an Etsy team           → Awais/Mubeen
+  //   - Everyone else (FB partner Zain, SMM-*) → redirected (no Etsy bonus)
+  // EM-4L is a non-Etsy ecom hire (TERMINATED) and is excluded explicitly.
+  const isAdminOrManager = userRole === "SUPER_ADMIN" || userRole === "MANAGER";
+  const isEtsyEmployee =
+    (employeeId.startsWith("EM") ||
+      employeeId.startsWith("AE") ||
+      employeeId.startsWith("ME")) &&
+    employeeId !== "EM-4L";
+
+  let isEtsyPartner = false;
+  if (userRole === "PARTNER") {
+    const team = await prisma.team.findFirst({
+      where: { partnerId: session.user.id },
+      select: { department: { select: { name: true } } },
+    });
+    isEtsyPartner =
+      !!team && !!team.department && team.department.name.toLowerCase().includes("etsy");
+  }
+
+  if (!isAdminOrManager && !isEtsyEmployee && !isEtsyPartner) {
     redirect("/dashboard");
   }
 

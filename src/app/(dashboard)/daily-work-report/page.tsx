@@ -10,12 +10,13 @@ export const dynamic = "force-dynamic";
 /**
  * Daily Reports page.
  * Access:
- *  - SUPER_ADMIN (CEO)     → all reports, both Etsy + FB teams
- *  - Izaan (EM-4 team lead) → Etsy team reports ONLY (scoped at query level)
- *  - Everyone else          → redirected to /dashboard
+ *  - SUPER_ADMIN (CEO)        → all reports, both Etsy + FB teams
+ *  - Izaan (EM-4 team lead)    → Etsy team reports ONLY (scoped at query level)
+ *  - PARTNER (Zain/Awais/Mubeen) → only their team's reports (scoped at query level)
+ *  - Everyone else             → redirected to /dashboard
  *
- * Scoping is enforced on the server query, not just the UI, so Izaan can
- * never see FB team reports even if he crafts a request manually.
+ * Scoping is enforced on the server query, not just the UI, so a partner
+ * can never see another team's reports even via a crafted request.
  */
 export default async function DailyReportPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
   const session = await auth();
@@ -25,9 +26,22 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
   const role = user.role;
   const isAdmin = role === "SUPER_ADMIN";
   const isEtsyTeamLead = user.employeeId === "EM-4";
+  const isPartner = role === "PARTNER";
 
-  if (!isAdmin && !isEtsyTeamLead) {
+  if (!isAdmin && !isEtsyTeamLead && !isPartner) {
     redirect("/dashboard");
+  }
+
+  // For PARTNER, resolve their team's member IDs up front. Empty list means
+  // their team has no employees yet — show an empty inbox rather than leak
+  // other teams' reports.
+  let partnerMemberIds: string[] | null = null;
+  if (isPartner) {
+    const teams = await prisma.team.findMany({
+      where: { partnerId: user.id },
+      select: { members: { select: { id: true } } },
+    });
+    partnerMemberIds = teams.flatMap((t) => t.members.map((m) => m.id));
   }
 
   const params = await searchParams;
@@ -44,8 +58,15 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
   const detectionStart = new Date(Date.UTC(year, month - 3, 1));
 
   // Build the where clause. For Izaan, restrict to Etsy team members only
-  // (employeeId starts with "EM"). For CEO, no restriction.
-  const baseWhere: any = isEtsyTeamLead && !isAdmin
+  // (employeeId starts with "EM"). For PARTNER, scope by team member IDs.
+  // For CEO, no restriction.
+  const baseWhere: any = isPartner
+    ? {
+        userId: {
+          in: partnerMemberIds && partnerMemberIds.length > 0 ? partnerMemberIds : ["__none__"],
+        },
+      }
+    : isEtsyTeamLead && !isAdmin
     ? { user: { employeeId: { startsWith: "EM" } } }
     : {};
 
@@ -75,10 +96,12 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={isAdmin ? "Daily Reports" : "Etsy Team Reports"}
+        title={isAdmin ? "Daily Reports" : isPartner ? "Team Reports" : "Etsy Team Reports"}
         description={
           isAdmin
             ? "All daily reports submitted by the team"
+            : isPartner
+            ? "Daily reports submitted by your team members"
             : "Daily reports submitted by your Etsy team members"
         }
       />

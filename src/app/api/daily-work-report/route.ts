@@ -17,7 +17,16 @@ export async function GET(request: NextRequest) {
   const endOfMonth = new Date(Date.UTC(year, month, 0));
 
   const where: any = { date: { gte: startOfMonth, lte: endOfMonth } };
-  if (role !== "SUPER_ADMIN") {
+  if (role === "PARTNER") {
+    // PARTNER sees their team's reports — scope by team membership. Empty team
+    // returns empty list rather than leaking other teams' data.
+    const teams = await prisma.team.findMany({
+      where: { partnerId: session.user.id },
+      select: { members: { select: { id: true } } },
+    });
+    const memberIds = teams.flatMap((t) => t.members.map((m) => m.id));
+    where.userId = { in: memberIds.length > 0 ? memberIds : ["__none__"] };
+  } else if (role !== "SUPER_ADMIN") {
     where.userId = session.user.id;
   }
 

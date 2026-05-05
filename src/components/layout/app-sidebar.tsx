@@ -78,7 +78,10 @@ function getMainNav(userRole: string) {
     { title: "Daily Activities", href: "/fines", icon: CalendarClock, roles: ["all"] },
     { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
     { title: "My Reports", href: "/my-reports", icon: BarChart3, roles: ["EMPLOYEE", "MANAGER"] },
-    { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN"] },
+    // Daily Reports: CEO sees all teams; PARTNER sees their own team's reports
+    // (server-scoped). Izaan also has a separate "Team Reports" entry under the
+    // Etsy nav so he doesn't need this main-nav one.
+    { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN", "PARTNER"] },
     { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN", "PARTNER"] },
     // CEO/HR sees "Complaints" inbox; PARTNER and employees see "Launch Complaint"
     // — partners can submit complaints to the CEO but never see other people's
