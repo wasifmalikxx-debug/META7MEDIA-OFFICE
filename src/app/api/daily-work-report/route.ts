@@ -57,7 +57,13 @@ export async function POST(request: NextRequest) {
     });
     if (!user) return error("User not found");
 
-    const isEtsy = user.employeeId.startsWith("EM");
+    // Multi-office (May 2026): AE-* / ME-* employees are also Etsy-style
+    // shop owners — same submission shape as EM. Keeps the API in sync with
+    // the report form on employee-dashboard.
+    const isEtsy =
+      user.employeeId.startsWith("EM") ||
+      user.employeeId.startsWith("AE") ||
+      user.employeeId.startsWith("ME");
     const isFB = user.employeeId.startsWith("SMM");
     // Izaan (EM-4) is the Etsy team manager — uses the simple notes-only template
     // (same validation/storage as FB employees). Keeps manager reports qualitative

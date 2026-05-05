@@ -141,9 +141,16 @@ export function EmployeeDashboard({
     listingsCount: 0, storeName: "", listingLinks: "",
     postsCount: 0, pageNames: "", notes: "",
   });
-  const isEtsy = employeeId.startsWith("EM");
+  // Multi-office (May 2026): AE-* (Awais's team) and ME-* (Mubeen's team)
+  // are also Etsy-style shop owners — they need the same End-of-Day Report
+  // template as EM (Total Listings + Store Name + Listing URLs). Pre-fix
+  // they fell through both checks and saw only the optional Notes box.
+  const isEtsy =
+    employeeId.startsWith("EM") ||
+    employeeId.startsWith("AE") ||
+    employeeId.startsWith("ME");
   const isFB = employeeId.startsWith("SMM");
-  const isManager = employeeId === "EM-4"; // Izaan — managerial report
+  const isManager = employeeId === "EM-4"; // Izaan — managerial report (only EM-4)
 
   const router = useRouter();
 
