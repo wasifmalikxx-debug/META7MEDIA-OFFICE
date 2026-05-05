@@ -143,14 +143,27 @@ async function readEmployeeSheetReport(
     }
     if (!actualTab) return empty;
 
-    // Read first 14 cols to safely cover both "Shape A" (PRICE col 6, COST
-    // col 8) and "Shape B" (PRICE col 7, COST col 9) layouts seen across
-    // partner sheets.
-    const headerRes = await sheets.spreadsheets.values.get({
+    // Pull the first 5 rows so we can locate the real header row. Some
+    // partner sheets use Google's "Tables" feature which inserts a
+    // `Table1_X` reference at A1, pushing the real headers down a row
+    // (seen on AE-3). Scan for whichever row contains "ORDER DATE".
+    const previewRes = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: `'${actualTab}'!A1:N1`,
+      range: `'${actualTab}'!A1:N5`,
     });
-    const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
+    const previewRows = (previewRes.data.values || []) as string[][];
+
+    let headerRowIdx = -1;
+    for (let i = 0; i < previewRows.length; i++) {
+      const row = (previewRows[i] || []).map((c) => (c || "").toString().toLowerCase().trim());
+      if (row.some((c) => c.includes("order date") || c === "date")) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+    if (headerRowIdx === -1) return empty;
+
+    const headers = (previewRows[headerRowIdx] || []).map((h) => (h || "").toString().toLowerCase().trim());
     const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
     const priceCol = headers.findIndex((h: string) => h.includes("price"));
     const costCol = headers.findIndex((h: string) => h.includes("cost"));
@@ -168,9 +181,11 @@ async function readEmployeeSheetReport(
     );
     if (dateCol === -1) return empty;
 
+    // Data rows start one below the header row (1-indexed in the sheet).
+    const dataStartRow = headerRowIdx + 2;
     const dataRes = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: `'${actualTab}'!A2:N1000`,
+      range: `'${actualTab}'!A${dataStartRow}:N1000`,
     });
     const rows = dataRes.data.values || [];
 

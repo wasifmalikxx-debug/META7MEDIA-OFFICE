@@ -211,12 +211,24 @@ async function main() {
             continue;
           }
 
-          const headerRes = await sheets.spreadsheets.values.get({
+          const previewRes = await sheets.spreadsheets.values.get({
             spreadsheetId: sheetId,
-            range: `'${actualTab}'!A1:N1`,
+            range: `'${actualTab}'!A1:N5`,
           });
-          const headersRaw = (headerRes.data.values?.[0] || []) as string[];
-          const headers = headersRaw.map((h: string) => h.toLowerCase().trim());
+          const previewRows = (previewRes.data.values || []) as string[][];
+          let headerRowIdx = -1;
+          for (let i = 0; i < previewRows.length; i++) {
+            const r = (previewRows[i] || []).map((c) => (c || "").toString().toLowerCase().trim());
+            if (r.some((c) => c.includes("order date") || c === "date")) {
+              headerRowIdx = i;
+              break;
+            }
+          }
+          if (headerRowIdx === -1) {
+            console.log(`  ${m.employeeId}  [${status}]  tab '${actualTab}' has no header row with a date col`);
+            continue;
+          }
+          const headers = (previewRows[headerRowIdx] || []).map((h) => (h || "").toString().toLowerCase().trim());
           const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
           const priceCol = headers.findIndex((h: string) => h.includes("price"));
           const costCol = headers.findIndex((h: string) => h.includes("cost"));
@@ -229,13 +241,14 @@ async function main() {
               h === "ae order",
           );
           if (dateCol === -1) {
-            console.log(`  ${m.employeeId}  [${status}]  tab '${actualTab}' has no date col`);
+            console.log(`  ${m.employeeId}  [${status}]  tab '${actualTab}' header row missing date col`);
             continue;
           }
 
+          const dataStartRow = headerRowIdx + 2;
           const dataRes = await sheets.spreadsheets.values.get({
             spreadsheetId: sheetId,
-            range: `'${actualTab}'!A2:N1000`,
+            range: `'${actualTab}'!A${dataStartRow}:N1000`,
           });
           const rows = dataRes.data.values || [];
           let todayOrders = 0, todaySale = 0, todayCost = 0;
