@@ -5,8 +5,11 @@ import { nowPKT } from "@/lib/pkt";
 
 export const dynamic = "force-dynamic";
 
-function canSeeAll(user: { role?: string; employeeId?: string }) {
-  return user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN" || user.employeeId === "EM-4";
+// Only true admins (CEO / HR) bypass the department scope. MANAGER (Izaan)
+// is scoped per-action below — he can delete refunds from his own department
+// only, NOT from Awais's AE team or Mubeen's ME team.
+function isAdmin(user: { role?: string }) {
+  return user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN";
 }
 
 /**
@@ -109,7 +112,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-// DELETE /api/refunds/[id] — employee can delete own within 15 min, admin/manager always
+// DELETE /api/refunds/[id]
+//   - CEO / HR_ADMIN  → can delete any refund
+//   - MANAGER (Izaan)  → can delete refunds from employees in his own
+//                        department (Etsy - EM) only — NOT AE-/ME-/SMM-
+//   - Owner            → can delete own within 15 min of creation
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
@@ -120,15 +127,28 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const existing = await prisma.refund.findUnique({ where: { id } });
   if (!existing) return error("Not found", 404);
 
-  const isAdminOrManager = canSeeAll(user);
+  const userIsAdmin = isAdmin(user);
+  const isManager = user.role === "MANAGER";
   const isOwner = existing.userId === user.id;
 
-  if (!isAdminOrManager) {
-    if (!isOwner) return error("Forbidden", 403);
+  if (userIsAdmin) {
+    // Full access — proceed.
+  } else if (isManager) {
+    // Scope check: submitter must be in the manager's own department.
+    const [me, submitter] = await Promise.all([
+      prisma.user.findUnique({ where: { id: user.id }, select: { departmentId: true } }),
+      prisma.user.findUnique({ where: { id: existing.userId }, select: { departmentId: true } }),
+    ]);
+    if (!me?.departmentId || me.departmentId !== submitter?.departmentId) {
+      return error("Forbidden — you can only delete refunds from your own department", 403);
+    }
+  } else if (isOwner) {
     const elapsed = minutesSinceCreation(existing.createdAt);
     if (elapsed > 15) {
       return error("You can only delete a refund within 15 minutes of submitting it");
     }
+  } else {
+    return error("Forbidden", 403);
   }
 
   await prisma.refund.delete({ where: { id } });

@@ -61,8 +61,20 @@ export default async function RefundsPage({
     partnerMemberIds = teams.flatMap((t) => t.members.map((m) => m.id));
   }
 
-  // canSeeAll = admin/manager (full read across the team).
-  // PARTNER also gets a team-wide read but scoped via partnerMemberIds below.
+  // For MANAGER (Izaan), scope to employees in his own department (Etsy - EM).
+  // He must NOT see AE-/ME- team refunds. Resolved as a relation filter on
+  // the where clause below.
+  let managerDepartmentId: string | null = null;
+  if (isManager) {
+    const me = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { departmentId: true },
+    });
+    managerDepartmentId = me?.departmentId ?? null;
+  }
+
+  // canSeeAll = admin (full read across every team and office).
+  // MANAGER + PARTNER get a team-wide read but scoped further below.
   const canSeeAll = isAdmin || isManager || isPartner;
 
   const params = await searchParams;
@@ -80,6 +92,12 @@ export default async function RefundsPage({
     where.userId = {
       in: partnerMemberIds && partnerMemberIds.length > 0 ? partnerMemberIds : ["__none__"],
     };
+  } else if (isManager) {
+    if (managerDepartmentId) {
+      where.user = { departmentId: managerDepartmentId };
+    } else {
+      where.userId = { in: ["__none__"] };
+    }
   } else if (!canSeeAll) {
     where.userId = user.id;
   }

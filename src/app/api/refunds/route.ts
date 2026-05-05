@@ -7,14 +7,16 @@ import { notifyAdmins } from "@/lib/services/notification.service";
 export const dynamic = "force-dynamic";
 
 // Access rules (post multi-office, May 2026):
-//   - CEO (SUPER_ADMIN / HR_ADMIN)        → all refunds
-//   - Izaan (EM-4, MANAGER)                → all refunds
+//   - CEO (SUPER_ADMIN / HR_ADMIN)        → all refunds (every office, every team)
+//   - Izaan (EM-4, MANAGER)                → ONLY refunds from employees in his
+//                                            own department (Etsy - EM). Must
+//                                            NOT see AE-/ME- team refunds.
 //   - PARTNER (Awais / Mubeen / Zain)      → only their team members' refunds
 //   - Etsy-style shop owners (EM-*/AE-*/ME-*, NOT EM-4)
 //                                          → only their own refunds, can submit
 //   - Anyone else                          → forbidden
-function canSeeAllUnscoped(user: { role?: string; employeeId?: string }) {
-  return user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN" || user.employeeId === "EM-4";
+function canSeeAllUnscoped(user: { role?: string }) {
+  return user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN";
 }
 
 function canSubmit(user: { employeeId?: string }) {
@@ -53,7 +55,19 @@ export async function GET(request: NextRequest) {
   }
 
   if (canSeeAllUnscoped(user)) {
-    // Admin / Izaan — no userId filter.
+    // Admin — no userId filter (sees every office, every team).
+  } else if (user.role === "MANAGER") {
+    // MANAGER (Izaan) — scope to employees in his own department.
+    // Must NOT see AE-/ME- team refunds.
+    const me = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { departmentId: true },
+    });
+    if (me?.departmentId) {
+      where.user = { departmentId: me.departmentId };
+    } else {
+      where.userId = { in: ["__none__"] };
+    }
   } else if (user.role === "PARTNER") {
     // PARTNER — scope to their team members. Empty team surfaces empty list
     // rather than leaking other partners' refunds.

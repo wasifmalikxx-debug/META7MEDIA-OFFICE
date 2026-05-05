@@ -29,6 +29,19 @@ export async function GET(request: NextRequest) {
     });
     const memberIds = teams.flatMap((t) => t.members.map((m) => m.id));
     where.userId = { in: memberIds.length > 0 ? memberIds : ["__none__"] };
+  } else if (role === "MANAGER") {
+    // Scope to MANAGER's own department (Izaan = Etsy - EM). Same fix as
+    // the page-level inbox; without this the sidebar pending-review badge
+    // would count AE-/ME- submissions Izaan shouldn't see.
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { departmentId: true },
+    });
+    if (me?.departmentId) {
+      where.user = { departmentId: me.departmentId };
+    } else {
+      where.userId = { in: ["__none__"] };
+    }
   }
 
   if (status) {

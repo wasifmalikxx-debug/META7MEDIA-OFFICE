@@ -33,12 +33,22 @@ export async function PATCH(
     }
 
     // PARTNER scope: target submission's user must be on one of the
-    // partner's teams. CEO + MANAGER pass without scope check.
+    // partner's teams. CEO passes without scope check (sees everything).
+    // MANAGER (Izaan) scope: target submission's user must be in his own
+    // department (Etsy - EM). He cannot approve/reject AE-/ME- submissions.
     if (role === "PARTNER") {
       const scope = await getCallerScope(session);
       if (!scope) return error("Forbidden", 403);
       const denied = await assertCanActOnUser(scope, submission.userId);
       if (denied) return denied;
+    } else if (role === "MANAGER") {
+      const [me, submitter] = await Promise.all([
+        prisma.user.findUnique({ where: { id: session.user.id }, select: { departmentId: true } }),
+        prisma.user.findUnique({ where: { id: submission.userId }, select: { departmentId: true } }),
+      ]);
+      if (!me?.departmentId || me.departmentId !== submitter?.departmentId) {
+        return error("Forbidden — you can only act on your own department's submissions", 403);
+      }
     }
 
     const updated = await prisma.reviewBonus.update({

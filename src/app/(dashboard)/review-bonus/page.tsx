@@ -28,8 +28,13 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
   const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
 
   if (isReviewer) {
-    // PARTNERs see only their team's submissions; CEO/MANAGER see all.
+    // Scope rules:
+    //   PARTNER → only their team's submissions (already in place)
+    //   MANAGER (Izaan) → only employees in his own department (Etsy - EM).
+    //     He must NOT see Awais's AE team or Mubeen's ME team submissions.
+    //   SUPER_ADMIN (CEO) → no filter, sees everything.
     let userIdFilter: { in: string[] } | undefined;
+    let userRelationFilter: { departmentId: string } | undefined;
     if (role === "PARTNER") {
       const teams = await prisma.team.findMany({
         where: { partnerId: userId },
@@ -39,6 +44,20 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
       // Empty-set filter: if partner has no team members, surface an empty
       // inbox rather than leaking everyone else's submissions.
       userIdFilter = { in: memberIds.length > 0 ? memberIds : ["__none__"] };
+    } else if (role === "MANAGER") {
+      // Look up the manager's own department and use a relation filter so
+      // only submissions from employees in that department surface.
+      const me = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { departmentId: true },
+      });
+      if (me?.departmentId) {
+        userRelationFilter = { departmentId: me.departmentId };
+      } else {
+        // Manager somehow has no department — show an empty inbox rather
+        // than leaking everything.
+        userIdFilter = { in: ["__none__"] };
+      }
     }
 
     const submissions = await prisma.reviewBonus.findMany({
@@ -46,6 +65,7 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
         month,
         year,
         ...(userIdFilter ? { userId: userIdFilter } : {}),
+        ...(userRelationFilter ? { user: userRelationFilter } : {}),
       },
       include: {
         user: { select: { firstName: true, lastName: true, employeeId: true } },
