@@ -230,8 +230,26 @@ export default async function DashboardPage() {
       pendingLeavesCount, pendingDevicesCount, pendingReviewBonusesCount, complaintsAwaitingCeoCount,
     ] = await Promise.all([
       prisma.user.findMany({
-        where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
-        select: { id: true, firstName: true, lastName: true, employeeId: true, status: true },
+        // Multi-office: PARTNER role rows (Zain/Awais/Mubeen) are NOT employees
+        // and must NOT count in totals or appear in the Live Status grid.
+        where: { status: { in: ["HIRED", "PROBATION"] }, role: { notIn: ["SUPER_ADMIN", "PARTNER"] } },
+        select: {
+          id: true, firstName: true, lastName: true, employeeId: true, status: true,
+          // Per-team grouping data — used to build the "Teams Overview" cards
+          // and the team badge on each Live Status row. Includes office so we
+          // can display the OFFICE 1 / OFFICE 2 label per team.
+          teamId: true,
+          team: {
+            select: {
+              id: true,
+              name: true,
+              partner: { select: { id: true, firstName: true, lastName: true } },
+            },
+          },
+          departmentId: true,
+          department: { select: { id: true, name: true } },
+          office: { select: { id: true, name: true } },
+        },
         orderBy: { employeeId: "asc" },
       }),
       prisma.attendance.findMany({
@@ -244,11 +262,13 @@ export default async function DashboardPage() {
       }),
       prisma.payrollRecord.findMany({
         where: { month, year },
-        select: { netSalary: true },
+        // userId needed so we can roll up per-team payable in the Teams Overview
+        select: { userId: true, netSalary: true },
       }),
       prisma.fine.findMany({
         where: { month, year },
-        select: { amount: true },
+        // userId needed so we can roll up per-team fines in the Teams Overview
+        select: { userId: true, amount: true },
       }),
       prisma.leaveRequest.findMany({
         where: { startDate: { lte: today }, endDate: { gte: today }, status: "APPROVED" },
@@ -303,7 +323,8 @@ export default async function DashboardPage() {
     const holidayName = todayHoliday?.name || null;
     const isDayOff = isWeekend || !!holidayName;
 
-    // Build full employee list with live status
+    // Build full employee list with live status (now includes team + office
+    // labels so the Live Status grid can show which team each row belongs to)
     const employeeStatuses = allEmployees.map((emp) => {
       const att = attendanceMap[emp.id];
       const leave = leaveMap[emp.id];
@@ -338,6 +359,10 @@ export default async function DashboardPage() {
         }
       }
 
+      // Display label: prefer team name (e.g. "Awais Team"), fall back to
+      // department name (e.g. "Etsy - EM" for the EM team that has no Team row).
+      const teamLabel = emp.team?.name || emp.department?.name || null;
+
       return {
         id: emp.id,
         firstName: emp.firstName,
@@ -347,6 +372,8 @@ export default async function DashboardPage() {
         liveStatus,
         checkIn: checkInTime,
         checkOut: checkOutTime,
+        teamName: teamLabel,
+        officeName: emp.office?.name || null,
       };
     });
 
@@ -381,11 +408,89 @@ export default async function DashboardPage() {
     });
     const topAbsent = Object.values(absentCounts).sort((a, b) => b.count - a.count).slice(0, 5);
 
-    // Team productivity
-    const etsyEmployees = allEmployees.filter((e) => e.employeeId.startsWith("EM"));
-    const fbEmployees = allEmployees.filter((e) => e.employeeId.startsWith("SMM"));
-    const etsyPresent = monthAttendances.filter((a: any) => (a.status === "PRESENT" || a.status === "LATE") && etsyEmployees.some((e) => e.id === a.userId)).length;
-    const fbPresent = monthAttendances.filter((a: any) => (a.status === "PRESENT" || a.status === "LATE") && fbEmployees.some((e) => e.id === a.userId)).length;
+    // ── Teams Overview ────────────────────────────────────────────────
+    // Group employees into teams so the CEO sees each partner's team as a
+    // distinct block (per Wasif's request: "separate my dashboard so I can
+    // see all of the Partner's employee details as well"). Pre multi-office
+    // we crudely split by employeeId prefix ("EM" vs "SMM"); now we group
+    // by the actual `Team` row, falling back to department name for the
+    // OFFICE 1 Etsy / Facebook crews that report to the CEO directly with
+    // no Team row.
+    type TeamGroup = {
+      key: string;
+      name: string;
+      partnerName: string | null;
+      departmentName: string;
+      officeName: string;
+      memberCount: number;
+      presentToday: number;
+      lateToday: number;
+      absentToday: number;
+      onLeaveToday: number;
+      monthPayable: number;
+      monthFines: number;
+    };
+
+    // Index payroll + fines by userId for O(1) lookup during aggregation
+    const payrollByUser: Record<string, number> = {};
+    for (const p of payrollRecords) payrollByUser[p.userId] = (payrollByUser[p.userId] ?? 0) + p.netSalary;
+    const finesByUser: Record<string, number> = {};
+    for (const f of fines) finesByUser[f.userId] = (finesByUser[f.userId] ?? 0) + f.amount;
+
+    const groupMap = new Map<string, TeamGroup>();
+    for (const emp of allEmployees) {
+      // Group key: the team row if it exists, else dept+office (so OFFICE 1
+      // Etsy and OFFICE 1 Facebook each get their own no-team group).
+      const key = emp.teamId
+        ? `team-${emp.teamId}`
+        : `dept-${emp.departmentId ?? "none"}-${emp.office?.id ?? "none"}`;
+
+      let group = groupMap.get(key);
+      if (!group) {
+        const partnerName = emp.team?.partner
+          ? `${emp.team.partner.firstName} ${emp.team.partner.lastName ?? ""}`.replace(/\s*\(Partner\)\s*/i, "").trim()
+          : null;
+        group = {
+          key,
+          name: emp.team?.name || emp.department?.name || "Unassigned",
+          partnerName,
+          departmentName: emp.department?.name || "—",
+          officeName: emp.office?.name || "—",
+          memberCount: 0,
+          presentToday: 0,
+          lateToday: 0,
+          absentToday: 0,
+          onLeaveToday: 0,
+          monthPayable: 0,
+          monthFines: 0,
+        };
+        groupMap.set(key, group);
+      }
+
+      group.memberCount += 1;
+      group.monthPayable += payrollByUser[emp.id] ?? 0;
+      group.monthFines += finesByUser[emp.id] ?? 0;
+
+      const att = attendanceMap[emp.id];
+      const leave = leaveMap[emp.id];
+      if (leave === "FULL_DAY") {
+        group.onLeaveToday += 1;
+      } else if (att?.status === "PRESENT") {
+        group.presentToday += 1;
+      } else if (att?.status === "LATE") {
+        group.lateToday += 1;
+        group.presentToday += 1; // late counts as present for "showed up" totals
+      } else if (att?.status === "ABSENT") {
+        group.absentToday += 1;
+      }
+    }
+
+    // Order: OFFICE 1 first (CEO's home base), then OFFICE 2 (partner-led),
+    // alphabetical by team name within each office.
+    const teamGroups = [...groupMap.values()].sort((a, b) => {
+      if (a.officeName !== b.officeName) return a.officeName.localeCompare(b.officeName);
+      return a.name.localeCompare(b.name);
+    });
 
     return (
       <AdminDashboard
@@ -402,10 +507,7 @@ export default async function DashboardPage() {
         finesTrend={finesTrend}
         todayReports={todayReports}
         topAbsent={topAbsent}
-        etsyTeamSize={etsyEmployees.length}
-        fbTeamSize={fbEmployees.length}
-        etsyPresent={etsyPresent}
-        fbPresent={fbPresent}
+        teamGroups={JSON.parse(JSON.stringify(teamGroups))}
         commandCenter={{
           pendingLeaves: pendingLeavesCount,
           pendingDevices: pendingDevicesCount,

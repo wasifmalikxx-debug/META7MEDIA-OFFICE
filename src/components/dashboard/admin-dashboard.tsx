@@ -22,6 +22,8 @@ import {
   MessageSquare,
   ArrowRight,
   Sparkles,
+  Building2,
+  UserCog,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +41,10 @@ interface EmployeeStatus {
   liveStatus: string;
   checkIn: string | null;
   checkOut: string | null;
+  // Multi-office context — labels each Live Status row so the CEO can see
+  // which team/office an employee belongs to without leaving the dashboard.
+  teamName?: string | null;
+  officeName?: string | null;
 }
 
 interface CommandCenterCounts {
@@ -46,6 +52,21 @@ interface CommandCenterCounts {
   pendingDevices: number;
   pendingReviewBonuses: number;
   complaintsAwaitingReply: number;
+}
+
+interface TeamGroup {
+  key: string;
+  name: string;
+  partnerName: string | null;
+  departmentName: string;
+  officeName: string;
+  memberCount: number;
+  presentToday: number;
+  lateToday: number;
+  absentToday: number;
+  onLeaveToday: number;
+  monthPayable: number;
+  monthFines: number;
 }
 
 interface AdminDashboardProps {
@@ -62,10 +83,10 @@ interface AdminDashboardProps {
   finesTrend?: { day: string; fines: number }[];
   todayReports?: number;
   topAbsent?: { name: string; employeeId: string; count: number }[];
-  etsyTeamSize?: number;
-  fbTeamSize?: number;
-  etsyPresent?: number;
-  fbPresent?: number;
+  // Per-team aggregates (one card per team) — replaces the old hardcoded
+  // Etsy / Facebook split. Includes both partner-led teams and CEO-direct
+  // teams (OFFICE 1 Etsy, OFFICE 1 Facebook).
+  teamGroups?: TeamGroup[];
   commandCenter?: CommandCenterCounts;
 }
 
@@ -96,10 +117,7 @@ export function AdminDashboard({
   finesTrend = [],
   todayReports = 0,
   topAbsent = [],
-  etsyTeamSize = 0,
-  fbTeamSize = 0,
-  etsyPresent = 0,
-  fbPresent = 0,
+  teamGroups = [],
   commandCenter,
 }: AdminDashboardProps) {
   const router = useRouter();
@@ -449,8 +467,118 @@ export function AdminDashboard({
         </Card>
       </div>
 
-      {/* Bottom Row: Reports + Top Absent + Team Comparison */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Teams Overview — one card per team across both offices.
+          Replaces the old hardcoded Etsy/Facebook split. CEO can see at a
+          glance which partner is leading which team and how each team is
+          performing today + month-to-date. */}
+      {teamGroups.length > 0 && (
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <CardHeader className="pb-3 border-b bg-muted/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-lg font-bold">Teams Overview</CardTitle>
+                <Badge variant="outline" className="text-[10px] font-normal">
+                  {teamGroups.length} team{teamGroups.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Building2 className="size-3.5 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">Across both offices</span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {teamGroups.map((tg) => {
+                const presentRate = tg.memberCount > 0 ? Math.round((tg.presentToday / tg.memberCount) * 100) : 0;
+                return (
+                  <div
+                    key={tg.key}
+                    className="rounded-lg border bg-card p-3.5 hover:shadow-sm transition-shadow"
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2 mb-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold truncate">{tg.name}</h4>
+                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal shrink-0">
+                            {tg.memberCount}
+                          </Badge>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                          {tg.partnerName ? (
+                            <>
+                              <UserCog className="size-2.5 inline mr-1" />
+                              {tg.partnerName}
+                            </>
+                          ) : (
+                            <>CEO direct</>
+                          )}
+                          <span className="mx-1.5 text-muted-foreground/40">·</span>
+                          {tg.officeName}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Today's stats */}
+                    <div className="grid grid-cols-4 gap-1.5 mb-2.5">
+                      <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5 text-center">
+                        <div className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{tg.presentToday}</div>
+                        <div className="text-[9px] text-emerald-600 dark:text-emerald-500/70 font-medium">Present</div>
+                      </div>
+                      <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1.5 text-center">
+                        <div className="text-sm font-bold text-amber-700 dark:text-amber-400">{tg.lateToday}</div>
+                        <div className="text-[9px] text-amber-600 dark:text-amber-500/70 font-medium">Late</div>
+                      </div>
+                      <div className="rounded-md bg-rose-50 dark:bg-rose-900/20 px-2 py-1.5 text-center">
+                        <div className="text-sm font-bold text-rose-700 dark:text-rose-400">{tg.absentToday}</div>
+                        <div className="text-[9px] text-rose-600 dark:text-rose-500/70 font-medium">Absent</div>
+                      </div>
+                      <div className="rounded-md bg-violet-50 dark:bg-violet-900/20 px-2 py-1.5 text-center">
+                        <div className="text-sm font-bold text-violet-700 dark:text-violet-400">{tg.onLeaveToday}</div>
+                        <div className="text-[9px] text-violet-600 dark:text-violet-500/70 font-medium">Leave</div>
+                      </div>
+                    </div>
+
+                    {/* Attendance bar */}
+                    <div className="mb-2.5">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+                        <span>Attendance today</span>
+                        <span className="font-semibold">{presentRate}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            presentRate >= 80 ? "bg-emerald-500" : presentRate >= 60 ? "bg-amber-500" : "bg-rose-500"
+                          }`}
+                          style={{ width: `${Math.min(100, presentRate)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Money row */}
+                    <div className="flex items-center justify-between text-[10px] pt-2 border-t">
+                      <div className="flex items-center gap-1.5">
+                        <Wallet className="size-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">Payable</span>
+                        <span className="font-semibold">PKR {Math.round(tg.monthPayable).toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <AlertTriangle className="size-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">Fines</span>
+                        <span className="font-semibold">PKR {Math.round(tg.monthFines).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bottom Row: Reports + Top Absent */}
+      <div className="grid gap-4 lg:grid-cols-2">
         {/* Reports Submitted Today */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
@@ -502,36 +630,6 @@ export function AdminDashboard({
             )}
           </CardContent>
         </Card>
-
-        {/* Team Comparison */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold">Team Attendance</CardTitle>
-            <p className="text-[10px] text-muted-foreground">Monthly present days by team</p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium">Etsy Team</span>
-                  <span className="text-xs text-muted-foreground">{etsyPresent} days ({etsyTeamSize} staff)</span>
-                </div>
-                <div className="h-2.5 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${etsyTeamSize > 0 ? Math.min(100, (etsyPresent / (etsyTeamSize * 26)) * 100) : 0}%` }} />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium">Facebook Team</span>
-                  <span className="text-xs text-muted-foreground">{fbPresent} days ({fbTeamSize} staff)</span>
-                </div>
-                <div className="h-2.5 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${fbTeamSize > 0 ? Math.min(100, (fbPresent / (fbTeamSize * 26)) * 100) : 0}%` }} />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Live Employee Status */}
@@ -575,13 +673,21 @@ export function AdminDashboard({
                       <div className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white dark:border-slate-900 ${config.dot}`} />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold">
                           {emp.firstName} {emp.lastName || ""}
                         </span>
                         <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">
                           {emp.employeeId}
                         </span>
+                        {/* Team badge — multi-office context so the CEO can
+                            see which team each employee belongs to without
+                            scrolling back to the Teams Overview. */}
+                        {emp.teamName && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal text-muted-foreground">
+                            {emp.teamName}
+                          </Badge>
+                        )}
                         {emp.empStatus === "PROBATION" && (
                           <Badge className="text-[8px] h-4 px-1.5 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 border-0">
                             PROBATION
