@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +57,12 @@ const emptyForm = {
 
 export function EmployeesView({ employees, departments }: EmployeesViewProps) {
   const router = useRouter();
+  // Live updates: refresh server data every 30s so the CEO sees newly-added
+  // partner-team members appear without a manual reload. Cleared on unmount.
+  useEffect(() => {
+    const interval = setInterval(() => router.refresh(), 30_000);
+    return () => clearInterval(interval);
+  }, [router]);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [loading, setLoading] = useState(false);

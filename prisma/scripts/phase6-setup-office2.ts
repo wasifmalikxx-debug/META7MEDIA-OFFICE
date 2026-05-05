@@ -88,12 +88,13 @@ async function main() {
   }
 
   // 4. Teams (one per department)
-  // Team names match prod (Awais Team / Mubeen Team) — re-running phase6 must
-  // not create empty duplicates next to the personalized real ones.
+  // Team names match prod (Zain Team / Awais Team / Mubeen Team) — partner-
+  // personalized so the dashboard reads cleanly. Re-running phase6 must not
+  // create empty duplicates next to these renamed real ones.
   const teamDefs = [
-    { name: "Facebook Team", deptName: "Facebook",  partnerEmail: "zain@meta7.media",   leadBonus: null },
-    { name: "Awais Team",    deptName: "Etsy - AE", partnerEmail: "awais@meta7.media",  leadBonus: null },
-    { name: "Mubeen Team",   deptName: "Etsy - ME", partnerEmail: "mubeen@meta7.media", leadBonus: null },
+    { name: "Zain Team",   deptName: "Facebook",  partnerEmail: "zain@meta7.media",   leadBonus: null },
+    { name: "Awais Team",  deptName: "Etsy - AE", partnerEmail: "awais@meta7.media",  leadBonus: null },
+    { name: "Mubeen Team", deptName: "Etsy - ME", partnerEmail: "mubeen@meta7.media", leadBonus: null },
   ];
 
   // 5. Partner users (PARTNER role, no salary, no team membership)

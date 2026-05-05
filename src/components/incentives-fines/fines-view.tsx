@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -33,6 +33,13 @@ interface FinesViewProps {
 
 export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear, attendances = [], leaves = [] }: FinesViewProps) {
   const router = useRouter();
+  // Live updates: refresh server data every 30s so newly-added employees /
+  // freshly-created fines show up without a manual reload. Same cadence as
+  // the CEO dashboard. Cleared on unmount to avoid leaks.
+  useEffect(() => {
+    const interval = setInterval(() => router.refresh(), 30_000);
+    return () => clearInterval(interval);
+  }, [router]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -309,9 +316,16 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                         <Icon className="size-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-semibold">{fine.user.firstName} {fine.user.lastName}</span>
                           <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">{fine.user.employeeId}</span>
+                          {/* Team label — multi-office context so the CEO can
+                              see at-a-glance whose team this fine belongs to. */}
+                          {(fine.user.team?.name || fine.user.department?.name) && (
+                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal text-muted-foreground">
+                              {fine.user.team?.name ?? fine.user.department?.name}
+                            </Badge>
+                          )}
                           <Badge className={`text-[9px] h-4 border-0 ${typeColors[fine.type] || typeColors.OTHER}`}>
                             {typeLabels[fine.type] || fine.type}
                           </Badge>
@@ -344,9 +358,15 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                       <CalendarOff className="size-3.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold">{leave.user.firstName} {leave.user.lastName}</span>
                         <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">{leave.user.employeeId}</span>
+                        {/* Team label — same multi-office context as fine rows */}
+                        {(leave.user.team?.name || leave.user.department?.name) && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal text-muted-foreground">
+                            {leave.user.team?.name ?? leave.user.department?.name}
+                          </Badge>
+                        )}
                         <Badge className="text-[9px] h-4 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-0">
                           {leave.leaveType === "HALF_DAY" ? "Half Day" : leave.leaveType}
                           {leave.halfDayPeriod === "FIRST_HALF" ? " (1st)" : leave.halfDayPeriod === "SECOND_HALF" ? " (2nd)" : ""}

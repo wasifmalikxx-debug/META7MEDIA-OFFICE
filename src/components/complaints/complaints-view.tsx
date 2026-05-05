@@ -83,7 +83,18 @@ interface Complaint {
   resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  user: { id?: string; firstName: string; lastName: string | null; employeeId: string };
+  // Multi-office: user includes team + partner + office so the admin inbox
+  // shows which partner the complainant reports to. Optional fields stay
+  // tolerant of older response shapes.
+  user: {
+    id?: string;
+    firstName: string;
+    lastName: string | null;
+    employeeId: string;
+    team?: { name: string; partner: { firstName: string; lastName: string | null } | null } | null;
+    department?: { name: string } | null;
+    office?: { name: string } | null;
+  };
   resolvedBy: { firstName: string; lastName: string | null } | null;
   _count?: { messages: number };
   // In list view: last message preview. In detail view: full thread
@@ -237,12 +248,33 @@ function ComplaintCard({ c, isAdmin, onOpen }: { c: Complaint; isAdmin: boolean;
                 c.description
               )}
             </p>
-            <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
               {isAdmin && (
-                <span className="flex items-center gap-1 font-medium">
-                  <Users className="size-3" />
-                  {employeeName} · {c.user.employeeId}
-                </span>
+                <>
+                  <span className="flex items-center gap-1 font-medium">
+                    <Users className="size-3" />
+                    {employeeName} · {c.user.employeeId}
+                  </span>
+                  {/* Team / partner label so the CEO knows whose employee
+                      is complaining (e.g. "Awais Team · Awais" or "Etsy - EM
+                      · CEO direct"). Falls back to department for OFFICE 1
+                      employees who have no Team row. */}
+                  {(c.user.team?.name || c.user.department?.name) && (
+                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal">
+                      {c.user.team?.name ?? c.user.department?.name}
+                      {c.user.team?.partner && (
+                        <span className="ml-1 text-muted-foreground/70">
+                          · {c.user.team.partner.firstName}
+                        </span>
+                      )}
+                      {c.user.office?.name && (
+                        <span className="ml-1 text-muted-foreground/50">
+                          · {c.user.office.name.replace(/^META7MEDIA\s*/i, "")}
+                        </span>
+                      )}
+                    </Badge>
+                  )}
+                </>
               )}
               <span className="text-muted-foreground/70">{cat?.label}</span>
               <span className="flex items-center gap-1">

@@ -19,7 +19,24 @@ export default async function ComplaintsPage() {
   const complaints = await prisma.complaint.findMany({
     where,
     include: {
-      user: { select: { firstName: true, lastName: true, employeeId: true } },
+      // Multi-office: pull team + office so the CEO can see at a glance
+      // which partner the complainant belongs to (e.g. "Awais's employee"
+      // vs "Mubeen's employee") without cross-referencing the employee list.
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          employeeId: true,
+          team: {
+            select: {
+              name: true,
+              partner: { select: { firstName: true, lastName: true } },
+            },
+          },
+          department: { select: { name: true } },
+          office: { select: { name: true } },
+        },
+      },
       resolvedBy: { select: { firstName: true, lastName: true } },
       _count: { select: { messages: true } },
       messages: {

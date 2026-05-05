@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { formatPKTTime } from "@/lib/pkt";
@@ -24,6 +24,11 @@ interface EmployeeSummary {
   halfDay: number;
   onLeave: number;
   pendingLeaves: number;
+  // Multi-office grouping. Optional so the partner-scoped view (which doesn't
+  // need cross-team grouping) can omit them without breaking types.
+  team?: { id: string; name: string; partner?: { firstName: string; lastName: string | null } | null } | null;
+  department?: { id: string; name: string } | null;
+  office?: { id: string; name: string } | null;
 }
 
 interface AttendanceCalendarViewProps {
@@ -57,6 +62,13 @@ export function AttendanceCalendarView({
   currentYear,
 }: AttendanceCalendarViewProps) {
   const router = useRouter();
+  // Live updates: refresh server data every 30s so newly-added employees,
+  // fresh check-ins, and approved leaves show up on the calendar without a
+  // manual reload. Cleared on unmount to avoid leaks.
+  useEffect(() => {
+    const interval = setInterval(() => router.refresh(), 30_000);
+    return () => clearInterval(interval);
+  }, [router]);
 
   const monthName = format(new Date(currentYear, currentMonth - 1), "MMMM yyyy");
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
@@ -113,18 +125,82 @@ export function AttendanceCalendarView({
   const totalHalfDay = employees.reduce((s, e) => s + e.halfDay, 0);
   const totalOnLeave = employees.reduce((s, e) => s + e.onLeave, 0);
 
-  // Split by team
-  const etsyEmployees = employees.filter((e) => e.employeeId.startsWith("EM"));
-  const fbEmployees = employees.filter((e) => e.employeeId.startsWith("SMM"));
+  // ── Group employees by team ───────────────────────────────────────
+  // Replaces the old EM-prefix / SMM-prefix split. Now reads the actual
+  // Team row, falling back to department for OFFICE 1 crews that report
+  // to the CEO directly with no Team row (Etsy - EM, OFFICE 1 Facebook).
+  // Each partner's team gets its own clearly-labeled section so the CEO
+  // can see attendance separated per partner.
+  type TeamSection = {
+    key: string;
+    name: string;
+    partnerName: string | null;
+    officeName: string;
+    members: EmployeeSummary[];
+  };
+  const sectionsMap = new Map<string, TeamSection>();
+  for (const emp of employees) {
+    const key = emp.team?.id
+      ? `team-${emp.team.id}`
+      : `dept-${emp.department?.id ?? "none"}-${emp.office?.id ?? "none"}`;
+    let section = sectionsMap.get(key);
+    if (!section) {
+      const partnerName = emp.team?.partner
+        ? `${emp.team.partner.firstName} ${emp.team.partner.lastName ?? ""}`.replace(/\s*\(Partner\)\s*/i, "").trim()
+        : null;
+      section = {
+        key,
+        name: emp.team?.name || emp.department?.name || "Unassigned",
+        partnerName,
+        officeName: emp.office?.name || "—",
+        members: [],
+      };
+      sectionsMap.set(key, section);
+    }
+    section.members.push(emp);
+  }
+  // OFFICE 1 first, then OFFICE 2, alphabetical by team name within each office.
+  const teamSections = [...sectionsMap.values()].sort((a, b) => {
+    if (a.officeName !== b.officeName) return a.officeName.localeCompare(b.officeName);
+    return a.name.localeCompare(b.name);
+  });
 
-  function renderTeamGrid(teamEmployees: EmployeeSummary[], teamName: string, teamColor: string) {
+  // Color rotation so consecutive team headers are visually distinguishable.
+  const TEAM_COLORS = [
+    "bg-emerald-50/40 dark:bg-emerald-950/15",
+    "bg-blue-50/40 dark:bg-blue-950/15",
+    "bg-violet-50/40 dark:bg-violet-950/15",
+    "bg-amber-50/40 dark:bg-amber-950/15",
+    "bg-rose-50/40 dark:bg-rose-950/15",
+  ];
+
+  function renderTeamGrid(
+    teamEmployees: EmployeeSummary[],
+    teamName: string,
+    teamColor: string,
+    partnerName: string | null = null,
+    officeName: string | null = null,
+  ) {
     if (teamEmployees.length === 0) return null;
     return (
       <Card className="border-0 shadow-sm overflow-hidden">
         <CardHeader className={`py-2.5 px-5 border-b ${teamColor}`}>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-xs font-bold">{teamName}</CardTitle>
-            <Badge variant="outline" className="text-[9px] h-5">{teamEmployees.length} members</Badge>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <CardTitle className="text-xs font-bold truncate">{teamName}</CardTitle>
+              {(partnerName || officeName) && (
+                <span className="text-[10px] text-muted-foreground truncate">
+                  {partnerName ? partnerName : "CEO direct"}
+                  {officeName && (
+                    <>
+                      <span className="mx-1.5 text-muted-foreground/40">·</span>
+                      {officeName.replace(/^META7MEDIA\s*/i, "")}
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+            <Badge variant="outline" className="text-[9px] h-5 shrink-0">{teamEmployees.length} members</Badge>
           </div>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
@@ -310,9 +386,17 @@ export function AttendanceCalendarView({
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-slate-300 dark:bg-slate-600" /><span>Day Off</span></div>
       </div>
 
-      {/* Team Grids — Separate Cards */}
-      {renderTeamGrid(etsyEmployees, "Etsy Team", "bg-emerald-50/40 dark:bg-emerald-950/15")}
-      {renderTeamGrid(fbEmployees, "Facebook Team", "bg-blue-50/40 dark:bg-blue-950/15")}
+      {/* Team Grids — one card per team, separated and labeled.
+          Replaces the old hardcoded Etsy / Facebook split. */}
+      {teamSections.map((section, i) =>
+        renderTeamGrid(
+          section.members,
+          section.name,
+          TEAM_COLORS[i % TEAM_COLORS.length],
+          section.partnerName,
+          section.officeName,
+        ),
+      )}
     </div>
   );
 }

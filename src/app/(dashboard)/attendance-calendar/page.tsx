@@ -59,8 +59,28 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   console.log(`[calendar] empWhere=${JSON.stringify(empWhere)} userIdScope=${JSON.stringify(userIdScope)}`);
   const [employees, attendances, holidays, settings, monthCoveredFines] = await Promise.all([
     prisma.user.findMany({
-      where: { status: { in: ["HIRED", "PROBATION"] }, ...empWhere },
-      select: { id: true, firstName: true, lastName: true, employeeId: true, status: true },
+      where: {
+        status: { in: ["HIRED", "PROBATION"] },
+        // PARTNER rows are not employees — exclude them from the calendar
+        // even on the CEO view (otherwise Zain/Awais/Mubeen would render
+        // empty calendar grids).
+        role: { notIn: ["SUPER_ADMIN", "PARTNER"] },
+        ...empWhere,
+      },
+      select: {
+        id: true, firstName: true, lastName: true, employeeId: true, status: true,
+        // Multi-office grouping: use team if present, fall back to department.
+        // The view groups employees under team headers in the CEO calendar.
+        team: {
+          select: {
+            id: true,
+            name: true,
+            partner: { select: { firstName: true, lastName: true } },
+          },
+        },
+        department: { select: { id: true, name: true } },
+        office: { select: { id: true, name: true } },
+      },
       orderBy: { employeeId: "asc" },
     }),
     prisma.attendance.findMany({

@@ -66,7 +66,17 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
     prisma.fine.findMany({
       where,
       include: {
-        user: { select: { firstName: true, lastName: true, employeeId: true } },
+        // Multi-office: team label tells the CEO at-a-glance whose team a
+        // fine belongs to (e.g. "Awais Team" / "Mubeen Team" / "Etsy - EM").
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            employeeId: true,
+            team: { select: { name: true } },
+            department: { select: { name: true } },
+          },
+        },
         issuedBy: { select: { firstName: true, lastName: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -98,7 +108,15 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
       select: {
         id: true, userId: true, leaveType: true, halfDayPeriod: true, startDate: true, endDate: true,
         totalDays: true, reason: true, status: true,
-        user: { select: { firstName: true, lastName: true, employeeId: true } },
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            employeeId: true,
+            team: { select: { name: true } },
+            department: { select: { name: true } },
+          },
+        },
       },
       orderBy: { startDate: "desc" },
     }),
