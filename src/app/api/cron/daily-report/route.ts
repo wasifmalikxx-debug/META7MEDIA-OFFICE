@@ -5,7 +5,6 @@ import { nowPKT } from "@/lib/pkt";
 import { extractSheetId, normalizeTabName, getAlternativeTabNames } from "@/lib/services/google-sheets.service";
 import { google } from "googleapis";
 import path from "path";
-import fs from "fs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -27,23 +26,6 @@ const SHEET_MAP: Record<string, string> = {
 function parseDollar(val: string | undefined): number {
   if (!val) return 0;
   return parseFloat(val.replace(/[$,\s]/g, "")) || 0;
-}
-
-function getMonthTabName(): string {
-  // Use PKT time for correct month/year
-  const pkt = new Date(Date.now() + 5 * 60 * 60_000);
-  const months = ["JAN", "FEB", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  const month = months[pkt.getUTCMonth()];
-  const year = pkt.getUTCFullYear().toString().slice(-2);
-  return `${month} - 2K${year}`;
-}
-
-function getTodayDateStr(): string {
-  // Use PKT time for correct date
-  const pkt = new Date(Date.now() + 5 * 60 * 60_000);
-  const day = pkt.getUTCDate();
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${day} ${months[pkt.getUTCMonth()]}`;
 }
 
 interface EmployeeReport {
@@ -239,9 +221,9 @@ export async function GET(request: NextRequest) {
     }
     const client = await auth.getClient();
     const sheets = google.sheets({ version: "v4", auth: client as any });
-    const tabName = getMonthTabName();
-    const todayStr = getTodayDateStr();
-    // Used by the partner readEmployeeSheetReport() helper for fuzzy tab + date matching.
+    // PKT-relative reference values shared by every readEmployeeSheetReport()
+    // call below — the helper does its own fuzzy tab + date matching from
+    // these so we don't need a fixed tab string.
     const todayPkt = new Date(Date.now() + 5 * 60 * 60_000);
     const reportMonth = todayPkt.getUTCMonth() + 1;
     const reportYear = todayPkt.getUTCFullYear();
@@ -267,85 +249,25 @@ export async function GET(request: NextRequest) {
       return numA - numB;
     });
 
+    // Same fuzzy tab + date matching now applied to the EM loop. Drives
+    // every member through readEmployeeSheetReport so a sheet renamed to
+    // `MAY 2026` or with `2 May 2026` dates won't silently zero out.
     for (const empId of sortedIds) {
       const sheetId = SHEET_MAP[empId];
-      try {
-        // Get headers to find column indices
-        const headerRes = await sheets.spreadsheets.values.get({
-          spreadsheetId: sheetId,
-          range: `'${tabName}'!A1:J1`,
-        });
-        const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
-        const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
-        const priceCol = headers.findIndex((h: string) => h.includes("price"));
-        const afterTaxCol = headers.findIndex((h: string) => h.includes("after tax"));
-        const costCol = headers.findIndex((h: string) => h.includes("cost"));
-        const profitCol = headers.findIndex((h: string) => h.includes("profit"));
-
-        if (dateCol === -1) {
-          reports.push({
-            empId, name: nameMap[empId] || empId,
-            todayOrders: 0, todaySale: 0, todayCost: 0, todayProfit: 0,
-            monthOrders: 0, monthSale: 0, monthCost: 0, monthProfit: 0,
-          });
-          continue;
-        }
-
-        // Read all data rows
-        const dataRes = await sheets.spreadsheets.values.get({
-          spreadsheetId: sheetId,
-          range: `'${tabName}'!A2:J1000`,
-        });
-        const rows = dataRes.data.values || [];
-
-        let todayOrders = 0, todaySale = 0, todayCost = 0, todayProfit = 0;
-        let monthOrders = 0, monthSale = 0, monthCost = 0, monthProfit = 0;
-
-        for (const row of rows) {
-          const dateVal = (row[dateCol] || "").toString().trim();
-          if (!dateVal) continue; // skip empty rows
-
-          const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
-          const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
-          const rowProfit = profitCol >= 0 ? parseDollar(row[profitCol]) : 0;
-
-          // Every row in the current month tab counts toward month-to-date
-          monthOrders++;
-          monthSale += rowSale;
-          monthCost += rowCost;
-          monthProfit += rowProfit;
-
-          // Rows matching today's date string also count toward today's totals
-          if (dateVal.toLowerCase() === todayStr.toLowerCase()) {
-            todayOrders++;
-            todaySale += rowSale;
-            todayCost += rowCost;
-            todayProfit += rowProfit;
-          }
-        }
-
-        reports.push({
-          empId,
-          name: nameMap[empId] || empId,
-          todayOrders, todaySale, todayCost, todayProfit,
-          monthOrders, monthSale, monthCost, monthProfit,
-        });
-
-        allOrdersToday += todayOrders;
-        allSaleToday += todaySale;
-        allCostToday += todayCost;
-        allProfitToday += todayProfit;
-        allOrdersMonth += monthOrders;
-        allSaleMonth += monthSale;
-        allCostMonth += monthCost;
-        allProfitMonth += monthProfit;
-      } catch (sheetErr: any) {
-        reports.push({
-          empId, name: nameMap[empId] || empId,
-          todayOrders: 0, todaySale: 0, todayCost: 0, todayProfit: 0,
-          monthOrders: 0, monthSale: 0, monthCost: 0, monthProfit: 0,
-        });
-      }
+      const stats = await readEmployeeSheetReport(sheets, sheetId, reportMonth, reportYear, todayPkt);
+      reports.push({
+        empId,
+        name: nameMap[empId] || empId,
+        ...stats,
+      });
+      allOrdersToday += stats.todayOrders;
+      allSaleToday += stats.todaySale;
+      allCostToday += stats.todayCost;
+      allProfitToday += stats.todayProfit;
+      allOrdersMonth += stats.monthOrders;
+      allSaleMonth += stats.monthSale;
+      allCostMonth += stats.monthCost;
+      allProfitMonth += stats.monthProfit;
     }
 
     // Build the message
@@ -362,13 +284,18 @@ export async function GET(request: NextRequest) {
     // \n, \t, or >4 consecutive spaces (error #132018), so we keep this on
     // a single line with inline separators. If no employee had orders, send
     // a dash so the parameter is never empty (Meta also rejects empty vars).
+    // Show every team member in the breakdown (not just today's order-havers)
+    // so the CEO sees who's idle as well as who's shipping. Same format as
+    // the partner breakdown below for visual consistency.
     const breakdownParts: string[] = [];
     for (const r of reports) {
-      if (r.todayOrders > 0) {
-        breakdownParts.push(`${r.empId}: ${r.todayOrders} orders, $${r.todaySale.toFixed(2)}`);
-      }
+      breakdownParts.push(
+        r.todayOrders > 0
+          ? `${r.empId}: ${r.todayOrders} ($${r.todaySale.toFixed(2)})`
+          : `${r.empId}: 0`
+      );
     }
-    const breakdown = breakdownParts.length > 0 ? breakdownParts.join(" | ") : "No orders today";
+    const breakdown = breakdownParts.length > 0 ? breakdownParts.join(" | ") : "No team members";
 
     // Get CEO's phone numbers
     const ceo = await prisma.user.findFirst({

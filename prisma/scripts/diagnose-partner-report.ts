@@ -94,6 +94,66 @@ async function main() {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: "v4", auth: client as any });
 
+  // Also probe the EM team via SHEET_MAP equivalents (CEO loop).
+  const SHEET_MAP: Record<string, string> = {
+    "EM-1": "1JDOuuUMho1LnEDZFkk8x7K3cD0A0NFALGH3WuVqz-bo",
+    "EM-2": "1kZCi5WbjjVqLwm_bijg-i74zIQxKmjCeRv3ORS-D0eU",
+    "EM-3": "1MUpjkITaOp-yKM051v1lQqtFzLQVY0VZDAd9F6KBgZI",
+    "EM-4B": "1SLlTv1b8wOPDkMBuNeFpgDZk3oi9OhQCB7enXzOJz6Y",
+    "EM-5": "1iEebhf_OtMJJg8S0Oyuol9g_oOSuhUbEfTiwr8pLT5w",
+    "EM-6": "1Nz1MeWZeeolbmks7GwT99TD7SFMXlmtHA_tXlqqyqpc",
+    "EM-7": "1yKHQM8_FJofJcLr7VFAHbeWxKkwJhFKhiaEiwxAWw4Q",
+    "EM-8": "1HC2ds9epnJp8zgq5FJkjLODF_1Bc4Xtnsp32jbbWSrg",
+    "EM-9": "10pkeYRvmPFFDTFvTilANVeDw7-r0HvYy7m0Z2fkFdgM",
+    "EM-10": "1X3s8bZ8z28p-Qu70-yoa4tGmdkLZWzFOB9vpDNdhXHc",
+  };
+  console.log(`━━━ Wasif (CEO) → EM team via SHEET_MAP (${Object.keys(SHEET_MAP).length} sheets) ━━━`);
+  let emTodayOrders = 0, emTodaySale = 0, emMonthOrders = 0, emMonthSale = 0;
+  for (const empId of Object.keys(SHEET_MAP).sort()) {
+    const sheetId = SHEET_MAP[empId];
+    try {
+      let actualTab: string | null = null;
+      let availableTabs: string[] = [];
+      try {
+        const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+        availableTabs = meta.data.sheets?.map((s) => s.properties?.title || "") || [];
+        const candidateSet = new Set(getAlternativeTabNames(month, year).map(normalizeTabName));
+        const found = availableTabs.find((t) => candidateSet.has(normalizeTabName(t)));
+        if (found) actualTab = found;
+      } catch {}
+      if (!actualTab) {
+        console.log(`  ${empId}  no tab match — available: [${availableTabs.join(", ")}]`);
+        continue;
+      }
+      const headerRes = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `'${actualTab}'!A1:J1` });
+      const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
+      const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
+      const priceCol = headers.findIndex((h: string) => h.includes("price"));
+      if (dateCol === -1) {
+        console.log(`  ${empId}  tab '${actualTab}' has no date col`);
+        continue;
+      }
+      const dataRes = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `'${actualTab}'!A2:J1000` });
+      const rows = dataRes.data.values || [];
+      let today = 0, todayS = 0, mo = 0, moS = 0;
+      const samples: string[] = [];
+      for (const row of rows) {
+        const dateVal = (row[dateCol] || "").toString().trim();
+        if (!dateVal) continue;
+        const sale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
+        mo++; moS += sale;
+        if (samples.length < 2) samples.push(dateVal);
+        if (isTodayCell(dateVal, todayPkt)) { today++; todayS += sale; }
+      }
+      emTodayOrders += today; emTodaySale += todayS;
+      emMonthOrders += mo; emMonthSale += moS;
+      console.log(`  ${empId}  tab='${actualTab}'  today=${today} ($${todayS.toFixed(2)})   month=${mo} ($${moS.toFixed(2)})   sample=[${samples.join(", ")}]`);
+    } catch (e: any) {
+      console.log(`  ${empId}  error: ${e.message?.slice(0, 80)}`);
+    }
+  }
+  console.log(`  TEAM TOTAL: today=${emTodayOrders} ($${emTodaySale.toFixed(2)})   month=${emMonthOrders} ($${emMonthSale.toFixed(2)})\n`);
+
   const partners = await prisma.user.findMany({
     where: {
       role: "PARTNER",
