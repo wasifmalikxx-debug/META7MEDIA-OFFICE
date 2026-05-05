@@ -25,7 +25,7 @@ async function main() {
   const client = await auth.getClient();
   const sheets = google.sheets({ version: "v4", auth: client as any });
 
-  const probe = ["AE-1", "ME-1", "AE-5"];
+  const probe = ["ME-3"];
   for (const empId of probe) {
     const u = await prisma.user.findFirst({
       where: { employeeId: empId },

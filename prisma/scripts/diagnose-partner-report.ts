@@ -220,6 +220,14 @@ async function main() {
           const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
           const priceCol = headers.findIndex((h: string) => h.includes("price"));
           const costCol = headers.findIndex((h: string) => h.includes("cost"));
+          const orderIdCol = headers.findIndex(
+            (h: string) =>
+              h.includes("order number") ||
+              h.includes("order #") ||
+              h.includes("ordder #") ||
+              h.includes("order id") ||
+              h === "ae order",
+          );
           if (dateCol === -1) {
             console.log(`  ${m.employeeId}  [${status}]  tab '${actualTab}' has no date col`);
             continue;
@@ -232,21 +240,32 @@ async function main() {
           const rows = dataRes.data.values || [];
           let todayOrders = 0, todaySale = 0, todayCost = 0;
           let monthOrders = 0, monthSale = 0, monthCost = 0;
+          const monthOrderIds = new Set<string>();
+          const todayOrderIds = new Set<string>();
           const dateSamples: string[] = [];
 
           for (const row of rows) {
             const dateVal = (row[dateCol] || "").toString().trim();
             if (!dateVal) continue;
             const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
+            if (rowSale <= 0) continue;
             const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
-            monthOrders++;
+            const orderId = orderIdCol >= 0 ? (row[orderIdCol] || "").toString().trim() : "";
+
             monthSale += rowSale;
             monthCost += rowCost;
+            if (!orderId || !monthOrderIds.has(orderId)) {
+              monthOrders++;
+              if (orderId) monthOrderIds.add(orderId);
+            }
             if (dateSamples.length < 3) dateSamples.push(dateVal);
             if (isTodayCell(dateVal, todayPkt)) {
-              todayOrders++;
               todaySale += rowSale;
               todayCost += rowCost;
+              if (!orderId || !todayOrderIds.has(orderId)) {
+                todayOrders++;
+                if (orderId) todayOrderIds.add(orderId);
+              }
             }
           }
 

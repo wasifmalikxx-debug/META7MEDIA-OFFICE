@@ -154,6 +154,18 @@ async function readEmployeeSheetReport(
     const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
     const priceCol = headers.findIndex((h: string) => h.includes("price"));
     const costCol = headers.findIndex((h: string) => h.includes("cost"));
+    // Order ID column varies in label across partner sheets — accept any
+    // header that mentions "order number / order # / order id / ordder #
+    // (typo seen on AE-5)". When present, used to dedupe multi-SKU rows
+    // belonging to the same Etsy transaction.
+    const orderIdCol = headers.findIndex(
+      (h: string) =>
+        h.includes("order number") ||
+        h.includes("order #") ||
+        h.includes("ordder #") ||
+        h.includes("order id") ||
+        h === "ae order"
+    );
     if (dateCol === -1) return empty;
 
     const dataRes = await sheets.spreadsheets.values.get({
@@ -164,21 +176,38 @@ async function readEmployeeSheetReport(
 
     let todayOrders = 0, todaySale = 0, todayCost = 0;
     let monthOrders = 0, monthSale = 0, monthCost = 0;
+    const monthOrderIds = new Set<string>();
+    const todayOrderIds = new Set<string>();
 
     for (const row of rows) {
       const dateVal = (row[dateCol] || "").toString().trim();
       if (!dateVal) continue;
       const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
+      // Skip placeholder rows (date filled but no price entered yet) — partners
+      // sometimes pre-stamp a date before logging the actual order details.
+      if (rowSale <= 0) continue;
       const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
+      const orderId = orderIdCol >= 0 ? (row[orderIdCol] || "").toString().trim() : "";
 
-      monthOrders++;
+      // Always sum revenue + cost — every line item contributes to the totals.
       monthSale += rowSale;
       monthCost += rowCost;
+      // But increment the ORDER COUNT only when the order ID hasn't been
+      // seen this month. SKU line items of the same Etsy transaction
+      // collapse into one order. Rows without an orderId always count
+      // (no way to know if they're dupes).
+      if (!orderId || !monthOrderIds.has(orderId)) {
+        monthOrders++;
+        if (orderId) monthOrderIds.add(orderId);
+      }
 
       if (isTodayCell(dateVal, todayPkt)) {
-        todayOrders++;
         todaySale += rowSale;
         todayCost += rowCost;
+        if (!orderId || !todayOrderIds.has(orderId)) {
+          todayOrders++;
+          if (orderId) todayOrderIds.add(orderId);
+        }
       }
     }
 
