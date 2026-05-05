@@ -7,7 +7,10 @@ import { google } from "googleapis";
 import path from "path";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// 5 minutes — the cron now reads ~24 sheets across EM/AE/ME, each requiring
+// 3 Google Sheets API calls (tab list + headers + data). At 60s some teams
+// got cut off before the CEO send fired. 300s is the Vercel Pro ceiling.
+export const maxDuration = 300;
 
 // Sheet IDs mapped to employee IDs
 const SHEET_MAP: Record<string, string> = {
@@ -296,12 +299,16 @@ export async function GET(request: NextRequest) {
       return numA - numB;
     });
 
-    // Same fuzzy tab + date matching now applied to the EM loop. Drives
-    // every member through readEmployeeSheetReport so a sheet renamed to
-    // `MAY 2026` or with `2 May 2026` dates won't silently zero out.
-    for (const empId of sortedIds) {
-      const sheetId = SHEET_MAP[empId];
-      const stats = await readEmployeeSheetReport(sheets, sheetId, reportMonth, reportYear, todayPkt);
+    // Read all EM employee sheets in parallel — much faster than serial
+    // (each readEmployeeSheetReport makes 3 Sheets API calls; 10 sheets
+    // sequentially eats most of the Vercel function timeout).
+    const emResults = await Promise.all(
+      sortedIds.map(async (empId) => ({
+        empId,
+        stats: await readEmployeeSheetReport(sheets, SHEET_MAP[empId], reportMonth, reportYear, todayPkt),
+      }))
+    );
+    for (const { empId, stats } of emResults) {
       reports.push({
         empId,
         name: nameMap[empId] || empId,
@@ -445,13 +452,25 @@ export async function GET(request: NextRequest) {
           return an - bn;
         });
 
-        for (const member of teamMembers) {
-          const sheetId = member.googleSheetUrl ? extractSheetId(member.googleSheetUrl) : null;
-          if (!sheetId) {
+        // Parallel sheet reads — 7 employees in parallel finishes in ~3s
+        // instead of ~21s sequentially. Still serial across teams so we
+        // don't slam the Sheets API rate limit too hard.
+        const memberResults = await Promise.all(
+          teamMembers.map(async (member) => {
+            const sheetId = member.googleSheetUrl ? extractSheetId(member.googleSheetUrl) : null;
+            if (!sheetId) {
+              return { member, stats: null as null | Awaited<ReturnType<typeof readEmployeeSheetReport>> };
+            }
+            const stats = await readEmployeeSheetReport(sheets, sheetId, reportMonth, reportYear, todayPkt);
+            return { member, stats };
+          })
+        );
+
+        for (const { member, stats } of memberResults) {
+          if (!stats) {
             memberStats.push({ empId: member.employeeId, error: "invalid_sheet_url" });
             continue;
           }
-          const stats = await readEmployeeSheetReport(sheets, sheetId, reportMonth, reportYear, todayPkt);
           tOrders += stats.todayOrders;
           tSale += stats.todaySale;
           tCost += stats.todayCost;
