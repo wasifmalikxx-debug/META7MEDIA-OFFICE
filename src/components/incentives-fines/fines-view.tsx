@@ -292,6 +292,24 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
           const dayLeaves = dayItems.filter((i: any) => i._type === "leave");
           const dayTotal = dayFines.reduce((s: number, f: any) => s + (f.amount || 0), 0);
           const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d");
+
+          // Sub-group rows by team so the CEO sees each team's activity for
+          // the day clearly separated. Within each team, fines come first
+          // then leaves (matches prior ordering). Team key falls back to
+          // department name for OFFICE 1 crews with no Team row.
+          const teamGroupMap = new Map<string, { fines: any[]; leaves: any[] }>();
+          for (const item of dayItems) {
+            const teamKey = item.user.team?.name || item.user.department?.name || "Unassigned";
+            let g = teamGroupMap.get(teamKey);
+            if (!g) {
+              g = { fines: [], leaves: [] };
+              teamGroupMap.set(teamKey, g);
+            }
+            if (item._type === "fine") g.fines.push(item);
+            else g.leaves.push(item);
+          }
+          const teamSections = [...teamGroupMap.entries()].sort(([a], [b]) => a.localeCompare(b));
+
           return (
             <Card key={dateStr} className="border-0 shadow-sm overflow-hidden">
               <CardHeader className="py-2.5 px-5 bg-muted/30 border-b">
@@ -307,8 +325,28 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="p-0 divide-y divide-muted/30">
-                {dayFines.map((fine: any) => {
+              <CardContent className="p-0">
+                {teamSections.map(([teamName, group], teamIdx) => {
+                  const teamTotal = group.fines.reduce((s: number, f: any) => s + (f.amount || 0), 0);
+                  const teamCount = group.fines.length + group.leaves.length;
+                  return (
+                    <div key={teamName} className={teamIdx > 0 ? "border-t-2 border-muted/40" : ""}>
+                      {/* Team subheader inside the date card */}
+                      <div className="px-5 py-2 bg-muted/15 flex items-center justify-between gap-3">
+                        <span className="text-[11px] font-bold text-muted-foreground">{teamName}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal">
+                            {teamCount}
+                          </Badge>
+                          {teamTotal > 0 && (
+                            <Badge className="text-[9px] h-4 px-1.5 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-0">
+                              PKR {teamTotal.toLocaleString()}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="divide-y divide-muted/30">
+                {group.fines.map((fine: any) => {
                   const Icon = typeIcons[fine.type] || AlertTriangle;
                   return (
                     <div key={fine.id} className="flex items-center gap-4 px-5 py-3 hover:bg-muted/20 transition-colors">
@@ -319,13 +357,7 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-semibold">{fine.user.firstName} {fine.user.lastName}</span>
                           <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">{fine.user.employeeId}</span>
-                          {/* Team label — multi-office context so the CEO can
-                              see at-a-glance whose team this fine belongs to. */}
-                          {(fine.user.team?.name || fine.user.department?.name) && (
-                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal text-muted-foreground">
-                              {fine.user.team?.name ?? fine.user.department?.name}
-                            </Badge>
-                          )}
+                          {/* Team badge removed — section header above carries that context */}
                           <Badge className={`text-[9px] h-4 border-0 ${typeColors[fine.type] || typeColors.OTHER}`}>
                             {typeLabels[fine.type] || fine.type}
                           </Badge>
@@ -352,7 +384,7 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                     </div>
                   );
                 })}
-                {dayLeaves.map((leave: any) => (
+                {group.leaves.map((leave: any) => (
                   <div key={leave.id} className="flex items-center gap-4 px-5 py-3 hover:bg-violet-50/30 dark:hover:bg-violet-950/10 transition-colors">
                     <div className="size-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
                       <CalendarOff className="size-3.5" />
@@ -361,12 +393,7 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold">{leave.user.firstName} {leave.user.lastName}</span>
                         <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">{leave.user.employeeId}</span>
-                        {/* Team label — same multi-office context as fine rows */}
-                        {(leave.user.team?.name || leave.user.department?.name) && (
-                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal text-muted-foreground">
-                            {leave.user.team?.name ?? leave.user.department?.name}
-                          </Badge>
-                        )}
+                        {/* Team badge removed — section header above carries that context */}
                         <Badge className="text-[9px] h-4 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-0">
                           {leave.leaveType === "HALF_DAY" ? "Half Day" : leave.leaveType}
                           {leave.halfDayPeriod === "FIRST_HALF" ? " (1st)" : leave.halfDayPeriod === "SECOND_HALF" ? " (2nd)" : ""}
@@ -384,6 +411,10 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
                     {isAdmin && <div className="size-7 shrink-0" />}
                   </div>
                 ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           );
