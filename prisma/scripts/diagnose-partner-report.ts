@@ -220,10 +220,6 @@ async function main() {
           const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
           const priceCol = headers.findIndex((h: string) => h.includes("price"));
           const costCol = headers.findIndex((h: string) => h.includes("cost"));
-          let profitCol = headers.findIndex((h: string) => h.trim() === "profit" || h.trim() === "gross profit");
-          if (profitCol === -1) {
-            profitCol = headers.findIndex((h: string) => h.includes("profit") && !h.includes("after tax"));
-          }
           if (dateCol === -1) {
             console.log(`  ${m.employeeId}  [${status}]  tab '${actualTab}' has no date col`);
             continue;
@@ -234,8 +230,8 @@ async function main() {
             range: `'${actualTab}'!A2:N1000`,
           });
           const rows = dataRes.data.values || [];
-          let todayOrders = 0, todaySale = 0, todayCost = 0, todayProfit = 0;
-          let monthOrders = 0, monthSale = 0;
+          let todayOrders = 0, todaySale = 0, todayCost = 0;
+          let monthOrders = 0, monthSale = 0, monthCost = 0;
           const dateSamples: string[] = [];
 
           for (const row of rows) {
@@ -243,25 +239,27 @@ async function main() {
             if (!dateVal) continue;
             const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
             const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
-            const rowProfit = profitCol >= 0 ? parseDollar(row[profitCol]) : 0;
             monthOrders++;
             monthSale += rowSale;
+            monthCost += rowCost;
             if (dateSamples.length < 3) dateSamples.push(dateVal);
             if (isTodayCell(dateVal, todayPkt)) {
               todayOrders++;
               todaySale += rowSale;
               todayCost += rowCost;
-              todayProfit += rowProfit;
             }
           }
 
+          // Gross profit = sale - cost (matches the cron's calculation).
+          const todayGross = todaySale - todayCost;
+          const monthGross = monthSale - monthCost;
           teamTodayOrders += todayOrders;
           teamTodaySale += todaySale;
           teamMonthOrders += monthOrders;
           teamMonthSale += monthSale;
 
           console.log(
-            `  ${m.employeeId}  [${status}]  today=${todayOrders}  sale=$${todaySale.toFixed(2)}  cost=$${todayCost.toFixed(2)}  profit=$${todayProfit.toFixed(2)}   month=${monthOrders} ($${monthSale.toFixed(2)})   priceCol=${priceCol}  costCol=${costCol}  profitCol=${profitCol}`
+            `  ${m.employeeId}  [${status}]  today=${todayOrders}  sale=$${todaySale.toFixed(2)}  cost=$${todayCost.toFixed(2)}  gross=$${todayGross.toFixed(2)}   month=${monthOrders} ($${monthSale.toFixed(2)} sale, $${monthGross.toFixed(2)} gross)`
           );
         } catch (e: any) {
           console.log(`  ${m.employeeId}  [${status}]  error: ${e.message?.slice(0, 80)}`);

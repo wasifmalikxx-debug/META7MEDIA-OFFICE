@@ -143,10 +143,9 @@ async function readEmployeeSheetReport(
     }
     if (!actualTab) return empty;
 
-    // Read up to column N (14 cols). Some partner sheets use a wider layout
-    // where PRICE is col 7, COST col 9, PROFIT col 10 — narrowing to A:J
-    // would silently drop the profit column for those sheets and the report
-    // would understate gross profit (only "Shape A" employees contribute).
+    // Read first 14 cols to safely cover both "Shape A" (PRICE col 6, COST
+    // col 8) and "Shape B" (PRICE col 7, COST col 9) layouts seen across
+    // partner sheets.
     const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
       range: `'${actualTab}'!A1:N1`,
@@ -155,13 +154,6 @@ async function readEmployeeSheetReport(
     const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
     const priceCol = headers.findIndex((h: string) => h.includes("price"));
     const costCol = headers.findIndex((h: string) => h.includes("cost"));
-    // Match the literal "profit" column, not "after tax profit". Headers
-    // typically have both — picking the gross-profit column matches what
-    // the analytics page displays.
-    let profitCol = headers.findIndex((h: string) => h.trim() === "profit" || h.trim() === "gross profit");
-    if (profitCol === -1) {
-      profitCol = headers.findIndex((h: string) => h.includes("profit") && !h.includes("after tax"));
-    }
     if (dateCol === -1) return empty;
 
     const dataRes = await sheets.spreadsheets.values.get({
@@ -170,32 +162,33 @@ async function readEmployeeSheetReport(
     });
     const rows = dataRes.data.values || [];
 
-    let todayOrders = 0, todaySale = 0, todayCost = 0, todayProfit = 0;
-    let monthOrders = 0, monthSale = 0, monthCost = 0, monthProfit = 0;
+    let todayOrders = 0, todaySale = 0, todayCost = 0;
+    let monthOrders = 0, monthSale = 0, monthCost = 0;
 
     for (const row of rows) {
       const dateVal = (row[dateCol] || "").toString().trim();
       if (!dateVal) continue;
       const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
       const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
-      const rowProfit = profitCol >= 0 ? parseDollar(row[profitCol]) : 0;
 
       monthOrders++;
       monthSale += rowSale;
       monthCost += rowCost;
-      monthProfit += rowProfit;
 
       if (isTodayCell(dateVal, todayPkt)) {
         todayOrders++;
         todaySale += rowSale;
         todayCost += rowCost;
-        todayProfit += rowProfit;
       }
     }
 
+    // Gross profit = sale - cost. We DON'T sum the sheet's column literally
+    // labeled "PROFIT" because in the Etsy templates that column is
+    // (After Tax - Cost), i.e. net post-fee. Wasif wants gross profit on
+    // every WhatsApp report, matching the analytics page change.
     return {
-      todayOrders, todaySale, todayCost, todayProfit,
-      monthOrders, monthSale, monthCost, monthProfit,
+      todayOrders, todaySale, todayCost, todayProfit: todaySale - todayCost,
+      monthOrders, monthSale, monthCost, monthProfit: monthSale - monthCost,
     };
   } catch {
     return empty;
