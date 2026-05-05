@@ -342,8 +342,8 @@ function KeyMetrics({
           show={show}
         />
         <MetricCard
-          label="After Tax Profit"
-          value={usd(overview.afterTax)}
+          label="Gross Profit"
+          value={usd(overview.grossProfit)}
           accentColor="green"
           show={show}
         />
@@ -406,11 +406,10 @@ function EmployeeTable({ employees, show }: { employees: EmployeeData[]; show: b
       totalSales: acc.totalSales + e.totalSales,
       totalCost: acc.totalCost + e.totalCost,
       profit: acc.profit + e.profit,
-      afterTax: acc.afterTax + e.afterTax,
       orders: acc.orders + e.orders,
       shops: acc.shops + e.shopNames.length,
     }),
-    { totalSales: 0, totalCost: 0, profit: 0, afterTax: 0, orders: 0, shops: 0 }
+    { totalSales: 0, totalCost: 0, profit: 0, orders: 0, shops: 0 }
   );
 
   return (
@@ -434,14 +433,13 @@ function EmployeeTable({ employees, show }: { employees: EmployeeData[]; show: b
               <TableHead className="text-center text-xs">Orders</TableHead>
               <TableHead className="text-right text-xs">Sales</TableHead>
               <TableHead className="text-right text-xs">Cost</TableHead>
-              <TableHead className="text-right text-xs">Profit</TableHead>
-              <TableHead className="text-right text-xs">After Tax</TableHead>
+              <TableHead className="text-right text-xs">Gross Profit</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {employees.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground py-8 text-sm">
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8 text-sm">
                   No employee data available
                 </TableCell>
               </TableRow>
@@ -468,7 +466,6 @@ function EmployeeTable({ employees, show }: { employees: EmployeeData[]; show: b
                       {m(usd(emp.profit))}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(emp.afterTax))}</TableCell>
                 </TableRow>
               ))
             )}
@@ -483,7 +480,6 @@ function EmployeeTable({ employees, show }: { employees: EmployeeData[]; show: b
                 <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(totals.totalSales))}</TableCell>
                 <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(totals.totalCost))}</TableCell>
                 <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(totals.profit))}</TableCell>
-                <TableCell className="text-right text-sm font-mono text-foreground">{m(usd(totals.afterTax))}</TableCell>
               </TableRow>
             </TableFooter>
           )}
