@@ -66,6 +66,7 @@ interface BonusProgramViewProps {
   currentMonth: number;
   currentYear: number;
   userRole: string;
+  teamKey: "em" | "ae" | "me";
   canToggleProfit?: boolean;
 }
 
@@ -136,6 +137,7 @@ export function BonusProgramView({
   currentMonth,
   currentYear,
   userRole,
+  teamKey,
   canToggleProfit = false,
 }: BonusProgramViewProps) {
   const router = useRouter();
@@ -263,7 +265,7 @@ export function BonusProgramView({
   async function handleFetchProfits() {
     setFetchingProfits(true);
     try {
-      const res = await fetch(`/api/sheets-profit?month=${month}&year=${year}`);
+      const res = await fetch(`/api/sheets-profit?month=${month}&year=${year}&team=${teamKey}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to fetch");
 

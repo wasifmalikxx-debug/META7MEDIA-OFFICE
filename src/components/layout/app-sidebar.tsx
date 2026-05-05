@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -102,46 +102,96 @@ const financeNav = [
   { title: "Payroll", href: "/payroll", icon: Wallet, roles: ["all"] },
 ];
 
+// Common Etsy items everyone in the program sees (Reviews, Refunds, Bonus Guide).
+// Per-team Bonus Program / Analytics / Team Reports moved into partner-specific
+// groups below — see getPartnerSections().
 function getEtsyNav(userRole: string, employeeId: string) {
   const isAdminOrManager = userRole === "SUPER_ADMIN" || userRole === "MANAGER";
   const isPartner = userRole === "PARTNER";
   // Izaan (EM-4) is Etsy team lead — gets the admin-style label even though
   // his role is EMPLOYEE, because he sees all refunds but doesn't submit
   const isTeamLead = employeeId === "EM-4";
-  // Etsy partners (Awais/Mubeen) get the same admin-style nav as CEO/Manager,
-  // but every page is server-side scoped to their team's employees.
   const isAdminLikeView = isAdminOrManager || isPartner;
 
-  const nav: { title: string; href: string; icon: any; roles: string[] }[] = [
-    { title: "Bonus Program", href: "/bonus-program", icon: Target, roles: ["SUPER_ADMIN", "MANAGER", "PARTNER"] },
-    { title: "Analytics", href: "/etsy-analytics", icon: BarChart3, roles: ["SUPER_ADMIN", "PARTNER"] },
-  ];
-  // Izaan only: Etsy team reports view (scoped to EM-* employees on the server)
-  if (isTeamLead) {
-    nav.push({
-      title: "Team Reports",
-      href: "/daily-work-report",
-      icon: FileText,
-      roles: ["all"],
-    });
-  }
-  nav.push(
+  return [
     {
       title: isAdminLikeView ? "Review Approvals" : "Submit Review",
       href: "/review-bonus",
       icon: Star,
       roles: ["all"],
     },
-    // Refunds: CEO/Manager/Partner/Izaan see 'Refunds' (all), other Etsy employees see 'Submit Refund'
     {
       title: isAdminLikeView || isTeamLead ? "Refunds" : "Submit Refund",
       href: "/refunds",
       icon: RefreshCcw,
       roles: ["all"],
     },
-    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] }
-  );
-  return nav;
+    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] },
+  ];
+}
+
+// Per-partner sidebar sections. Each partner gets their own group with their
+// team's Bonus Program + Analytics. CEO sees all three groups; partners see
+// only their own; Izaan (MANAGER) sees the EM group with an extra Team Reports
+// entry. The query param ?team=em|ae|me drives server-side scoping.
+type PartnerSection = {
+  key: "em" | "ae" | "me";
+  label: string;
+  items: { title: string; href: string; icon: any }[];
+};
+
+function getPartnerSections(
+  userRole: string,
+  employeeId: string,
+  partnerTeams?: PartnerTeamInfo[]
+): PartnerSection[] {
+  const isCeo = userRole === "SUPER_ADMIN";
+  const isIzaan = userRole === "MANAGER" && employeeId === "EM-4";
+  const partnerDeptHas = (suffix: string) =>
+    partnerTeams?.some((t) => t.departmentName.includes(suffix)) ?? false;
+
+  const sections: PartnerSection[] = [];
+
+  // EM group — visible to CEO and Izaan. (No partner currently manages EM,
+  // but partnerDeptHas covers it for future flexibility.)
+  if (isCeo || isIzaan || partnerDeptHas(" - EM")) {
+    const items: { title: string; href: string; icon: any }[] = [
+      { title: "Bonus Program", href: "/bonus-program?team=em", icon: Target },
+      { title: "Analytics", href: "/etsy-analytics?team=em", icon: BarChart3 },
+    ];
+    // Izaan only: dedicated team-reports view scoped to EM-* on the server.
+    // CEO already gets all-team Daily Reports in the main nav, so no duplicate.
+    if (isIzaan) {
+      items.push({ title: "Team Reports", href: "/daily-work-report", icon: FileText });
+    }
+    sections.push({ key: "em", label: "Izaan (EM)", items });
+  }
+
+  // AE group — visible to CEO and Awais.
+  if (isCeo || partnerDeptHas(" - AE")) {
+    sections.push({
+      key: "ae",
+      label: "Awais (AE)",
+      items: [
+        { title: "Bonus Program", href: "/bonus-program?team=ae", icon: Target },
+        { title: "Analytics", href: "/etsy-analytics?team=ae", icon: BarChart3 },
+      ],
+    });
+  }
+
+  // ME group — visible to CEO and Mubeen.
+  if (isCeo || partnerDeptHas(" - ME")) {
+    sections.push({
+      key: "me",
+      label: "Mubeen (ME)",
+      items: [
+        { title: "Bonus Program", href: "/bonus-program?team=me", icon: Target },
+        { title: "Analytics", href: "/etsy-analytics?team=me", icon: BarChart3 },
+      ],
+    });
+  }
+
+  return sections;
 }
 
 // Returns true if the partner manages an Etsy-style team (department name contains "Etsy")
@@ -171,9 +221,22 @@ function hasAccess(roles: string[], userRole: string) {
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTeam = searchParams.get("team");
   const [pendingDevices, setPendingDevices] = useState(0);
   const [pendingReviews, setPendingReviews] = useState(0);
   const [openComplaints, setOpenComplaints] = useState(0);
+
+  // Active-state check that handles ?team= query params on /bonus-program and
+  // /etsy-analytics. For partner-specific links, the team param must match.
+  function isItemActive(href: string): boolean {
+    const [path, queryStr] = href.split("?");
+    if (pathname !== path) return false;
+    if (!queryStr) return true;
+    const itemTeam = new URLSearchParams(queryStr).get("team");
+    if (!itemTeam) return true;
+    return currentTeam === itemTeam;
+  }
 
   // Poll for pending device approvals every 30 seconds (CEO only)
   useEffect(() => {
@@ -239,7 +302,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
       .filter((item) => hasAccess(item.roles, user.role))
       .map((item) => (
         <SidebarMenuItem key={item.href}>
-          <SidebarMenuButton render={<Link href={item.href} />} isActive={pathname === item.href}>
+          <SidebarMenuButton render={<Link href={item.href} />} isActive={isItemActive(item.href)}>
               <item.icon className="size-4" />
               <span>{item.title}</span>
               {item.href === "/login-approvals" && pendingDevices > 0 && (
@@ -304,18 +367,37 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Etsy Program — visible to:
-            - CEO (sees all Etsy across both offices)
-            - MANAGER (Izaan, OFFICE 1 Etsy team lead)
-            - PARTNER who manages an Etsy team (Awais/Mubeen)
-            - Etsy employees (EM-/AE-/ME- prefix) excluding EM-4L (non-Etsy ecom hire) */}
+        {/* Per-partner sections — one collapsible group per Etsy team. Each
+            renders only when relevant: CEO sees all three; partners see only
+            their own; Izaan (MANAGER) sees the EM group with Team Reports. */}
+        {getPartnerSections(user.role, user.employeeId || "", user.partnerTeams).map((section) => (
+          <SidebarGroup key={section.key}>
+            <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {section.items.map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton render={<Link href={item.href} />} isActive={isItemActive(item.href)}>
+                      <item.icon className="size-4" />
+                      <span>{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+
+        {/* Etsy common — Reviews / Refunds / Bonus Guide. Visible to anyone in
+            the Etsy program: CEO, Izaan (MANAGER), Etsy partners, and EM/AE/ME
+            employees (excluding EM-4L who's on non-Etsy ecom work). */}
         {(user.role === "SUPER_ADMIN" ||
           user.role === "MANAGER" ||
           (user.role === "PARTNER" && isPartnerOfEtsyTeam(user.partnerTeams)) ||
           ((user.employeeId?.startsWith("EM") || user.employeeId?.startsWith("AE") || user.employeeId?.startsWith("ME")) && user.employeeId !== "EM-4L")) &&
           getEtsyNav(user.role, user.employeeId || "").some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
-            <SidebarGroupLabel>Etsy Program</SidebarGroupLabel>
+            <SidebarGroupLabel>Etsy</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>{renderNavItems(getEtsyNav(user.role, user.employeeId || ""))}</SidebarMenu>
             </SidebarGroupContent>

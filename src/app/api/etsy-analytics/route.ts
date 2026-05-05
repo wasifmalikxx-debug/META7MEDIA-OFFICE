@@ -6,6 +6,7 @@ import {
   type EmployeeSheetData,
   type SheetOrderRow,
 } from "@/lib/services/google-sheets.service";
+import { resolveEtsyScope } from "@/lib/etsy-team-scope";
 
 // ─── In-memory cache (5 minutes) ──────────────────────────────────
 
@@ -98,34 +99,14 @@ export async function GET(request: NextRequest) {
     return error("Invalid month or year");
   }
 
-  // Resolve which Etsy department to scope to based on caller.
-  //   PARTNER → their team's department (must be Etsy-flavored).
-  //   CEO / MANAGER → primary office's Etsy team (Etsy - EM, with legacy
-  //     "Etsy" fallback if old data still uses the pre-Phase-6 name).
-  let scopedDept: { id: string; name: string } | null = null;
-
-  if (role === "PARTNER") {
-    const team = await prisma.team.findFirst({
-      where: { partnerId: session.user.id },
-      select: { department: { select: { id: true, name: true } } },
-    });
-    if (!team || !team.department) return error("No team found for this partner", 404);
-    if (!team.department.name.toLowerCase().includes("etsy")) {
-      // Non-Etsy partner (Zain/FB) — analytics doesn't apply.
-      return error("Analytics is only available for Etsy teams", 403);
-    }
-    scopedDept = team.department;
-  } else {
-    const dept = await prisma.department.findFirst({
-      where: {
-        office: { isPrimary: true },
-        OR: [{ name: "Etsy - EM" }, { name: "Etsy" }],
-      },
-      select: { id: true, name: true },
-    });
-    if (!dept) return error("Etsy department not found");
-    scopedDept = dept;
+  // Resolve scope. Honors ?team= for SUPER_ADMIN; partners and managers are
+  // pinned to their own team regardless of what they pass.
+  const scope = await resolveEtsyScope(role, session.user.id, searchParams.get("team"));
+  if (!scope) {
+    if (role === "PARTNER") return error("Analytics is only available for Etsy teams", 403);
+    return error("Etsy department not found");
   }
+  const scopedDept = { id: scope.departmentId, name: scope.departmentName };
 
   // Cache key MUST include the scope so Awais doesn't get Mubeen's cached data.
   const cacheKey = `etsy-analytics-${month}-${year}-${scopedDept.id}`;

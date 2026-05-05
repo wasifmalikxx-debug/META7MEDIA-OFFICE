@@ -129,9 +129,10 @@ function shortUsd(amount: number): string {
 interface EtsyAnalyticsViewProps {
   initialMonth: number;
   initialYear: number;
+  teamKey: "em" | "ae" | "me";
 }
 
-export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsViewProps) {
+export function EtsyAnalyticsView({ initialMonth, initialYear, teamKey }: EtsyAnalyticsViewProps) {
   const [month, setMonth] = useState(initialMonth);
   const [year, setYear] = useState(initialYear);
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -144,7 +145,7 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
     setLoading(true);
     setError(null);
     try {
-      const url = `/api/etsy-analytics?month=${month}&year=${year}${force ? "&bust=" + Date.now() : ""}`;
+      const url = `/api/etsy-analytics?month=${month}&year=${year}&team=${teamKey}${force ? "&bust=" + Date.now() : ""}`;
       const res = await fetch(url);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -158,7 +159,7 @@ export function EtsyAnalyticsView({ initialMonth, initialYear }: EtsyAnalyticsVi
     } finally {
       setLoading(false);
     }
-  }, [month, year]);
+  }, [month, year, teamKey]);
 
   useEffect(() => {
     fetchData();
