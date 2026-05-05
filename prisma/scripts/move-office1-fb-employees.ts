@@ -24,11 +24,12 @@ async function main() {
 
   // Find OFFICE 1's Facebook department. It still exists post-phase6 because
   // phase6 only creates OFFICE 2's Facebook — the OFFICE 1 one is left intact
-  // (just emptied of employees).
+  // (just emptied of employees). Renamed to "Facebook - HQ" on May 5 to
+  // disambiguate from OFFICE 2's "Facebook - O2" in the dropdowns.
   const office1Fb = await prisma.department.findFirst({
-    where: { name: "Facebook", officeId: office1.id },
+    where: { name: "Facebook - HQ", officeId: office1.id },
   });
-  if (!office1Fb) throw new Error("OFFICE 1 Facebook department not found");
+  if (!office1Fb) throw new Error("OFFICE 1 'Facebook - HQ' department not found");
 
   console.log(`  OFFICE 1 Facebook dept: ${office1Fb.id}\n`);
 

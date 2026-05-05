@@ -68,11 +68,13 @@ async function main() {
   }
 
   // 3. Departments under OFFICE 2
-  // Names match what prod is currently using post-rename (Etsy - AE / Etsy - ME).
-  // Re-running phase6 must produce this final state, NOT the original "Etsy AE"/"Etsy ME"
-  // names which would create duplicates next to the renamed real ones.
+  // Names match what prod is currently using post-rename. The Facebook dept
+  // is "Facebook - O2" (suffix tells you which office) so it's distinct from
+  // OFFICE 1's "Facebook - HQ" department in the Add Employee dropdown etc.
+  // Re-running phase6 must produce this final state, NOT the original
+  // "Facebook" / "Etsy AE" / "Etsy ME" names which would create duplicates.
   const deptDefs = [
-    { name: "Facebook", note: "Zain's FB team (moved from OFFICE 1)" },
+    { name: "Facebook - O2", note: "Zain's FB team (moved from OFFICE 1)" },
     { name: "Etsy - AE", note: "Awais's Etsy team (AE-* employees)" },
     { name: "Etsy - ME", note: "Mubeen's Etsy team (ME-* employees)" },
   ];
@@ -89,12 +91,13 @@ async function main() {
 
   // 4. Teams (one per department)
   // Team names match prod (Zain Team / Awais Team / Mubeen Team) — partner-
-  // personalized so the dashboard reads cleanly. Re-running phase6 must not
+  // personalized so the dashboard reads cleanly. Dept names use the suffix
+  // form (Facebook - O2 / Etsy - AE / Etsy - ME). Re-running phase6 must not
   // create empty duplicates next to these renamed real ones.
   const teamDefs = [
-    { name: "Zain Team",   deptName: "Facebook",  partnerEmail: "zain@meta7.media",   leadBonus: null },
-    { name: "Awais Team",  deptName: "Etsy - AE", partnerEmail: "awais@meta7.media",  leadBonus: null },
-    { name: "Mubeen Team", deptName: "Etsy - ME", partnerEmail: "mubeen@meta7.media", leadBonus: null },
+    { name: "Zain Team",   deptName: "Facebook - O2", partnerEmail: "zain@meta7.media",   leadBonus: null },
+    { name: "Awais Team",  deptName: "Etsy - AE",     partnerEmail: "awais@meta7.media",  leadBonus: null },
+    { name: "Mubeen Team", deptName: "Etsy - ME",     partnerEmail: "mubeen@meta7.media", leadBonus: null },
   ];
 
   // 5. Partner users (PARTNER role, no salary, no team membership)
@@ -153,8 +156,8 @@ async function main() {
   }
 
   // 7. Move existing Facebook (SMM-*) employees from OFFICE 1 → OFFICE 2
-  const fbDeptOffice2Id = departments["Facebook"];
-  const fbTeamId = teams["Facebook"].id;
+  const fbDeptOffice2Id = departments["Facebook - O2"];
+  const fbTeamId = teams["Facebook - O2"].id;
   const zainId = partners["zain@meta7.media"].id;
 
   const smmEmployees = await prisma.user.findMany({

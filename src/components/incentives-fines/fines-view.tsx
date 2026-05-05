@@ -127,9 +127,13 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
     OTHER: AlertTriangle,
   };
 
-  const etsyEmployees = employees.filter((e: any) => e.department?.name === "Etsy");
-  const fbEmployees = employees.filter((e: any) => e.department?.name === "Facebook");
-  const otherEmployees = employees.filter((e: any) => !e.department?.name || (e.department.name !== "Etsy" && e.department.name !== "Facebook"));
+  // Multi-office: dept names are now "Etsy - EM/AE/ME" + "Facebook - HQ/O2",
+  // so we group by prefix instead of exact match. Pre-rename this would have
+  // returned empty arrays for both groups (since "Etsy" / "Facebook" no longer
+  // exist as exact dept names).
+  const etsyEmployees = employees.filter((e: any) => e.department?.name?.startsWith("Etsy"));
+  const fbEmployees = employees.filter((e: any) => e.department?.name?.startsWith("Facebook"));
+  const otherEmployees = employees.filter((e: any) => !e.department?.name || (!e.department.name.startsWith("Etsy") && !e.department.name.startsWith("Facebook")));
 
   // Group fines + leaves by date
   const grouped: Record<string, any[]> = {};
