@@ -143,20 +143,30 @@ async function readEmployeeSheetReport(
     }
     if (!actualTab) return empty;
 
+    // Read up to column N (14 cols). Some partner sheets use a wider layout
+    // where PRICE is col 7, COST col 9, PROFIT col 10 — narrowing to A:J
+    // would silently drop the profit column for those sheets and the report
+    // would understate gross profit (only "Shape A" employees contribute).
     const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: `'${actualTab}'!A1:J1`,
+      range: `'${actualTab}'!A1:N1`,
     });
     const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
     const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
     const priceCol = headers.findIndex((h: string) => h.includes("price"));
     const costCol = headers.findIndex((h: string) => h.includes("cost"));
-    const profitCol = headers.findIndex((h: string) => h.includes("profit"));
+    // Match the literal "profit" column, not "after tax profit". Headers
+    // typically have both — picking the gross-profit column matches what
+    // the analytics page displays.
+    let profitCol = headers.findIndex((h: string) => h.trim() === "profit" || h.trim() === "gross profit");
+    if (profitCol === -1) {
+      profitCol = headers.findIndex((h: string) => h.includes("profit") && !h.includes("after tax"));
+    }
     if (dateCol === -1) return empty;
 
     const dataRes = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: `'${actualTab}'!A2:J1000`,
+      range: `'${actualTab}'!A2:N1000`,
     });
     const rows = dataRes.data.values || [];
 

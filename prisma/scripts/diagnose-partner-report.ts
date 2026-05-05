@@ -213,11 +213,17 @@ async function main() {
 
           const headerRes = await sheets.spreadsheets.values.get({
             spreadsheetId: sheetId,
-            range: `'${actualTab}'!A1:J1`,
+            range: `'${actualTab}'!A1:N1`,
           });
-          const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
+          const headersRaw = (headerRes.data.values?.[0] || []) as string[];
+          const headers = headersRaw.map((h: string) => h.toLowerCase().trim());
           const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
           const priceCol = headers.findIndex((h: string) => h.includes("price"));
+          const costCol = headers.findIndex((h: string) => h.includes("cost"));
+          let profitCol = headers.findIndex((h: string) => h.trim() === "profit" || h.trim() === "gross profit");
+          if (profitCol === -1) {
+            profitCol = headers.findIndex((h: string) => h.includes("profit") && !h.includes("after tax"));
+          }
           if (dateCol === -1) {
             console.log(`  ${m.employeeId}  [${status}]  tab '${actualTab}' has no date col`);
             continue;
@@ -225,10 +231,10 @@ async function main() {
 
           const dataRes = await sheets.spreadsheets.values.get({
             spreadsheetId: sheetId,
-            range: `'${actualTab}'!A2:J1000`,
+            range: `'${actualTab}'!A2:N1000`,
           });
           const rows = dataRes.data.values || [];
-          let todayOrders = 0, todaySale = 0;
+          let todayOrders = 0, todaySale = 0, todayCost = 0, todayProfit = 0;
           let monthOrders = 0, monthSale = 0;
           const dateSamples: string[] = [];
 
@@ -236,12 +242,16 @@ async function main() {
             const dateVal = (row[dateCol] || "").toString().trim();
             if (!dateVal) continue;
             const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
+            const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
+            const rowProfit = profitCol >= 0 ? parseDollar(row[profitCol]) : 0;
             monthOrders++;
             monthSale += rowSale;
             if (dateSamples.length < 3) dateSamples.push(dateVal);
             if (isTodayCell(dateVal, todayPkt)) {
               todayOrders++;
               todaySale += rowSale;
+              todayCost += rowCost;
+              todayProfit += rowProfit;
             }
           }
 
@@ -251,7 +261,7 @@ async function main() {
           teamMonthSale += monthSale;
 
           console.log(
-            `  ${m.employeeId}  [${status}]  tab='${actualTab}'  today=${todayOrders} ($${todaySale.toFixed(2)})   month=${monthOrders} ($${monthSale.toFixed(2)})   sample=[${dateSamples.join(", ")}]`
+            `  ${m.employeeId}  [${status}]  today=${todayOrders}  sale=$${todaySale.toFixed(2)}  cost=$${todayCost.toFixed(2)}  profit=$${todayProfit.toFixed(2)}   month=${monthOrders} ($${monthSale.toFixed(2)})   priceCol=${priceCol}  costCol=${costCol}  profitCol=${profitCol}`
           );
         } catch (e: any) {
           console.log(`  ${m.employeeId}  [${status}]  error: ${e.message?.slice(0, 80)}`);
