@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { json, error } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
-import { extractSheetId } from "@/lib/services/google-sheets.service";
+import { extractSheetId, normalizeTabName, getAlternativeTabNames } from "@/lib/services/google-sheets.service";
 import { google } from "googleapis";
 import path from "path";
 import fs from "fs";
@@ -61,19 +61,81 @@ interface EmployeeReport {
   monthProfit: number;
 }
 
+// Lightweight today-match for sheet date cells. Partner sheets ship dates in
+// many formats — "5 May", "5 May 2026", "May 5", "5/5/2026", "5-May" — and a
+// strict string compare misses real orders. This walks the common shapes and
+// returns true iff the cell represents today's date in PKT.
+function isTodayCell(dateVal: string, todayPkt: Date): boolean {
+  if (!dateVal) return false;
+  const cleaned = dateVal.trim();
+  const today = todayPkt.getUTCDate();
+  const todayMonth = todayPkt.getUTCMonth(); // 0-indexed
+  const todayYear = todayPkt.getUTCFullYear();
+  const months: Record<string, number> = {
+    jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2,
+    apr: 3, april: 3, may: 4, jun: 5, june: 5, jul: 6, july: 6,
+    aug: 7, august: 7, sep: 8, sept: 8, september: 8, oct: 9, october: 9,
+    nov: 10, november: 10, dec: 11, december: 11,
+  };
+
+  // "5 May", "5 May 2026", "5-May", "5-May-2026"
+  const dmy = cleaned.match(/^(\d{1,2})[\s\-]+([A-Za-z]+)(?:[\s\-]+(\d{2,4}))?$/);
+  if (dmy) {
+    const day = parseInt(dmy[1]);
+    const monthIdx = months[dmy[2].toLowerCase()];
+    const year = dmy[3] ? (parseInt(dmy[3]) < 100 ? 2000 + parseInt(dmy[3]) : parseInt(dmy[3])) : todayYear;
+    if (day === today && monthIdx === todayMonth && year === todayYear) return true;
+  }
+
+  // "May 5", "May 5 2026", "May-5", "May-5-2026"
+  const mdy = cleaned.match(/^([A-Za-z]+)[\s\-]+(\d{1,2})(?:[\s\-]+(\d{2,4}))?$/);
+  if (mdy) {
+    const monthIdx = months[mdy[1].toLowerCase()];
+    const day = parseInt(mdy[2]);
+    const year = mdy[3] ? (parseInt(mdy[3]) < 100 ? 2000 + parseInt(mdy[3]) : parseInt(mdy[3])) : todayYear;
+    if (day === today && monthIdx === todayMonth && year === todayYear) return true;
+  }
+
+  // "5/5/2026" or "5-5-2026" — try both M/D/Y and D/M/Y
+  const slash = cleaned.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (slash) {
+    const a = parseInt(slash[1]);
+    const b = parseInt(slash[2]);
+    const yr = parseInt(slash[3]) < 100 ? 2000 + parseInt(slash[3]) : parseInt(slash[3]);
+    if (yr === todayYear) {
+      if (a === todayMonth + 1 && b === today) return true; // M/D/Y
+      if (b === todayMonth + 1 && a === today) return true; // D/M/Y
+    }
+  }
+
+  // Last resort: native Date parse
+  const parsed = new Date(cleaned);
+  if (!isNaN(parsed.getTime())) {
+    if (
+      parsed.getUTCDate() === today &&
+      parsed.getUTCMonth() === todayMonth &&
+      parsed.getUTCFullYear() === todayYear
+    ) return true;
+  }
+
+  return false;
+}
+
 /**
  * Read one employee's sheet and return today + month-to-date aggregates.
  *
- * Mirrors the inline logic the CEO loop has used since day 1 — same column
- * matching, same date-equality check, same swallow-and-zero on failure. Used
- * by the partner-routing path below so Awais/Mubeen get sheet data computed
- * the exact same way the CEO's report does.
+ * Used by the partner-routing path so Awais/Mubeen's reports include all
+ * members regardless of how each sheet is formatted. Tries every variant
+ * of the month-tab name (MAY-2K26 / May 2K26 / MAY 2026 / etc.) so partner
+ * sheets with inconsistent labeling still resolve. Date matching is also
+ * format-tolerant.
  */
 async function readEmployeeSheetReport(
   sheets: ReturnType<typeof google.sheets>,
   sheetId: string,
-  tabName: string,
-  todayStr: string
+  month: number,
+  year: number,
+  todayPkt: Date
 ): Promise<{
   todayOrders: number; todaySale: number; todayCost: number; todayProfit: number;
   monthOrders: number; monthSale: number; monthCost: number; monthProfit: number;
@@ -83,9 +145,25 @@ async function readEmployeeSheetReport(
     monthOrders: 0, monthSale: 0, monthCost: 0, monthProfit: 0,
   };
   try {
+    // Resolve which tab in this sheet corresponds to the requested month.
+    // Try every alternative the analytics layer recognizes; first normalized
+    // match wins. Empty/missing tab → return zeros.
+    let actualTab: string | null = null;
+    try {
+      const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+      const tabs = meta.data.sheets?.map((s) => s.properties?.title || "") || [];
+      const candidates = getAlternativeTabNames(month, year).map(normalizeTabName);
+      const candidateSet = new Set(candidates);
+      const found = tabs.find((t) => candidateSet.has(normalizeTabName(t)));
+      if (found) actualTab = found;
+    } catch {
+      // Fall through — return empty zeros below if we can't list tabs.
+    }
+    if (!actualTab) return empty;
+
     const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: `'${tabName}'!A1:J1`,
+      range: `'${actualTab}'!A1:J1`,
     });
     const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
     const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
@@ -96,7 +174,7 @@ async function readEmployeeSheetReport(
 
     const dataRes = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: `'${tabName}'!A2:J1000`,
+      range: `'${actualTab}'!A2:J1000`,
     });
     const rows = dataRes.data.values || [];
 
@@ -115,7 +193,7 @@ async function readEmployeeSheetReport(
       monthCost += rowCost;
       monthProfit += rowProfit;
 
-      if (dateVal.toLowerCase() === todayStr.toLowerCase()) {
+      if (isTodayCell(dateVal, todayPkt)) {
         todayOrders++;
         todaySale += rowSale;
         todayCost += rowCost;
@@ -163,6 +241,10 @@ export async function GET(request: NextRequest) {
     const sheets = google.sheets({ version: "v4", auth: client as any });
     const tabName = getMonthTabName();
     const todayStr = getTodayDateStr();
+    // Used by the partner readEmployeeSheetReport() helper for fuzzy tab + date matching.
+    const todayPkt = new Date(Date.now() + 5 * 60 * 60_000);
+    const reportMonth = todayPkt.getUTCMonth() + 1;
+    const reportYear = todayPkt.getUTCFullYear();
 
     // Get employee names from DB
     const employees = await prisma.user.findMany({
@@ -400,7 +482,7 @@ export async function GET(request: NextRequest) {
             memberStats.push({ empId: member.employeeId, error: "invalid_sheet_url" });
             continue;
           }
-          const stats = await readEmployeeSheetReport(sheets, sheetId, tabName, todayStr);
+          const stats = await readEmployeeSheetReport(sheets, sheetId, reportMonth, reportYear, todayPkt);
           tOrders += stats.todayOrders;
           tSale += stats.todaySale;
           tCost += stats.todayCost;
@@ -410,9 +492,15 @@ export async function GET(request: NextRequest) {
           mCost += stats.monthCost;
           mProfit += stats.monthProfit;
           memberStats.push({ empId: member.employeeId, ...stats });
-          if (stats.todayOrders > 0) {
-            breakdownParts.push(`${member.employeeId}: ${stats.todayOrders} orders, $${stats.todaySale.toFixed(2)}`);
-          }
+          // Show every member in the breakdown — partners want to see who's
+          // shipping vs sitting at zero, not just today's actives. Compact
+          // format keeps the Meta template parameter under length limits
+          // (no \n / \t / >4 spaces — comma-only inline separators).
+          breakdownParts.push(
+            stats.todayOrders > 0
+              ? `${member.employeeId}: ${stats.todayOrders} ($${stats.todaySale.toFixed(2)})`
+              : `${member.employeeId}: 0`
+          );
         }
 
         const partnerPayload = {
@@ -420,7 +508,7 @@ export async function GET(request: NextRequest) {
           monthName: monthNameFormatted,
           monthly: { orders: mOrders, sale: mSale, cost: mCost, profit: mProfit },
           today: { orders: tOrders, sale: tSale, cost: tCost, profit: tProfit },
-          breakdown: breakdownParts.length > 0 ? breakdownParts.join(" | ") : "No orders today",
+          breakdown: breakdownParts.length > 0 ? breakdownParts.join(" | ") : "No team members",
         };
 
         const partnerSent: string[] = [];

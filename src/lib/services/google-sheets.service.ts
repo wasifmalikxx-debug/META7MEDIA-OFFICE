@@ -23,7 +23,7 @@ function getMonthTabName(month: number, year: number): string {
 }
 
 // Alternative tab name formats to try
-function getAlternativeTabNames(month: number, year: number): string[] {
+export function getAlternativeTabNames(month: number, year: number): string[] {
   const monthName = MONTH_NAMES[month - 1];
   const shortYear = `2K${String(year).slice(2)}`;
   const fullMonthNames = [
@@ -49,7 +49,7 @@ function getAlternativeTabNames(month: number, year: number): string[] {
  * (e.g. Nabeel's "May- 2K26") and the cron silently fails for them. Strict
  * tab-format compliance is brittle as more sheets get onboarded.
  */
-function normalizeTabName(s: string): string {
+export function normalizeTabName(s: string): string {
   return s
     .trim()
     .toUpperCase()

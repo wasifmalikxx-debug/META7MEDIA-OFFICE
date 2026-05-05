@@ -1,0 +1,211 @@
+/**
+ * Diagnostic: pull AE + ME team members from prod and read their Google
+ * Sheets the exact same way /api/cron/daily-report does, so we can see
+ * each employee's today + month numbers and spot any mismatch with what
+ * Awais / Mubeen received on WhatsApp.
+ *
+ * Read-only — does NOT touch the DB or call WhatsApp.
+ *
+ * Usage:
+ *   npx tsx prisma/scripts/diagnose-partner-report.ts
+ */
+import { PrismaClient } from "@prisma/client";
+import { google } from "googleapis";
+import path from "path";
+import {
+  extractSheetId,
+  normalizeTabName,
+  getAlternativeTabNames,
+} from "../../src/lib/services/google-sheets.service";
+
+const prisma = new PrismaClient();
+
+function parseDollar(val: string | undefined): number {
+  if (!val) return 0;
+  return parseFloat(val.replace(/[$,\s]/g, "")) || 0;
+}
+
+function isTodayCell(dateVal: string, todayPkt: Date): boolean {
+  if (!dateVal) return false;
+  const cleaned = dateVal.trim();
+  const today = todayPkt.getUTCDate();
+  const todayMonth = todayPkt.getUTCMonth();
+  const todayYear = todayPkt.getUTCFullYear();
+  const months: Record<string, number> = {
+    jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2,
+    apr: 3, april: 3, may: 4, jun: 5, june: 5, jul: 6, july: 6,
+    aug: 7, august: 7, sep: 8, sept: 8, september: 8, oct: 9, october: 9,
+    nov: 10, november: 10, dec: 11, december: 11,
+  };
+
+  const dmy = cleaned.match(/^(\d{1,2})[\s\-]+([A-Za-z]+)(?:[\s\-]+(\d{2,4}))?$/);
+  if (dmy) {
+    const day = parseInt(dmy[1]);
+    const monthIdx = months[dmy[2].toLowerCase()];
+    const year = dmy[3] ? (parseInt(dmy[3]) < 100 ? 2000 + parseInt(dmy[3]) : parseInt(dmy[3])) : todayYear;
+    if (day === today && monthIdx === todayMonth && year === todayYear) return true;
+  }
+
+  const mdy = cleaned.match(/^([A-Za-z]+)[\s\-]+(\d{1,2})(?:[\s\-]+(\d{2,4}))?$/);
+  if (mdy) {
+    const monthIdx = months[mdy[1].toLowerCase()];
+    const day = parseInt(mdy[2]);
+    const year = mdy[3] ? (parseInt(mdy[3]) < 100 ? 2000 + parseInt(mdy[3]) : parseInt(mdy[3])) : todayYear;
+    if (day === today && monthIdx === todayMonth && year === todayYear) return true;
+  }
+
+  const slash = cleaned.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (slash) {
+    const a = parseInt(slash[1]);
+    const b = parseInt(slash[2]);
+    const yr = parseInt(slash[3]) < 100 ? 2000 + parseInt(slash[3]) : parseInt(slash[3]);
+    if (yr === todayYear) {
+      if (a === todayMonth + 1 && b === today) return true;
+      if (b === todayMonth + 1 && a === today) return true;
+    }
+  }
+
+  const parsed = new Date(cleaned);
+  if (!isNaN(parsed.getTime())) {
+    if (
+      parsed.getUTCDate() === today &&
+      parsed.getUTCMonth() === todayMonth &&
+      parsed.getUTCFullYear() === todayYear
+    ) return true;
+  }
+  return false;
+}
+
+async function main() {
+  const todayPkt = new Date(Date.now() + 5 * 60 * 60_000);
+  const month = todayPkt.getUTCMonth() + 1;
+  const year = todayPkt.getUTCFullYear();
+  console.log(`Month: ${month}/${year}   Today (PKT): ${todayPkt.toISOString().slice(0, 10)}\n`);
+
+  const auth = process.env.GOOGLE_CREDENTIALS
+    ? new google.auth.GoogleAuth({
+        credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+        scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+      })
+    : new google.auth.GoogleAuth({
+        keyFile: path.join(process.cwd(), "google-credentials.json"),
+        scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+      });
+  const client = await auth.getClient();
+  const sheets = google.sheets({ version: "v4", auth: client as any });
+
+  const partners = await prisma.user.findMany({
+    where: {
+      role: "PARTNER",
+      partnerTeams: {
+        some: { department: { name: { startsWith: "Etsy - " } } },
+      },
+    },
+    select: {
+      firstName: true,
+      partnerTeams: {
+        where: { department: { name: { startsWith: "Etsy - " } } },
+        select: {
+          department: { select: { name: true } },
+          members: {
+            where: { status: { in: ["HIRED", "PROBATION"] } },
+            select: { employeeId: true, firstName: true, status: true, googleSheetUrl: true },
+            orderBy: { employeeId: "asc" },
+          },
+        },
+      },
+    },
+  });
+
+  for (const partner of partners) {
+    for (const team of partner.partnerTeams) {
+      console.log(`━━━ ${partner.firstName} → ${team.department?.name} (${team.members.length} member(s)) ━━━`);
+      let teamTodayOrders = 0, teamTodaySale = 0;
+      let teamMonthOrders = 0, teamMonthSale = 0;
+
+      for (const m of team.members) {
+        const status = m.status;
+        if (!m.googleSheetUrl) {
+          console.log(`  ${m.employeeId}  [${status}]  no sheet URL`);
+          continue;
+        }
+        const sheetId = extractSheetId(m.googleSheetUrl);
+        if (!sheetId) {
+          console.log(`  ${m.employeeId}  [${status}]  invalid URL`);
+          continue;
+        }
+        try {
+          // Fuzzy tab match using all candidate names
+          let actualTab: string | null = null;
+          let availableTabs: string[] = [];
+          try {
+            const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+            availableTabs = meta.data.sheets?.map((s) => s.properties?.title || "") || [];
+            const candidateSet = new Set(getAlternativeTabNames(month, year).map(normalizeTabName));
+            const found = availableTabs.find((t) => candidateSet.has(normalizeTabName(t)));
+            if (found) actualTab = found;
+          } catch {}
+
+          if (!actualTab) {
+            console.log(`  ${m.employeeId}  [${status}]  no tab match — available: [${availableTabs.join(", ")}]`);
+            continue;
+          }
+
+          const headerRes = await sheets.spreadsheets.values.get({
+            spreadsheetId: sheetId,
+            range: `'${actualTab}'!A1:J1`,
+          });
+          const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
+          const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
+          const priceCol = headers.findIndex((h: string) => h.includes("price"));
+          if (dateCol === -1) {
+            console.log(`  ${m.employeeId}  [${status}]  tab '${actualTab}' has no date col`);
+            continue;
+          }
+
+          const dataRes = await sheets.spreadsheets.values.get({
+            spreadsheetId: sheetId,
+            range: `'${actualTab}'!A2:J1000`,
+          });
+          const rows = dataRes.data.values || [];
+          let todayOrders = 0, todaySale = 0;
+          let monthOrders = 0, monthSale = 0;
+          const dateSamples: string[] = [];
+
+          for (const row of rows) {
+            const dateVal = (row[dateCol] || "").toString().trim();
+            if (!dateVal) continue;
+            const rowSale = priceCol >= 0 ? parseDollar(row[priceCol]) : 0;
+            monthOrders++;
+            monthSale += rowSale;
+            if (dateSamples.length < 3) dateSamples.push(dateVal);
+            if (isTodayCell(dateVal, todayPkt)) {
+              todayOrders++;
+              todaySale += rowSale;
+            }
+          }
+
+          teamTodayOrders += todayOrders;
+          teamTodaySale += todaySale;
+          teamMonthOrders += monthOrders;
+          teamMonthSale += monthSale;
+
+          console.log(
+            `  ${m.employeeId}  [${status}]  tab='${actualTab}'  today=${todayOrders} ($${todaySale.toFixed(2)})   month=${monthOrders} ($${monthSale.toFixed(2)})   sample=[${dateSamples.join(", ")}]`
+          );
+        } catch (e: any) {
+          console.log(`  ${m.employeeId}  [${status}]  error: ${e.message?.slice(0, 80)}`);
+        }
+      }
+
+      console.log(`  TEAM TOTAL: today=${teamTodayOrders} ($${teamTodaySale.toFixed(2)})   month=${teamMonthOrders} ($${teamMonthSale.toFixed(2)})\n`);
+    }
+  }
+}
+
+main()
+  .then(() => prisma.$disconnect())
+  .catch((e) => {
+    console.error(e);
+    return prisma.$disconnect().finally(() => process.exit(1));
+  });
