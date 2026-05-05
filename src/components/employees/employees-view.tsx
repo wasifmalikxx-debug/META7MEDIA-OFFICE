@@ -44,6 +44,7 @@ const emptyForm = {
   firstName: "",
   lastName: "",
   phone: "",
+  phone2: "",
   role: "EMPLOYEE",
   status: "HIRED",
   designation: "",
@@ -112,6 +113,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
       firstName: emp.firstName,
       lastName: emp.lastName,
       phone: emp.phone || "",
+      phone2: emp.phone2 || "",
       status: emp.status,
       designation: emp.designation || "",
       departmentId: emp.department?.id || "",
@@ -216,9 +218,15 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required className="h-9" />
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Phone <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="03XX-XXXXXXX" className="h-9" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Phone <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                    <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="03XX-XXXXXXX" className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Secondary Phone <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                    <Input value={form.phone2} onChange={(e) => setForm({ ...form, phone2: e.target.value })} placeholder="03XX-XXXXXXX" className="h-9" />
+                  </div>
                 </div>
               </div>
 
@@ -358,13 +366,23 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     />
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Phone</Label>
-                  <Input
-                    value={editForm.phone}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                    placeholder="e.g. 0300-1234567"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Phone</Label>
+                    <Input
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                      placeholder="e.g. 0300-1234567"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Secondary Phone <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                    <Input
+                      value={editForm.phone2}
+                      onChange={(e) => setEditForm({ ...editForm, phone2: e.target.value })}
+                      placeholder="e.g. 0301-7654321"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -523,8 +541,11 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                     </div>
                     {/* Email */}
                     <div className="truncate text-muted-foreground">{emp.email}</div>
-                    {/* Phone */}
-                    <div className="font-mono text-muted-foreground">{emp.phone || "—"}</div>
+                    {/* Phone (+ secondary on next line if present) */}
+                    <div className="font-mono text-muted-foreground">
+                      <div>{emp.phone || "—"}</div>
+                      {emp.phone2 && <div className="text-[10px] opacity-70">{emp.phone2}</div>}
+                    </div>
                     {/* Salary */}
                     <div className="font-semibold">{emp.salaryStructure ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}` : "—"}</div>
                     {/* Joining */}

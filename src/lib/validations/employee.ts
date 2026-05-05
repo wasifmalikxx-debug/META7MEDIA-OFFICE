@@ -12,6 +12,9 @@ export const createEmployeeSchema = z.object({
   // server side rather than null.
   lastName: z.string().optional().default(""),
   phone: z.string().optional(),
+  // Secondary phone — optional; mainly for partners (e.g. Mubeen) who need a
+  // backup contact. Empty string is normalized to undefined by Prisma.
+  phone2: z.string().optional(),
   role: z.enum(["SUPER_ADMIN", "HR_ADMIN", "MANAGER", "EMPLOYEE"]),
   designation: z.string().optional(),
   departmentId: z.string().optional(),

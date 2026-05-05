@@ -65,6 +65,7 @@ export default async function EmployeesPage() {
           firstName: true,
           lastName: true,
           phone: true,
+          phone2: true,
           role: true,
           status: true,
           designation: true,

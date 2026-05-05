@@ -29,6 +29,7 @@ export async function GET(
       firstName: true,
       lastName: true,
       phone: true,
+      phone2: true,
       profilePhoto: true,
       role: true,
       status: true,
