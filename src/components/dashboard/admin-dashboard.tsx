@@ -277,8 +277,10 @@ export function AdminDashboard({
         );
       })()}
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+      {/* KPI Cards — 5 across on desktop. Total Payable was removed from
+          this row per Wasif's "I should not be seeing full amounts" rule;
+          per-team payables surface in the Teams Overview section below. */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
         {/* Total Employees */}
         <Card className="border-0 shadow-sm bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
           <CardContent className="pt-5 pb-4">
@@ -364,22 +366,6 @@ export function AdminDashboard({
               </div>
               <div className="rounded-xl bg-orange-100 dark:bg-orange-900/30 p-2.5">
                 <AlertTriangle className="size-5 text-orange-600 dark:text-orange-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Total Payable */}
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Payable</p>
-                <p className="text-2xl font-bold mt-1 text-blue-700 dark:text-blue-400">PKR {totalPayable.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground mt-1">This month</p>
-              </div>
-              <div className="rounded-xl bg-blue-100 dark:bg-blue-900/30 p-2.5">
-                <Wallet className="size-5 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
@@ -632,144 +618,143 @@ export function AdminDashboard({
         </Card>
       </div>
 
-      {/* Live Employee Status */}
-      <Card className="border-0 shadow-sm overflow-hidden">
-        <CardHeader className="pb-3 border-b bg-muted/20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <CardTitle className="text-lg font-bold">Live Status</CardTitle>
-              <Badge variant="outline" className="text-[10px] font-normal">
-                {sorted.length} employees
-              </Badge>
-            </div>
-            <div className="flex items-center gap-3">
-              {dayOffLabel && (
-                <Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 text-[10px] border-0">
-                  {dayOffLabel}
+      {/* Live Employee Status — separate card per team. The old single-card
+          layout with internal subsections was hard to scan once we crossed
+          5 teams across 2 offices. Each team is now its own visual block
+          (2-col grid on desktop) so the CEO can read team-by-team status
+          without one team's roster bleeding into the next. */}
+      {(() => {
+        // Map of `teamName|officeName` → employees (status-sorted within team).
+        // Composite key disambiguates same-named teams across offices.
+        const groupedByTeam = new Map<string, EmployeeStatus[]>();
+        for (const emp of sorted) {
+          const k = `${emp.teamName ?? "Unassigned"}|${emp.officeName ?? ""}`;
+          const arr = groupedByTeam.get(k) ?? [];
+          arr.push(emp);
+          groupedByTeam.set(k, arr);
+        }
+
+        // Render in teamGroups order (matches Teams Overview cards above).
+        // Skip empty + "Unassigned" sections — only real teams render.
+        const orderedSections: { tg: TeamGroup; emps: EmployeeStatus[] }[] = [];
+        for (const tg of teamGroups) {
+          const k = `${tg.name}|${tg.officeName}`;
+          const emps = groupedByTeam.get(k);
+          if (emps && emps.length > 0) {
+            orderedSections.push({ tg, emps });
+          }
+        }
+
+        if (orderedSections.length === 0) return null;
+
+        return (
+          <div className="space-y-3">
+            {/* Section header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold">Live Status</h2>
+                <Badge variant="outline" className="text-[10px] font-normal">
+                  {sorted.length} employees
                 </Badge>
-              )}
-              <div className="flex items-center gap-1.5">
-                <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] text-muted-foreground">Live</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {dayOffLabel && (
+                  <Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 text-[10px] border-0">
+                    {dayOffLabel}
+                  </Badge>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] text-muted-foreground">Live</span>
+                </div>
               </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {/* Group rows by team, in the same order as the Teams Overview cards.
-              Within each team, status priority sort is preserved. The team
-              badge per-row is gone (replaced by the section header) so each
-              row stays compact. */}
-          {(() => {
-            // Map of `teamName|officeName` → employees (status-sorted).
-            // Composite key disambiguates "Facebook" appearing in both
-            // OFFICE 1 (CEO direct) and OFFICE 2 (Zain's Facebook Team).
-            const groupedByTeam = new Map<string, EmployeeStatus[]>();
-            for (const emp of sorted) {
-              const k = `${emp.teamName ?? "Unassigned"}|${emp.officeName ?? ""}`;
-              const arr = groupedByTeam.get(k) ?? [];
-              arr.push(emp);
-              groupedByTeam.set(k, arr);
-            }
 
-            // Render in teamGroups order (matches Teams Overview cards above).
-            // Any employee whose team isn't in teamGroups gets pushed to an
-            // "Unassigned" tail section — defensive, shouldn't happen.
-            const orderedSections: { tg: TeamGroup | null; emps: EmployeeStatus[] }[] = [];
-            const consumed = new Set<string>();
-            for (const tg of teamGroups) {
-              const k = `${tg.name}|${tg.officeName}`;
-              const emps = groupedByTeam.get(k);
-              if (emps && emps.length > 0) {
-                orderedSections.push({ tg, emps });
-                consumed.add(k);
-              }
-            }
-            for (const [k, emps] of groupedByTeam) {
-              if (!consumed.has(k)) orderedSections.push({ tg: null, emps });
-            }
-
-            return (
-              <div>
-                {orderedSections.map(({ tg, emps }, sectionIdx) => (
-                  <div key={tg?.key ?? `unassigned-${sectionIdx}`} className={sectionIdx > 0 ? "border-t-2 border-muted/40" : ""}>
-                    {/* Section header */}
-                    <div className="px-5 py-2.5 bg-muted/15 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs font-bold truncate">
-                          {tg?.name ?? "Unassigned"}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground truncate">
-                          {tg ? (
-                            <>
-                              {tg.partnerName ? `${tg.partnerName}` : "CEO direct"}
-                              <span className="mx-1.5 text-muted-foreground/40">·</span>
-                              {tg.officeName}
-                            </>
-                          ) : (
-                            "no team assigned"
-                          )}
-                        </span>
+            {/* Per-team cards in a 2-column grid */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              {orderedSections.map(({ tg, emps }) => {
+                // Quick status counts for the team-card header
+                const presentLike = emps.filter((e) => e.liveStatus === "PRESENT" || e.liveStatus === "LATE" || e.liveStatus === "ON_BREAK").length;
+                return (
+                  <Card key={tg.key} className="border-0 shadow-sm overflow-hidden">
+                    <CardHeader className="py-3 px-4 border-b bg-muted/15">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <CardTitle className="text-sm font-bold truncate">{tg.name}</CardTitle>
+                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal shrink-0">
+                              {emps.length}
+                            </Badge>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                            {tg.partnerName ? tg.partnerName : "CEO direct"}
+                            <span className="mx-1.5 text-muted-foreground/40">·</span>
+                            {tg.officeName}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                            {presentLike}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">/ {emps.length} in</span>
+                        </div>
                       </div>
-                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 font-normal shrink-0">
-                        {emps.length}
-                      </Badge>
-                    </div>
-
-                    {/* Employee rows for this team */}
-                    <div className="divide-y divide-muted/40">
-                      {emps.map((emp) => {
-                        const config = STATUS_CONFIG[emp.liveStatus] || STATUS_CONFIG.NOT_CHECKED_IN;
-                        const Icon = config.icon;
-                        return (
-                          <div
-                            key={emp.id}
-                            className="flex items-center justify-between py-3 px-5 hover:bg-muted/30 transition-colors"
-                          >
-                            <div className="flex items-center gap-3.5">
-                              <div className="relative">
-                                <div className="flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300">
-                                  {emp.firstName[0]}{emp.lastName?.[0] || ""}
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="divide-y divide-muted/40">
+                        {emps.map((emp) => {
+                          const config = STATUS_CONFIG[emp.liveStatus] || STATUS_CONFIG.NOT_CHECKED_IN;
+                          const Icon = config.icon;
+                          return (
+                            <div
+                              key={emp.id}
+                              className="flex items-center justify-between gap-3 py-2.5 px-4 hover:bg-muted/30 transition-colors"
+                            >
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="relative shrink-0">
+                                  <div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                                    {emp.firstName[0]}{emp.lastName?.[0] || ""}
+                                  </div>
+                                  <div className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white dark:border-slate-900 ${config.dot}`} />
                                 </div>
-                                <div className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white dark:border-slate-900 ${config.dot}`} />
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-semibold">
-                                    {emp.firstName} {emp.lastName || ""}
-                                  </span>
-                                  <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">
-                                    {emp.employeeId}
-                                  </span>
-                                  {emp.empStatus === "PROBATION" && (
-                                    <Badge className="text-[8px] h-4 px-1.5 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 border-0">
-                                      PROBATION
-                                    </Badge>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[13px] font-semibold truncate">
+                                      {emp.firstName} {emp.lastName || ""}
+                                    </span>
+                                    <span className="text-[9px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded shrink-0">
+                                      {emp.employeeId}
+                                    </span>
+                                    {emp.empStatus === "PROBATION" && (
+                                      <Badge className="text-[8px] h-4 px-1.5 bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 border-0 shrink-0">
+                                        PROBATION
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {emp.checkIn && (
+                                    <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                                      {formatPKTTime(emp.checkIn)}
+                                      {emp.checkOut && ` — ${formatPKTTime(emp.checkOut)}`}
+                                    </p>
                                   )}
                                 </div>
-                                {emp.checkIn && (
-                                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                                    {formatPKTTime(emp.checkIn)}
-                                    {emp.checkOut && ` — ${formatPKTTime(emp.checkOut)}`}
-                                  </p>
-                                )}
+                              </div>
+                              <div className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ${config.color}`}>
+                                <Icon className="size-3" />
+                                {config.label}
                               </div>
                             </div>
-                            <div className={`flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-full ${config.color}`}>
-                              <Icon className="size-3.5" />
-                              {config.label}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </CardContent>
-      </Card>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
