@@ -160,10 +160,16 @@ export function AttendanceCalendarView({
     section.members.push(emp);
   }
   // OFFICE 1 first, then OFFICE 2, alphabetical by team name within each office.
-  const teamSections = [...sectionsMap.values()].sort((a, b) => {
-    if (a.officeName !== b.officeName) return a.officeName.localeCompare(b.officeName);
-    return a.name.localeCompare(b.name);
-  });
+  // Drop the "Unassigned" fallback section: if neither team nor department is
+  // present we skip the row entirely rather than render a noisy "Unassigned"
+  // header. Defensive — should never fire post Phase 2 backfill — but guards
+  // against any orphan row that slips through.
+  const teamSections = [...sectionsMap.values()]
+    .filter((s) => s.name !== "Unassigned" && s.members.length > 0)
+    .sort((a, b) => {
+      if (a.officeName !== b.officeName) return a.officeName.localeCompare(b.officeName);
+      return a.name.localeCompare(b.name);
+    });
 
   // Color rotation so consecutive team headers are visually distinguishable.
   const TEAM_COLORS = [

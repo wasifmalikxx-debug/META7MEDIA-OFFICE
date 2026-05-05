@@ -121,73 +121,39 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
     coveredSet.add(`${f.userId}|${f.date.toISOString().split("T")[0]}`);
   }
 
-  // Calculate accumulated leave budget per employee (batched — 3 queries total, not per employee)
+  // ── Per-employee leave balance (canonical rule, per leave-budget.service) ──
+  // Every month each employee earns paidLeavesPerMonth (default 1.0) — no
+  // rollover. ONLY explicit half-day leave applications consume the displayed
+  // budget (half-day = 0.5). Auto-paid absences use a separate per-month
+  // allowance and do NOT subtract here.
+  //
+  // Pre-fix this page used a months-since-SYS_START × 1.0 formula that
+  // (a) inflated balances for new hires (e.g. ME-1 joined May 4 was showing
+  // 2.0 instead of 1.0) and (b) double-counted absent fines that should have
+  // gone through their own auto-cover allowance, not the half-day budget.
+  // Both were drift from the canonical rule. Now matches leave-budget.service.
   const empIds = employees.map((e) => e.id);
   const paidLeavesPerMonth = settings?.paidLeavesPerMonth ?? 1;
 
-  const SYS_START_YEAR = 2026;
-  const SYS_START_MONTH = 3; // 0-indexed: 3 = April
-  const sysStart = new Date(Date.UTC(SYS_START_YEAR, SYS_START_MONTH, 1));
-
-  // Batch-fetch everything we need to compute budget for all employees in
-  // parallel. Logic MUST stay in sync with leave-budget.service.ts — we can't
-  // call the service here because it's per-user (N round trips).
-  const [halfDayLeaveRequests, allAbsents, allAbsentFines] = await Promise.all([
-    prisma.leaveRequest.groupBy({
-      by: ["userId"],
-      where: { userId: { in: empIds }, leaveType: "HALF_DAY", status: "APPROVED", startDate: { gte: sysStart } },
-      _count: true,
-    }),
-    prisma.attendance.findMany({
-      where: { userId: { in: empIds }, status: "ABSENT", date: { gte: sysStart } },
-      select: { userId: true, date: true },
-    }),
-    // Need the reason to parse partial vs full coverage (see leave-budget.service.ts)
-    prisma.fine.findMany({
-      where: { userId: { in: empIds }, type: "ABSENT_WITHOUT_LEAVE", date: { gte: sysStart } },
-      select: { userId: true, date: true, reason: true },
-    }),
-  ]);
+  // Half-day applications IN THE CURRENTLY-VIEWED MONTH only.
+  const monthHalfDayLeaves = await prisma.leaveRequest.groupBy({
+    by: ["userId"],
+    where: {
+      userId: { in: empIds },
+      leaveType: "HALF_DAY",
+      status: "APPROVED",
+      startDate: { gte: startOfMonth, lte: endOfMonth },
+    },
+    _count: true,
+  });
 
   const halfDayMap: Record<string, number> = {};
-  halfDayLeaveRequests.forEach((a: any) => { halfDayMap[a.userId] = a._count; });
+  monthHalfDayLeaves.forEach((a: any) => { halfDayMap[a.userId] = a._count; });
 
-  // Parse each absent fine's reason to determine how many budget days it
-  // consumed (same parsing as leave-budget.service.ts):
-  //   "Partially covered by paid leave (X day used)" → X
-  //   "Covered by paid leave"                        → 1.0
-  //   anything else (uncovered full fine)            → 0
-  const absentDaysUsedMap: Record<string, number> = {};
-  const absentFineDateSet = new Set<string>();
-  for (const f of allAbsentFines) {
-    absentFineDateSet.add(`${f.userId}|${f.date.toISOString().split("T")[0]}`);
-    const r = f.reason || "";
-    const partial = r.match(/Partially covered by paid leave \((\d+(?:\.\d+)?) day used\)/i);
-    let used = 0;
-    if (partial) used = parseFloat(partial[1]);
-    else if (/Covered by paid leave/i.test(r)) used = 1;
-    absentDaysUsedMap[f.userId] = (absentDaysUsedMap[f.userId] || 0) + used;
-  }
-
-  // Orphan absents: ABSENT attendance with NO fine at all → count as 1 day used
-  const orphanAbsentMap: Record<string, number> = {};
-  for (const a of allAbsents) {
-    const key = `${a.userId}|${a.date.toISOString().split("T")[0]}`;
-    if (!absentFineDateSet.has(key)) {
-      orphanAbsentMap[a.userId] = (orphanAbsentMap[a.userId] || 0) + 1;
-    }
-  }
-
-  const now = new Date(Date.now() + 5 * 60 * 60_000); // PKT
   const leaveBudgets: Record<string, number> = {};
   for (const emp of employees) {
-    const monthsActive = Math.max(1, (now.getUTCFullYear() - SYS_START_YEAR) * 12 + (now.getUTCMonth() - SYS_START_MONTH) + 1);
-    const totalEarned = monthsActive * paidLeavesPerMonth;
-    const totalUsed =
-      (absentDaysUsedMap[emp.id] || 0) +
-      (orphanAbsentMap[emp.id] || 0) +
-      (halfDayMap[emp.id] || 0) * 0.5;
-    leaveBudgets[emp.id] = Math.max(0, totalEarned - totalUsed);
+    const used = (halfDayMap[emp.id] || 0) * 0.5;
+    leaveBudgets[emp.id] = Math.max(0, paidLeavesPerMonth - used);
   }
 
   // Build attendance map: userId -> { "YYYY-MM-DD": status data }

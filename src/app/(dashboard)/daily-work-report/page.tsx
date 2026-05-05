@@ -78,14 +78,36 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
     prisma.dailyReport.findMany({
       where: { ...baseWhere, date: { gte: startOfMonth, lte: endOfMonth } },
       include: {
-        user: { select: { firstName: true, lastName: true, employeeId: true } },
+        // Multi-office: pull team + dept so the CEO inbox can sub-group each
+        // date's reports by team (Awais Team / Mubeen Team / Zain Team /
+        // Etsy - EM / Facebook OFFICE 1) instead of one flat list.
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            employeeId: true,
+            team: { select: { name: true } },
+            department: { select: { name: true } },
+          },
+        },
       },
       orderBy: { date: "desc" },
     }),
     prisma.dailyReport.findMany({
       where: { ...baseWhere, date: { gte: detectionStart, lte: endOfMonth } },
       include: {
-        user: { select: { firstName: true, lastName: true, employeeId: true } },
+        // Multi-office: pull team + dept so the CEO inbox can sub-group each
+        // date's reports by team (Awais Team / Mubeen Team / Zain Team /
+        // Etsy - EM / Facebook OFFICE 1) instead of one flat list.
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            employeeId: true,
+            team: { select: { name: true } },
+            department: { select: { name: true } },
+          },
+        },
       },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     }),

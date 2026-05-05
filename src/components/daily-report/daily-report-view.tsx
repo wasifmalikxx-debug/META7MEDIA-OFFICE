@@ -71,13 +71,26 @@ export function DailyReportView({
     return hits.find((h) => h.link === link.trim()) || hits.find((h) => h.listingId === id);
   }
 
-  // Group ALL reports by date (both teams together)
-  const grouped: Record<string, { etsy: any[]; fb: any[] }> = {};
+  // Group reports by date, then sub-group within each date by team. Each
+  // team carries its rendering style ("etsy" template = listings, "fb"
+  // template = posts) detected from the employeeId prefix of any one row
+  // in that team. EM-/AE-/ME- → etsy; SMM- → fb. Keeps one date card per
+  // day, but each date now has clearly labeled per-team sub-sections so the
+  // CEO can scan whose team submitted what.
+  type TeamReportGroup = { name: string; style: "etsy" | "fb"; reports: any[] };
+  const grouped: Record<string, Map<string, TeamReportGroup>> = {};
   reports.forEach((r: any) => {
     const dateKey = format(new Date(r.date), "yyyy-MM-dd");
-    if (!grouped[dateKey]) grouped[dateKey] = { etsy: [], fb: [] };
-    if (r.user.employeeId.startsWith("EM")) grouped[dateKey].etsy.push(r);
-    else if (r.user.employeeId.startsWith("SMM")) grouped[dateKey].fb.push(r);
+    if (!grouped[dateKey]) grouped[dateKey] = new Map();
+    const teamName: string = r.user.team?.name || r.user.department?.name || "Unassigned";
+    let g = grouped[dateKey].get(teamName);
+    if (!g) {
+      const empId: string = r.user.employeeId || "";
+      const style: "etsy" | "fb" = empId.startsWith("SMM") ? "fb" : "etsy";
+      g = { name: teamName, style, reports: [] };
+      grouped[dateKey].set(teamName, g);
+    }
+    g.reports.push(r);
   });
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
@@ -389,13 +402,17 @@ export function DailyReportView({
         </Card>
       )}
 
-      {/* Daily Feed — Grouped by Date, Both Teams Under Each Day */}
+      {/* Daily Feed — Grouped by Date, Sub-grouped by Team */}
       {sortedDates.map((dateStr) => {
-        const day = grouped[dateStr];
+        const dayMap = grouped[dateStr];
         const dateLabel = format(new Date(dateStr + "T00:00:00"), "EEEE, MMMM d");
-        const dayListings = day.etsy.reduce((s: number, r: any) => s + (r.listingsCount || 0), 0);
-        const dayPosts = day.fb.reduce((s: number, r: any) => s + (r.postsCount || 0), 0);
-        const totalReports = day.etsy.length + day.fb.length;
+        // Aggregate counts across all teams for the day-header badges
+        const allDayReports = [...dayMap.values()].flatMap((g) => g.reports);
+        const dayListings = allDayReports.reduce((s: number, r: any) => s + (r.listingsCount || 0), 0);
+        const dayPosts = allDayReports.reduce((s: number, r: any) => s + (r.postsCount || 0), 0);
+        const totalReports = allDayReports.length;
+        // Sort team sections alphabetically for consistent ordering
+        const daySections = [...dayMap.values()].sort((a, b) => a.name.localeCompare(b.name));
 
         return (
           <Card key={dateStr} className="border-0 shadow-sm overflow-hidden">
@@ -420,33 +437,53 @@ export function DailyReportView({
             </CardHeader>
 
             <CardContent className="p-0">
-              {/* Etsy Section */}
-              {day.etsy.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 px-5 py-2 bg-emerald-50/40 dark:bg-emerald-950/10 border-b border-muted/20">
-                    <ShoppingBag className="size-3 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Etsy Team</span>
-                    <span className="text-[10px] text-muted-foreground">({day.etsy.length})</span>
+              {daySections.map((section, sIdx) => {
+                const sectionListings = section.reports.reduce((s: number, r: any) => s + (r.listingsCount || 0), 0);
+                const sectionPosts = section.reports.reduce((s: number, r: any) => s + (r.postsCount || 0), 0);
+                const isFb = section.style === "fb";
+                return (
+                  <div key={section.name} className={sIdx > 0 ? "border-t-2 border-muted/40" : ""}>
+                    <div
+                      className={`flex items-center justify-between gap-2 px-5 py-2 border-b border-muted/20 ${
+                        isFb
+                          ? "bg-blue-50/40 dark:bg-blue-950/10"
+                          : "bg-emerald-50/40 dark:bg-emerald-950/10"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isFb ? (
+                          <Megaphone className="size-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                        ) : (
+                          <ShoppingBag className="size-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        )}
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider truncate ${
+                            isFb ? "text-blue-700 dark:text-blue-400" : "text-emerald-700 dark:text-emerald-400"
+                          }`}
+                        >
+                          {section.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">({section.reports.length})</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {sectionListings > 0 && (
+                          <Badge className="text-[9px] h-4 px-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0">
+                            {sectionListings} listings
+                          </Badge>
+                        )}
+                        {sectionPosts > 0 && (
+                          <Badge className="text-[9px] h-4 px-1.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
+                            {sectionPosts} posts
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="divide-y divide-muted/20">
+                      {section.reports.map((r: any) => (isFb ? renderFBReport(r) : renderEtsyReport(r)))}
+                    </div>
                   </div>
-                  <div className="divide-y divide-muted/20">
-                    {day.etsy.map(renderEtsyReport)}
-                  </div>
-                </div>
-              )}
-
-              {/* FB Section */}
-              {day.fb.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 px-5 py-2 bg-blue-50/40 dark:bg-blue-950/10 border-b border-t border-muted/20">
-                    <Megaphone className="size-3 text-blue-600 dark:text-blue-400" />
-                    <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Facebook Team</span>
-                    <span className="text-[10px] text-muted-foreground">({day.fb.length})</span>
-                  </div>
-                  <div className="divide-y divide-muted/20">
-                    {day.fb.map(renderFBReport)}
-                  </div>
-                </div>
-              )}
+                );
+              })}
             </CardContent>
           </Card>
         );
