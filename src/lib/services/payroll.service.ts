@@ -372,12 +372,14 @@ export async function generatePayrollForAll(
   year: number,
   generatedBy: string
 ) {
-  // Only include employees who joined ON or BEFORE the last day of the payroll month
+  // Only include employees who joined ON or BEFORE the last day of the payroll month.
+  // Skip SUPER_ADMIN (CEO is not on payroll) and PARTNER (Awais/Mubeen/Zain manage
+  // teams but aren't employees) — they should never have payroll records generated.
   const payrollMonthEnd = new Date(Date.UTC(year, month, 0)); // last day of month
   const employees = await prisma.user.findMany({
     where: {
       status: { in: ["HIRED", "PROBATION"] },
-      role: { not: "SUPER_ADMIN" },
+      role: { notIn: ["SUPER_ADMIN", "PARTNER"] },
       salaryStructure: { isNot: null },
       joiningDate: { lte: payrollMonthEnd },
     },

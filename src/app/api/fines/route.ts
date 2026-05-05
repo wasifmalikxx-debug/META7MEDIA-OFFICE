@@ -48,6 +48,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = fineSchema.parse(body);
 
+    // Block fines on non-employee accounts. Partners (Awais/Mubeen/Zain) and
+    // the CEO aren't on payroll and shouldn't receive fine WhatsApp messages.
+    // Auto-fines (late, break, absent) already exclude these roles upstream;
+    // this guards the manual-fine button on the CEO's dashboard.
+    const target = await prisma.user.findUnique({
+      where: { id: parsed.userId },
+      select: { role: true },
+    });
+    if (!target) return error("Employee not found", 404);
+    if (target.role === "PARTNER" || target.role === "SUPER_ADMIN") {
+      return error("Fines can only be issued to employees, not partners or admins.", 400);
+    }
+
     const fineDate = new Date(parsed.date);
     fineDate.setUTCHours(0, 0, 0, 0);
 

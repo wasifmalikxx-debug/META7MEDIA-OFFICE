@@ -66,6 +66,16 @@ export async function PATCH(
     const body = await request.json();
     const parsed = updateEmployeeSchema.parse(body);
 
+    // Partners aren't on payroll — block salary/bank writes regardless of
+    // what the client sends. Otherwise the form's default monthlySalary: 0
+    // would create a zero-PKR salaryStructure and pull them onto the CEO's
+    // payroll list. Look up the target's current role to decide.
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { role: true },
+    });
+    const isPartnerTarget = target?.role === "PARTNER";
+
     const updateData: any = { ...parsed };
     if (parsed.joiningDate) updateData.joiningDate = new Date(parsed.joiningDate);
     delete updateData.monthlySalary;
@@ -78,10 +88,12 @@ export async function PATCH(
       updateData.password = await bcrypt.hash(body.newPassword, 12);
     }
     delete updateData.newPassword;
-    // Handle bank details
-    if (body.bankName !== undefined) updateData.bankName = body.bankName || null;
-    if (body.accountNumber !== undefined) updateData.accountNumber = body.accountNumber || null;
-    if (body.accountTitle !== undefined) updateData.accountTitle = body.accountTitle || null;
+    // Handle bank details (skipped for partners)
+    if (!isPartnerTarget) {
+      if (body.bankName !== undefined) updateData.bankName = body.bankName || null;
+      if (body.accountNumber !== undefined) updateData.accountNumber = body.accountNumber || null;
+      if (body.accountTitle !== undefined) updateData.accountTitle = body.accountTitle || null;
+    }
     if (body.status) updateData.status = body.status;
 
     const employee = await prisma.user.update({
@@ -89,8 +101,8 @@ export async function PATCH(
       data: updateData,
     });
 
-    // Update salary if provided
-    if (body.monthlySalary !== undefined) {
+    // Update salary if provided — never for partners.
+    if (!isPartnerTarget && body.monthlySalary !== undefined) {
       await prisma.salaryStructure.upsert({
         where: { userId: id },
         create: {

@@ -83,7 +83,9 @@ export default async function FinesPage({ searchParams }: { searchParams: Promis
     }),
     isAdmin
       ? prisma.user.findMany({
-          where: { status: { in: ["HIRED", "PROBATION"] }, role: { not: "SUPER_ADMIN" } },
+          // Exclude PARTNER from the "issue fine" dropdown — partners aren't
+          // employees, can't take attendance, can't be fined.
+          where: { status: { in: ["HIRED", "PROBATION"] }, role: { notIn: ["SUPER_ADMIN", "PARTNER"] } },
           select: { id: true, firstName: true, lastName: true, employeeId: true, department: { select: { name: true } } },
           orderBy: { employeeId: "asc" },
         })

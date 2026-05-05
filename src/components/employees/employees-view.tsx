@@ -114,6 +114,9 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
       lastName: emp.lastName,
       phone: emp.phone || "",
       phone2: emp.phone2 || "",
+      // Carried so the dialog can hide salary/bank sections when editing a
+      // partner — they aren't on payroll, so those fields don't apply.
+      role: emp.role || "EMPLOYEE",
       status: emp.status,
       designation: emp.designation || "",
       departmentId: emp.department?.id || "",
@@ -130,13 +133,21 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
     e.preventDefault();
     setLoading(true);
     try {
+      // Strip salary + bank fields when editing a partner — they aren't on
+      // payroll. Otherwise the form's default monthlySalary: 0 would create
+      // a 0-PKR salaryStructure and pull them onto the CEO's payroll list.
+      const isPartnerTarget = editForm.role === "PARTNER";
+      const payload: any = { ...editForm, departmentId: editForm.departmentId || undefined };
+      if (isPartnerTarget) {
+        delete payload.monthlySalary;
+        delete payload.bankName;
+        delete payload.accountNumber;
+        delete payload.accountTitle;
+      }
       const res = await fetch(`/api/employees/${editId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...editForm,
-          departmentId: editForm.departmentId || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -438,51 +449,57 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                       onChange={(e) => setEditForm({ ...editForm, joiningDate: e.target.value })}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Monthly Salary (PKR)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={editForm.monthlySalary}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
-                      }
-                      required
-                    />
-                  </div>
+                  {/* Salary — hidden for partners (they aren't on payroll) */}
+                  {editForm.role !== "PARTNER" && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Monthly Salary (PKR)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={editForm.monthlySalary}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, monthlySalary: parseFloat(e.target.value) || 0 })
+                        }
+                        required
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <hr className="border-border" />
-
-              {/* Bank Details */}
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Bank Details</p>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Bank Name</Label>
-                  <Input
-                    value={editForm.bankName}
-                    onChange={(e) => setEditForm({ ...editForm, bankName: e.target.value })}
-                    placeholder="e.g. Meezan Bank"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Account Number</Label>
-                    <Input
-                      value={editForm.accountNumber}
-                      onChange={(e) => setEditForm({ ...editForm, accountNumber: e.target.value })}
-                    />
+              {/* Bank Details — hidden for partners (no payouts to track) */}
+              {editForm.role !== "PARTNER" && (
+                <>
+                  <hr className="border-border" />
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Bank Details</p>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Bank Name</Label>
+                      <Input
+                        value={editForm.bankName}
+                        onChange={(e) => setEditForm({ ...editForm, bankName: e.target.value })}
+                        placeholder="e.g. Meezan Bank"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Account Number</Label>
+                        <Input
+                          value={editForm.accountNumber}
+                          onChange={(e) => setEditForm({ ...editForm, accountNumber: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Account Title</Label>
+                        <Input
+                          value={editForm.accountTitle}
+                          onChange={(e) => setEditForm({ ...editForm, accountTitle: e.target.value })}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Account Title</Label>
-                    <Input
-                      value={editForm.accountTitle}
-                      onChange={(e) => setEditForm({ ...editForm, accountTitle: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
 
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Saving..." : "Save Changes"}
@@ -546,8 +563,8 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                       <div>{emp.phone || "—"}</div>
                       {emp.phone2 && <div className="text-[10px] opacity-70">{emp.phone2}</div>}
                     </div>
-                    {/* Salary */}
-                    <div className="font-semibold">{emp.salaryStructure ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}` : "—"}</div>
+                    {/* Salary — partners aren't on payroll, so always show — */}
+                    <div className="font-semibold">{emp.role !== "PARTNER" && emp.salaryStructure ? `PKR ${emp.salaryStructure.monthlySalary.toLocaleString()}` : "—"}</div>
                     {/* Joining */}
                     <div className="text-muted-foreground">{emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" }) : "—"}</div>
                     {/* Actions */}
