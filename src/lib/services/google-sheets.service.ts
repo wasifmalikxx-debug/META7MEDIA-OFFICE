@@ -16,28 +16,47 @@ const MONTH_NAMES = [
   "JULY", "AUG", "SEPT", "OCT", "NOV", "DEC",
 ];
 
+// All known month-name aliases. Partner sheets in the wild use a mix of
+// abbreviated (APR-2K26), full (APRIL 2026), and historical formats. Every
+// alias for a given month produces a candidate tab name; the matcher then
+// fuzzy-compares with normalizeTabName below.
+const MONTH_ALIASES: Record<number, string[]> = {
+  1: ["JAN", "JANUARY"],
+  2: ["FEB", "FEBRUARY"],
+  3: ["MAR", "MARCH"],
+  4: ["APR", "APRIL"],
+  5: ["MAY"],
+  6: ["JUN", "JUNE"],
+  7: ["JUL", "JULY"],
+  8: ["AUG", "AUGUST"],
+  9: ["SEP", "SEPT", "SEPTEMBER"],
+  10: ["OCT", "OCTOBER"],
+  11: ["NOV", "NOVEMBER"],
+  12: ["DEC", "DECEMBER"],
+};
+
 function getMonthTabName(month: number, year: number): string {
   const monthName = MONTH_NAMES[month - 1];
   const shortYear = `2K${String(year).slice(2)}`;
   return `${monthName} - ${shortYear}`;
 }
 
-// Alternative tab name formats to try
+// Alternative tab name formats to try. Returns every combination of
+// (alias × year-format × dash-style) so a sheet that names its April tab
+// "APR- 2K26", "APRIL 2026", or "April-2026" all resolve correctly.
 export function getAlternativeTabNames(month: number, year: number): string[] {
-  const monthName = MONTH_NAMES[month - 1];
+  const aliases = MONTH_ALIASES[month] || [MONTH_NAMES[month - 1]];
   const shortYear = `2K${String(year).slice(2)}`;
-  const fullMonthNames = [
-    "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
-    "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
-  ];
-  return [
-    `${monthName} - ${shortYear}`,           // MARCH - 2K26
-    `${fullMonthNames[month - 1]} - ${shortYear}`, // MARCH - 2K26 (already same for March)
-    `${monthName} ${shortYear}`,              // MARCH 2K26
-    `${monthName}-${shortYear}`,              // MARCH-2K26
-    `${monthName} - ${year}`,                 // MARCH - 2026
-    `${monthName} ${year}`,                   // MARCH 2026
-  ];
+  const yearForms = [shortYear, String(year)]; // "2K26" and "2026"
+  const out: string[] = [];
+  for (const name of aliases) {
+    for (const yr of yearForms) {
+      out.push(`${name} - ${yr}`); // "APR - 2K26"
+      out.push(`${name} ${yr}`);   // "APR 2K26"
+      out.push(`${name}-${yr}`);   // "APR-2K26"
+    }
+  }
+  return out;
 }
 
 /**
