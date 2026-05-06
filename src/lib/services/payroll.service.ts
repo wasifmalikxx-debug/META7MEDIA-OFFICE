@@ -16,18 +16,26 @@ export async function getWorkingDaysInMonth(
     .split(",")
     .map((d) => parseInt(d.trim()));
 
+  // Same TZ caveat as in generatePayrollForEmployee — use UTC throughout
+  // so the working-day count doesn't shift by a day on non-UTC hosts.
   const holidays = await prisma.holiday.findMany({
-    where: { year, date: { gte: new Date(year, month - 1, 1), lt: new Date(year, month, 1) } },
+    where: {
+      year,
+      date: {
+        gte: new Date(Date.UTC(year, month - 1, 1)),
+        lt: new Date(Date.UTC(year, month, 1)),
+      },
+    },
   });
   const holidayDates = new Set(
     holidays.map((h) => h.date.toISOString().split("T")[0])
   );
 
   let workingDays = 0;
-  const daysInMonth = new Date(year, month, 0).getDate();
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month - 1, day);
-    const dayOfWeek = date.getDay();
+    const date = new Date(Date.UTC(year, month - 1, day));
+    const dayOfWeek = date.getUTCDay();
     const dateStr = date.toISOString().split("T")[0];
     if (!weekendDays.includes(dayOfWeek) && !holidayDates.has(dateStr)) {
       workingDays++;
@@ -57,9 +65,17 @@ export async function generatePayrollForEmployee(
   // Fixed 30-day formula: 30K salary = 1K/day deduction
   const dailyRate = roundMoney(salary.monthlySalary / 30);
 
-  // Get attendance records for the month
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0);
+  // Get attendance records for the month.
+  // IMPORTANT: use Date.UTC so the month bounds always anchor to UTC
+  // midnight regardless of the host machine's timezone. `new Date(y, m, d)`
+  // interprets local time, which on a PKT-timezone machine resolves to
+  // 19:00 UTC the previous day — that breaks the proration branch below
+  // for any employee whose joiningDate is stored at UTC midnight on the
+  // 1st (the proration thinks they joined a day late and pays 29/30
+  // days). Bug bit Apr 1 hires (EM-1 Alishba, SMM-10 Shoaib) when the
+  // multi-office migration scripts ran from local on May 4.
+  const startDate = new Date(Date.UTC(year, month - 1, 1));
+  const endDate = new Date(Date.UTC(year, month, 0));
   const attendances = await prisma.attendance.findMany({
     where: {
       userId,
