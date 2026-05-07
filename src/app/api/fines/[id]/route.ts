@@ -1,15 +1,27 @@
 import { NextRequest } from "next/server";
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, requireRole, getCallerScope, assertCanActOnFine } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireRole("SUPER_ADMIN");
+  // Partners can delete fines on their own team — they manage daily activity
+  // day-to-day and the UI already shows them the delete button alongside
+  // CEO. CEO keeps unrestricted access.
+  const session = await requireRole("SUPER_ADMIN", "PARTNER");
   if (!session) return error("Forbidden", 403);
 
   const { id } = await params;
+  const scope = await getCallerScope(session);
+  if (!scope) return error("Forbidden", 403);
+
+  // Scope check: partner can only delete fines on their team's members.
+  // CEO bypasses inside assertCanActOnUser. 404 falls through if the fine
+  // doesn't exist.
+  const denied = await assertCanActOnFine(scope, id);
+  if (denied) return denied;
+
   const fine = await prisma.fine.findUnique({ where: { id } });
   if (!fine) return error("Fine not found", 404);
 
@@ -20,11 +32,13 @@ export async function DELETE(
   // record). Deleting just the fine doesn't stick — the underlying ABSENT
   // attendance is the source of truth. To make manual deletions persist,
   // flip the corresponding attendance day from ABSENT to ON_LEAVE so the
-  // regeneration loop skips it. Treats CEO deletion as "absence excused."
+  // regeneration loop skips it. Treats the deletion as "absence excused" —
+  // by the CEO when SUPER_ADMIN removes it, by the partner otherwise.
   if (fine.type === "ABSENT_WITHOUT_LEAVE") {
+    const excusedBy = scope.isCeo ? "CEO" : "Partner";
     await prisma.attendance.updateMany({
       where: { userId: fine.userId, date: fine.date, status: "ABSENT" },
-      data: { status: "ON_LEAVE", notes: "Excused by CEO (fine removed)" },
+      data: { status: "ON_LEAVE", notes: `Excused by ${excusedBy} (fine removed)` },
     });
   }
 
