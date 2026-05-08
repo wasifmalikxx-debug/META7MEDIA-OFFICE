@@ -228,6 +228,9 @@ export default async function DashboardPage() {
       monthFinesDetailed,
       // CEO Command Center — pending action counts
       pendingLeavesCount, pendingDevicesCount, pendingReviewBonusesCount, complaintsAwaitingCeoCount,
+      // Hero greeting — first name of the signed-in CEO/HR user. Cheap
+      // single-row lookup, runs in the same parallel batch.
+      currentUserRow,
     ] = await Promise.all([
       prisma.user.findMany({
         // Multi-office: PARTNER role rows (Zain/Awais/Mubeen) are NOT employees
@@ -296,6 +299,7 @@ export default async function DashboardPage() {
       prisma.deviceApproval.count({ where: { status: "PENDING" } }),
       prisma.reviewBonus.count({ where: { status: "PENDING" } }),
       prisma.complaint.count({ where: { unreadByCeo: true, status: { notIn: ["RESOLVED", "DENIED"] } } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { firstName: true } }),
     ]);
 
     const totalEmployees = allEmployees.length;
@@ -540,6 +544,7 @@ export default async function DashboardPage() {
           pendingReviewBonuses: pendingReviewBonusesCount,
           complaintsAwaitingReply: complaintsAwaitingCeoCount,
         }}
+        userName={currentUserRow?.firstName ?? undefined}
       />
     );
   }

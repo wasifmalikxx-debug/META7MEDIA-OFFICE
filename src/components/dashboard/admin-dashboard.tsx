@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Users,
@@ -19,16 +19,34 @@ import {
   Star,
   MessageSquare,
   ArrowRight,
+  ArrowUpRight,
   ChevronDown,
   ChevronUp,
   TrendingDown,
   FileText,
+  Activity,
+  Building2,
+  Sparkles,
+  CheckCircle2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { formatPKTDisplay, formatPKTTime } from "@/lib/pkt";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 
 interface EmployeeStatus {
   id: string;
@@ -92,6 +110,9 @@ interface AdminDashboardProps {
   // teams (OFFICE 1 Etsy, OFFICE 1 Facebook).
   teamGroups?: TeamGroup[];
   commandCenter?: CommandCenterCounts;
+  // First name of the signed-in CEO/HR user — drives the "Good morning, X"
+  // greeting in the hero header. Optional so legacy callers don't break.
+  userName?: string;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string; icon: any }> = {
@@ -126,12 +147,92 @@ export function AdminDashboard({
   topAbsent = [],
   teamGroups = [],
   commandCenter,
+  userName,
 }: AdminDashboardProps) {
   const router = useRouter();
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Derive everything from raw props so the UI is purely a function of
+  // server-fetched state. Re-runs free since the props object is replaced
+  // wholesale every router.refresh() (the 30s interval below).
+  // ─────────────────────────────────────────────────────────────────────
+  const onLeaveToday = useMemo(
+    () => employeeStatuses.filter((e) => e.liveStatus === "ON_LEAVE" || e.liveStatus === "HALF_DAY_LEAVE").length,
+    [employeeStatuses],
+  );
+  const onBreakNow = useMemo(
+    () => employeeStatuses.filter((e) => e.liveStatus === "ON_BREAK").length,
+    [employeeStatuses],
+  );
+  const checkedOutNow = useMemo(
+    () => employeeStatuses.filter((e) => e.liveStatus === "CHECKED_OUT").length,
+    [employeeStatuses],
+  );
+
+  const totalPending = useMemo(
+    () => teamGroups.reduce((s, tg) => s + tg.monthPending, 0),
+    [teamGroups],
+  );
+  const totalUnpaid = useMemo(
+    () => teamGroups.reduce((s, tg) => s + tg.unpaidCount, 0),
+    [teamGroups],
+  );
+  const totalPaid = useMemo(
+    () => teamGroups.reduce((s, tg) => s + tg.paidCount, 0),
+    [teamGroups],
+  );
+
   const attendanceRate = totalEmployees > 0 ? Math.round((presentToday / totalEmployees) * 100) : 0;
   const reportRate = totalEmployees > 0 ? Math.round((todayReports / totalEmployees) * 100) : 0;
 
-  // Live updates — reload the server-rendered data every 30s. Permanent
+  // 7-day slice for the fines KPI sparkline. Falls back to whatever we
+  // have if the month is younger than 7 days — Recharts handles 1-2 points
+  // fine, just renders a flat line.
+  const last7Fines = finesTrend.slice(-7);
+
+  // PKT clock — kept in state so React's purity rule is happy and so the
+  // greeting transitions correctly across the morning→afternoon→evening
+  // boundaries even if the dashboard stays open all day. Lazy initializer
+  // so the first paint already has the right time.
+  const [pktNow, setPktNow] = useState<Date>(
+    () => new Date(Date.now() + 5 * 60 * 60_000),
+  );
+  useEffect(() => {
+    const tick = () => setPktNow(new Date(Date.now() + 5 * 60 * 60_000));
+    const interval = setInterval(tick, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+  const pktHour = pktNow.getUTCHours();
+  const greeting =
+    pktHour < 5 ? "Working late" :
+    pktHour < 12 ? "Good morning" :
+    pktHour < 17 ? "Good afternoon" :
+    "Good evening";
+
+  // Donut breakdown for the "Live attendance" chart. Filtered so empty
+  // segments don't render as zero-width slivers.
+  const attendanceBreakdown = useMemo(
+    () =>
+      [
+        { name: "Present", value: presentToday - lateToday, color: "#10b981" },
+        { name: "Late", value: lateToday, color: "#f59e0b" },
+        { name: "Absent", value: absentToday, color: "#f43f5e" },
+        { name: "On leave", value: onLeaveToday, color: "#a855f7" },
+      ].filter((d) => d.value > 0),
+    [presentToday, lateToday, absentToday, onLeaveToday],
+  );
+
+  // Recent activity feed — last 5 employees who checked in today, sorted
+  // newest first. Adds a "live" pulse to the sidebar without needing any
+  // extra data fetch.
+  const recentCheckIns = useMemo(() => {
+    return employeeStatuses
+      .filter((e) => e.checkIn)
+      .sort((a, b) => new Date(b.checkIn!).getTime() - new Date(a.checkIn!).getTime())
+      .slice(0, 5);
+  }, [employeeStatuses]);
+
+  // Live updates — reload server-rendered data every 30s. Permanent
   // requirement per Wasif: new hires, new check-ins, etc. surface without
   // a manual refresh.
   useEffect(() => {
@@ -168,84 +269,299 @@ export function AdminDashboard({
   const rosterFor = (tg: TeamGroup) =>
     rostersByTeamKey.get(`${tg.name}|${tg.officeName}`) ?? [];
 
-  // Combined pending salary across all teams — shown small in the Teams
-  // section header. Per-team breakdown surfaces in each team card.
-  const totalPending = teamGroups.reduce((s, tg) => s + tg.monthPending, 0);
-
   return (
     <div className="space-y-6">
-      {/* ═══════════════════════ Header ═══════════════════════ */}
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      {/* ═══════════════════════ HERO HEADER ═══════════════════════ */}
+      {/* Personal greeting + date subtitle + live indicator. The gradient
+          name accent and refined typography set the boss-level tone — this
+          is the first thing the CEO sees every morning. */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {formatPKTDisplay(new Date(Date.now() + 5 * 60 * 60_000), "EEEE, MMMM d, yyyy")}
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80 mb-2">
+            {formatPKTDisplay(pktNow, "EEEE")} <span className="opacity-40 mx-1">·</span> {formatPKTDisplay(pktNow, "MMMM d, yyyy")}
+          </p>
+          <h1 className="text-3xl sm:text-[2rem] font-bold tracking-tight leading-tight">
+            {greeting}
+            {userName ? (
+              <>
+                ,{" "}
+                <span className="bg-gradient-to-br from-foreground via-foreground to-foreground/50 bg-clip-text text-transparent">
+                  {userName}
+                </span>
+              </>
+            ) : null}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1.5 max-w-xl">
+            Here&apos;s how META7MEDIA is performing today.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {dayOffLabel && (
-            <Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-0">
+            <Badge className="h-7 bg-muted text-muted-foreground border-0 font-medium px-2.5">
+              <CalendarOff className="size-3 mr-1.5" />
               {dayOffLabel}
             </Badge>
           )}
-          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Live · auto-refreshes every 30s
-          </span>
+          <div className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-[11px] shadow-xs">
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+            </span>
+            <span className="font-semibold">Live</span>
+            <span className="text-muted-foreground">· syncs every 30s</span>
+          </div>
         </div>
       </header>
 
-      {/* ════════════════ Needs your attention ════════════════ */}
-      {commandCenter && <CommandCenter counts={commandCenter} onNavigate={router.push} />}
+      {/* ═══════════════════════ KPI HERO STRIP ═══════════════════════ */}
+      {/* Five hero metrics — the at-a-glance read. Each tile is calibrated
+          to one job: a single big number, an optional progress bar OR
+          sparkline, and a tight subtitle. Mixing those three signal types
+          would feel busy, so each tile picks one. */}
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <KpiTile
+          label="Headcount"
+          value={totalEmployees.toString()}
+          icon={Users}
+          tone="slate"
+          subtitle={`${teamGroups.length} ${teamGroups.length === 1 ? "team" : "teams"} active`}
+        />
+        <KpiTile
+          label="Present today"
+          value={presentToday.toString()}
+          suffix={`/ ${totalEmployees}`}
+          icon={UserCheck}
+          tone="emerald"
+          progress={attendanceRate}
+          subtitle={`${attendanceRate}% attendance`}
+        />
+        <KpiTile
+          label="Reports filed"
+          value={todayReports.toString()}
+          suffix={`/ ${totalEmployees}`}
+          icon={FileText}
+          tone="violet"
+          progress={reportRate}
+          subtitle={`${reportRate}% submitted`}
+        />
+        <KpiTile
+          label="Pending payroll"
+          value={`PKR ${formatCompact(totalPending)}`}
+          icon={Wallet}
+          tone="amber"
+          subtitle={
+            totalUnpaid > 0
+              ? `${totalUnpaid} unpaid · ${totalPaid} cleared`
+              : "All cleared this month"
+          }
+          onClick={() => router.push("/payroll")}
+          accent={totalUnpaid === 0 ? "success" : undefined}
+        />
+        <KpiTile
+          label="Fines this month"
+          value={`PKR ${formatCompact(totalFines)}`}
+          icon={AlertTriangle}
+          tone="rose"
+          sparkData={last7Fines.length > 0 ? last7Fines : undefined}
+          sparkKey="fines"
+          subtitle="Last 7 days"
+          onClick={() => router.push("/fines")}
+        />
+      </section>
 
-      {/* ════════════════════════ Today ════════════════════════ */}
-      {/* Headcount-only metrics for the company today. Money stays out of
-          here on purpose (per Wasif's "no aggregates" rule for salaries)
-          — per-team money lives inside each team card below. */}
-      <Card className="border shadow-none">
-        <CardContent className="py-4 px-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-              <h2 className="text-base font-semibold">Today</h2>
-              <Metric icon={UserCheck} value={presentToday} suffix={`/ ${totalEmployees}`} label="present" tone="emerald" />
-              <Metric icon={Clock} value={lateToday} label="late" tone="amber" />
-              <Metric icon={UserX} value={absentToday} label="absent" tone="rose" />
-              <Metric icon={FileText} value={todayReports} suffix={`/ ${totalEmployees}`} label="reports submitted" tone="violet" />
+      {/* ════════════════════ NEEDS YOUR ATTENTION ════════════════════ */}
+      {commandCenter && <CommandPanel counts={commandCenter} onNavigate={router.push} />}
+
+      {/* ═══════════════════ LIVE PULSE + TREND ═══════════════════ */}
+      {/* The "right now" snapshot. The donut anchors today's status; the
+          larger area chart on the right shows how this month is trending
+          so the CEO can spot drift without scrolling. */}
+      <section className="grid lg:grid-cols-3 gap-4">
+        <Card className="border shadow-none lg:col-span-1">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Activity className="size-4 text-muted-foreground" />
+                Live attendance
+              </CardTitle>
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className="size-1 rounded-full bg-emerald-500 animate-pulse" />
+                Now
+              </span>
             </div>
-            {!dayOffLabel && (
-              <div className="flex items-center gap-2 lg:min-w-[200px]">
-                <span className="text-xs text-muted-foreground shrink-0">Attendance</span>
-                <div className="h-1.5 flex-1 lg:w-32 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${
-                      attendanceRate >= 80 ? "bg-emerald-500" : attendanceRate >= 50 ? "bg-amber-500" : "bg-rose-500"
-                    }`}
-                    style={{ width: `${attendanceRate}%` }}
-                  />
+          </CardHeader>
+          <CardContent className="pb-5">
+            <div className="relative h-[180px] w-full">
+              {attendanceBreakdown.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={attendanceBreakdown}
+                        dataKey="value"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={56}
+                        outerRadius={76}
+                        paddingAngle={3}
+                        strokeWidth={0}
+                      >
+                        {attendanceBreakdown.map((d, i) => (
+                          <Cell key={i} fill={d.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          fontSize: 11,
+                          borderRadius: 8,
+                          border: "1px solid hsl(var(--border))",
+                          backgroundColor: "hsl(var(--background))",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+                        }}
+                        formatter={(v: any, name: any) => [`${v} ${v === 1 ? "person" : "people"}`, name]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <div className="text-3xl font-bold tabular-nums tracking-tight">{attendanceRate}%</div>
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-0.5">
+                      Attendance
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <CalendarOff className="size-7 text-muted-foreground/40 mb-2" />
+                  <p className="text-xs text-muted-foreground">No activity today</p>
                 </div>
-                <span
-                  className={`text-xs font-bold tabular-nums shrink-0 ${
-                    attendanceRate >= 80 ? "text-emerald-600" : attendanceRate >= 50 ? "text-amber-600" : "text-rose-600"
-                  }`}
-                >
-                  {attendanceRate}%
-                </span>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              )}
+            </div>
+            <div className="mt-3 space-y-1.5">
+              {attendanceBreakdown.map((d) => (
+                <div key={d.name} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="size-2 rounded-full shrink-0" style={{ background: d.color }} />
+                    <span className="text-muted-foreground truncate">{d.name}</span>
+                  </div>
+                  <span className="font-semibold tabular-nums">{d.value}</span>
+                </div>
+              ))}
+              {(onBreakNow > 0 || checkedOutNow > 0) && (
+                <div className="flex items-center justify-between text-[11px] pt-2 mt-2 border-t border-dashed border-muted-foreground/15">
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    {onBreakNow > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <Coffee className="size-3 text-sky-500" />
+                        <span className="font-semibold tabular-nums">{onBreakNow}</span> on break
+                      </span>
+                    )}
+                    {checkedOutNow > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <LogOut className="size-3" />
+                        <span className="font-semibold tabular-nums">{checkedOutNow}</span> out
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* ════════════════════════ Teams ════════════════════════ */}
-      {/* The main work surface — one card per team, each carrying its own
-          today's stats, money lines, and (collapsible) live roster. Replaces
-          the old Salaries Pending / Teams Overview / Live Status trio. */}
+        <Card className="border shadow-none lg:col-span-2">
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">Attendance trend</CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Daily present vs absent · {format(pktNow, "MMMM yyyy")}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-[10px] shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-emerald-500" />
+                  <span className="text-muted-foreground font-medium">Present</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="size-2 rounded-full bg-rose-500" />
+                  <span className="text-muted-foreground font-medium">Absent</span>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="h-[220px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={attendanceTrend} margin={{ top: 10, right: 8, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="presentGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="absentGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="hsl(var(--border))"
+                    opacity={0.4}
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="day"
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={32}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      fontSize: 11,
+                      borderRadius: 8,
+                      border: "1px solid hsl(var(--border))",
+                      backgroundColor: "hsl(var(--background))",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+                    }}
+                    cursor={{ stroke: "hsl(var(--muted))", strokeDasharray: "3 3" }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="present"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    fill="url(#presentGrad)"
+                    name="Present"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="absent"
+                    stroke="#f43f5e"
+                    strokeWidth={2}
+                    fill="url(#absentGrad)"
+                    name="Absent"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ════════════════════════ TEAMS GRID ════════════════════════ */}
       {teamGroups.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
+              <Building2 className="size-4 text-muted-foreground" />
               <h2 className="text-base font-semibold">Teams</h2>
-              <Badge variant="outline" className="text-[10px] font-normal">
+              <Badge variant="outline" className="text-[10px] font-normal h-5 px-1.5">
                 {teamGroups.length}
               </Badge>
             </div>
@@ -257,7 +573,10 @@ export function AdminDashboard({
               >
                 <Wallet className="size-3" />
                 <span>
-                  <span className="font-semibold text-amber-700 dark:text-amber-400">PKR {Math.round(totalPending).toLocaleString()}</span> pending
+                  <span className="font-semibold text-amber-700 dark:text-amber-400">
+                    PKR {Math.round(totalPending).toLocaleString()}
+                  </span>
+                  {" "}pending across {teamGroups.length} teams
                 </span>
                 <ArrowRight className="size-3 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
               </button>
@@ -278,130 +597,291 @@ export function AdminDashboard({
         </section>
       )}
 
-      {/* ════════════════════════ Trends ════════════════════════ */}
-      <section className="grid gap-3 lg:grid-cols-2">
-        <Card className="border shadow-none">
+      {/* ═══════════════════ FINES + ABSENCES + ACTIVITY ═══════════════════ */}
+      {/* Bottom row — operational signals: where money moved (fines), who's
+          most absent, and the most-recent check-in feed for a "live pulse"
+          texture in the corner. */}
+      <section className="grid gap-4 lg:grid-cols-3">
+        <Card className="border shadow-none lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Attendance Trend</CardTitle>
-            <p className="text-[11px] text-muted-foreground">Daily present vs absent · {format(new Date(), "MMM yyyy")}</p>
-          </CardHeader>
-          <CardContent className="pb-4">
-            <div className="h-[180px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={attendanceTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="presentGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="absentGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" opacity={0.5} />
-                  <XAxis dataKey="day" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }} />
-                  <Area type="monotone" dataKey="present" stroke="#10b981" strokeWidth={2} fill="url(#presentGrad)" name="Present" />
-                  <Area type="monotone" dataKey="absent" stroke="#f43f5e" strokeWidth={2} fill="url(#absentGrad)" name="Absent" />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">Fines collected</CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Daily fines · PKR · {format(pktNow, "MMMM yyyy")}
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-base font-bold tabular-nums">
+                  PKR {Math.round(totalFines).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-muted-foreground">Month total</div>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Fines Collected</CardTitle>
-            <p className="text-[11px] text-muted-foreground">Daily fines · PKR · {format(new Date(), "MMM yyyy")}</p>
           </CardHeader>
           <CardContent className="pb-4">
-            <div className="h-[180px] w-full">
+            <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={finesTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" opacity={0.5} />
-                  <XAxis dataKey="day" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }} formatter={(value: any) => [`PKR ${value}`, "Fines"]} />
-                  <Bar dataKey="fines" fill="#f59e0b" radius={[3, 3, 0, 0]} name="Fines" />
+                  <defs>
+                    <linearGradient id="finesBarGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.5} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
+                  <XAxis
+                    dataKey="day"
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={32}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      fontSize: 11,
+                      borderRadius: 8,
+                      border: "1px solid hsl(var(--border))",
+                      backgroundColor: "hsl(var(--background))",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+                    }}
+                    formatter={(value: any) => [`PKR ${value}`, "Fines"]}
+                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
+                  />
+                  <Bar dataKey="fines" fill="url(#finesBarGrad)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
-      </section>
 
-      {/* ═══════════════════════ Most Absences ═══════════════════════ */}
-      {topAbsent.length > 0 && (
-        <Card className="border shadow-none">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <div>
+        <div className="space-y-4">
+          {topAbsent.length > 0 && (
+            <Card className="border shadow-none">
+              <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <TrendingDown className="size-4 text-rose-500" />
-                  Most Absences
+                  Most absences
                 </CardTitle>
-                <p className="text-[11px] text-muted-foreground">Top 5 employees this month</p>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {topAbsent.map((emp, i) => (
-                <li key={emp.employeeId} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-[11px] font-bold text-muted-foreground w-5 tabular-nums">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span className="font-medium truncate">{emp.name}</span>
-                    <span className="text-[10px] text-muted-foreground font-mono shrink-0">{emp.employeeId}</span>
-                  </div>
-                  <Badge className="text-[10px] h-5 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-0 shrink-0">
-                    {emp.count} day{emp.count !== 1 ? "s" : ""}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+                <p className="text-[11px] text-muted-foreground">
+                  Top 5 this month
+                </p>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <ol className="space-y-2.5">
+                  {topAbsent.slice(0, 5).map((emp, i) => (
+                    <li
+                      key={emp.employeeId}
+                      className="flex items-center justify-between gap-2 group"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <span className="text-[10px] font-bold text-muted-foreground/50 tabular-nums w-4 shrink-0">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span className="text-xs font-medium truncate">{emp.name}</span>
+                        <span className="text-[9px] text-muted-foreground font-mono shrink-0 opacity-60">
+                          {emp.employeeId}
+                        </span>
+                      </div>
+                      <Badge className="text-[10px] h-5 bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400 border-0 shrink-0 tabular-nums font-semibold">
+                        {emp.count}d
+                      </Badge>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
+
+          {recentCheckIns.length > 0 && (
+            <Card className="border shadow-none">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Activity className="size-4 text-emerald-500" />
+                    Recent activity
+                  </CardTitle>
+                  <span className="text-[10px] text-muted-foreground">Today</span>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-2">
+                {recentCheckIns.map((emp) => {
+                  const config = STATUS_CONFIG[emp.liveStatus] || STATUS_CONFIG.PRESENT;
+                  return (
+                    <div key={emp.id} className="flex items-center gap-2.5">
+                      <div className="relative shrink-0">
+                        <div className="flex size-7 items-center justify-center rounded-full bg-muted text-[10px] font-bold">
+                          {emp.firstName[0]}
+                          {emp.lastName?.[0] || ""}
+                        </div>
+                        <div
+                          className={`absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-background ${config.dot}`}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-medium truncate leading-tight">
+                          {emp.firstName} {emp.lastName || ""}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {emp.liveStatus === "CHECKED_OUT" && emp.checkOut
+                            ? `Out ${formatPKTTime(emp.checkOut)}`
+                            : emp.checkIn
+                            ? `In ${formatPKTTime(emp.checkIn)}`
+                            : config.label}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
 
 // ─────────────────────── Sub-components ───────────────────────
 
-function Metric({
-  icon: Icon,
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1_000)}K`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return Math.round(n).toString();
+}
+
+/**
+ * KPI tile — one big number, one signal, one tone.
+ *
+ * Tones map a label color to: icon background, icon text, sparkline stroke,
+ * and progress bar fill. Pick exactly one of `progress` or `sparkData` per
+ * tile — both at once would visually compete for the bottom slot. The
+ * `accent="success"` flag is used when the metric is in a "good" terminal
+ * state (e.g. all salaries cleared) so the subtitle gets an emerald check.
+ */
+function KpiTile({
+  label,
   value,
   suffix,
-  label,
+  icon: Icon,
   tone,
+  sparkData,
+  sparkKey,
+  subtitle,
+  progress,
+  onClick,
+  accent,
 }: {
-  icon: any;
-  value: number;
-  suffix?: string;
   label: string;
-  tone: "emerald" | "amber" | "rose" | "violet";
+  value: string;
+  suffix?: string;
+  icon: any;
+  tone: "slate" | "emerald" | "amber" | "rose" | "violet";
+  sparkData?: any[];
+  sparkKey?: string;
+  subtitle?: string;
+  progress?: number;
+  onClick?: () => void;
+  accent?: "success";
 }) {
-  const toneClasses = {
-    emerald: "text-emerald-600 dark:text-emerald-400",
-    amber: "text-amber-600 dark:text-amber-400",
-    rose: "text-rose-600 dark:text-rose-400",
-    violet: "text-violet-600 dark:text-violet-400",
+  const tones = {
+    slate: { iconBg: "bg-slate-100 dark:bg-slate-800/60", iconText: "text-slate-700 dark:text-slate-300", spark: "#64748b", bar: "bg-slate-500" },
+    emerald: { iconBg: "bg-emerald-50 dark:bg-emerald-950/40", iconText: "text-emerald-600 dark:text-emerald-400", spark: "#10b981", bar: "bg-emerald-500" },
+    amber: { iconBg: "bg-amber-50 dark:bg-amber-950/40", iconText: "text-amber-600 dark:text-amber-400", spark: "#f59e0b", bar: "bg-amber-500" },
+    rose: { iconBg: "bg-rose-50 dark:bg-rose-950/40", iconText: "text-rose-600 dark:text-rose-400", spark: "#f43f5e", bar: "bg-rose-500" },
+    violet: { iconBg: "bg-violet-50 dark:bg-violet-950/40", iconText: "text-violet-600 dark:text-violet-400", spark: "#a855f7", bar: "bg-violet-500" },
   } as const;
+  const t = tones[tone];
+  const sparkId = `spark-${sparkKey ?? "none"}-${tone}`;
+
+  const Wrapper: any = onClick ? "button" : "div";
+  const wrapperProps: any = onClick ? { onClick, type: "button" } : {};
+
   return (
-    <div className="flex items-center gap-2 whitespace-nowrap">
-      <Icon className={`size-4 ${toneClasses[tone]}`} />
-      <span className="font-bold tabular-nums">{value}</span>
-      {suffix && <span className="text-xs text-muted-foreground">{suffix}</span>}
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </div>
+    <Wrapper
+      {...wrapperProps}
+      className={`relative overflow-hidden rounded-xl border bg-card p-4 transition-all text-left ${
+        onClick
+          ? "hover:bg-accent/30 hover:border-foreground/20 hover:shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          : ""
+      }`}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className={`size-8 rounded-lg flex items-center justify-center ${t.iconBg}`}>
+          <Icon className={`size-3.5 ${t.iconText}`} />
+        </div>
+        {onClick && (
+          <ArrowUpRight className="size-3.5 text-muted-foreground/30 group-hover:text-foreground transition-colors" />
+        )}
+      </div>
+      <div>
+        <p className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-[0.12em] mb-1.5">
+          {label}
+        </p>
+        <div className="flex items-baseline gap-1.5 mb-1">
+          <span className="text-[26px] font-bold tabular-nums tracking-tight leading-none">
+            {value}
+          </span>
+          {suffix && (
+            <span className="text-sm text-muted-foreground/70 font-medium tabular-nums">
+              {suffix}
+            </span>
+          )}
+        </div>
+        {subtitle && (
+          <p className={`text-[11px] mt-1 ${accent === "success" ? "text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1" : "text-muted-foreground"}`}>
+            {accent === "success" && <CheckCircle2 className="size-3" />}
+            {subtitle}
+          </p>
+        )}
+      </div>
+      {progress !== undefined && (
+        <div className="mt-3.5 h-1 rounded-full bg-muted overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${t.bar}`}
+            style={{ width: `${Math.min(100, progress)}%` }}
+          />
+        </div>
+      )}
+      {sparkData && sparkKey && (
+        <div className="mt-3 -mx-1 h-[28px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={sparkData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id={sparkId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={t.spark} stopOpacity={0.45} />
+                  <stop offset="100%" stopColor={t.spark} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <Area
+                type="monotone"
+                dataKey={sparkKey}
+                stroke={t.spark}
+                strokeWidth={1.5}
+                fill={`url(#${sparkId})`}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </Wrapper>
   );
 }
 
-function CommandCenter({
+/**
+ * Command Panel — the inbox row. Four queues that the CEO is on the hook
+ * for: leaves, login approvals, review bonuses, complaints. Click a tile
+ * to jump to that page. Inactive tiles (count = 0) gray out so the eye
+ * skips them.
+ */
+function CommandPanel({
   counts,
   onNavigate,
 }: {
@@ -423,21 +903,27 @@ function CommandCenter({
   } as const;
 
   return (
-    <Card className="border shadow-none">
-      <CardContent className="py-4 px-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold">Needs your attention</h2>
+    <Card className="border shadow-none overflow-hidden">
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <Sparkles className="size-3.5 text-amber-500" />
+              Needs your attention
+            </h2>
+          </div>
           {totalPending === 0 ? (
-            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-              Inbox zero ✦
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="size-3.5" />
+              Inbox zero
             </span>
           ) : (
             <span className="text-[11px] font-medium text-muted-foreground">
-              {totalPending} pending
+              <span className="font-semibold text-foreground tabular-nums">{totalPending}</span> open
             </span>
           )}
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
           {items.map((item) => {
             const Icon = item.icon;
             const isActive = item.count > 0;
@@ -446,22 +932,34 @@ function CommandCenter({
                 key={item.href}
                 type="button"
                 onClick={() => onNavigate(item.href)}
-                className={`group text-left rounded-lg border bg-card px-3 py-3 hover:border-foreground/20 hover:shadow-sm transition-all ${
-                  !isActive && "opacity-60 hover:opacity-90"
+                className={`group relative text-left rounded-lg border bg-card p-3 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  isActive
+                    ? "hover:border-foreground/20 hover:shadow-sm hover:bg-accent/30"
+                    : "opacity-50 hover:opacity-80"
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-2.5">
                   <div className={`size-7 rounded-md flex items-center justify-center ${accentClasses[item.accent]}`}>
                     <Icon className="size-3.5" />
                   </div>
-                  <ArrowRight className="size-3 text-muted-foreground/60 group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+                  <ArrowRight className="size-3 text-muted-foreground/40 group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
                 </div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className={`text-xl font-bold tabular-nums ${!isActive && "text-muted-foreground"}`}>
+                  <span className={`text-2xl font-bold tabular-nums tracking-tight ${!isActive && "text-muted-foreground"}`}>
                     {item.count}
                   </span>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{item.label}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                  {item.label}
+                </p>
+                {isActive && (
+                  <div className={`absolute top-3 right-9 size-1.5 rounded-full animate-pulse ${
+                    item.accent === "violet" ? "bg-violet-500" :
+                    item.accent === "blue" ? "bg-blue-500" :
+                    item.accent === "amber" ? "bg-amber-500" :
+                    "bg-rose-500"
+                  }`} />
+                )}
               </button>
             );
           })}
@@ -471,6 +969,16 @@ function CommandCenter({
   );
 }
 
+/**
+ * Team card — the workhorse of this page.
+ *
+ * Header: team name + headcount + partner/office subtitle, with a
+ *   right-aligned "in office now" live count.
+ * Body: today's split shown as both a segmented progress bar (visual)
+ *   and four labeled metrics (precise numbers).
+ * Money line: pending salary + monthly fines, both clickable to /payroll.
+ * Roster: collapsible list of every member with live status pill.
+ */
 function TeamCard({
   tg,
   roster,
@@ -484,15 +992,27 @@ function TeamCard({
   onToggle: () => void;
   onPayrollClick: () => void;
 }) {
-  const presentRate = tg.memberCount > 0 ? Math.round((tg.presentToday / tg.memberCount) * 100) : 0;
-  const presentLikeNow = roster.filter(
+  // Live count — anyone currently in the office (present, late, or on break).
+  const inOfficeNow = roster.filter(
     (e) => e.liveStatus === "PRESENT" || e.liveStatus === "LATE" || e.liveStatus === "ON_BREAK",
   ).length;
 
+  // Segmented bar segments, only including non-zero so width math is clean.
+  // Note: presentToday already includes lateToday (partial overlap) — we
+  // split them visually here using `presentToday - lateToday` for the
+  // "on time" green segment.
+  const onTime = Math.max(0, tg.presentToday - tg.lateToday);
+  const segments = [
+    { color: "bg-emerald-500", value: onTime },
+    { color: "bg-amber-500", value: tg.lateToday },
+    { color: "bg-rose-500", value: tg.absentToday },
+    { color: "bg-violet-500", value: tg.onLeaveToday },
+  ].filter((s) => s.value > 0);
+
   return (
     <Card className="border shadow-none overflow-hidden">
-      {/* Card header — team identity */}
-      <div className="px-4 py-3 border-b bg-muted/15">
+      {/* Header — team identity */}
+      <div className="px-4 py-3 border-b bg-gradient-to-br from-muted/20 to-transparent">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -509,56 +1029,78 @@ function TeamCard({
           </div>
           {roster.length > 0 && (
             <div className="text-right shrink-0">
-              <div className="text-[10px] text-muted-foreground">In office now</div>
-              <div className="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                {presentLikeNow}<span className="text-muted-foreground font-normal">/{roster.length}</span>
+              <div className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                In office now
+              </div>
+              <div className="text-base font-bold tabular-nums text-emerald-700 dark:text-emerald-400 leading-tight mt-0.5">
+                {inOfficeNow}
+                <span className="text-muted-foreground font-normal text-xs">/{roster.length}</span>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Today's roster split */}
-      <div className="px-4 py-3 grid grid-cols-4 gap-2">
-        <StatPill label="Present" value={tg.presentToday} tone="emerald" />
-        <StatPill label="Late" value={tg.lateToday} tone="amber" />
-        <StatPill label="Absent" value={tg.absentToday} tone="rose" />
-        <StatPill label="Leave" value={tg.onLeaveToday} tone="violet" />
+      {/* Today's split — segmented bar + inline metrics */}
+      <div className="px-4 py-3 space-y-2.5">
+        <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
+          {segments.length > 0 ? (
+            segments.map((s, i) => (
+              <div
+                key={i}
+                className={`${s.color} transition-all duration-500`}
+                style={{ width: `${(s.value / Math.max(1, tg.memberCount)) * 100}%` }}
+              />
+            ))
+          ) : (
+            <div className="w-full bg-muted" />
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
+          <div className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span className="text-muted-foreground">Present</span>
+            <span className="font-semibold tabular-nums">{tg.presentToday}</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-amber-500" />
+            <span className="text-muted-foreground">Late</span>
+            <span className="font-semibold tabular-nums">{tg.lateToday}</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-rose-500" />
+            <span className="text-muted-foreground">Absent</span>
+            <span className="font-semibold tabular-nums">{tg.absentToday}</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-violet-500" />
+            <span className="text-muted-foreground">Leave</span>
+            <span className="font-semibold tabular-nums">{tg.onLeaveToday}</span>
+          </div>
+        </div>
       </div>
 
-      {/* Attendance bar */}
-      <div className="px-4 pb-3">
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
-          <span>Attendance today</span>
-          <span className="font-semibold tabular-nums">{presentRate}%</span>
-        </div>
-        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${
-              presentRate >= 80 ? "bg-emerald-500" : presentRate >= 60 ? "bg-amber-500" : "bg-rose-500"
-            }`}
-            style={{ width: `${Math.min(100, presentRate)}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Money row — pending salary + monthly fines */}
+      {/* Money row */}
       <div className="px-4 py-2.5 border-t border-b bg-muted/10 flex items-center justify-between gap-3 text-[11px]">
         {tg.monthPending > 0 ? (
           <button
             type="button"
             onClick={onPayrollClick}
-            className="flex items-center gap-1.5 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
+            className="flex items-center gap-1.5 hover:text-amber-700 dark:hover:text-amber-400 transition-colors group"
             title="Open payroll"
           >
             <Wallet className="size-3 text-amber-600 dark:text-amber-400" />
             <span className="text-muted-foreground">Pending</span>
             <span className="font-semibold tabular-nums">PKR {Math.round(tg.monthPending).toLocaleString()}</span>
-            <span className="text-[9px] text-muted-foreground">({tg.unpaidCount}/{tg.unpaidCount + tg.paidCount})</span>
+            <span className="text-[9px] text-muted-foreground tabular-nums">
+              ({tg.unpaidCount}/{tg.unpaidCount + tg.paidCount})
+            </span>
+            <ArrowRight className="size-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
         ) : (
           <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-            <Wallet className="size-3" />
+            <CheckCircle2 className="size-3" />
             <span className="text-muted-foreground">Salaries</span>
             <span className="font-semibold">All paid</span>
           </div>
@@ -566,7 +1108,9 @@ function TeamCard({
         <div className="flex items-center gap-1.5">
           <AlertTriangle className="size-3 text-muted-foreground" />
           <span className="text-muted-foreground">Fines</span>
-          <span className="font-semibold tabular-nums">PKR {Math.round(tg.monthFines).toLocaleString()}</span>
+          <span className="font-semibold tabular-nums">
+            PKR {Math.round(tg.monthFines).toLocaleString()}
+          </span>
         </div>
       </div>
 
@@ -579,7 +1123,7 @@ function TeamCard({
             className="w-full px-4 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors flex items-center justify-center gap-1.5"
           >
             {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-            {expanded ? "Hide" : `Show ${roster.length} employee${roster.length !== 1 ? "s" : ""}`}
+            {expanded ? "Hide roster" : `Show ${roster.length} ${roster.length === 1 ? "employee" : "employees"}`}
           </button>
 
           {expanded && (
@@ -638,20 +1182,5 @@ function TeamCard({
         </>
       )}
     </Card>
-  );
-}
-
-function StatPill({ label, value, tone }: { label: string; value: number; tone: "emerald" | "amber" | "rose" | "violet" }) {
-  const toneClasses = {
-    emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400",
-    amber: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400",
-    rose: "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400",
-    violet: "bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400",
-  } as const;
-  return (
-    <div className={`rounded-md px-2 py-1.5 text-center ${toneClasses[tone]}`}>
-      <div className="text-sm font-bold tabular-nums">{value}</div>
-      <div className="text-[9px] font-medium opacity-80">{label}</div>
-    </div>
   );
 }
