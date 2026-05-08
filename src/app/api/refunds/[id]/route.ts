@@ -24,6 +24,64 @@ function minutesSinceCreation(createdAt: Date): number {
   return Math.floor((nowShifted - created) / 60000);
 }
 
+// GET /api/refunds/[id] — full refund record including the proof image URL.
+// Used by the list view to LAZY-load proof images on demand. The list query
+// itself omits aliexpressProofUrl (base64 data URLs ~50KB each blow up the
+// payload to ~1MB+ and slow the page to 5+ seconds), so when the CEO clicks
+// "View Proof" we fetch just that one refund's proof here.
+//
+// Scope mirrors DELETE: CEO/HR see any refund, MANAGER (Izaan) only own
+// department, owner sees own. Anyone else 403s.
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireAuth();
+  if (!session) return error("Unauthorized", 401);
+
+  const user = session.user as any;
+  const { id } = await params;
+
+  const refund = await prisma.refund.findUnique({
+    where: { id },
+    include: {
+      user: { select: { firstName: true, lastName: true, employeeId: true, departmentId: true } },
+    },
+  });
+  if (!refund) return error("Not found", 404);
+
+  const userIsAdmin = isAdmin(user);
+  const isManager = user.role === "MANAGER";
+  const isOwner = refund.userId === user.id;
+  const isPartner = user.role === "PARTNER";
+
+  if (userIsAdmin || isOwner) {
+    // Full access — proceed.
+  } else if (isManager) {
+    const me = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { departmentId: true },
+    });
+    if (!me?.departmentId || me.departmentId !== refund.user.departmentId) {
+      return error("Forbidden", 403);
+    }
+  } else if (isPartner) {
+    // Partner can read their own team's refunds.
+    const teams = await prisma.team.findMany({
+      where: { partnerId: user.id },
+      select: { members: { where: { id: refund.userId }, select: { id: true } } },
+    });
+    const isOnPartnerTeam = teams.some((t) => t.members.length > 0);
+    if (!isOnPartnerTeam) return error("Forbidden", 403);
+  } else {
+    return error("Forbidden", 403);
+  }
+
+  // Strip departmentId (only needed for the scope check above).
+  const { user: u, ...rest } = refund;
+  return json({
+    ...rest,
+    user: { firstName: u.firstName, lastName: u.lastName, employeeId: u.employeeId },
+  });
+}
+
 // PATCH /api/refunds/[id] — ONLY the owner can edit, and only within 15 minutes.
 // Admins (CEO / Izaan) can NOT edit — they can only delete via the DELETE route.
 // This keeps refund records authoritative to the employee who submitted them.

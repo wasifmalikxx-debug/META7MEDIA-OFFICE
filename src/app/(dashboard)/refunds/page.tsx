@@ -118,13 +118,46 @@ export default async function RefundsPage({
     where.userId = user.id;
   }
 
-  const refunds = await prisma.refund.findMany({
-    where,
-    include: {
-      user: { select: { firstName: true, lastName: true, employeeId: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  // Two-query approach to avoid pulling base64 proof images into the list:
+  //  1. Main list — explicit `select` that omits aliexpressProofUrl. With
+  //     ~30 refunds × ~50KB proof images each, including the URL inflates
+  //     the response to ~1MB and the query to 5+ seconds. Omitting it
+  //     drops the payload by ~95%.
+  //  2. Side query — IDs of refunds that DO have a proof, so the UI can
+  //     show a "View Proof" button without the URL itself. The actual URL
+  //     is fetched on-demand via GET /api/refunds/[id] when the user
+  //     clicks the button.
+  const [refundsList, refundsWithProof] = await Promise.all([
+    prisma.refund.findMany({
+      where,
+      select: {
+        id: true,
+        userId: true,
+        storeName: true,
+        customerName: true,
+        etsyRefundAmount: true,
+        aliexpressRefunded: true,
+        aliexpressAmount: true,
+        notes: true,
+        createdAt: true,
+        updatedAt: true,
+        user: { select: { firstName: true, lastName: true, employeeId: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.refund.findMany({
+      where: { ...where, aliexpressProofUrl: { not: null } },
+      select: { id: true },
+    }),
+  ]);
+  const proofIds = new Set(refundsWithProof.map((r) => r.id));
+  const refunds = refundsList.map((r) => ({
+    ...r,
+    hasProof: proofIds.has(r.id),
+    // Kept for backward-compat with the existing client type. Always null
+    // in the list payload — the actual URL is lazy-fetched.
+    aliexpressProofUrl: null as string | null,
+  }));
 
   // Can this user submit a refund? Only Etsy-style shop owners.
   // - CEO / HR / PARTNER can't submit (no shop)

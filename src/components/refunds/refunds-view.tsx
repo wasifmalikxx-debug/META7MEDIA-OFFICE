@@ -51,7 +51,14 @@ interface Refund {
   etsyRefundAmount: number;
   aliexpressRefunded: boolean;
   aliexpressAmount: number | null;
+  // Proof URL is NOT delivered with the list payload (the base64 data URL
+  // is too heavy — ~50KB per refund, ~1MB+ across the page). Server lists
+  // it as null on every row and exposes hasProof so the UI can render a
+  // "View Proof" button. Clicking the button fetches the actual URL via
+  // GET /api/refunds/[id]; same path is used to populate the existing-
+  // proof preview when the owner edits a refund.
   aliexpressProofUrl: string | null;
+  hasProof?: boolean;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -156,7 +163,22 @@ export function RefundsView({
     setKeepExistingProof(false);
   }
 
-  function openEditDialog(r: Refund) {
+  // Fetch the full refund (including the proof image URL) on demand. The
+  // list payload omits the URL to keep it lightweight; we hit this endpoint
+  // when the user clicks View Proof, or when opening the edit dialog on a
+  // refund that has an existing proof image.
+  async function fetchRefundProofUrl(id: string): Promise<string | null> {
+    try {
+      const res = await fetch(`/api/refunds/${id}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.aliexpressProofUrl || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function openEditDialog(r: Refund) {
     setEditingId(r.id);
     setForm({
       storeName: r.storeName,
@@ -166,17 +188,35 @@ export function RefundsView({
       aliexpressAmount: r.aliexpressAmount != null ? String(r.aliexpressAmount) : "",
       notes: r.notes || "",
     });
-    // When editing, if the refund already has a proof image, show the existing
-    // one as a preview and mark "keepExistingProof" so the server knows to reuse
-    // it when no new file is uploaded
-    if (r.aliexpressProofUrl) {
-      setProofImage(r.aliexpressProofUrl);
+    // When editing, if the refund already has a proof, show it as a preview
+    // and mark "keepExistingProof" so the server reuses it on save when the
+    // user doesn't upload a new image. URL isn't in the list payload, so
+    // fetch it on demand.
+    if (r.hasProof) {
+      setProofImage(null);
       setKeepExistingProof(true);
+      setOpen(true);
+      // Fetch the URL after the dialog opens — the form briefly renders
+      // without a proof preview (the upload area shows instead), then the
+      // existing proof slides in once the fetch resolves. ~200ms.
+      const url = await fetchRefundProofUrl(r.id);
+      if (url) {
+        setProofImage(url);
+      } else {
+        setKeepExistingProof(false);
+      }
     } else {
       setProofImage(null);
       setKeepExistingProof(false);
+      setOpen(true);
     }
-    setOpen(true);
+  }
+
+  // Click "View Proof" on a refund card → fetch + open the lightbox.
+  async function viewProofById(id: string) {
+    const url = await fetchRefundProofUrl(id);
+    if (url) setLightboxImage(url);
+    else toast.error("Could not load proof image");
   }
 
   async function handleProofPick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -759,7 +799,7 @@ export function RefundsView({
                       canDeleteAny={effectiveCanDeleteAny}
                       onEdit={() => openEditDialog(r)}
                       onDelete={() => handleDelete(r.id)}
-                      onViewProof={(url) => setLightboxImage(url)}
+                      onViewProof={() => viewProofById(r.id)}
                       showEmployee={canSeeAll}
                     />
                   ))}
@@ -806,7 +846,8 @@ function RefundCard({
   canDeleteAny: boolean;
   onEdit: () => void;
   onDelete: () => void;
-  onViewProof: (url: string) => void;
+  /** Trigger lazy-fetch of this refund's proof image and open the lightbox. */
+  onViewProof: () => void;
   showEmployee: boolean;
 }) {
   const netLoss = r.etsyRefundAmount - (r.aliexpressAmount || 0);
@@ -868,10 +909,10 @@ function RefundCard({
                     <Package className="size-2.5" />
                     AliExpress ${r.aliexpressAmount.toFixed(2)}
                   </Badge>
-                  {r.aliexpressProofUrl && (
+                  {(r.hasProof || r.aliexpressProofUrl) && (
                     <button
                       type="button"
-                      onClick={() => onViewProof(r.aliexpressProofUrl!)}
+                      onClick={onViewProof}
                       className="inline-flex items-center gap-1 h-5 px-1.5 rounded-md text-[10px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50 transition-colors"
                       title="View proof screenshot"
                     >
