@@ -15,7 +15,9 @@ export default async function EtsyAnalyticsPage({
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
-  if (role !== "SUPER_ADMIN" && role !== "MANAGER" && role !== "PARTNER") {
+  // Analytics is CEO + PARTNER only. Izaan is a team lead (MANAGER), not a
+  // partner — he sees the bonus program for EM but not the analytics tab.
+  if (role !== "SUPER_ADMIN" && role !== "PARTNER") {
     redirect("/dashboard");
   }
 

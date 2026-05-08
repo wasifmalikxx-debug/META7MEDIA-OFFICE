@@ -155,8 +155,13 @@ type PartnerSection = {
 function teamItems(key: "em" | "ae" | "me", isIzaan: boolean): PartnerSectionItem[] {
   const items: PartnerSectionItem[] = [
     { title: "Bonus Program", href: `/bonus-program?team=${key}`, icon: Target },
-    { title: "Analytics", href: `/etsy-analytics?team=${key}`, icon: BarChart3 },
   ];
+  // Analytics is CEO + PARTNER only. Izaan is a team lead (MANAGER), not a
+  // partner, so the analytics tab is hidden from his EM section. The
+  // /etsy-analytics page also blocks MANAGER role server-side as a backstop.
+  if (!isIzaan) {
+    items.push({ title: "Analytics", href: `/etsy-analytics?team=${key}`, icon: BarChart3 });
+  }
   // Izaan only: dedicated team-reports view scoped to EM-* on the server.
   // CEO already gets all-team Daily Reports in the main nav, so no duplicate.
   if (key === "em" && isIzaan) {
