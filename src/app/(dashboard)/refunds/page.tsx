@@ -180,6 +180,15 @@ export default async function RefundsPage({
         }
       />
       <RefundsView
+        // KEY ON SCOPE — forces a fresh client-side mount when the CEO
+        // switches teams (?team=em → ?team=ae) or months. RefundsView
+        // initializes its `refunds` state once via `useState(initialRefunds)`,
+        // which means a soft re-render with new props leaves the old list
+        // stuck on screen. Including team/month/year in the key remounts the
+        // component so state re-seeds from the new server payload, and
+        // resets transient UI (open dialog, lightbox) that belonged to the
+        // previous scope.
+        key={`refunds-${params.team ?? "all"}-${year}-${month}`}
         initialRefunds={JSON.parse(JSON.stringify(refunds))}
         canSeeAll={canSeeAll}
         // Partners see their team's refunds but the API does NOT authorize
