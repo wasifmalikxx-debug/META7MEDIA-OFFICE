@@ -147,10 +147,21 @@ async function compressImage(file: File): Promise<string> {
   });
 }
 
+interface TargetEmployee {
+  id: string;
+  employeeId: string;
+  firstName: string;
+  lastName: string | null;
+  department?: { name: string } | null;
+  team?: { name: string } | null;
+}
+
 interface ComplaintsViewProps {
   initialComplaints: Complaint[];
   isAdmin: boolean;
   currentUserId: string;
+  /** CEO-only — employees the CEO can launch a complaint against. */
+  targetEmployees?: TargetEmployee[];
 }
 
 const CATEGORIES = [
@@ -349,7 +360,7 @@ function ComplaintSection({
   );
 }
 
-export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: ComplaintsViewProps) {
+export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targetEmployees = [] }: ComplaintsViewProps) {
   const router = useRouter();
   const [complaints, setComplaints] = useState<Complaint[]>(initialComplaints);
   const [newOpen, setNewOpen] = useState(false);
@@ -361,6 +372,7 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
     category: "BUG",
     priority: "MEDIUM",
     description: "",
+    targetUserId: "", // CEO-only — employee the complaint is against
   });
   const [messageInput, setMessageInput] = useState("");
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
@@ -463,6 +475,15 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
     };
   }, [viewing]);
 
+  // CEO-only — refresh the page (and thus the targetEmployees prop) every
+  // 30s so newly-hired employees appear in the Launch dialog picker
+  // without requiring a manual reload.
+  useEffect(() => {
+    if (!isAdmin) return;
+    const id = setInterval(() => router.refresh(), 30_000);
+    return () => clearInterval(id);
+  }, [isAdmin, router]);
+
   const grouped = useMemo(() => {
     const openCases: Complaint[] = [];
     const closedCases: Complaint[] = [];
@@ -496,6 +517,10 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
       toast.error("Please describe the issue in at least 10 characters");
       return;
     }
+    if (isAdmin && !form.targetUserId) {
+      toast.error("Pick the employee this complaint is against");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/complaints", {
@@ -505,9 +530,13 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to submit");
-      toast.success("Complaint submitted — delivered securely to the CEO");
+      toast.success(
+        isAdmin
+          ? "Complaint sent — the employee has been notified"
+          : "Complaint submitted — delivered securely to the CEO",
+      );
       setComplaints([data, ...complaints]);
-      setForm({ subject: "", category: "BUG", priority: "MEDIUM", description: "" });
+      setForm({ subject: "", category: "BUG", priority: "MEDIUM", description: "", targetUserId: "" });
       setFormImage(null);
       setNewOpen(false);
       router.refresh();
@@ -732,15 +761,15 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
         </p>
       </div>
 
-      {/* Launch button — employees only */}
-      {!isAdmin && (
+      {/* Launch button — visible to everyone. Employees launch a complaint
+          to the CEO; the CEO launches one against a specific employee. */}
       <div className="flex items-center justify-end">
         <Dialog open={newOpen} onOpenChange={setNewOpen}>
           <DialogTrigger
             render={
               <Button className="gap-2 rounded-lg">
                 <Plus className="size-4" />
-                Launch Complaint
+                {isAdmin ? "Launch Against Employee" : "Launch Complaint"}
               </Button>
             }
           />
@@ -748,10 +777,12 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <ShieldCheck className="size-5 text-emerald-600" />
-                Launch a Complaint
+                {isAdmin ? "Launch a Complaint Against an Employee" : "Launch a Complaint"}
               </DialogTitle>
               <DialogDescription>
-                Direct private channel to the CEO. Report anything.
+                {isAdmin
+                  ? "Open a private thread with one specific employee. They'll see it on their portal."
+                  : "Direct private channel to the CEO. Report anything."}
               </DialogDescription>
             </DialogHeader>
 
@@ -762,13 +793,45 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
                   Secure · Encrypted · Confidential
                 </p>
                 <p className="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
-                  Every complaint is stored securely and handled one-to-one with the CEO. Your coworkers and managers
-                  never see this. All complaints reset automatically on the 1st of every month. Speak honestly.
+                  {isAdmin
+                    ? "Only you and the targeted employee see this thread. Resets on the 1st of each month along with all complaints."
+                    : "Every complaint is stored securely and handled one-to-one with the CEO. Your coworkers and managers never see this. All complaints reset automatically on the 1st of every month. Speak honestly."}
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {isAdmin && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">
+                    Employee <span className="text-rose-500">*</span>
+                  </Label>
+                  <Select
+                    value={form.targetUserId}
+                    onValueChange={(v) => v && setForm({ ...form, targetUserId: v })}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder={`Pick from ${targetEmployees.length} employees`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {targetEmployees.map((e) => {
+                        const dept = e.department?.name ? ` · ${e.department.name}` : "";
+                        return (
+                          <SelectItem key={e.id} value={e.id}>
+                            <span className="font-mono text-[10px] text-muted-foreground mr-1.5">{e.employeeId}</span>
+                            {e.firstName} {e.lastName || ""}
+                            <span className="text-[10px] text-muted-foreground">{dept}</span>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    List refreshes automatically every 30s — newly hired employees appear without reload.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Subject</Label>
                 <Input
@@ -890,7 +953,6 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId }: Co
           </DialogContent>
         </Dialog>
       </div>
-      )}
 
       {/* Grouped sections: Open Cases / Closed / Denied */}
       {complaints.length === 0 ? (

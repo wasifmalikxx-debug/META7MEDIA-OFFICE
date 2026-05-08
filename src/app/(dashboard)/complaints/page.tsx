@@ -48,6 +48,28 @@ export default async function ComplaintsPage() {
     orderBy: [{ updatedAt: "desc" }],
   });
 
+  // For the CEO's "Launch Complaint" picker — every active employee with
+  // their team / department for context. Auto-refreshes via the view's 30s
+  // router.refresh polling, so newly hired employees show up without a
+  // manual reload.
+  const targetEmployees = isAdmin
+    ? await prisma.user.findMany({
+        where: {
+          status: { in: ["HIRED", "PROBATION"] },
+          role: { notIn: ["SUPER_ADMIN", "HR_ADMIN"] },
+        },
+        select: {
+          id: true,
+          employeeId: true,
+          firstName: true,
+          lastName: true,
+          department: { select: { name: true } },
+          team: { select: { name: true } },
+        },
+        orderBy: { employeeId: "asc" },
+      })
+    : [];
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -62,6 +84,7 @@ export default async function ComplaintsPage() {
         initialComplaints={JSON.parse(JSON.stringify(complaints))}
         isAdmin={isAdmin}
         currentUserId={userId}
+        targetEmployees={JSON.parse(JSON.stringify(targetEmployees))}
       />
     </div>
   );
