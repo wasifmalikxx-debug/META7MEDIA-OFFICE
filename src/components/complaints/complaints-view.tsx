@@ -306,60 +306,6 @@ function ComplaintCard({ c, isAdmin, onOpen }: { c: Complaint; isAdmin: boolean;
   );
 }
 
-function ComplaintSection({
-  title,
-  subtitle,
-  icon: Icon,
-  iconColor,
-  bgColor,
-  complaints,
-  isAdmin,
-  emptyText,
-  onOpen,
-}: {
-  title: string;
-  subtitle: string;
-  icon: any;
-  iconColor: string;
-  bgColor: string;
-  complaints: Complaint[];
-  isAdmin: boolean;
-  emptyText: string;
-  onOpen: (id: string) => void;
-}) {
-  return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-3">
-        <div className={`size-8 rounded-lg ${bgColor} flex items-center justify-center`}>
-          <Icon className={`size-4 ${iconColor}`} />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-sm font-bold">{title}</h2>
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-bold">
-              {complaints.length}
-            </Badge>
-          </div>
-          <p className="text-[11px] text-muted-foreground">{subtitle}</p>
-        </div>
-      </div>
-      {complaints.length === 0 ? (
-        <Card className="border-0 shadow-sm bg-muted/10">
-          <CardContent className="py-6 text-center">
-            <p className="text-[11px] text-muted-foreground">{emptyText}</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-2">
-          {complaints.map((c) => (
-            <ComplaintCard key={c.id} c={c} isAdmin={isAdmin} onOpen={onOpen} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targetEmployees = [] }: ComplaintsViewProps) {
   const router = useRouter();
   const [complaints, setComplaints] = useState<Complaint[]>(initialComplaints);
@@ -379,6 +325,11 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
   const [formImage, setFormImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  // Active filter for the redesigned list. "active" = OPEN + IN_PROGRESS,
+  // i.e. anything still needing attention. Defaults to that since the
+  // CEO/employee mostly cares about what's outstanding when they open the
+  // page. Click any pill to switch — no section dividers needed below.
+  const [filter, setFilter] = useState<"all" | "active" | "resolved" | "denied">("active");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formFileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -483,18 +434,6 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
     const id = setInterval(() => router.refresh(), 30_000);
     return () => clearInterval(id);
   }, [isAdmin, router]);
-
-  const grouped = useMemo(() => {
-    const openCases: Complaint[] = [];
-    const closedCases: Complaint[] = [];
-    const deniedCases: Complaint[] = [];
-    for (const c of complaints) {
-      if (c.status === "OPEN" || c.status === "IN_PROGRESS") openCases.push(c);
-      else if (c.status === "RESOLVED" || c.status === "APPROVED") closedCases.push(c);
-      else if (c.status === "DENIED") deniedCases.push(c);
-    }
-    return { openCases, closedCases, deniedCases };
-  }, [complaints]);
 
   const stats = useMemo(() => {
     return {
@@ -702,68 +641,60 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
 
   const isClosed = viewing && (viewing.status === "RESOLVED" || viewing.status === "DENIED");
 
+  // Filter pill metadata + the actual filtered list. `active` collapses
+  // OPEN + IN_PROGRESS into one bucket since both states need attention —
+  // the CEO doesn't actually need to distinguish "I haven't read yet" from
+  // "I started replying" at the list level (the chat thread shows that).
+  const counts = {
+    all: stats.total,
+    active: stats.open + stats.inProgress,
+    resolved: stats.resolved,
+    denied: stats.denied,
+  };
+  const filteredComplaints = complaints.filter((c) => {
+    if (filter === "all") return true;
+    if (filter === "active") return c.status === "OPEN" || c.status === "IN_PROGRESS";
+    if (filter === "resolved") return c.status === "RESOLVED" || c.status === "APPROVED";
+    if (filter === "denied") return c.status === "DENIED";
+    return true;
+  });
+
+  const filterPills: { key: typeof filter; label: string; count: number; activeClass: string }[] = [
+    { key: "all", label: "All", count: counts.all, activeClass: "bg-foreground text-background" },
+    { key: "active", label: "Active", count: counts.active, activeClass: "bg-blue-600 text-white" },
+    { key: "resolved", label: "Resolved", count: counts.resolved, activeClass: "bg-emerald-600 text-white" },
+    { key: "denied", label: "Denied", count: counts.denied, activeClass: "bg-rose-600 text-white" },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <AlertCircle className="size-3.5 text-blue-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Open</p>
-            </div>
-            <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{stats.open}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Loader2 className="size-3.5 text-amber-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">In Progress</p>
-            </div>
-            <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{stats.inProgress}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <CheckCircle2 className="size-3.5 text-emerald-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Resolved</p>
-            </div>
-            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{stats.resolved}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-800">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <XCircle className="size-3.5 text-rose-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Denied</p>
-            </div>
-            <p className="text-3xl font-bold text-rose-600 dark:text-rose-400">{stats.denied}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/30 dark:to-slate-800 sm:col-span-2 lg:col-span-1">
-          <CardContent className="py-3.5 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <MessageSquare className="size-3.5 text-violet-500" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total</p>
-            </div>
-            <p className="text-3xl font-bold text-violet-600 dark:text-violet-400">{stats.total}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Monthly reset notice */}
-      <div className="rounded-lg border border-violet-200 dark:border-violet-900/50 bg-gradient-to-r from-violet-50 to-fuchsia-50 dark:from-violet-950/30 dark:to-fuchsia-950/30 px-4 py-2.5 flex items-center gap-3">
-        <Sparkles className="size-4 text-violet-600 dark:text-violet-400 shrink-0" />
-        <p className="text-[11px] text-violet-800 dark:text-violet-300">
-          <strong>Fresh every month.</strong> All complaints automatically reset on the 1st of each month — speak freely, nothing is kept long-term.
-        </p>
-      </div>
-
-      {/* Launch button — visible to everyone. Employees file a complaint to
-          the CEO; the CEO files one against a specific employee. */}
-      <div className="flex items-center justify-end">
+    <div className="space-y-4">
+      {/* Toolbar — filter pills on the left, New Complaint on the right.
+          Replaces the previous five-card KPI row + standalone button row.
+          Filter pills double as counters AND filters; one element instead
+          of two stacked. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="inline-flex items-center rounded-xl border bg-muted/40 p-1 self-start sm:self-auto overflow-x-auto">
+          {filterPills.map((p) => {
+            const isActive = filter === p.key;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => setFilter(p.key)}
+                className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                  isActive ? `${p.activeClass} shadow-sm` : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {p.label}
+                <span className={`text-[10px] font-mono px-1.5 py-0 rounded ${
+                  isActive ? "bg-white/20" : "bg-foreground/10"
+                }`}>
+                  {p.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
         <Dialog open={newOpen} onOpenChange={setNewOpen}>
           <DialogTrigger
             render={
@@ -959,7 +890,19 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
         </Dialog>
       </div>
 
-      {/* Grouped sections: Open Cases / Closed / Denied */}
+      {/* Subtle monthly-reset note. Replaces the previous full-width banner —
+          same message, less visual weight so it doesn't compete with the
+          actual list. */}
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground/80">
+        <Sparkles className="size-3 text-violet-500" />
+        <span>
+          Auto-resets on the 1st of every month — speak freely, nothing kept long-term.
+        </span>
+      </div>
+
+      {/* Flat filtered list. The previous Open / Closed / Denied section
+          headers are gone; the filter pills above carry that distinction
+          now. One scrollable list, sorted by recency, no extra chrome. */}
       {complaints.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="py-16 text-center">
@@ -972,41 +915,22 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
             </p>
           </CardContent>
         </Card>
+      ) : filteredComplaints.length === 0 ? (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-12 text-center">
+            <p className="text-sm font-semibold text-muted-foreground">
+              {filter === "active" && "No active complaints — you're all caught up."}
+              {filter === "resolved" && "No resolved complaints in this window."}
+              {filter === "denied" && "No denied complaints."}
+              {filter === "all" && "No complaints found."}
+            </p>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="space-y-6">
-          <ComplaintSection
-            title="Open Cases"
-            subtitle="Active complaints needing attention"
-            icon={AlertCircle}
-            iconColor="text-blue-600 dark:text-blue-400"
-            bgColor="bg-blue-50 dark:bg-blue-950/30"
-            complaints={grouped.openCases}
-            isAdmin={isAdmin}
-            emptyText="No open cases. You're all caught up."
-            onOpen={openComplaint}
-          />
-          <ComplaintSection
-            title="Closed"
-            subtitle="Resolved and approved complaints"
-            icon={CheckCheck}
-            iconColor="text-emerald-600 dark:text-emerald-400"
-            bgColor="bg-emerald-50 dark:bg-emerald-950/30"
-            complaints={grouped.closedCases}
-            isAdmin={isAdmin}
-            emptyText="Nothing closed yet."
-            onOpen={openComplaint}
-          />
-          <ComplaintSection
-            title="Denied"
-            subtitle="Complaints that were denied"
-            icon={Ban}
-            iconColor="text-rose-600 dark:text-rose-400"
-            bgColor="bg-rose-50 dark:bg-rose-950/30"
-            complaints={grouped.deniedCases}
-            isAdmin={isAdmin}
-            emptyText="No denied complaints."
-            onOpen={openComplaint}
-          />
+        <div className="space-y-2">
+          {filteredComplaints.map((c) => (
+            <ComplaintCard key={c.id} c={c} isAdmin={isAdmin} onOpen={openComplaint} />
+          ))}
         </div>
       )}
 
