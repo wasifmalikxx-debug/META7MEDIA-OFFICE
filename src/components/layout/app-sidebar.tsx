@@ -83,10 +83,12 @@ function getMainNav(userRole: string) {
     // Zain). The old aggregated main-nav entry was confusing — every viewer
     // now drills into reports per-team, never mixed.
     { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN", "PARTNER"] },
-    // CEO/HR sees "Complaints" inbox; PARTNER and employees see "Launch Complaint"
-    // — partners can submit complaints to the CEO but never see other people's
-    // complaints (the CEO is the only inbox per office rule).
-    { title: isAdmin ? "Complaints" : "Launch Complaint", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
+    // Single label for everyone — "Complaints". CEO/HR see the inbox of all
+    // complaints (incoming employee complaints + ones the CEO launched). For
+    // partners/managers/employees, /complaints scopes to their own thread
+    // history only (their incoming complaints from the CEO + outgoing ones
+    // they launched themselves).
+    { title: "Complaints", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
   ];
 }
 
@@ -301,15 +303,28 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role, user.employeeId, user.partnerTeams]);
 
-  // Poll for open complaints (CEO only — shows OPEN + IN_PROGRESS)
+  // Poll for the complaint badge counter on the sidebar:
+  //   CEO/HR → number of OPEN complaints in the inbox (employees launching
+  //            something, plus their own threads still in progress).
+  //   Everyone else → number of THEIR complaints flagged unread (CEO sent
+  //                   them a message they haven't opened yet — covers both
+  //                   CEO-launched complaints and CEO replies on threads
+  //                   they themselves opened).
   useEffect(() => {
-    if (user.role !== "SUPER_ADMIN" && user.role !== "HR_ADMIN") return;
+    const isAdminUser = user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN";
     async function fetchComplaints() {
       try {
-        const res = await fetch("/api/complaints?status=OPEN");
-        if (res.ok) {
-          const data = await res.json();
-          setOpenComplaints(Array.isArray(data) ? data.length : 0);
+        const res = await fetch(isAdminUser ? "/api/complaints?status=OPEN" : "/api/complaints");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!Array.isArray(data)) return;
+        if (isAdminUser) {
+          setOpenComplaints(data.length);
+        } else {
+          // The GET endpoint already scopes non-admin queries to userId =
+          // session.user.id, so this list is just the current user's
+          // threads. Count the ones where the CEO has new content for them.
+          setOpenComplaints(data.filter((c: any) => c.unreadByEmployee).length);
         }
       } catch {}
     }
@@ -333,7 +348,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   {pendingDevices}
                 </Badge>
               )}
-              {item.href === "/complaints" && openComplaints > 0 && (user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN") && (
+              {item.href === "/complaints" && openComplaints > 0 && (
                 <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
                   {openComplaints}
                 </Badge>
