@@ -10,15 +10,28 @@ export const dynamic = "force-dynamic";
 /**
  * Daily Reports page.
  * Access:
- *  - SUPER_ADMIN (CEO)        → all reports, both Etsy + FB teams
- *  - Izaan (EM-4 team lead)    → Etsy team reports ONLY (scoped at query level)
- *  - PARTNER (Zain/Awais/Mubeen) → only their team's reports (scoped at query level)
+ *  - SUPER_ADMIN (CEO)         → reports filtered by ?team=em|ae|me|fb-hq|fb-o2
+ *                                 (no team param = all reports across all teams)
+ *  - Izaan (EM-4 team lead)    → EM team reports ONLY (forced; ignores ?team)
+ *  - PARTNER (Zain/Awais/Mubeen) → their own team's reports (forced; ignores ?team)
  *  - Everyone else             → redirected to /dashboard
  *
  * Scoping is enforced on the server query, not just the UI, so a partner
- * can never see another team's reports even via a crafted request.
+ * can never see another team's reports even via a crafted ?team= request.
  */
-export default async function DailyReportPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string }> }) {
+const TEAM_KEY_TO_DEPT_NAME: Record<string, string> = {
+  em: "Etsy - EM",
+  ae: "Etsy - AE",
+  me: "Etsy - ME",
+  "fb-hq": "Facebook - HQ",
+  "fb-o2": "Facebook - O2",
+};
+
+export default async function DailyReportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string; year?: string; team?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
@@ -57,18 +70,35 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
   // already pruned, so scanning further back would return nothing.
   const detectionStart = new Date(Date.UTC(year, month - 3, 1));
 
-  // Build the where clause. For Izaan, restrict to Etsy team members only
-  // (employeeId starts with "EM"). For PARTNER, scope by team member IDs.
-  // For CEO, no restriction.
-  const baseWhere: any = isPartner
-    ? {
-        userId: {
-          in: partnerMemberIds && partnerMemberIds.length > 0 ? partnerMemberIds : ["__none__"],
-        },
-      }
-    : isEtsyTeamLead && !isAdmin
-    ? { user: { employeeId: { startsWith: "EM" } } }
-    : {};
+  // ─── Build the where clause ────────────────────────────────────────
+  //
+  // Partner / Izaan are pinned to their own scope and ignore ?team= so a
+  // crafted URL can't leak. CEO honors ?team= for the new per-team sidebar
+  // entry points (Izaan EM / Awais AE / Mubeen ME / Facebook HQ / Zain).
+  // For CEO with no team param, show every team mixed (legacy fallback;
+  // not normally reachable via the sidebar after this change).
+  let baseWhere: any = {};
+  let scopedTeamLabel: string | null = null;
+
+  if (isPartner) {
+    baseWhere = {
+      userId: {
+        in: partnerMemberIds && partnerMemberIds.length > 0 ? partnerMemberIds : ["__none__"],
+      },
+    };
+  } else if (isEtsyTeamLead && !isAdmin) {
+    baseWhere = { user: { employeeId: { startsWith: "EM" } } };
+  } else if (isAdmin && params.team) {
+    const deptName = TEAM_KEY_TO_DEPT_NAME[params.team];
+    if (deptName) {
+      baseWhere = { user: { department: { name: deptName } } };
+      scopedTeamLabel = deptName;
+    } else {
+      // Unknown team key — surface an empty inbox rather than silently
+      // showing all teams and breaking the per-team header.
+      baseWhere = { userId: { in: ["__none__"] } };
+    }
+  }
 
   // Fetch the currently-viewed month for display AND the 3-month detection
   // window for duplicate analysis, in parallel. The detection pool is
@@ -118,9 +148,19 @@ export default async function DailyReportPage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={isAdmin ? "Daily Reports" : isPartner ? "Team Reports" : "Etsy Team Reports"}
+        title={
+          scopedTeamLabel
+            ? `${scopedTeamLabel} — Team Reports`
+            : isAdmin
+            ? "Daily Reports"
+            : isPartner
+            ? "Team Reports"
+            : "Etsy Team Reports"
+        }
         description={
-          isAdmin
+          scopedTeamLabel
+            ? `Daily reports submitted by ${scopedTeamLabel}`
+            : isAdmin
             ? "All daily reports submitted by the team"
             : isPartner
             ? "Daily reports submitted by your team members"

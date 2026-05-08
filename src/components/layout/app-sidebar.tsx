@@ -78,10 +78,10 @@ function getMainNav(userRole: string) {
     { title: "Daily Activities", href: "/fines", icon: CalendarClock, roles: ["all"] },
     { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
     { title: "My Reports", href: "/my-reports", icon: BarChart3, roles: ["EMPLOYEE", "MANAGER"] },
-    // Daily Reports: CEO sees all teams; PARTNER sees their own team's reports
-    // (server-scoped). Izaan also has a separate "Team Reports" entry under the
-    // Etsy nav so he doesn't need this main-nav one.
-    { title: "Daily Reports", href: "/daily-work-report", icon: BarChart3, roles: ["SUPER_ADMIN", "PARTNER"] },
+    // Daily Reports moved entirely into the per-team partner sections below
+    // (Izaan EM / Awais AE / Mubeen ME) and the FB Program section (HQ /
+    // Zain). The old aggregated main-nav entry was confusing — every viewer
+    // now drills into reports per-team, never mixed.
     { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN", "PARTNER"] },
     // CEO/HR sees "Complaints" inbox; PARTNER and employees see "Launch Complaint"
     // — partners can submit complaints to the CEO but never see other people's
@@ -162,11 +162,10 @@ function teamItems(key: "em" | "ae" | "me", isIzaan: boolean): PartnerSectionIte
   if (!isIzaan) {
     items.push({ title: "Analytics", href: `/etsy-analytics?team=${key}`, icon: BarChart3 });
   }
-  // Izaan only: dedicated team-reports view scoped to EM-* on the server.
-  // CEO already gets all-team Daily Reports in the main nav, so no duplicate.
-  if (key === "em" && isIzaan) {
-    items.push({ title: "Team Reports", href: "/daily-work-report", icon: FileText });
-  }
+  // Team Reports — every Etsy team gets one, scoped server-side via ?team=.
+  // CEO sees them per-section now (the global "Daily Reports" main-nav entry
+  // was dropped to stop everything mixing together).
+  items.push({ title: "Team Reports", href: `/daily-work-report?team=${key}`, icon: FileText });
   items.push(
     {
       title: "Review Approvals",
@@ -444,27 +443,64 @@ export function AppSidebar({ user }: AppSidebarProps) {
           );
         })()}
 
-        {/* FB Program — visible to:
-            - CEO (sees all)
-            - FB employees (SMM- prefix)
-            - PARTNER who manages a Facebook team (Zain) — but Zain's view is intentionally
-              minimal: just employees + payroll, no bonus program. So we hide this section
-              for the FB partner per Wasif's "Facebook is simple" instruction. */}
-        {(user.role === "SUPER_ADMIN" || user.employeeId?.startsWith("SMM")) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>FB Program</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton isActive={pathname === "/fb-program"} render={<Link href="/fb-program" />}>
-                    <Rocket className="size-4" />
-                    <span>Bonus Program</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        {/* FB Program — restructured into per-team entries:
+            - Bonus Program        (CEO + SMM-* employees; hidden from Zain per "FB is simple")
+            - Facebook HQ Reports  (CEO only — HQ has no partner, Wasif manages directly)
+            - Zain Team Reports    (CEO + Zain — his FB-O2 team)
+            Visible if any item is visible. */}
+        {(() => {
+          const isCeo = user.role === "SUPER_ADMIN";
+          const isSmm = !!user.employeeId?.startsWith("SMM");
+          const isZain =
+            user.role === "PARTNER" &&
+            (user.partnerTeams?.some((t) => t.departmentName.includes(" - O2")) ?? false);
+
+          const showBonus = isCeo || isSmm; // unchanged; Zain still excluded
+          const showHqReports = isCeo;
+          const showZainReports = isCeo || isZain;
+
+          if (!showBonus && !showHqReports && !showZainReports) return null;
+
+          return (
+            <SidebarGroup>
+              <SidebarGroupLabel>FB Program</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {showBonus && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton isActive={pathname === "/fb-program"} render={<Link href="/fb-program" />}>
+                        <Rocket className="size-4" />
+                        <span>Bonus Program</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {showHqReports && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        isActive={isItemActive("/daily-work-report?team=fb-hq")}
+                        render={<Link href="/daily-work-report?team=fb-hq" />}
+                      >
+                        <FileText className="size-4" />
+                        <span>HQ Team Reports</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {showZainReports && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        isActive={isItemActive("/daily-work-report?team=fb-o2")}
+                        render={<Link href="/daily-work-report?team=fb-o2" />}
+                      >
+                        <FileText className="size-4" />
+                        <span>Zain Team Reports</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })()}
 
         {settingsNav.some((item) => hasAccess(item.roles, user.role)) && (
           <SidebarGroup>
