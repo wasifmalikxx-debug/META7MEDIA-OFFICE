@@ -761,28 +761,33 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
         </p>
       </div>
 
-      {/* Launch button — visible to everyone. Employees launch a complaint
-          to the CEO; the CEO launches one against a specific employee. */}
+      {/* Launch button — visible to everyone. Employees file a complaint to
+          the CEO; the CEO files one against a specific employee. */}
       <div className="flex items-center justify-end">
         <Dialog open={newOpen} onOpenChange={setNewOpen}>
           <DialogTrigger
             render={
-              <Button className="gap-2 rounded-lg">
-                <Plus className="size-4" />
-                {isAdmin ? "Launch Against Employee" : "Launch Complaint"}
+              <Button
+                size="default"
+                className="gap-2 rounded-xl bg-gradient-to-br from-violet-600 via-violet-600 to-fuchsia-600 hover:from-violet-700 hover:via-violet-700 hover:to-fuchsia-700 text-white shadow-lg shadow-violet-500/25 transition-all px-5 font-semibold"
+              >
+                <MessageSquare className="size-4" />
+                {isAdmin ? "New Complaint" : "File Complaint"}
               </Button>
             }
           />
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <ShieldCheck className="size-5 text-emerald-600" />
-                {isAdmin ? "Launch a Complaint Against an Employee" : "Launch a Complaint"}
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <div className="size-8 rounded-lg bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15 flex items-center justify-center">
+                  <ShieldCheck className="size-4 text-violet-600 dark:text-violet-400" />
+                </div>
+                {isAdmin ? "New Complaint" : "File a Complaint"}
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-xs leading-relaxed">
                 {isAdmin
-                  ? "Open a private thread with one specific employee. They'll see it on their portal."
-                  : "Direct private channel to the CEO. Report anything."}
+                  ? "Open a private, confidential thread with a specific employee."
+                  : "A direct, private line to the CEO. Speak honestly."}
               </DialogDescription>
             </DialogHeader>
 
@@ -1217,11 +1222,15 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
         </DialogContent>
       </Dialog>
 
-      {/* Image lightbox — fullscreen preview */}
+      {/* Image lightbox — fullscreen preview. The default DialogContent close
+          button is dark text on a near-black background, so we suppress it
+          with showCloseButton=false and render our own white-on-translucent
+          control alongside the Download button. */}
       <Dialog open={!!lightboxImage} onOpenChange={(o) => !o && setLightboxImage(null)}>
         <DialogContent
           className="p-0 bg-black/95 border-0 flex items-center justify-center"
           style={{ width: "98vw", maxWidth: "98vw", height: "96vh", maxHeight: "96vh" }}
+          showCloseButton={false}
         >
           <DialogTitle className="sr-only">Attachment preview</DialogTitle>
           {lightboxImage && (
@@ -1234,13 +1243,22 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
               <a
                 href={lightboxImage}
                 download="complaint-attachment.jpg"
-                className="absolute top-3 right-14 text-white bg-white/10 hover:bg-white/20 backdrop-blur px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                className="absolute top-3 right-16 text-white bg-white/10 hover:bg-white/20 backdrop-blur px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
                 onClick={(e) => e.stopPropagation()}
                 title="Download image"
               >
                 <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                 Download
               </a>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="absolute top-3 right-3 size-9 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur text-white flex items-center justify-center transition-colors"
+                aria-label="Close preview"
+                title="Close (Esc)"
+              >
+                <X className="size-4" />
+              </button>
             </>
           )}
         </DialogContent>

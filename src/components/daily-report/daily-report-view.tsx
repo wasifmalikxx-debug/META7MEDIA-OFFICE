@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams, usePathname } from "next/navigation";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +14,11 @@ import { extractEtsyListingId, type DuplicateHit } from "@/lib/services/duplicat
 
 interface DailyReportViewProps {
   reports: any[];
-  /** ISO timestamps of the rolling 3-month window the page is showing. */
+  /** ISO timestamps of the active window the page is showing. */
   windowStart?: string;
   windowEnd?: string;
+  /** Active range filter — "month" = current calendar month, "3m" = last 3 months. */
+  range?: "month" | "3m";
   duplicatesByReport?: Record<string, DuplicateHit[]>;
 }
 
@@ -22,12 +26,26 @@ export function DailyReportView({
   reports,
   windowStart,
   windowEnd,
+  range = "3m",
   duplicatesByReport = {},
 }: DailyReportViewProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const rangeLabel =
     windowStart && windowEnd
       ? `${format(new Date(windowStart), "MMM d, yyyy")} — ${format(new Date(windowEnd), "MMM d, yyyy")}`
-      : "Past 3 months";
+      : range === "month" ? "This month" : "Past 3 months";
+
+  // Build an href that preserves any other query params (eg ?team=ae) but
+  // overrides the range so the segmented buttons still work after the CEO
+  // clicked into a specific team.
+  function buildRangeHref(target: "month" | "3m"): string {
+    const next = new URLSearchParams(searchParams.toString());
+    if (target === "3m") next.delete("range");
+    else next.set("range", target);
+    const qs = next.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  }
 
   const etsyReports = reports.filter((r: any) => r.user.employeeId.startsWith("EM"));
   const fbReports = reports.filter((r: any) => r.user.employeeId.startsWith("SMM"));
@@ -300,15 +318,41 @@ export function DailyReportView({
 
   return (
     <div className="space-y-6">
-      {/* Header — rolling 3-month window, no month switcher.
-          Duplicate detection and the displayed reports both span the
-          same range, so the CEO/partner can see the original AND its
+      {/* Header — segmented range picker (Month / 3 Months) drives the
+          window. Duplicate detection and the displayed reports both span
+          the same range so the CEO/partner can see the original AND its
           duplicate side-by-side without paginating. */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-2">
           <Calendar className="size-5 text-muted-foreground" />
-          <h2 className="text-xl font-bold">Past 3 Months</h2>
+          <h2 className="text-xl font-bold">
+            {range === "month" ? "This Month" : "Past 3 Months"}
+          </h2>
           <span className="text-sm text-muted-foreground">{rangeLabel}</span>
+        </div>
+        <div className="inline-flex items-center rounded-lg border bg-muted/40 p-0.5 self-start sm:self-auto">
+          <Link
+            href={buildRangeHref("month")}
+            scroll={false}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              range === "month"
+                ? "bg-background shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            This Month
+          </Link>
+          <Link
+            href={buildRangeHref("3m")}
+            scroll={false}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              range === "3m"
+                ? "bg-background shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Past 3 Months
+          </Link>
         </div>
       </div>
 
@@ -386,7 +430,9 @@ export function DailyReportView({
               <FileText className="size-7 text-muted-foreground/40" />
             </div>
             <p className="text-muted-foreground font-semibold">No Reports Yet</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">No reports submitted in the last 3 months</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              {range === "month" ? "No reports submitted this month" : "No reports submitted in the last 3 months"}
+            </p>
           </CardContent>
         </Card>
       )}

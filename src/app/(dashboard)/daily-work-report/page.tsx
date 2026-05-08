@@ -30,7 +30,7 @@ const TEAM_KEY_TO_DEPT_NAME: Record<string, string> = {
 export default async function DailyReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; year?: string; team?: string }>;
+  searchParams: Promise<{ month?: string; year?: string; team?: string; range?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -60,16 +60,18 @@ export default async function DailyReportPage({
   const params = await searchParams;
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
 
-  // Display + detection window — both 3 months ending today (PKT). The page
-  // used to show only the current month, but the duplicate-detection logic
-  // already scanned 3 months on the server side; the side effect was that
-  // duplicates flagged on screen referenced reports the CEO couldn't see
-  // until they navigated back. Showing the full 3-month window puts the
-  // original AND the duplicate in the same scroll, no navigation needed.
-  // 3 months also matches the cleanup cron's retention — anything older is
-  // already pruned, so a longer window would return nothing.
+  // Range filter — "month" = current calendar month only;
+  // "3m" (default) = rolling 3 months ending today.
+  // 3-month is the default because duplicate detection benefits from the
+  // wider window (the original AND its duplicate end up in the same scroll).
+  // The "month" view exists for when the CEO wants a tight current-month
+  // KPI pass without past-month noise.
+  const rangeKey: "month" | "3m" = params.range === "month" ? "month" : "3m";
   const windowEnd = _pkt;
-  const windowStart = new Date(Date.UTC(_pkt.getUTCFullYear(), _pkt.getUTCMonth() - 2, 1));
+  const windowStart =
+    rangeKey === "month"
+      ? new Date(Date.UTC(_pkt.getUTCFullYear(), _pkt.getUTCMonth(), 1))
+      : new Date(Date.UTC(_pkt.getUTCFullYear(), _pkt.getUTCMonth() - 2, 1));
 
   // ─── Build the where clause ────────────────────────────────────────
   //
@@ -146,13 +148,9 @@ export default async function DailyReportPage({
             : "Etsy Team Reports"
         }
         description={
-          scopedTeamLabel
-            ? `Past 3 months of reports from ${scopedTeamLabel} — duplicates flagged across the entire window`
-            : isAdmin
-            ? "Past 3 months of reports across the team — duplicates flagged across the entire window"
-            : isPartner
-            ? "Past 3 months of reports from your team — duplicates flagged across the entire window"
-            : "Past 3 months of reports from your Etsy team — duplicates flagged across the entire window"
+          rangeKey === "month"
+            ? "Current month only — duplicates flagged across the visible window"
+            : "Past 3 months — duplicates flagged across the entire window"
         }
       />
       <DailyReportView
@@ -160,6 +158,7 @@ export default async function DailyReportPage({
         duplicatesByReport={JSON.parse(JSON.stringify(duplicatesByReport))}
         windowStart={windowStart.toISOString()}
         windowEnd={windowEnd.toISOString()}
+        range={rangeKey}
       />
     </div>
   );

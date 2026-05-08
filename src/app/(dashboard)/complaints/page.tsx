@@ -73,10 +73,10 @@ export default async function ComplaintsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Launch Complaint"
+        title="Complaints"
         description={
           isAdmin
-            ? "Review and respond to employee complaints — full confidentiality"
+            ? "Review, respond, and open new complaint threads — full confidentiality"
             : "Your direct private channel to the CEO — fully confidential"
         }
       />
