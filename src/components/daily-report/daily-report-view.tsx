@@ -1,40 +1,33 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
-  ChevronLeft, ChevronRight, Calendar, ShoppingBag, Megaphone,
+  Calendar, ShoppingBag, Megaphone,
   FileText, Link2, Users, ExternalLink, ClipboardList, AlertTriangle,
 } from "lucide-react";
 import { extractEtsyListingId, type DuplicateHit } from "@/lib/services/duplicate-listings";
 
 interface DailyReportViewProps {
   reports: any[];
-  currentMonth: number;
-  currentYear: number;
+  /** ISO timestamps of the rolling 3-month window the page is showing. */
+  windowStart?: string;
+  windowEnd?: string;
   duplicatesByReport?: Record<string, DuplicateHit[]>;
 }
 
 export function DailyReportView({
   reports,
-  currentMonth,
-  currentYear,
+  windowStart,
+  windowEnd,
   duplicatesByReport = {},
 }: DailyReportViewProps) {
-  const router = useRouter();
-  const monthName = format(new Date(currentYear, currentMonth - 1), "MMMM yyyy");
-
-  function goMonth(offset: number) {
-    let m = currentMonth + offset;
-    let y = currentYear;
-    if (m > 12) { m = 1; y++; }
-    if (m < 1) { m = 12; y--; }
-    router.push(`/daily-work-report?month=${m}&year=${y}`);
-  }
+  const rangeLabel =
+    windowStart && windowEnd
+      ? `${format(new Date(windowStart), "MMM d, yyyy")} — ${format(new Date(windowEnd), "MMM d, yyyy")}`
+      : "Past 3 months";
 
   const etsyReports = reports.filter((r: any) => r.user.employeeId.startsWith("EM"));
   const fbReports = reports.filter((r: any) => r.user.employeeId.startsWith("SMM"));
@@ -184,7 +177,7 @@ export function DailyReportView({
             {links.length > 0 && (
               <div className="flex items-start gap-1.5 text-xs">
                 <Link2 className="size-3 text-muted-foreground shrink-0 mt-0.5" />
-                <div className="space-y-0.5 max-h-[80px] overflow-y-auto">
+                <div className="space-y-0.5">
                   {links.map((link: string, i: number) => {
                     const hit = dupHitFor(r.id, link);
                     return (
@@ -307,23 +300,19 @@ export function DailyReportView({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header — rolling 3-month window, no month switcher.
+          Duplicate detection and the displayed reports both span the
+          same range, so the CEO/partner can see the original AND its
+          duplicate side-by-side without paginating. */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => goMonth(-1)} className="size-9 rounded-full">
-            <ChevronLeft className="size-4" />
-          </Button>
-          <div className="flex items-center gap-2 min-w-[200px] justify-center">
-            <Calendar className="size-5 text-muted-foreground" />
-            <h2 className="text-xl font-bold">{monthName}</h2>
-          </div>
-          <Button variant="outline" size="icon" onClick={() => goMonth(1)} className="size-9 rounded-full">
-            <ChevronRight className="size-4" />
-          </Button>
+          <Calendar className="size-5 text-muted-foreground" />
+          <h2 className="text-xl font-bold">Past 3 Months</h2>
+          <span className="text-sm text-muted-foreground">{rangeLabel}</span>
         </div>
       </div>
 
-      {/* Monthly KPI Cards.
+      {/* KPI cards — totals computed across the entire 3-month window.
           When there are no FB reports in the dataset (e.g. Izaan's Etsy-
           scoped view), the FB Posts card is hidden and the grid falls
           back to 4 columns so the remaining cards stay balanced (the
@@ -397,7 +386,7 @@ export function DailyReportView({
               <FileText className="size-7 text-muted-foreground/40" />
             </div>
             <p className="text-muted-foreground font-semibold">No Reports Yet</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Employee daily reports for {monthName} will appear here</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">No reports submitted in the last 3 months</p>
           </CardContent>
         </Card>
       )}

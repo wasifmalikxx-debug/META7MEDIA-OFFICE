@@ -59,16 +59,17 @@ export default async function DailyReportPage({
 
   const params = await searchParams;
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
-  const month = params.month ? parseInt(params.month) : _pkt.getUTCMonth() + 1;
-  const year = params.year ? parseInt(params.year) : _pkt.getUTCFullYear();
 
-  const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
-  const endOfMonth = new Date(Date.UTC(year, month, 0));
-
-  // Duplicate detection window: last 3 months, ending at the currently-viewed
-  // month's end. Matches the cleanup cron's retention — anything older is
-  // already pruned, so scanning further back would return nothing.
-  const detectionStart = new Date(Date.UTC(year, month - 3, 1));
+  // Display + detection window — both 3 months ending today (PKT). The page
+  // used to show only the current month, but the duplicate-detection logic
+  // already scanned 3 months on the server side; the side effect was that
+  // duplicates flagged on screen referenced reports the CEO couldn't see
+  // until they navigated back. Showing the full 3-month window puts the
+  // original AND the duplicate in the same scroll, no navigation needed.
+  // 3 months also matches the cleanup cron's retention — anything older is
+  // already pruned, so a longer window would return nothing.
+  const windowEnd = _pkt;
+  const windowStart = new Date(Date.UTC(_pkt.getUTCFullYear(), _pkt.getUTCMonth() - 2, 1));
 
   // ─── Build the where clause ────────────────────────────────────────
   //
@@ -100,50 +101,37 @@ export default async function DailyReportPage({
     }
   }
 
-  // Fetch the currently-viewed month for display AND the 3-month detection
-  // window for duplicate analysis, in parallel. The detection pool is
-  // ordered oldest-first so the first occurrence of each listing ID is
-  // correctly identified as the canonical origin.
-  const [reports, detectionPool] = await Promise.all([
-    prisma.dailyReport.findMany({
-      where: { ...baseWhere, date: { gte: startOfMonth, lte: endOfMonth } },
-      include: {
-        // Multi-office: pull team + dept so the CEO inbox can sub-group each
-        // date's reports by team (Awais Team / Mubeen Team / Zain Team /
-        // Etsy - EM / Facebook OFFICE 1) instead of one flat list.
-        user: {
-          select: {
-            firstName: true,
-            lastName: true,
-            employeeId: true,
-            team: { select: { name: true } },
-            department: { select: { name: true } },
-          },
+  // Single 3-month query — covers both display + duplicate detection now
+  // that they share the same window. computeDuplicates() needs ASC order
+  // (oldest first) to identify the canonical first occurrence; the view
+  // re-sorts to date-desc for rendering.
+  const detectionPool = await prisma.dailyReport.findMany({
+    where: { ...baseWhere, date: { gte: windowStart, lte: windowEnd } },
+    include: {
+      // Multi-office: pull team + dept so the CEO inbox can sub-group each
+      // date's reports by team (Awais Team / Mubeen Team / Zain Team /
+      // Etsy - EM / Facebook OFFICE 1) instead of one flat list.
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          employeeId: true,
+          team: { select: { name: true } },
+          department: { select: { name: true } },
         },
       },
-      orderBy: { date: "desc" },
-    }),
-    prisma.dailyReport.findMany({
-      where: { ...baseWhere, date: { gte: detectionStart, lte: endOfMonth } },
-      include: {
-        // Multi-office: pull team + dept so the CEO inbox can sub-group each
-        // date's reports by team (Awais Team / Mubeen Team / Zain Team /
-        // Etsy - EM / Facebook OFFICE 1) instead of one flat list.
-        user: {
-          select: {
-            firstName: true,
-            lastName: true,
-            employeeId: true,
-            team: { select: { name: true } },
-            department: { select: { name: true } },
-          },
-        },
-      },
-      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
-    }),
-  ]);
-
+    },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
   const duplicatesByReport = computeDuplicates(detectionPool);
+
+  // Display order — newest date first, newest report within a date first.
+  const reports = [...detectionPool].sort((a, b) => {
+    const da = new Date(a.date).getTime();
+    const db = new Date(b.date).getTime();
+    if (db !== da) return db - da;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 
   return (
     <div className="space-y-6">
@@ -159,19 +147,19 @@ export default async function DailyReportPage({
         }
         description={
           scopedTeamLabel
-            ? `Daily reports submitted by ${scopedTeamLabel}`
+            ? `Past 3 months of reports from ${scopedTeamLabel} — duplicates flagged across the entire window`
             : isAdmin
-            ? "All daily reports submitted by the team"
+            ? "Past 3 months of reports across the team — duplicates flagged across the entire window"
             : isPartner
-            ? "Daily reports submitted by your team members"
-            : "Daily reports submitted by your Etsy team members"
+            ? "Past 3 months of reports from your team — duplicates flagged across the entire window"
+            : "Past 3 months of reports from your Etsy team — duplicates flagged across the entire window"
         }
       />
       <DailyReportView
         reports={JSON.parse(JSON.stringify(reports))}
         duplicatesByReport={JSON.parse(JSON.stringify(duplicatesByReport))}
-        currentMonth={month}
-        currentYear={year}
+        windowStart={windowStart.toISOString()}
+        windowEnd={windowEnd.toISOString()}
       />
     </div>
   );
