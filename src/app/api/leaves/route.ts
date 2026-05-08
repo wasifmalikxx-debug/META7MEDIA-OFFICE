@@ -243,13 +243,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Notify admins
+    // Notify CEO + HR
     await notifyAdmins(
       "LEAVE_REQUEST",
       "New Leave Request",
       `${session.user.name} has requested ${totalDays} day(s) of ${parsed.leaveType} leave.`,
       "/leaves"
     );
+
+    // Also notify the partner who manages this employee — they have access
+    // to /leaves and approve their own team. Skipped for MANAGER (Izaan)
+    // since /leaves redirects him; CEO/HR handle his team's leaves.
+    const submitter = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { managerId: true, manager: { select: { role: true } } },
+    });
+    if (submitter?.managerId && submitter.manager?.role === "PARTNER") {
+      await createNotification(
+        submitter.managerId,
+        "LEAVE_REQUEST",
+        "New Leave Request",
+        `${session.user.name} has requested ${totalDays} day(s) of ${parsed.leaveType} leave.`,
+        "/leaves"
+      );
+    }
 
     return json(leave, 201);
   } catch (err: any) {

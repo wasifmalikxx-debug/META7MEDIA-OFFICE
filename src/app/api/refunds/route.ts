@@ -166,15 +166,26 @@ export async function POST(request: NextRequest) {
       `${employeeName} (${refund.user.employeeId}) submitted a $${etsyRefundAmount} refund for ${storeName} — ${customerName}`,
       "/refunds"
     );
-    // Also notify Izaan directly if he isn't already a notifyAdmins recipient
-    const izaan = await prisma.user.findFirst({
-      where: { employeeId: "EM-4" },
-      select: { id: true, role: true },
+    // Notify the submitter's direct manager — Izaan for EM, Awais for AE,
+    // Mubeen for ME (managerId is set per the team-seed scripts). Replaces
+    // the old hardcoded "always notify EM-4" path so cross-team refunds
+    // don't land in Izaan's bell. Skips if the manager is already a CEO/HR
+    // recipient via notifyAdmins above.
+    const submitter = await prisma.user.findUnique({
+      where: { id: refund.userId },
+      select: {
+        managerId: true,
+        manager: { select: { role: true } },
+      },
     });
-    if (izaan && izaan.role !== "SUPER_ADMIN" && izaan.role !== "HR_ADMIN") {
+    if (
+      submitter?.managerId &&
+      submitter.manager?.role !== "SUPER_ADMIN" &&
+      submitter.manager?.role !== "HR_ADMIN"
+    ) {
       const { createNotification } = await import("@/lib/services/notification.service");
       await createNotification(
-        izaan.id,
+        submitter.managerId,
         "GENERAL",
         "New refund submitted",
         `${employeeName} (${refund.user.employeeId}) — $${etsyRefundAmount} refund for ${storeName}`,
