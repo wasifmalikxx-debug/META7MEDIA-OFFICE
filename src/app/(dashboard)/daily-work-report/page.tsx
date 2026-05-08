@@ -60,18 +60,28 @@ export default async function DailyReportPage({
   const params = await searchParams;
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
 
-  // Range filter — "month" = current calendar month only;
-  // "3m" (default) = rolling 3 months ending today.
-  // 3-month is the default because duplicate detection benefits from the
-  // wider window (the original AND its duplicate end up in the same scroll).
-  // The "month" view exists for when the CEO wants a tight current-month
-  // KPI pass without past-month noise.
+  // ─── Detection pool vs display window ────────────────────────────────
+  //
+  // We deliberately split these so an employee resubmitting their own old
+  // listing (or someone else's old listing) still trips the duplicate flag
+  // even when the CEO has the "This Month" filter active:
+  //
+  //   • detectionPool — ALWAYS rolling 3 months. computeDuplicates walks
+  //     this to identify the canonical first occurrence of each Etsy
+  //     listing ID. Anything older was already pruned by the cleanup cron.
+  //
+  //   • display window — bounded by ?range=month|3m. Reports outside this
+  //     window aren't shown, but their listing IDs are still tracked in
+  //     detectionPool so a current-month resubmission of a 2-month-old
+  //     link gets flagged red on screen.
   const rangeKey: "month" | "3m" = params.range === "month" ? "month" : "3m";
+  const detectionStart = new Date(Date.UTC(_pkt.getUTCFullYear(), _pkt.getUTCMonth() - 2, 1));
+  const detectionEnd = _pkt;
   const windowEnd = _pkt;
   const windowStart =
     rangeKey === "month"
       ? new Date(Date.UTC(_pkt.getUTCFullYear(), _pkt.getUTCMonth(), 1))
-      : new Date(Date.UTC(_pkt.getUTCFullYear(), _pkt.getUTCMonth() - 2, 1));
+      : detectionStart;
 
   // ─── Build the where clause ────────────────────────────────────────
   //
@@ -103,12 +113,14 @@ export default async function DailyReportPage({
     }
   }
 
-  // Single 3-month query — covers both display + duplicate detection now
-  // that they share the same window. computeDuplicates() needs ASC order
-  // (oldest first) to identify the canonical first occurrence; the view
-  // re-sorts to date-desc for rendering.
+  // Always pull the full 3-month detection pool, regardless of the active
+  // display range. computeDuplicates() needs ASC order (oldest first) to
+  // identify the canonical first occurrence of each Etsy listing ID across
+  // every report — including the employee's OWN earlier reports — so a
+  // resubmission of a previously-logged listing trips the flag whether
+  // it came from the same person or a teammate.
   const detectionPool = await prisma.dailyReport.findMany({
-    where: { ...baseWhere, date: { gte: windowStart, lte: windowEnd } },
+    where: { ...baseWhere, date: { gte: detectionStart, lte: detectionEnd } },
     include: {
       // Multi-office: pull team + dept so the CEO inbox can sub-group each
       // date's reports by team (Awais Team / Mubeen Team / Zain Team /
@@ -127,13 +139,23 @@ export default async function DailyReportPage({
   });
   const duplicatesByReport = computeDuplicates(detectionPool);
 
-  // Display order — newest date first, newest report within a date first.
-  const reports = [...detectionPool].sort((a, b) => {
-    const da = new Date(a.date).getTime();
-    const db = new Date(b.date).getTime();
-    if (db !== da) return db - da;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  // Display = filter the detection pool down to the active window, then
+  // sort newest-first. Reports outside the window are still in
+  // duplicatesByReport (so their listing IDs were considered for
+  // first-occurrence resolution), they just aren't rendered.
+  const winStartTime = windowStart.getTime();
+  const winEndTime = windowEnd.getTime();
+  const reports = detectionPool
+    .filter((r) => {
+      const t = new Date(r.date).getTime();
+      return t >= winStartTime && t <= winEndTime;
+    })
+    .sort((a, b) => {
+      const da = new Date(a.date).getTime();
+      const db = new Date(b.date).getTime();
+      if (db !== da) return db - da;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
   return (
     <div className="space-y-6">
@@ -149,7 +171,7 @@ export default async function DailyReportPage({
         }
         description={
           rangeKey === "month"
-            ? "Current month only — duplicates flagged across the visible window"
+            ? "Current month — duplicates still flagged against the past 3 months of submissions"
             : "Past 3 months — duplicates flagged across the entire window"
         }
       />
