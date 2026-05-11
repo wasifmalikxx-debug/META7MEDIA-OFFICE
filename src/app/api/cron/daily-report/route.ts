@@ -592,7 +592,14 @@ export async function GET(request: NextRequest) {
       for (let i = 0; i < teamRounds.length; i++) {
         const round = teamRounds[i];
         const payload = {
-          date: dateFormatted,
+          // Tag the date field with the team label so each of the 3 CEO
+          // messages is immediately identifiable as EM / AE / ME at the
+          // top. The daily_report template body has "🗓 {{1}}" so this
+          // renders as "🗓 EM TEAM · May 11, 2026" — visible the moment
+          // the message opens, no template re-submission required.
+          // Partner sends keep the plain date (line 507) since each
+          // partner only ever receives one team's report.
+          date: `${round.label} TEAM · ${dateFormatted}`,
           monthName: monthNameFormatted,
           monthly: round.data.monthly,
           today: round.data.today,
