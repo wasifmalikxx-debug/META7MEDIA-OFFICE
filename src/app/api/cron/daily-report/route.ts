@@ -367,7 +367,7 @@ export async function GET(request: NextRequest) {
       select: { phone: true, phone2: true },
     });
 
-    const { sendDailyReportTemplate, sendCeoDailySummaryTemplate } = await import(
+    const { sendDailyReportTemplate, sendCeoCombinedTotalTemplate } = await import(
       "@/lib/services/whatsapp.service"
     );
     const sent: string[] = [];
@@ -537,11 +537,24 @@ export async function GET(request: NextRequest) {
       partnerReports.push({ error: partnerErr?.message });
     }
 
-    // ─── CEO multi-team summary ──────────────────────────────────────────
-    // 37-param template stitches Combined + EM + AE + ME into one message.
-    // Replaces the old EM-only daily_report send to the CEO. Wrapped in a
-    // try-block so a not-yet-approved Meta template (or any send error)
-    // doesn't poison the response — partner sends already happened above.
+    // ─── CEO 4-message daily sequence ───────────────────────────────────
+    // Replaces the old single 37-param ceo_daily_summary blast (too long to
+    // scan on a phone). The CEO now gets four focused messages:
+    //
+    //   1. EM team (daily_report template — 11 params, same as partners)
+    //   2. AE team (daily_report)
+    //   3. ME team (daily_report)
+    //   4. All-offices combined total (ceo_combined_total — 10 params, no
+    //      per-employee breakdown)
+    //
+    // 20-second gap between rounds so WhatsApp shows them as 4 separate
+    // notifications instead of one batched "X new messages" group. Each
+    // round sends to both phone + phone2 in parallel — total elapsed is
+    // ~60s of waiting (3 gaps × 20s) plus ~8s of send latency, comfortably
+    // under the 300s cron ceiling.
+    //
+    // Wrapped in a single try so a mid-sequence Meta failure doesn't poison
+    // the rest of the cron response — partner sends already happened above.
     const ae = partnerTeamStats.ae ?? emptyTeam;
     const me = partnerTeamStats.me ?? emptyTeam;
     const combined = {
@@ -559,35 +572,85 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    const ceoPayload = {
-      date: dateFormatted,
-      monthName: monthNameFormatted,
-      combined,
-      em: emTotals,
-      ae,
-      me,
-    };
+    // CEO destination phones — both numbers receive every message.
+    const ceoPhones: string[] = [];
+    if (ceo?.phone) ceoPhones.push(ceo.phone);
+    if (ceo?.phone2) ceoPhones.push(ceo.phone2);
 
     const ceoSent: string[] = [];
     let ceoError: string | null = null;
     try {
-      if (ceo?.phone) {
-        const ok = await sendCeoDailySummaryTemplate(ceo.phone, ceoPayload);
-        if (ok) {
-          ceoSent.push(ceo.phone);
-          sent.push(ceo.phone);
+      // Build the four rounds in fixed order. The first three are per-team
+      // (daily_report template), the fourth is the office-wide rollup
+      // (ceo_combined_total).
+      const teamRounds = [
+        { label: "EM", data: emTotals },
+        { label: "AE", data: ae },
+        { label: "ME", data: me },
+      ];
+
+      for (let i = 0; i < teamRounds.length; i++) {
+        const round = teamRounds[i];
+        const payload = {
+          date: dateFormatted,
+          monthName: monthNameFormatted,
+          monthly: round.data.monthly,
+          today: round.data.today,
+          // Meta rejects empty / whitespace-only params. The aggregator
+          // always populates breakdown (falling back to "No team members"
+          // when a team has none), so this fallback is defensive only.
+          breakdown: round.data.breakdown || "No activity today",
+        };
+
+        // Send to phone + phone2 in parallel — same content, different
+        // recipient.
+        await Promise.all(
+          ceoPhones.map(async (phone) => {
+            const ok = await sendDailyReportTemplate(phone, payload);
+            if (ok && !ceoSent.includes(phone)) {
+              ceoSent.push(phone);
+              sent.push(phone);
+            }
+          }),
+        );
+
+        // Gap between team messages so WhatsApp surfaces each as its own
+        // notification. No gap after the final team — the combined-total
+        // send below has its own gap before it.
+        if (i < teamRounds.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 20_000));
         }
       }
-      if (ceo?.phone2) {
-        const ok = await sendCeoDailySummaryTemplate(ceo.phone2, ceoPayload);
-        if (ok) {
-          ceoSent.push(ceo.phone2);
-          sent.push(ceo.phone2);
-        }
+
+      // 20s pause before the totals message so it lands separately from
+      // the ME team message.
+      if (teamRounds.length > 0 && ceoPhones.length > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 20_000));
       }
+
+      // Combined total — ceo_combined_total template (10 params, no
+      // breakdown field).
+      const totalPayload = {
+        date: dateFormatted,
+        monthName: monthNameFormatted,
+        monthly: combined.monthly,
+        today: combined.today,
+      };
+      await Promise.all(
+        ceoPhones.map(async (phone) => {
+          const ok = await sendCeoCombinedTotalTemplate(phone, totalPayload);
+          if (ok && !ceoSent.includes(phone)) {
+            ceoSent.push(phone);
+            sent.push(phone);
+          }
+        }),
+      );
     } catch (ceoErr: any) {
       ceoError = ceoErr?.message || String(ceoErr);
-      console.error("[daily-report] CEO send failed (template approved on Meta?):", ceoError);
+      console.error(
+        "[daily-report] CEO 4-message sequence failed mid-flight:",
+        ceoError,
+      );
     }
 
     return json({

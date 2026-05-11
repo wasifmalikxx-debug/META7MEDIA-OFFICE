@@ -227,6 +227,25 @@ export async function sendSalaryPaidTemplate(
 }
 
 /**
+ * Format a USD amount with thousands separators and 2 decimals
+ * — e.g. 31083.77 → "31,083.77". Used in every CEO-facing WhatsApp
+ * template so dollar amounts read cleanly at a glance instead of
+ * running together as "$31083.77".
+ *
+ * Integers (orders) get comma grouping too — "1,256" beats "1256"
+ * once we cross the thousand mark.
+ */
+function fmtMoney(n: number): string {
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+function fmtCount(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+/**
  * Daily sales report — 11-variable Meta template.
  * Today + month-to-date totals plus a multi-line per-employee breakdown.
  */
@@ -246,15 +265,50 @@ export async function sendDailyReportTemplate(
   return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.DAILY_REPORT, {
     "1": data.date,
     "2": data.monthName,
-    "3": String(data.monthly.orders),
-    "4": data.monthly.sale.toFixed(2),
-    "5": data.monthly.cost.toFixed(2),
-    "6": data.monthly.profit.toFixed(2),
-    "7": String(data.today.orders),
-    "8": data.today.sale.toFixed(2),
-    "9": data.today.cost.toFixed(2),
-    "10": data.today.profit.toFixed(2),
+    "3": fmtCount(data.monthly.orders),
+    "4": fmtMoney(data.monthly.sale),
+    "5": fmtMoney(data.monthly.cost),
+    "6": fmtMoney(data.monthly.profit),
+    "7": fmtCount(data.today.orders),
+    "8": fmtMoney(data.today.sale),
+    "9": fmtMoney(data.today.cost),
+    "10": fmtMoney(data.today.profit),
     "11": data.breakdown,
+  });
+}
+
+/**
+ * CEO all-offices combined total — 10-variable Meta template.
+ *
+ * Sent as the 4th message in the per-team daily sequence (EM → AE → ME →
+ * COMBINED). Body holds only office-wide monthly + today totals; no
+ * per-employee or per-team breakdown — that's what the preceding 3
+ * `daily_report` messages are for.
+ *
+ * Approved on Meta as `ceo_combined_total` (Utility · English).
+ */
+export interface CeoCombinedTotalData {
+  date: string;
+  monthName: string;
+  monthly: { orders: number; sale: number; cost: number; profit: number };
+  today: { orders: number; sale: number; cost: number; profit: number };
+}
+
+export async function sendCeoCombinedTotalTemplate(
+  to: string,
+  data: CeoCombinedTotalData
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.CEO_COMBINED_TOTAL, {
+    "1": data.date,
+    "2": data.monthName,
+    "3": fmtCount(data.monthly.orders),
+    "4": fmtMoney(data.monthly.sale),
+    "5": fmtMoney(data.monthly.cost),
+    "6": fmtMoney(data.monthly.profit),
+    "7": fmtCount(data.today.orders),
+    "8": fmtMoney(data.today.sale),
+    "9": fmtMoney(data.today.cost),
+    "10": fmtMoney(data.today.profit),
   });
 }
 

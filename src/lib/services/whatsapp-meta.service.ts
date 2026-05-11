@@ -35,11 +35,15 @@ export const META_TEMPLATE_NAMES = {
   MANUAL_FINE: "manual_fine",
   SALARY_PAID: "salary_paid",
   DAILY_REPORT: "daily_report",
-  // CEO-only multi-team summary (37 params: combined + EM + AE + ME). Submit
-  // this body to Meta WhatsApp Manager exactly as documented in the cron
-  // route or it'll fail with template-not-found. Partners stay on
-  // DAILY_REPORT — only the CEO receives this richer one.
+  // CEO-only multi-team summary (37 params: combined + EM + AE + ME).
+  // SUPERSEDED — the cron no longer sends this. Kept registered so the
+  // template stays linked in Meta and we can revert by flipping one import
+  // in the cron if the new 4-message flow ever needs to be rolled back.
   CEO_DAILY_SUMMARY: "ceo_daily_summary",
+  // CEO-only all-offices total (10 params). The 4th message in the new
+  // per-team WhatsApp sequence: EM → AE → ME → COMBINED. Body holds only
+  // the office-wide monthly+today totals — no per-employee breakdown.
+  CEO_COMBINED_TOTAL: "ceo_combined_total",
 } as const;
 
 export interface MetaSendResult {
