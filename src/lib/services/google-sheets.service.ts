@@ -198,11 +198,17 @@ export async function fetchProfitFromSheet(
 
 export interface SheetOrderRow {
   shopName: string;
-  orderDate: string; // raw date string from column D
-  price: number;     // column G (USD)
-  afterTax: number;  // column H
-  cost: number;      // column I
-  profit: number;    // column J
+  orderDate: string; // raw date string from the date column
+  price: number;     // SALE / PRICE column
+  afterTax: number;  // AFTER TAX column (after Etsy fees)
+  cost: number;      // COST column (supplier / AliExpress)
+  profit: number;    // raw PROFIT column from the sheet — DO NOT TRUST as
+                     // gross profit. In the Etsy template this column is
+                     // (afterTax - cost), i.e. net-after-tax, not gross.
+                     // Aggregators should compute gross as (price - cost).
+  orderId: string;   // Order ID column when present (empty when missing).
+                     // Used to dedupe multi-SKU line items belonging to the
+                     // same Etsy transaction.
 }
 
 export interface SheetAnalyticsSummary {
@@ -220,8 +226,35 @@ export interface EmployeeSheetData {
 }
 
 /**
- * Fetch ALL order rows + analytics summary from an employee's sheet for a month.
- * Reads columns A-J for order data and the analytics area (W-Y) for summary totals.
+ * Fetch ALL order rows + summary cells from an employee's sheet for a month.
+ *
+ * Parsing rules (same as the daily-report cron — see audit-analytics-accuracy
+ * for the discrepancy report this fixes):
+ *
+ *   - Reads `A:N` (not A:J). AE-style sheets put PROFIT at column K and
+ *     Order ID can land in column M; the old A:J range silently missed them.
+ *
+ *   - Scans the first 5 rows for the actual header. Some partner sheets use
+ *     Google's "Tables" feature which puts a `Table1_X` placeholder at A1
+ *     and pushes the real headers down a row (AE-3). The old logic read
+ *     headers from row 0 only and would have silently corrupted everything.
+ *
+ *   - Detects the Order ID column with five label variants so multi-SKU line
+ *     items belonging to one Etsy order can be deduped downstream.
+ *
+ *   - Skips placeholder rows where the date is stamped but no price is
+ *     logged yet (`rowSale <= 0`). Partners pre-stamp the date for new
+ *     orders before filling in the rest — those rows are not orders.
+ *
+ *   - Returns the sheet's PROFIT column value AS-IS. Aggregators should NOT
+ *     trust this column as gross profit — in the Etsy template it's actually
+ *     (afterTax - cost). Compute gross profit as (price - cost) at the
+ *     aggregation layer.
+ *
+ *   - Returns summary cells (TOTAL SALE / TOTAL COST / GROSS PROFIT / AFTER
+ *     TAX) for diagnostics, but every audited sheet's summary cells are
+ *     stale (formulas haven't been extended as new rows were added). Don't
+ *     use these for display.
  */
 export async function fetchSheetAnalytics(
   sheetUrl: string,
@@ -242,79 +275,134 @@ export async function fetchSheetAnalytics(
     const authClient = await getAuthClient();
     const sheets = google.sheets({ version: "v4", auth: authClient as any });
 
-    // Get tab names
+    // Resolve the month tab via fuzzy name match.
     const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
     const sheetTabs = spreadsheet.data.sheets?.map((s) => s.properties?.title || "") || [];
-
-    const tabNames = getAlternativeTabNames(month, year);
-    let matchedTab: string | null = null;
-    for (const tabName of tabNames) {
-      const target = normalizeTabName(tabName);
-      const found = sheetTabs.find((t) => normalizeTabName(t) === target);
-      if (found) { matchedTab = found; break; }
-    }
+    const candidateSet = new Set(
+      getAlternativeTabNames(month, year).map(normalizeTabName),
+    );
+    const matchedTab = sheetTabs.find((t) => candidateSet.has(normalizeTabName(t))) || null;
     if (!matchedTab) {
-      return { ...empty, error: `Tab not found. Tried: ${tabNames[0]}` };
+      return { ...empty, error: `Tab not found for ${month}/${year}` };
     }
 
-    // Batch read: order data (A:J) and analytics area (V:AD rows 1-15)
-    const ranges = [
-      `'${matchedTab}'!A:J`,
-      `'${matchedTab}'!V1:AD15`,
-    ];
-
-    const batchResponse = await sheets.spreadsheets.values.batchGet({
+    // Step 1: pull the preview rows (A1:N5 — covers up to 4 rows of pre-
+    // header gunk plus the header itself) and the summary area in one batch.
+    const previewBatch = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: sheetId,
-      ranges,
+      ranges: [`'${matchedTab}'!A1:N5`, `'${matchedTab}'!V1:AD15`],
     });
+    const previewRows = (previewBatch.data.valueRanges?.[0]?.values || []) as string[][];
+    const analyticsRows = (previewBatch.data.valueRanges?.[1]?.values || []) as string[][];
 
-    const valueRanges = batchResponse.data.valueRanges || [];
-    const orderRows = valueRanges[0]?.values || [];
-    const analyticsRows = valueRanges[1]?.values || [];
-
-    // Detect column indices from header row
-    const headerRow = orderRows[0] || [];
-    const colIndex: Record<string, number> = {};
-    for (let c = 0; c < headerRow.length; c++) {
-      const h = String(headerRow[c] || "").trim().toUpperCase();
-      if (h.includes("SHOP") || h.includes("STORE")) colIndex.shop = colIndex.shop ?? c;
-      if (h.includes("ORDER DATE") || h === "DATE") colIndex.date = colIndex.date ?? c;
-      if (h.includes("PRICE") || h.includes("SALE")) colIndex.price = colIndex.price ?? c;
-      if (h.includes("AFTER TAX")) colIndex.afterTax = colIndex.afterTax ?? c;
-      if (h === "COST" || h.includes("COST")) colIndex.cost = colIndex.cost ?? c;
-      if (h === "PROFIT" || h.includes("PROFIT")) colIndex.profit = colIndex.profit ?? c;
+    // Step 2: locate the real header row. Look for "ORDER DATE" or "DATE"
+    // anywhere in the first 5 rows.
+    let headerRowIdx = -1;
+    for (let i = 0; i < previewRows.length; i++) {
+      const row = (previewRows[i] || []).map((c) =>
+        (c || "").toString().toLowerCase().trim(),
+      );
+      if (row.some((c) => c.includes("order date") || c === "date")) {
+        headerRowIdx = i;
+        break;
+      }
     }
-    // Fallbacks if headers not found
-    const shopCol = colIndex.shop ?? 0;
-    const dateCol = colIndex.date ?? 3;
-    const priceCol = colIndex.price ?? 6;
-    const afterTaxCol = colIndex.afterTax ?? 7;
-    const costCol = colIndex.cost ?? 8;
-    const profitCol = colIndex.profit ?? 9;
+    if (headerRowIdx === -1) {
+      return { ...empty, error: "No ORDER DATE header found in first 5 rows" };
+    }
 
-    // Parse order rows (skip header row)
+    const headers = (previewRows[headerRowIdx] || []).map((h) =>
+      (h || "").toString().toLowerCase().trim(),
+    );
+
+    // Step 3: detect column indices. Note: `findIndex` returns -1 when
+    // missing, which we use as a "column doesn't exist" sentinel below.
+    const shopCol = headers.findIndex(
+      (h) => h.includes("shop") || h.includes("store"),
+    );
+    const dateCol = headers.findIndex(
+      (h) => h.includes("order date") || h === "date",
+    );
+    const priceCol = headers.findIndex(
+      (h) => h.includes("price") || h.includes("sale"),
+    );
+    const afterTaxCol = headers.findIndex((h) => h.includes("after tax"));
+    const costCol = headers.findIndex(
+      (h) => h === "cost" || h.includes("cost"),
+    );
+    const profitCol = headers.findIndex(
+      (h) => h === "profit" || h.includes("profit"),
+    );
+    // Order ID label varies widely across partner sheets. Match the same
+    // five forms the daily-report cron looks for (the typo "Ordder #" is
+    // real — see AE-5).
+    const orderIdCol = headers.findIndex(
+      (h) =>
+        h.includes("order number") ||
+        h.includes("order #") ||
+        h.includes("ordder #") ||
+        h.includes("order id") ||
+        h === "ae order",
+    );
+
+    if (dateCol === -1) {
+      return { ...empty, error: "No date column found" };
+    }
+
+    // Step 4: pull data rows starting one below the header (1-indexed in
+    // the sheet, so headerRowIdx + 2). Read up to row 1000 — every audited
+    // sheet stays well under 200 rows per month.
+    const dataStartRow = headerRowIdx + 2;
+    const dataResp = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `'${matchedTab}'!A${dataStartRow}:N1000`,
+    });
+    const dataRows = (dataResp.data.values || []) as string[][];
+
     const orders: SheetOrderRow[] = [];
-    for (let i = 1; i < orderRows.length; i++) {
-      const row = orderRows[i];
-      if (!row || row.length < 5) continue;
+    for (const row of dataRows) {
+      const orderDate = (row[dateCol] || "").toString().trim();
+      if (!orderDate) continue;
 
-      const shopName = String(row[shopCol] || "").trim();
-      const orderDate = String(row[dateCol] || "").trim();
-      const price = parseFloat(String(row[priceCol] || "0").replace(/[$,\s]/g, "")) || 0;
-      const afterTax = parseFloat(String(row[afterTaxCol] || "0").replace(/[$,\s]/g, "")) || 0;
-      const cost = parseFloat(String(row[costCol] || "0").replace(/[$,\s]/g, "")) || 0;
-      const profit = parseFloat(String(row[profitCol] || "0").replace(/[$,\s]/g, "")) || 0;
+      const price = priceCol >= 0
+        ? parseFloat(String(row[priceCol] || "0").replace(/[$,\s]/g, "")) || 0
+        : 0;
+      // Skip placeholder rows — date stamped but no price entered yet.
+      if (price <= 0) continue;
 
-      // Skip rows without a shop name or date (likely empty/totals)
-      if (!shopName || !orderDate) continue;
-      // Skip header-like rows
-      if (shopName.toUpperCase().includes("SHOP") || shopName.toUpperCase().includes("STORE NAME")) continue;
+      const shopName = shopCol >= 0 ? (row[shopCol] || "").toString().trim() : "";
+      const afterTax = afterTaxCol >= 0
+        ? parseFloat(String(row[afterTaxCol] || "0").replace(/[$,\s]/g, "")) || 0
+        : 0;
+      const cost = costCol >= 0
+        ? parseFloat(String(row[costCol] || "0").replace(/[$,\s]/g, "")) || 0
+        : 0;
+      const profit = profitCol >= 0
+        ? parseFloat(String(row[profitCol] || "0").replace(/[$,\s]/g, "")) || 0
+        : 0;
+      const orderId = orderIdCol >= 0
+        ? (row[orderIdCol] || "").toString().trim()
+        : "";
 
-      orders.push({ shopName, orderDate, price, afterTax, cost, profit });
+      orders.push({
+        shopName: shopName || "(unknown shop)",
+        orderDate,
+        price,
+        afterTax,
+        cost,
+        profit,
+        orderId,
+      });
     }
 
-    // Parse analytics summary — search for labels in analytics area
-    const summary: SheetAnalyticsSummary = { totalSale: 0, totalCost: 0, grossProfit: 0, afterTax: 0 };
+    // Step 5: parse the V:AD summary area. Kept for diagnostics / sheet
+    // hygiene checks; aggregation layer should NOT trust these values.
+    const summary: SheetAnalyticsSummary = {
+      totalSale: 0,
+      totalCost: 0,
+      grossProfit: 0,
+      afterTax: 0,
+    };
     const labelMap: Record<string, keyof SheetAnalyticsSummary> = {
       "TOTAL SALE": "totalSale",
       "TOTAL SALES": "totalSale",
@@ -322,7 +410,6 @@ export async function fetchSheetAnalytics(
       "GROSS PROFIT": "grossProfit",
       "AFTER TAX": "afterTax",
     };
-
     for (const row of analyticsRows) {
       for (let col = 0; col < (row?.length || 0); col++) {
         const cellValue = String(row[col] || "").trim().toUpperCase();

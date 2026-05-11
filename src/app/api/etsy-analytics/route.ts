@@ -82,10 +82,13 @@ export async function GET(request: NextRequest) {
   if (!session) return error("Unauthorized", 401);
 
   const role = (session.user as any).role;
-  // CEO + MANAGER (Izaan) view OFFICE 1's Etsy team analytics.
-  // Etsy PARTNERs (Awais, Mubeen) view their own team's analytics.
-  // Non-Etsy partner (Zain/FB) and EMPLOYEEs are forbidden.
-  if (role !== "SUPER_ADMIN" && role !== "MANAGER" && role !== "PARTNER") {
+  // CEO views any team's analytics; Etsy PARTNERs (Awais, Mubeen) view their
+  // own team's analytics. MANAGER (Izaan) is EXPLICITLY EXCLUDED — he's a
+  // team lead, not a partner, and Wasif wants analytics scoped to people who
+  // own P&L for their team. The sidebar hides the tab from him and the page
+  // redirects him out; this is the server-side backstop in case he hits the
+  // API directly. Allowlist mirrors /etsy-analytics page.tsx exactly.
+  if (role !== "SUPER_ADMIN" && role !== "PARTNER") {
     return error("Forbidden", 403);
   }
 
@@ -148,9 +151,27 @@ export async function GET(request: NextRequest) {
   // Fetch all sheet data
   const sheetData = await fetchAllSheetAnalytics(employeeSheets, month, year);
 
-  // Build employee analytics
+  // ─── Aggregation ────────────────────────────────────────────────
+  // Rules (all of these were violated by the previous implementation —
+  // see prisma/scripts/audit-analytics-accuracy.ts for the full diff):
+  //
+  //   • Gross profit ≡ price − cost. NEVER sum the sheet's PROFIT column
+  //     (that column is afterTax − cost in the Etsy template, not gross).
+  //   • Order count is unique Order IDs, not row count. Multi-SKU line
+  //     items belong to one Etsy transaction. Rows with no Order ID can't
+  //     be deduped — they always count as 1.
+  //   • Row sums are the source of truth. The sheet's TOTAL SALE / TOTAL
+  //     COST / GROSS PROFIT summary cells are stale on every audited sheet.
+  //
+  // Cross-employee Order ID collisions are avoided by namespacing the
+  // canonical dedup key with the employee's id. Rows without an Order ID
+  // get a per-row synthetic id so they remain distinct in downstream
+  // aggregations.
+
   const employeeAnalytics: EmployeeAnalytics[] = [];
-  const allOrders: (SheetOrderRow & { employeeName: string })[] = [];
+  type CanonicalOrder = SheetOrderRow & { employeeName: string; canonicalId: string };
+  const allOrders: CanonicalOrder[] = [];
+  let syntheticIdCounter = 0;
 
   for (const emp of employees) {
     const data = sheetData[emp.id];
@@ -158,35 +179,55 @@ export async function GET(request: NextRequest) {
 
     const name = `${emp.firstName} ${emp.lastName}`;
     const shopNames = [...new Set(data.orders.map((o) => o.shopName))];
-    const totalSales = data.orders.reduce((sum, o) => sum + o.price, 0);
-    const totalCost = data.orders.reduce((sum, o) => sum + o.cost, 0);
-    const profit = data.orders.reduce((sum, o) => sum + o.profit, 0);
-    const afterTax = data.orders.reduce((sum, o) => sum + o.afterTax, 0);
-    const orderCount = data.orders.length;
+
+    let totalSales = 0;
+    let totalCost = 0;
+    let afterTax = 0;
+    const empSeenOrderIds = new Set<string>();
+    let empOrders = 0;
+
+    for (const order of data.orders) {
+      totalSales += order.price;
+      totalCost += order.cost;
+      afterTax += order.afterTax;
+      if (!order.orderId || !empSeenOrderIds.has(order.orderId)) {
+        empOrders++;
+        if (order.orderId) empSeenOrderIds.add(order.orderId);
+      }
+    }
+
+    const profit = totalSales - totalCost; // gross profit
 
     employeeAnalytics.push({
       userId: emp.id,
       name,
       employeeId: emp.employeeId,
       shopNames,
-      totalSales: data.summary.totalSale || totalSales,
-      totalCost: data.summary.totalCost || totalCost,
-      profit: data.summary.grossProfit || profit,
-      afterTax: data.summary.afterTax || afterTax,
-      orders: orderCount,
-      avgOrderValue: orderCount > 0 ? (data.summary.totalSale || totalSales) / orderCount : 0,
+      totalSales,
+      totalCost,
+      profit,
+      afterTax, // kept for backward-compat; not displayed in the UI anymore
+      orders: empOrders,
+      avgOrderValue: empOrders > 0 ? totalSales / empOrders : 0,
       error: data.error,
     });
 
+    // Stamp each raw row with the employee's id + Order ID (or a synthetic
+    // per-row id if missing). Downstream shop / daily aggregations use this
+    // single field for dedup so the same multi-SKU order isn't counted
+    // twice in the shop totals or daily totals.
     for (const order of data.orders) {
-      allOrders.push({ ...order, employeeName: name });
+      const canonicalId = order.orderId
+        ? `${emp.id}:${order.orderId}`
+        : `${emp.id}:r${syntheticIdCounter++}`;
+      allOrders.push({ ...order, employeeName: name, canonicalId });
     }
   }
 
-  // Sort employees by profit (highest first)
+  // Sort employees by gross profit (highest first).
   employeeAnalytics.sort((a, b) => b.profit - a.profit);
 
-  // Overview totals
+  // Overview — straight sum across per-employee aggregates.
   const overview = {
     totalSales: employeeAnalytics.reduce((s, e) => s + e.totalSales, 0),
     totalCost: employeeAnalytics.reduce((s, e) => s + e.totalCost, 0),
@@ -195,34 +236,72 @@ export async function GET(request: NextRequest) {
     totalOrders: employeeAnalytics.reduce((s, e) => s + e.orders, 0),
     avgOrderValue: 0,
   };
-  overview.avgOrderValue = overview.totalOrders > 0 ? overview.totalSales / overview.totalOrders : 0;
+  overview.avgOrderValue =
+    overview.totalOrders > 0 ? overview.totalSales / overview.totalOrders : 0;
 
-  // Shop analytics
-  const shopMap = new Map<string, ShopAnalytics>();
+  // ─── Shop analytics ─────────────────────────────────────────────
+  // Per-shop totals: sum every row's price/cost, dedupe orders by the
+  // canonical id. Gross profit = totalSales − totalCost computed at the
+  // end so the same arithmetic rule applies everywhere.
+  const shopAgg = new Map<
+    string,
+    {
+      shopName: string;
+      totalSales: number;
+      totalCost: number;
+      orderSet: Set<string>;
+    }
+  >();
   for (const order of allOrders) {
-    const key = order.shopName;
-    const existing = shopMap.get(key) || { shopName: key, orders: 0, totalSales: 0, totalCost: 0, profit: 0 };
-    existing.orders++;
-    existing.totalSales += order.price;
-    existing.totalCost += order.cost;
-    existing.profit += order.profit;
-    shopMap.set(key, existing);
+    let entry = shopAgg.get(order.shopName);
+    if (!entry) {
+      entry = {
+        shopName: order.shopName,
+        totalSales: 0,
+        totalCost: 0,
+        orderSet: new Set(),
+      };
+      shopAgg.set(order.shopName, entry);
+    }
+    entry.totalSales += order.price;
+    entry.totalCost += order.cost;
+    entry.orderSet.add(order.canonicalId);
   }
-  const shops = [...shopMap.values()].sort((a, b) => b.profit - a.profit);
+  const shops: ShopAnalytics[] = [...shopAgg.values()]
+    .map((s) => ({
+      shopName: s.shopName,
+      orders: s.orderSet.size,
+      totalSales: s.totalSales,
+      totalCost: s.totalCost,
+      profit: s.totalSales - s.totalCost,
+    }))
+    .sort((a, b) => b.profit - a.profit);
 
-  // Daily sales
-  const dailyMap = new Map<string, DailySales>();
+  // ─── Daily sales ────────────────────────────────────────────────
+  // Per-day: same dedup pattern. Drops rows whose date string we can't
+  // normalize into the expected month (defensive — bad dates would
+  // otherwise pollute the chart).
+  const dailyAgg = new Map<
+    string,
+    { date: string; sales: number; orderSet: Set<string> }
+  >();
   for (const order of allOrders) {
-    // Parse date — try various formats
     const dateStr = normalizeDate(order.orderDate, month, year);
     if (!dateStr) continue;
-
-    const existing = dailyMap.get(dateStr) || { date: dateStr, sales: 0, orders: 0 };
-    existing.sales += order.price;
-    existing.orders++;
-    dailyMap.set(dateStr, existing);
+    let entry = dailyAgg.get(dateStr);
+    if (!entry) {
+      entry = { date: dateStr, sales: 0, orderSet: new Set() };
+      dailyAgg.set(dateStr, entry);
+    }
+    entry.sales += order.price;
+    entry.orderSet.add(order.canonicalId);
   }
-  const dailySales = [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const dailySales: DailySales[] = [...dailyAgg.values()]
+    .map((d) => ({ date: d.date, sales: d.sales, orders: d.orderSet.size }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  // dailyMap retained for the quick-stats lookup below — keep it in sync.
+  const dailyMap = new Map<string, DailySales>();
+  for (const d of dailySales) dailyMap.set(d.date, d);
 
   // Quick stats — use PKT date
   const todayPkt = new Date(Date.now() + 5 * 60 * 60_000);
