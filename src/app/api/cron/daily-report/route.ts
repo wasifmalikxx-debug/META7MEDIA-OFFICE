@@ -582,24 +582,27 @@ export async function GET(request: NextRequest) {
     try {
       // Build the four rounds in fixed order. The first three are per-team
       // (daily_report template), the fourth is the office-wide rollup
-      // (ceo_combined_total).
+      // (ceo_combined_total). Labels use partner names instead of team
+      // codes (EM/AE/ME) — Wasif reads these on his phone and "Izaan's
+      // Team" parses faster at a glance than the internal department
+      // shorthand.
       const teamRounds = [
-        { label: "EM", data: emTotals },
-        { label: "AE", data: ae },
-        { label: "ME", data: me },
+        { label: "Izaan's Team", data: emTotals },
+        { label: "Awais's Team", data: ae },
+        { label: "Mubeen's Team", data: me },
       ];
 
       for (let i = 0; i < teamRounds.length; i++) {
         const round = teamRounds[i];
         const payload = {
           // Tag the date field with the team label so each of the 3 CEO
-          // messages is immediately identifiable as EM / AE / ME at the
-          // top. The daily_report template body has "🗓 {{1}}" so this
-          // renders as "🗓 EM TEAM · May 11, 2026" — visible the moment
-          // the message opens, no template re-submission required.
-          // Partner sends keep the plain date (line 507) since each
-          // partner only ever receives one team's report.
-          date: `${round.label} TEAM · ${dateFormatted}`,
+          // messages is immediately identifiable at the top. The
+          // daily_report template body has "🗓 {{1}}" so this renders as
+          // "🗓 Izaan's Team · May 11, 2026" — visible the moment the
+          // message opens, no template re-submission required. Partner
+          // sends keep the plain date (line 507) since each partner only
+          // ever receives one team's report.
+          date: `${round.label} · ${dateFormatted}`,
           monthName: monthNameFormatted,
           monthly: round.data.monthly,
           today: round.data.today,
