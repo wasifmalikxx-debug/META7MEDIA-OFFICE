@@ -1,17 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   Sparkles,
   Wand2,
@@ -35,6 +27,7 @@ import {
   Zap,
   Heart,
   Hash,
+  Target,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -60,8 +53,12 @@ interface ComplianceReport {
 }
 
 interface ResearchSummary {
-  seedKeyword: string;
+  searchKeyword: string;
+  productType: string;
+  audienceHint: string;
+  styleHint: string;
   categoryPath: string;
+  categoryId: number;
   competitorsAnalyzed: number;
   topCompetitors: { rank: number; title: string; favorites: number }[];
   attributesAvailable: number;
@@ -74,13 +71,6 @@ interface GenerateResponse {
   generatedAt: string;
 }
 
-interface CategoryMatch {
-  id: number;
-  name: string;
-  level: number;
-  path: string;
-}
-
 // ─── Etsy hard limits — also enforced server-side ────────────────────
 
 const TITLE_MAX = 140;
@@ -91,38 +81,32 @@ const TAG_MAX = 20;
 /**
  * SEO Autopilot — full SaaS view (CEO-only).
  *
- * Three-panel composition:
- *   1. Hero status strip at the top — brand, "you-only" callout
- *   2. Left: input form (brief, keyword, category, hints)
- *   3. Right: output stack (title, tags, description, attributes,
- *      compliance, research signals, rationale)
+ * One-input UX (revised May 13 2026):
+ *   • One big textarea: paste the AliExpress title (or any description)
+ *   • One small textarea: optional "anything to highlight"
+ *   • Generate → backend extracts keyword + category automatically and
+ *     returns the full listing.
  *
- * On mobile the right panel slides below the left.
+ * The user used to have to pick a keyword, category, audience, style,
+ * and shop maturity — Wasif: "why is this asking so many things?".
+ * Now Autopilot does the work.
  */
 export function SeoAutopilotView() {
   // ─── Form state ─────────────────────────────────────────────────────
-  const [productBrief, setProductBrief] = useState("");
-  const [referenceTitle, setReferenceTitle] = useState("");
-  const [seedKeyword, setSeedKeyword] = useState("");
-  const [audience, setAudience] = useState("");
-  const [style, setStyle] = useState("");
-  const [shopMaturity, setShopMaturity] = useState<"matured" | "new">("matured");
-  const [category, setCategory] = useState<CategoryMatch | null>(null);
+  const [aliTitle, setAliTitle] = useState("");
+  const [notes, setNotes] = useState("");
 
   // ─── Generation state ───────────────────────────────────────────────
   const [generating, setGenerating] = useState(false);
   const [stage, setStage] = useState<
-    "idle" | "researching" | "writing" | "auditing"
+    "idle" | "reading" | "researching" | "writing" | "auditing"
   >("idle");
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // ─── Derived ───────────────────────────────────────────────────────
-  const briefValid = productBrief.trim().length >= 8;
-  const keywordValid = seedKeyword.trim().length >= 2;
-  const categoryValid = !!category;
-  const canSubmit =
-    briefValid && keywordValid && categoryValid && !generating;
+  const titleValid = aliTitle.trim().length >= 8;
+  const canSubmit = titleValid && !generating;
 
   // ─── Submit ────────────────────────────────────────────────────────
   async function handleGenerate() {
@@ -130,25 +114,21 @@ export function SeoAutopilotView() {
     setGenerating(true);
     setErrorMsg(null);
     setResult(null);
-    setStage("researching");
+    setStage("reading");
 
-    // We can't observe the server's three stages from here, so fake a
-    // progressive feel with timed transitions. Approx wall time: ~6-10s.
-    const stageTimer1 = setTimeout(() => setStage("writing"), 2500);
-    const stageTimer2 = setTimeout(() => setStage("auditing"), 7000);
+    // The server flow is opaque to the client. Fake progressive stages
+    // on a timer so the UI feels responsive. Approx wall time: 8-14s.
+    const t1 = setTimeout(() => setStage("researching"), 1800);
+    const t2 = setTimeout(() => setStage("writing"), 4500);
+    const t3 = setTimeout(() => setStage("auditing"), 9500);
 
     try {
       const res = await fetch("/api/seo-autopilot/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productBrief: productBrief.trim(),
-          referenceTitle: referenceTitle.trim() || null,
-          category: { id: category!.id, name: category!.name },
-          seedKeyword: seedKeyword.trim(),
-          audience: audience.trim() || null,
-          style: style.trim() || null,
-          shopMaturity,
+          aliExpressTitle: aliTitle.trim(),
+          notes: notes.trim() || null,
         }),
       });
 
@@ -161,7 +141,7 @@ export function SeoAutopilotView() {
       setResult(data);
       setStage("idle");
       toast.success("Listing ready", {
-        description: "Title, tags, description, and attributes generated.",
+        description: `Picked category: ${data.research.categoryPath}`,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Generation failed";
@@ -171,19 +151,16 @@ export function SeoAutopilotView() {
       });
       setStage("idle");
     } finally {
-      clearTimeout(stageTimer1);
-      clearTimeout(stageTimer2);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
       setGenerating(false);
     }
   }
 
   function handleReset() {
-    setProductBrief("");
-    setReferenceTitle("");
-    setSeedKeyword("");
-    setAudience("");
-    setStyle("");
-    setCategory(null);
+    setAliTitle("");
+    setNotes("");
     setResult(null);
     setErrorMsg(null);
   }
@@ -192,147 +169,110 @@ export function SeoAutopilotView() {
     <div className="space-y-6">
       <HeroBanner />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] items-start">
-        {/* ─────────────── Input panel ─────────────── */}
-        <div className="space-y-4 lg:sticky lg:top-4">
-          <Card className="border shadow-none overflow-hidden">
-            <CardContent className="p-5 sm:p-6 space-y-5">
-              <FormHeader />
-
-              <FormField
-                label="Product brief"
-                required
-                hint="What is it? Who's it for? 1-2 sentences."
-                icon={FileText}
-              >
-                <Textarea
-                  value={productBrief}
-                  onChange={(e) => setProductBrief(e.target.value)}
-                  placeholder="Personalized leather wallet with custom monogram — a thoughtful gift for fathers, husbands, and groomsmen."
-                  className="min-h-[88px] resize-none text-sm"
-                />
-              </FormField>
-
-              <FormField
-                label="Primary keyword"
-                required
-                hint="What buyers type into Etsy search — we use this to pull live ranking listings."
-                icon={Search}
-              >
-                <Input
-                  value={seedKeyword}
-                  onChange={(e) => setSeedKeyword(e.target.value)}
-                  placeholder="personalized leather wallet"
-                  className="text-sm"
-                />
-              </FormField>
-
-              <FormField
-                label="Etsy category"
-                required
-                hint="Type 2+ characters — we match Etsy's taxonomy live."
-                icon={Layers}
-              >
-                <CategoryCombobox value={category} onChange={setCategory} />
-              </FormField>
-
-              <Separator />
-
-              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-[0.16em]">
-                Optional refinements
-              </p>
-
-              <FormField
-                label="Reference / source title"
-                hint="Paste the AliExpress (or other source) title if you have one."
-                icon={Type}
-              >
-                <Input
-                  value={referenceTitle}
-                  onChange={(e) => setReferenceTitle(e.target.value)}
-                  placeholder="Genuine Cowhide Leather RFID Wallet Mens Bifold..."
-                  className="text-sm"
-                />
-              </FormField>
-
-              <div className="grid grid-cols-2 gap-3">
-                <FormField label="Audience" icon={Heart}>
-                  <Input
-                    value={audience}
-                    onChange={(e) => setAudience(e.target.value)}
-                    placeholder="Father's Day gift"
-                    className="text-sm"
-                  />
-                </FormField>
-                <FormField label="Style" icon={Sparkles}>
-                  <Input
-                    value={style}
-                    onChange={(e) => setStyle(e.target.value)}
-                    placeholder="minimalist, rustic"
-                    className="text-sm"
-                  />
-                </FormField>
-              </div>
-
-              <FormField label="Shop maturity" icon={TrendingUp}>
-                <div className="grid grid-cols-2 gap-2">
-                  <MaturityPill
-                    active={shopMaturity === "matured"}
-                    onClick={() => setShopMaturity("matured")}
-                    label="Matured"
-                    sub="Confidence tone"
-                  />
-                  <MaturityPill
-                    active={shopMaturity === "new"}
-                    onClick={() => setShopMaturity("new")}
-                    label="New shop"
-                    sub="Value-forward"
-                  />
+      {/* ─────────────── Input card ─────────────── */}
+      <Card className="border shadow-none overflow-hidden">
+        <CardContent className="p-5 sm:p-6 space-y-5">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-7 rounded-lg bg-gradient-to-br from-orange-500/15 to-violet-500/15 ring-1 ring-orange-500/20 flex items-center justify-center">
+                  <Type className="size-3.5 text-orange-600 dark:text-orange-400" />
                 </div>
-              </FormField>
-
-              <div className="pt-2 space-y-2">
-                <Button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={!canSubmit}
-                  className="w-full h-11 gap-2 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 text-white font-semibold shadow-lg shadow-orange-500/20 hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                <label
+                  htmlFor="ali-title"
+                  className="text-sm font-semibold tracking-tight"
                 >
-                  {generating ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Generating
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className="size-4" />
-                      Generate Etsy listing
-                    </>
-                  )}
-                </Button>
-                {(productBrief || seedKeyword || category) && !generating && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleReset}
-                    className="w-full text-xs"
-                  >
-                    <RotateCw className="size-3" />
-                    Reset form
-                  </Button>
-                )}
+                  Paste your AliExpress title
+                </label>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                {aliTitle.trim().length} chars
+              </span>
+            </div>
+            <Textarea
+              id="ali-title"
+              value={aliTitle}
+              onChange={(e) => setAliTitle(e.target.value)}
+              placeholder="ROSES Pearl Gorgeous Prom Dress Sweetheart Off the Shoulder Hollow Prom Gown with Fishbone Shiny Sequins Formal Gown Customized"
+              className="min-h-[96px] resize-none text-sm"
+              disabled={generating}
+            />
+            <p className="text-[10px] text-muted-foreground/80 leading-snug">
+              Autopilot will read this and figure out the Etsy keyword,
+              category, audience, and style on its own.
+            </p>
+          </div>
 
-        {/* ─────────────── Output panel ─────────────── */}
-        <div className="space-y-4 min-w-0">
-          {generating && <GeneratingPanel stage={stage} />}
-          {errorMsg && !generating && <ErrorPanel message={errorMsg} />}
-          {!generating && !result && !errorMsg && <EmptyPanel />}
-          {!generating && result && <ResultPanel data={result} />}
-        </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="size-7 rounded-lg bg-muted/60 flex items-center justify-center">
+                <Lightbulb className="size-3.5 text-muted-foreground" />
+              </div>
+              <label
+                htmlFor="notes"
+                className="text-sm font-semibold tracking-tight"
+              >
+                Anything to highlight?{" "}
+                <span className="text-[10px] font-normal text-muted-foreground uppercase tracking-wider ml-1">
+                  Optional
+                </span>
+              </label>
+            </div>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Available in sizes 0-20 · Made-to-measure · Sweetheart neckline · For prom, wedding guest, formal events"
+              className="min-h-[64px] resize-none text-sm"
+              disabled={generating}
+            />
+          </div>
+
+          <div className="pt-1 space-y-2">
+            <Button
+              type="button"
+              onClick={handleGenerate}
+              disabled={!canSubmit}
+              className="w-full h-12 gap-2 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 text-white font-semibold text-sm shadow-lg shadow-orange-500/20 hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Generating
+                </>
+              ) : (
+                <>
+                  <Wand2 className="size-4" />
+                  Generate Etsy listing
+                </>
+              )}
+            </Button>
+            {(aliTitle || notes) && !generating && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                className="w-full text-xs"
+              >
+                <RotateCw className="size-3" />
+                Reset
+              </Button>
+            )}
+            {!titleValid && aliTitle.length > 0 && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 text-center">
+                Paste at least 8 characters of title text.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ─────────────── Output ─────────────── */}
+      <div>
+        {generating && <GeneratingPanel stage={stage} />}
+        {errorMsg && !generating && <ErrorPanel message={errorMsg} />}
+        {!generating && !result && !errorMsg && <EmptyPanel />}
+        {!generating && result && <ResultPanel data={result} />}
       </div>
     </div>
   );
@@ -372,7 +312,7 @@ function HeroBanner() {
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.18em] uppercase bg-white/15 backdrop-blur-sm px-2 py-0.5 rounded-full ring-1 ring-white/25">
               <span className="relative flex size-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
@@ -389,222 +329,16 @@ function HeroBanner() {
             SEO Autopilot
           </h2>
           <p className="text-[12px] sm:text-sm text-white/85 mt-1 leading-snug max-w-2xl">
-            One brief → optimized title, 13 tags, full description, and
-            category attributes — generated from{" "}
+            Paste your AliExpress title → get a complete, compliance-checked
+            Etsy listing back. Autopilot reads live{" "}
             <span className="underline decoration-white/70 decoration-2 underline-offset-[3px] font-semibold">
-              live Etsy ranking data
+              ranking data
             </span>{" "}
-            and audited for compliance before you copy.
+            and figures out the keyword, category, and style on its own.
           </p>
         </div>
       </div>
     </div>
-  );
-}
-
-// ─── Form parts ──────────────────────────────────────────────────────
-
-function FormHeader() {
-  return (
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-[0.18em]">
-          Brief
-        </p>
-        <h3 className="text-sm font-semibold mt-0.5">Tell Autopilot what to write</h3>
-      </div>
-      <div className="size-9 rounded-lg bg-gradient-to-br from-orange-500/15 to-violet-500/15 ring-1 ring-orange-500/20 flex items-center justify-center">
-        <Wand2 className="size-4 text-orange-600 dark:text-orange-400" />
-      </div>
-    </div>
-  );
-}
-
-function FormField({
-  label,
-  required,
-  hint,
-  icon: Icon,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  hint?: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-[11px] font-semibold text-foreground/80 uppercase tracking-[0.14em] flex items-center gap-1.5">
-        {Icon && <Icon className="size-3" />}
-        {label}
-        {required && (
-          <span className="text-rose-500 normal-case tracking-normal font-bold">
-            *
-          </span>
-        )}
-      </Label>
-      {children}
-      {hint && (
-        <p className="text-[10px] text-muted-foreground/70 leading-snug">
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function MaturityPill({
-  active,
-  onClick,
-  label,
-  sub,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  sub: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg border px-3 py-2 text-left transition-all ${
-        active
-          ? "border-orange-500/60 bg-orange-50 dark:bg-orange-950/30 ring-1 ring-orange-500/30"
-          : "border-border bg-card hover:bg-muted/40"
-      }`}
-    >
-      <p
-        className={`text-xs font-semibold ${
-          active ? "text-orange-700 dark:text-orange-300" : "text-foreground"
-        }`}
-      >
-        {label}
-      </p>
-      <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-        {sub}
-      </p>
-    </button>
-  );
-}
-
-// ─── Category combobox ──────────────────────────────────────────────
-
-function CategoryCombobox({
-  value,
-  onChange,
-}: {
-  value: CategoryMatch | null;
-  onChange: (v: CategoryMatch) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<CategoryMatch[]>([]);
-  const [loading, setLoading] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const search = useCallback(async (q: string) => {
-    if (q.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/seo-autopilot/categories?q=${encodeURIComponent(q.trim())}`,
-      );
-      if (!res.ok) throw new Error("lookup failed");
-      const data = await res.json();
-      setResults(data.results ?? []);
-    } catch {
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(query), 250);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query, search]);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <button
-            type="button"
-            className="w-full h-9 px-3 rounded-md border border-input bg-background text-left text-sm flex items-center justify-between gap-2 hover:bg-muted/40 transition-colors"
-          />
-        }
-      >
-        <span className="truncate min-w-0">
-          {value ? (
-            <span className="text-foreground">{value.path || value.name}</span>
-          ) : (
-            <span className="text-muted-foreground">Search Etsy categories…</span>
-          )}
-        </span>
-        <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--anchor-width)] min-w-[320px] p-0">
-        <div className="p-2 border-b">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <Input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type to search… e.g. 'earrings'"
-              className="h-8 pl-8 text-sm"
-            />
-          </div>
-        </div>
-        <div className="max-h-64 overflow-y-auto p-1">
-          {loading && (
-            <div className="p-3 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
-              <Loader2 className="size-3 animate-spin" />
-              Searching Etsy taxonomy…
-            </div>
-          )}
-          {!loading && query.length < 2 && (
-            <p className="p-3 text-center text-xs text-muted-foreground">
-              Start typing to search 3,000+ Etsy categories.
-            </p>
-          )}
-          {!loading && query.length >= 2 && results.length === 0 && (
-            <p className="p-3 text-center text-xs text-muted-foreground">
-              No matches — try a different word.
-            </p>
-          )}
-          {results.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => {
-                onChange(r);
-                setOpen(false);
-                setQuery("");
-              }}
-              className="w-full text-left px-2.5 py-2 rounded-md hover:bg-muted/60 transition-colors group"
-            >
-              <p className="text-xs font-semibold text-foreground group-hover:text-foreground">
-                {r.name}
-              </p>
-              {r.path && r.path !== r.name && (
-                <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                  {r.path}
-                </p>
-              )}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -613,23 +347,24 @@ function CategoryCombobox({
 function EmptyPanel() {
   return (
     <Card className="border-dashed border-2 shadow-none">
-      <CardContent className="py-16 px-6 text-center">
+      <CardContent className="py-14 px-6 text-center">
         <div className="inline-flex size-14 rounded-2xl bg-gradient-to-br from-orange-500/15 to-violet-500/15 ring-1 ring-orange-500/20 items-center justify-center mb-4">
           <Sparkles className="size-7 text-orange-500" />
         </div>
         <h3 className="text-base font-semibold tracking-tight">
           Ready when you are
         </h3>
-        <p className="text-[12px] text-muted-foreground mt-1.5 max-w-sm mx-auto leading-relaxed">
-          Fill in the brief, pick a category, and hit{" "}
+        <p className="text-[12px] text-muted-foreground mt-1.5 max-w-md mx-auto leading-relaxed">
+          Paste an AliExpress title above and hit{" "}
           <span className="font-semibold text-foreground">Generate</span> —
-          Autopilot will pull live Etsy ranking data and write a complete,
-          compliance-checked listing.
+          Autopilot will read it, search Etsy for the best matches, pick the
+          right category, and write the whole listing.
         </p>
-        <div className="mt-6 grid grid-cols-3 gap-2 max-w-md mx-auto">
-          <EmptyPill icon={Search} label="Research" sub="Top 20 listings" />
-          <EmptyPill icon={Wand2} label="Generate" sub="Claude Sonnet" />
-          <EmptyPill icon={ShieldCheck} label="Audit" sub="Claude Haiku" />
+        <div className="mt-5 grid grid-cols-4 gap-2 max-w-2xl mx-auto">
+          <EmptyPill icon={Type} label="Read title" sub="Haiku" />
+          <EmptyPill icon={Search} label="Research" sub="20 top listings" />
+          <EmptyPill icon={Wand2} label="Generate" sub="Sonnet" />
+          <EmptyPill icon={ShieldCheck} label="Audit" sub="Haiku" />
         </div>
       </CardContent>
     </Card>
@@ -657,7 +392,7 @@ function EmptyPill({
 function GeneratingPanel({
   stage,
 }: {
-  stage: "idle" | "researching" | "writing" | "auditing";
+  stage: "idle" | "reading" | "researching" | "writing" | "auditing";
 }) {
   return (
     <Card className="border shadow-none overflow-hidden relative">
@@ -665,7 +400,7 @@ function GeneratingPanel({
         aria-hidden
         className="absolute inset-0 bg-gradient-to-br from-orange-50/60 via-card to-violet-50/40 dark:from-orange-950/20 dark:via-card dark:to-violet-950/20 pointer-events-none"
       />
-      <CardContent className="relative py-12 px-6">
+      <CardContent className="relative py-10 px-6">
         <div className="max-w-md mx-auto space-y-6">
           <div className="text-center">
             <div className="inline-flex size-14 rounded-2xl bg-gradient-to-br from-orange-500 to-violet-600 items-center justify-center shadow-lg shadow-orange-500/30 mb-4">
@@ -675,11 +410,15 @@ function GeneratingPanel({
               Autopilot is working
             </h3>
             <p className="text-[12px] text-muted-foreground mt-1">
-              Usually 6-10 seconds.
+              Usually 8-14 seconds.
             </p>
           </div>
 
           <div className="space-y-2.5">
+            <StageRow
+              label="Reading your AliExpress title"
+              status={stageStatus(stage, "reading")}
+            />
             <StageRow
               label="Researching live Etsy ranking data"
               status={stageStatus(stage, "researching")}
@@ -699,9 +438,9 @@ function GeneratingPanel({
   );
 }
 
-type Stage = "idle" | "researching" | "writing" | "auditing";
+type Stage = "idle" | "reading" | "researching" | "writing" | "auditing";
 type StageStatus = "pending" | "active" | "done";
-const STAGE_ORDER = ["researching", "writing", "auditing"] as const;
+const STAGE_ORDER = ["reading", "researching", "writing", "auditing"] as const;
 type ActiveStage = (typeof STAGE_ORDER)[number];
 
 function stageStatus(current: Stage, target: ActiveStage): StageStatus {
@@ -790,32 +529,79 @@ function ResultPanel({ data }: { data: GenerateResponse }) {
 
 function ResearchStrip({ research }: { research: ResearchSummary }) {
   return (
-    <div className="rounded-xl border bg-gradient-to-r from-emerald-50/60 via-card to-emerald-50/30 dark:from-emerald-950/20 dark:via-card dark:to-emerald-950/10 px-4 py-3 flex flex-wrap items-center gap-3">
-      <div className="size-9 rounded-lg bg-emerald-500/15 ring-1 ring-emerald-500/30 flex items-center justify-center shrink-0">
-        <TrendingUp className="size-4 text-emerald-600 dark:text-emerald-400" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-[0.16em]">
-          Generated from live Etsy data
-        </p>
-        <p className="text-[12px] text-foreground/80 mt-0.5 leading-snug">
-          Analyzed{" "}
-          <span className="font-semibold tabular-nums">
-            {research.competitorsAnalyzed}
-          </span>{" "}
-          ranking listings for{" "}
-          <span className="font-semibold">&ldquo;{research.seedKeyword}&rdquo;</span> in{" "}
-          <span className="font-semibold">{research.categoryPath}</span>
-          {research.attributesAvailable > 0 && (
-            <>
-              {" "}
-              · pre-filled{" "}
-              <span className="font-semibold tabular-nums">
-                {research.attributesAvailable}
-              </span>{" "}
-              category attribute slots
-            </>
+    <Card className="border shadow-none overflow-hidden">
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-r from-emerald-50/60 via-card to-emerald-50/30 dark:from-emerald-950/20 dark:via-card dark:to-emerald-950/10 pointer-events-none"
+      />
+      <CardContent className="relative p-4 sm:p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="size-7 rounded-lg bg-emerald-500/15 ring-1 ring-emerald-500/30 flex items-center justify-center shrink-0">
+            <TrendingUp className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <p className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-[0.16em]">
+            Autopilot&apos;s decisions
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <DecisionRow
+            icon={Search}
+            label="Searched for"
+            value={research.searchKeyword}
+          />
+          <DecisionRow
+            icon={Layers}
+            label="Picked category"
+            value={research.categoryPath}
+          />
+          <DecisionRow
+            icon={Target}
+            label="Product type"
+            value={research.productType}
+          />
+          <DecisionRow
+            icon={Crown}
+            label="Listings analyzed"
+            value={`${research.competitorsAnalyzed} ranking · ${research.attributesAvailable} attribute slots`}
+          />
+          {research.audienceHint && (
+            <DecisionRow
+              icon={Heart}
+              label="Audience"
+              value={research.audienceHint}
+            />
           )}
+          {research.styleHint && (
+            <DecisionRow
+              icon={Sparkles}
+              label="Style"
+              value={research.styleHint}
+            />
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DecisionRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-card px-3 py-2 flex items-center gap-2.5">
+      <Icon className="size-3.5 text-muted-foreground shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
+          {label}
+        </p>
+        <p className="text-[12px] font-semibold text-foreground/90 truncate leading-snug">
+          {value}
         </p>
       </div>
     </div>
@@ -851,9 +637,7 @@ function ComplianceBanner({ report }: { report: ComplianceReport }) {
       <div className="flex items-center gap-3">
         <div
           className={`size-8 rounded-lg flex items-center justify-center shrink-0 ${
-            tone === "rose"
-              ? "bg-rose-500/15"
-              : "bg-amber-500/15"
+            tone === "rose" ? "bg-rose-500/15" : "bg-amber-500/15"
           }`}
         >
           <AlertTriangle

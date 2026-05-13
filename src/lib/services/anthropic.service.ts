@@ -50,7 +50,7 @@ export const ETSY_LIMITS = {
 // ─── Input shape ──────────────────────────────────────────────────────
 
 export interface GenerationInput {
-  /** What the seller is making/selling. 1-2 sentences. */
+  /** What the seller is making/selling. 1-2 sentences (or the AliExpress title). */
   productBrief: string;
   /** Reference title (e.g. from AliExpress source). Optional. */
   referenceTitle?: string;
@@ -74,6 +74,74 @@ export interface GenerationInput {
   style?: string;
   /** Matured shop tone or new shop (slightly more discount-forward). */
   shopMaturity?: "matured" | "new";
+}
+
+// ─── Stage 0 — Context extraction (Haiku) ─────────────────────────────
+
+/**
+ * Given a raw AliExpress / source title (which is keyword-stuffed and
+ * noisy), extract the cleanest search-intent keyword + product type so
+ * we can drive the Etsy search ourselves. This removes the user-facing
+ * "pick a keyword + category" step.
+ */
+export interface ExtractedContext {
+  /** Best 2-5 word keyword a real Etsy buyer would type. */
+  searchKeyword: string;
+  /** 1-3 word product-type label (matches Etsy taxonomy node language). */
+  productType: string;
+  /** Likely target audience inferred from the title — used as a soft hint. */
+  audienceHint: string;
+  /** Style/aesthetic inferred from the title — used as a soft hint. */
+  styleHint: string;
+}
+
+const EXTRACTOR_SYSTEM = `You read noisy AliExpress / supplier product titles and extract clean Etsy SEO context.
+
+AliExpress titles are keyword-stuffed: brand codes ("ROSES"), marketing fluff ("Gorgeous", "Premium Quality"), repeated words, and SKU info all mixed together. Your job is to distill them.
+
+OUTPUT — strict JSON, no prose:
+{
+  "searchKeyword": "2-5 words a real buyer would type into Etsy search",
+  "productType": "1-3 word product noun (matches Etsy taxonomy language — e.g. 'prom dress', 'leather wallet', 'stud earrings')",
+  "audienceHint": "short phrase guessing target buyer (e.g. 'wedding guest', 'father's day gift'). Empty string if not clear.",
+  "styleHint": "1-3 style/aesthetic words (e.g. 'minimalist', 'boho rustic'). Empty string if not clear."
+}
+
+Rules:
+- searchKeyword should be what a buyer types — NOT the AliExpress title verbatim. Drop brand codes, modifiers like "shiny", "new", "hot sale", "wholesale".
+- Prefer descriptive over generic — "off shoulder prom dress" beats "dress".
+- productType MUST match how Etsy categorises things (singular OK if Etsy uses singular, plural OK if plural). When unsure pick the most common form.
+- Never invent details not present in the title.`;
+
+export async function extractSearchContext(
+  rawTitle: string,
+  notes?: string,
+): Promise<ExtractedContext> {
+  const userPrompt = notes && notes.trim()
+    ? `AliExpress / source title:\n${rawTitle}\n\nExtra notes from the seller:\n${notes}`
+    : `AliExpress / source title:\n${rawTitle}`;
+
+  const msg = await client().messages.create({
+    model: MODEL_VALIDATOR, // Haiku — fast + cheap, classification not generation
+    max_tokens: 300,
+    temperature: 0,
+    system: EXTRACTOR_SYSTEM,
+    messages: [
+      { role: "user", content: userPrompt },
+      { role: "assistant", content: "{" },
+    ],
+  });
+
+  const raw = "{" + extractText(msg);
+  const parsed = safeParseJson<ExtractedContext>(raw);
+
+  // Trim + clamp to reasonable lengths.
+  return {
+    searchKeyword: (parsed.searchKeyword ?? "").trim().slice(0, 80),
+    productType: (parsed.productType ?? "").trim().slice(0, 40),
+    audienceHint: (parsed.audienceHint ?? "").trim().slice(0, 80),
+    styleHint: (parsed.styleHint ?? "").trim().slice(0, 80),
+  };
 }
 
 // ─── Output shape (mirrors what we ship to the UI) ────────────────────

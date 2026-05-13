@@ -257,3 +257,57 @@ export function toCompetitorBriefs(listings: EtsyListing[]): CompetitorBrief[] {
     taxonomyId: l.taxonomy_id ?? null,
   }));
 }
+
+/**
+ * Infer the target taxonomy node from a set of ranking listings. The
+ * idea: if the top 5-10 listings ranking for our keyword all sit in
+ * the same category, that's almost certainly where ours should live
+ * too. Returns the most-frequent `taxonomy_id` among the supplied
+ * listings.
+ *
+ * Falls back to a fuzzy taxonomy name search using `productTypeHint`
+ * if the listings have no agreement (or no taxonomy_id at all).
+ */
+export async function inferCategoryFromListings(
+  listings: EtsyListing[],
+  productTypeHint: string,
+): Promise<{ id: number; name: string; path: string } | null> {
+  // Tally taxonomy ids from the top 10 listings, weighted by rank.
+  const tally = new Map<number, number>();
+  listings.slice(0, 10).forEach((l, i) => {
+    if (!l.taxonomy_id) return;
+    // Rank 1 is worth 10, rank 10 is worth 1 — top-ranking signals matter more.
+    const weight = 10 - i;
+    tally.set(l.taxonomy_id, (tally.get(l.taxonomy_id) ?? 0) + weight);
+  });
+
+  if (tally.size > 0) {
+    // Pick the highest-weighted taxonomy id.
+    const winner = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]!;
+    const [taxonomyId] = winner;
+    const all = await getSellerTaxonomy();
+    const node = all.find((n) => n.id === taxonomyId);
+    if (node) {
+      return {
+        id: node.id,
+        name: node.name,
+        path: await getTaxonomyPath(node.id),
+      };
+    }
+  }
+
+  // Fallback — fuzzy taxonomy search using the product-type hint.
+  if (productTypeHint.trim().length >= 2) {
+    const matches = await searchTaxonomyNodes(productTypeHint, 1);
+    const node = matches[0];
+    if (node) {
+      return {
+        id: node.id,
+        name: node.name,
+        path: await getTaxonomyPath(node.id),
+      };
+    }
+  }
+
+  return null;
+}
