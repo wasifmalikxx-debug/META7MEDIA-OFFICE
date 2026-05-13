@@ -663,6 +663,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // ─── Dashboard snapshot refresh ─────────────────────────────────────
+    // The CEO dashboard reads per-team daily rollups from DailyTeamSnapshot
+    // for instant page loads. This runs AFTER the WhatsApp sends so any
+    // sheet-API failure here doesn't block the partner / CEO messages.
+    // Idempotent — uses upsert per (date, teamKey).
+    let snapshotResult: { rowsUpserted: number; daysCovered: number; teamsCovered: number } | null = null;
+    let snapshotError: string | null = null;
+    try {
+      const { buildSnapshotsForMonth } = await import("@/lib/services/dashboard-snapshot.service");
+      // PKT-anchored month/year — same source the rest of the cron uses
+      // (sheet tab matching, message labels). `now` is already in scope.
+      const cronMonth = now.getUTCMonth() + 1;
+      const cronYear = now.getUTCFullYear();
+      snapshotResult = await buildSnapshotsForMonth(cronMonth, cronYear);
+    } catch (snapErr: any) {
+      snapshotError = snapErr?.message || String(snapErr);
+      console.error("[daily-report] snapshot refresh failed:", snapshotError);
+    }
+
     return json({
       success: true,
       sentTo: sent,
@@ -676,6 +695,8 @@ export async function GET(request: NextRequest) {
       partners: partnerReports,
       ceoSent,
       ceoError,
+      snapshot: snapshotResult,
+      snapshotError,
     });
   } catch (err: any) {
     return error(err.message, 500);

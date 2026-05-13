@@ -231,6 +231,9 @@ export default async function DashboardPage() {
       // Hero greeting — first name of the signed-in CEO/HR user. Cheap
       // single-row lookup, runs in the same parallel batch.
       currentUserRow,
+      // Financial layer — sheet-derived per-day per-team rollups + refunds
+      // for this month and last month, plus offices for the office toggle.
+      financialSnapshots, refundsRecent, allOffices,
     ] = await Promise.all([
       prisma.user.findMany({
         // Multi-office: PARTNER role rows (Zain/Awais/Mubeen) are NOT employees
@@ -300,6 +303,53 @@ export default async function DashboardPage() {
       prisma.reviewBonus.count({ where: { status: "PENDING" } }),
       prisma.complaint.count({ where: { unreadByCeo: true, status: { notIn: ["RESOLVED", "DENIED"] } } }),
       prisma.user.findUnique({ where: { id: userId }, select: { firstName: true } }),
+      // ─── Financial layer ────────────────────────────────────────────
+      // Daily team snapshots covering this month + last month + a 7-day
+      // buffer either side. Drives every revenue / profit number on the
+      // CEO dashboard (KPI strip, MoM deltas, trend chart, per-team
+      // financial cards). Populated by the daily-report cron at 9am PKT.
+      //
+      // ~5 teams × ~62 days = ~310 rows max — single index-backed query.
+      //
+      // Catches `P2021` (table doesn't exist) and returns [] so the page
+      // still renders during the brief deploy window before the schema
+      // migration runs in prod. Other errors propagate normally.
+      prisma.dailyTeamSnapshot.findMany({
+        where: {
+          date: {
+            gte: new Date(Date.UTC(year, month - 2, 1)), // start of last month
+            lte: new Date(Date.UTC(year, month, 7)),     // 7 days into next month
+          },
+        },
+        orderBy: { date: "asc" },
+      }).catch((err: any) => {
+        if (err?.code === "P2021") return [];
+        throw err;
+      }),
+      // Refunds — used for the new "Refunds pulse" section. We fetch
+      // both months so the dashboard can show MoM refund comparison.
+      prisma.refund.findMany({
+        where: {
+          createdAt: {
+            gte: new Date(Date.UTC(year, month - 2, 1)),
+            lt:  new Date(Date.UTC(year, month, 1)),
+          },
+        },
+        select: {
+          id: true,
+          userId: true,
+          etsyRefundAmount: true,
+          aliexpressAmount: true,
+          aliexpressRefunded: true,
+          createdAt: true,
+          user: { select: { department: { select: { name: true } } } },
+        },
+      }),
+      // Offices — for the OFFICE 1 / OFFICE 2 toggle. Tiny query.
+      prisma.office.findMany({
+        select: { id: true, slug: true, name: true, isPrimary: true },
+        orderBy: { isPrimary: "desc" },
+      }),
     ]);
 
     const totalEmployees = allEmployees.length;
@@ -522,6 +572,22 @@ export default async function DashboardPage() {
       return a.name.localeCompare(b.name);
     });
 
+    // ─── Build financials ────────────────────────────────────────────
+    // Per-team today/MTD/MoM + combined + 30-day trend series. Reads from
+    // the pre-computed DailyTeamSnapshot table populated by the daily-
+    // report cron, so this is a pure in-memory transform — no extra
+    // round-trips. Refunds come from the live Refund table.
+    const { buildDashboardFinancials } = await import(
+      "@/lib/services/dashboard-financials"
+    );
+    const financials = buildDashboardFinancials(
+      financialSnapshots,
+      refundsRecent,
+      month,
+      year,
+      nowPKT(),
+    );
+
     return (
       <AdminDashboard
         totalEmployees={totalEmployees}
@@ -545,6 +611,8 @@ export default async function DashboardPage() {
           complaintsAwaitingReply: complaintsAwaitingCeoCount,
         }}
         userName={currentUserRow?.firstName ?? undefined}
+        financials={JSON.parse(JSON.stringify(financials))}
+        offices={JSON.parse(JSON.stringify(allOffices))}
       />
     );
   }

@@ -28,6 +28,15 @@ import {
   Building2,
   Sparkles,
   CheckCircle2,
+  DollarSign,
+  ShoppingCart,
+  TrendingUp,
+  Receipt,
+  Eye,
+  EyeOff,
+  Crown,
+  Briefcase,
+  PackageOpen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +100,56 @@ interface TeamGroup {
   monthFines: number;
 }
 
+// ─── Financials (sheet-derived revenue/profit) ────────────────────────
+// Pre-computed by the daily-report cron and read from DailyTeamSnapshot.
+// All amounts are USD. See src/lib/services/dashboard-financials.ts for
+// the canonical shape; this mirror lives here to keep the dashboard
+// component self-typed.
+
+interface MoneyBlock {
+  orders: number;
+  sale: number;
+  cost: number;
+  profit: number;
+}
+interface RefundBlock {
+  count: number;
+  loss: number;
+  recovered: number;
+}
+interface TeamFinancials {
+  teamKey: "em" | "ae" | "me" | "fb-hq" | "fb-o2";
+  teamName: string | null;
+  departmentName: string | null;
+  officeSlug: string | null;
+  today: MoneyBlock;
+  mtd: MoneyBlock;
+  lastMonthSameDay: MoneyBlock;
+  lastMonthFull: MoneyBlock;
+  refundsMtd: RefundBlock;
+  refundsLastMonth: RefundBlock;
+}
+interface DashboardFinancials {
+  perTeam: TeamFinancials[];
+  combined: {
+    today: MoneyBlock;
+    mtd: MoneyBlock;
+    lastMonthSameDay: MoneyBlock;
+    lastMonthFull: MoneyBlock;
+    refundsMtd: RefundBlock;
+    refundsLastMonth: RefundBlock;
+  };
+  dailySeries: { date: string; sale: number; profit: number; orders: number }[];
+  todayISO: string;
+}
+
+interface OfficeOption {
+  id: string;
+  slug: string;
+  name: string;
+  isPrimary: boolean;
+}
+
 interface AdminDashboardProps {
   totalEmployees: number;
   presentToday: number;
@@ -113,6 +172,11 @@ interface AdminDashboardProps {
   // First name of the signed-in CEO/HR user — drives the "Good morning, X"
   // greeting in the hero header. Optional so legacy callers don't break.
   userName?: string;
+  // Sheet-derived revenue / profit / refunds layer. Optional — when
+  // missing, the financial sections gracefully degrade to "—" placeholders
+  // (e.g. during the brief window between deploy and first cron run).
+  financials?: DashboardFinancials;
+  offices?: OfficeOption[];
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string; icon: any }> = {
@@ -133,6 +197,52 @@ const STATUS_ORDER: Record<string, number> = {
   NOT_CHECKED_IN: 4, ABSENT: 5, HALF_DAY_LEAVE: 6, ON_LEAVE: 7, CHECKED_OUT: 8, DAY_OFF: 9,
 };
 
+// ─── Money helpers ────────────────────────────────────────────────────
+// Compact USD formatter for hero numbers; full formatter for tooltips
+// and breakdown rows. `masked()` swaps either output for bullet dots
+// when the show-money toggle is off.
+
+function emptyMoney(): MoneyBlock {
+  return { orders: 0, sale: 0, cost: 0, profit: 0 };
+}
+function emptyRefund(): RefundBlock {
+  return { count: 0, loss: 0, recovered: 0 };
+}
+function addMoney(a: MoneyBlock, b: MoneyBlock): MoneyBlock {
+  return {
+    orders: a.orders + b.orders,
+    sale: a.sale + b.sale,
+    cost: a.cost + b.cost,
+    profit: a.profit + b.profit,
+  };
+}
+function addRefunds(a: RefundBlock, b: RefundBlock): RefundBlock {
+  return {
+    count: a.count + b.count,
+    loss: a.loss + b.loss,
+    recovered: a.recovered + b.recovered,
+  };
+}
+
+function compactUsd(amount: number): string {
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000) return `${amount < 0 ? "-" : ""}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 10_000) return `${amount < 0 ? "-" : ""}$${Math.round(abs / 1_000)}k`;
+  if (abs >= 1_000) return `${amount < 0 ? "-" : ""}$${(abs / 1_000).toFixed(1)}k`;
+  return `${amount < 0 ? "-" : ""}$${abs.toFixed(2)}`;
+}
+
+const MONEY_MASK = "•••";
+function masked(value: string, show: boolean): string {
+  return show ? value : MONEY_MASK;
+}
+
+/** Percent change current vs previous, null when previous is 0. */
+function pctDelta(current: number, previous: number): number | null {
+  if (previous <= 0) return null;
+  return ((current - previous) / previous) * 100;
+}
+
 export function AdminDashboard({
   totalEmployees,
   presentToday,
@@ -148,7 +258,56 @@ export function AdminDashboard({
   teamGroups = [],
   commandCenter,
   userName,
+  financials,
+  offices = [],
 }: AdminDashboardProps) {
+  // ─── Office filter ─────────────────────────────────────────────────
+  // "all" = combined across both offices; otherwise scope to a single
+  // office slug. Used by the office tabs at the top of the financials
+  // and team sections.
+  const [officeFilter, setOfficeFilter] = useState<string>("all");
+
+  // ─── Money-visibility toggle ───────────────────────────────────────
+  // Hides every USD figure on the page (replaces with bullet dots) so
+  // the CEO can show the dashboard to others without revealing actual
+  // revenue. Off by default — Wasif sees the numbers when he opens it.
+  const [showMoney, setShowMoney] = useState<boolean>(true);
+
+  // Filter teamGroups + financials by office. Reused in the existing
+  // "Teams" headcount section AND the new financials sections so they
+  // stay in sync.
+  const scopedTeamGroups = useMemo(() => {
+    if (officeFilter === "all") return teamGroups;
+    const officeName = offices.find((o) => o.slug === officeFilter)?.name;
+    if (!officeName) return teamGroups;
+    return teamGroups.filter((t) => t.officeName === officeName);
+  }, [teamGroups, officeFilter, offices]);
+
+  const scopedFinancials = useMemo(() => {
+    if (!financials) return null;
+    if (officeFilter === "all") return financials;
+    const perTeam = financials.perTeam.filter((t) => t.officeSlug === officeFilter);
+    // Recompute combined for the filtered scope.
+    const acc = perTeam.reduce(
+      (a, t) => ({
+        today: addMoney(a.today, t.today),
+        mtd: addMoney(a.mtd, t.mtd),
+        lastMonthSameDay: addMoney(a.lastMonthSameDay, t.lastMonthSameDay),
+        lastMonthFull: addMoney(a.lastMonthFull, t.lastMonthFull),
+        refundsMtd: addRefunds(a.refundsMtd, t.refundsMtd),
+        refundsLastMonth: addRefunds(a.refundsLastMonth, t.refundsLastMonth),
+      }),
+      {
+        today: emptyMoney(),
+        mtd: emptyMoney(),
+        lastMonthSameDay: emptyMoney(),
+        lastMonthFull: emptyMoney(),
+        refundsMtd: emptyRefund(),
+        refundsLastMonth: emptyRefund(),
+      },
+    );
+    return { ...financials, perTeam, combined: acc };
+  }, [financials, officeFilter]);
   const router = useRouter();
 
   // ─────────────────────────────────────────────────────────────────────
@@ -312,6 +471,34 @@ export function AdminDashboard({
           </div>
         </div>
       </header>
+
+      {/* ═══════════════════ CONTROL BAR ═══════════════════ */}
+      {/* Office filter + value-visibility toggle. Office tabs scope every
+          financial section + team list to a single office (or "All").
+          Show/hide swaps every USD figure for bullet dots so the CEO can
+          screen-share the dashboard without revealing revenue numbers. */}
+      {(offices.length > 1 || financials) && (
+        <DashboardControls
+          offices={offices}
+          officeFilter={officeFilter}
+          onOfficeChange={setOfficeFilter}
+          showMoney={showMoney}
+          onToggleMoney={() => setShowMoney((v) => !v)}
+        />
+      )}
+
+      {/* ════════════════ FINANCIAL HERO STRIP ════════════════ */}
+      {/* The CEO's #1 question — "how much money did we make?" — surfaced
+          before anything else. Four hero tiles: today's profit, MTD sale,
+          MTD gross profit, MTD orders. Each carries a MoM delta against
+          the same-day slice of last month for a fair comparison. */}
+      {scopedFinancials && (
+        <FinancialKpiStrip
+          financials={scopedFinancials}
+          showMoney={showMoney}
+          onRefundsClick={() => router.push("/refunds")}
+        />
+      )}
 
       {/* ═══════════════════════ KPI HERO STRIP ═══════════════════════ */}
       {/* Five hero metrics — the at-a-glance read. Each tile is calibrated
@@ -555,14 +742,14 @@ export function AdminDashboard({
       </section>
 
       {/* ════════════════════════ TEAMS GRID ════════════════════════ */}
-      {teamGroups.length > 0 && (
+      {scopedTeamGroups.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Building2 className="size-4 text-muted-foreground" />
               <h2 className="text-base font-semibold">Teams</h2>
               <Badge variant="outline" className="text-[10px] font-normal h-5 px-1.5">
-                {teamGroups.length}
+                {scopedTeamGroups.length}
               </Badge>
             </div>
             {totalPending > 0 && (
@@ -576,14 +763,14 @@ export function AdminDashboard({
                   <span className="font-semibold text-amber-700 dark:text-amber-400">
                     PKR {Math.round(totalPending).toLocaleString()}
                   </span>
-                  {" "}pending across {teamGroups.length} teams
+                  {" "}pending across {scopedTeamGroups.length} {scopedTeamGroups.length === 1 ? "team" : "teams"}
                 </span>
                 <ArrowRight className="size-3 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
               </button>
             )}
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
-            {teamGroups.map((tg) => (
+            {scopedTeamGroups.map((tg) => (
               <TeamCard
                 key={tg.key}
                 tg={tg}
@@ -594,6 +781,26 @@ export function AdminDashboard({
               />
             ))}
           </div>
+        </section>
+      )}
+
+      {/* ═══════════════════ REVENUE TREND + REFUNDS PULSE ═══════════════════ */}
+      {/* Two-column: 30-day revenue trend on the left (so the CEO sees
+          whether the month is climbing or sliding), refunds pulse on the
+          right (combined office-wide loss + per-team mini-bars + recovery
+          rate). Both read from the financials prop — skip rendering
+          when no snapshots exist yet (first deploy / pre-cron). */}
+      {scopedFinancials && (
+        <section className="grid gap-4 lg:grid-cols-3">
+          <RevenueTrendCard
+            dailySeries={scopedFinancials.dailySeries}
+            showMoney={showMoney}
+          />
+          <RefundsPulseCard
+            financials={scopedFinancials}
+            showMoney={showMoney}
+            onClick={() => router.push("/refunds")}
+          />
         </section>
       )}
 
@@ -1183,4 +1390,469 @@ function TeamCard({
       )}
     </Card>
   );
+}
+
+// ─────────────────────────── DashboardControls ───────────────────────────
+
+/**
+ * Office filter (segmented tabs) + show/hide money toggle.
+ *
+ * "All offices" is the default; clicking a slug filters every financial
+ * section + the Teams grid to that office only. The eye toggle masks
+ * every USD figure on the page with bullet dots so the CEO can present
+ * the dashboard without exposing actual revenue.
+ */
+function DashboardControls({
+  offices,
+  officeFilter,
+  onOfficeChange,
+  showMoney,
+  onToggleMoney,
+}: {
+  offices: OfficeOption[];
+  officeFilter: string;
+  onOfficeChange: (slug: string) => void;
+  showMoney: boolean;
+  onToggleMoney: () => void;
+}) {
+  const tabs = [{ slug: "all", name: "All offices", isPrimary: false }, ...offices];
+  return (
+    <Card className="border shadow-none">
+      <CardContent className="py-2.5 px-3 sm:px-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+          {/* Office tabs */}
+          <div className="inline-flex rounded-lg border bg-card p-1 gap-1 w-full sm:w-auto overflow-x-auto">
+            {tabs.map((t) => {
+              const isActive = officeFilter === t.slug;
+              return (
+                <button
+                  key={t.slug}
+                  type="button"
+                  onClick={() => onOfficeChange(t.slug)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                    isActive
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  aria-pressed={isActive}
+                >
+                  {t.slug === "all" ? (
+                    <Building2 className="size-3.5" />
+                  ) : (
+                    <Briefcase className="size-3.5" />
+                  )}
+                  <span>{t.name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Show/hide money */}
+          <button
+            type="button"
+            onClick={onToggleMoney}
+            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground rounded-md border bg-card px-3 py-1.5 transition-colors shrink-0"
+            aria-pressed={!showMoney}
+            title={showMoney ? "Hide all $ figures" : "Show all $ figures"}
+          >
+            {showMoney ? (
+              <>
+                <EyeOff className="size-3.5" />
+                <span>Hide values</span>
+              </>
+            ) : (
+              <>
+                <Eye className="size-3.5" />
+                <span>Show values</span>
+              </>
+            )}
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────── FinancialKpiStrip ───────────────────────────
+
+/**
+ * Four hero tiles answering the CEO's most-asked question:
+ * "how much money did we make?"
+ *
+ *   • Today's Profit        — green, with delta vs same day last month
+ *   • MTD Sales             — total revenue this month + MoM delta
+ *   • MTD Gross Profit      — sale minus cost + MoM delta
+ *   • Refunds MTD           — count + USD lost · clickable to /refunds
+ */
+function FinancialKpiStrip({
+  financials,
+  showMoney,
+  onRefundsClick,
+}: {
+  financials: DashboardFinancials;
+  showMoney: boolean;
+  onRefundsClick: () => void;
+}) {
+  const { today, mtd, lastMonthSameDay, refundsMtd, refundsLastMonth } =
+    financials.combined;
+
+  const todayProfitDelta = pctDelta(today.profit, lastMonthSameDayOneDay(financials));
+  const mtdSaleDelta = pctDelta(mtd.sale, lastMonthSameDay.sale);
+  const mtdProfitDelta = pctDelta(mtd.profit, lastMonthSameDay.profit);
+  const refundsDelta = pctDelta(refundsMtd.loss, refundsLastMonth.loss);
+
+  // Recovery rate — what % of refund losses we clawed back from AliExpress.
+  const recoveryRate =
+    refundsMtd.loss > 0 ? (refundsMtd.recovered / refundsMtd.loss) * 100 : null;
+
+  return (
+    <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <FinancialTile
+        label="Today's Profit"
+        value={masked(compactUsd(today.profit), showMoney)}
+        subtitle={`${today.orders} ${today.orders === 1 ? "order" : "orders"} · ${
+          masked(compactUsd(today.sale), showMoney)
+        } sale`}
+        icon={TrendingUp}
+        tone="emerald"
+        accent="primary"
+        delta={todayProfitDelta}
+        deltaLabel="vs same day last month"
+      />
+      <FinancialTile
+        label="MTD Sales"
+        value={masked(compactUsd(mtd.sale), showMoney)}
+        subtitle={`${mtd.orders.toLocaleString()} orders this month`}
+        icon={ShoppingCart}
+        tone="slate"
+        delta={mtdSaleDelta}
+        deltaLabel="vs last month MTD"
+      />
+      <FinancialTile
+        label="MTD Gross Profit"
+        value={masked(compactUsd(mtd.profit), showMoney)}
+        subtitle={
+          mtd.sale > 0
+            ? `${((mtd.profit / mtd.sale) * 100).toFixed(0)}% margin`
+            : "—"
+        }
+        icon={DollarSign}
+        tone="violet"
+        delta={mtdProfitDelta}
+        deltaLabel="vs last month MTD"
+      />
+      <FinancialTile
+        label="Refunds MTD"
+        value={masked(`-${compactUsd(refundsMtd.loss)}`, showMoney)}
+        subtitle={
+          refundsMtd.count === 0
+            ? "No refunds this month"
+            : `${refundsMtd.count} refunds · ${
+                recoveryRate != null ? `${recoveryRate.toFixed(0)}% recovered` : "no recovery yet"
+              }`
+        }
+        icon={Receipt}
+        tone="rose"
+        delta={refundsDelta != null ? -refundsDelta : null}
+        deltaLabel="vs last month — lower is better"
+        deltaInverse
+        onClick={onRefundsClick}
+      />
+    </section>
+  );
+}
+
+/** Pull today's profit from yesterday-of-last-month for the delta calc.
+ *  Falls back to lastMonthSameDay.profit / dayOfMonth when we can't isolate
+ *  the specific day (e.g. before backfill catches up). Good enough. */
+function lastMonthSameDayOneDay(f: DashboardFinancials): number {
+  const lastMonthSameDayProfit = f.combined.lastMonthSameDay.profit;
+  // Number of days summed in lastMonthSameDay = dayOfMonth (today's date number).
+  // We approximate same-day-last-month by averaging.
+  const todayIso = f.todayISO;
+  const day = parseInt(todayIso.split("-")[2] ?? "1", 10);
+  if (day <= 0) return 0;
+  return lastMonthSameDayProfit / day;
+}
+
+/**
+ * Single financial KPI tile — similar to KpiTile but with a delta pill.
+ * `accent="primary"` adds a subtle ring so the Today's Profit headline
+ * stands out among the row.
+ */
+function FinancialTile({
+  label,
+  value,
+  subtitle,
+  icon: Icon,
+  tone,
+  accent,
+  delta,
+  deltaLabel,
+  deltaInverse,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  subtitle?: string;
+  icon: any;
+  tone: "emerald" | "slate" | "violet" | "rose" | "amber";
+  accent?: "primary";
+  delta?: number | null;
+  deltaLabel?: string;
+  deltaInverse?: boolean;
+  onClick?: () => void;
+}) {
+  const tones = {
+    emerald: { iconBg: "bg-emerald-50 dark:bg-emerald-950/40", iconText: "text-emerald-600 dark:text-emerald-400", primary: "text-emerald-700 dark:text-emerald-400" },
+    slate: { iconBg: "bg-slate-100 dark:bg-slate-800/60", iconText: "text-slate-700 dark:text-slate-300", primary: "" },
+    violet: { iconBg: "bg-violet-50 dark:bg-violet-950/40", iconText: "text-violet-600 dark:text-violet-400", primary: "" },
+    rose: { iconBg: "bg-rose-50 dark:bg-rose-950/40", iconText: "text-rose-600 dark:text-rose-400", primary: "" },
+    amber: { iconBg: "bg-amber-50 dark:bg-amber-950/40", iconText: "text-amber-600 dark:text-amber-400", primary: "" },
+  } as const;
+  const t = tones[tone];
+  const isPrimary = accent === "primary";
+
+  // Delta direction — positive in green, negative in rose, unless inverse
+  // (e.g. refunds: lower is better, so a NEGATIVE delta is good).
+  const positive = (delta ?? 0) >= 0;
+  const goodDirection = deltaInverse ? positive : positive;
+
+  const Wrapper: any = onClick ? "button" : "div";
+  const wrapperProps: any = onClick ? { onClick, type: "button" } : {};
+
+  return (
+    <Wrapper
+      {...wrapperProps}
+      className={`relative overflow-hidden rounded-xl border bg-card p-4 transition-all text-left ${
+        onClick ? "hover:bg-accent/30 hover:border-foreground/20 cursor-pointer" : ""
+      } ${isPrimary ? "ring-1 ring-emerald-500/20 dark:ring-emerald-400/20" : ""}`}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className={`size-8 rounded-lg flex items-center justify-center ${t.iconBg}`}>
+          <Icon className={`size-3.5 ${t.iconText}`} />
+        </div>
+        {delta != null && (
+          <span
+            className={`inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full ${
+              goodDirection
+                ? "bg-emerald-100/60 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                : "bg-rose-100/60 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
+            }`}
+            title={deltaLabel}
+          >
+            {goodDirection ? "↑" : "↓"} {Math.abs(delta).toFixed(0)}%
+          </span>
+        )}
+      </div>
+      <p className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-[0.12em] mb-1.5">
+        {label}
+      </p>
+      <div className="flex items-baseline gap-1.5 mb-1">
+        <span className={`text-[26px] font-bold tabular-nums tracking-tight leading-none ${t.primary}`}>
+          {value}
+        </span>
+      </div>
+      {subtitle && (
+        <p className="text-[11px] text-muted-foreground mt-1 truncate">{subtitle}</p>
+      )}
+    </Wrapper>
+  );
+}
+
+// ─────────────────────────── RevenueTrendCard ───────────────────────────
+
+/**
+ * 30-day revenue trend — area chart of daily sales with profit overlay.
+ * Anchors the eye in the "trends" row alongside the refunds pulse.
+ * Falls back to a friendly empty state when there's no snapshot data yet
+ * (e.g. fresh deploy, before the first cron run).
+ */
+function RevenueTrendCard({
+  dailySeries,
+  showMoney,
+}: {
+  dailySeries: { date: string; sale: number; profit: number; orders: number }[];
+  showMoney: boolean;
+}) {
+  const hasData = dailySeries.some((d) => d.sale > 0);
+
+  // Strip year off the date label so x-axis stays compact (Jan 12 / Jan 13).
+  const data = dailySeries.map((d) => {
+    const [, m, day] = d.date.split("-");
+    return { ...d, label: `${day}/${m}` };
+  });
+
+  return (
+    <Card className="border shadow-none lg:col-span-2">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div>
+            <CardTitle className="text-sm font-semibold">Revenue trend</CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Daily sale (and profit) · last 30 days
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-[10px] shrink-0">
+            <div className="flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-slate-500" />
+              <span className="text-muted-foreground font-medium">Sale</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-emerald-500" />
+              <span className="text-muted-foreground font-medium">Profit</span>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pb-4">
+        <div className="h-[220px] w-full">
+          {hasData ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data} margin={{ top: 10, right: 8, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="revSaleGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#64748b" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#64748b" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="revProfitGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={20} />
+                <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => showMoney ? compactUsd(v) : "•"} />
+                <Tooltip
+                  contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid hsl(var(--border))", backgroundColor: "hsl(var(--background))", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}
+                  cursor={{ stroke: "hsl(var(--muted))", strokeDasharray: "3 3" }}
+                  formatter={(v: any, name: any) => [showMoney ? `$${(v as number).toFixed(2)}` : MONEY_MASK, name]}
+                />
+                <Area type="monotone" dataKey="sale" stroke="#64748b" strokeWidth={1.5} fill="url(#revSaleGrad)" name="Sale" />
+                <Area type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2} fill="url(#revProfitGrad)" name="Profit" />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-center">
+              <PackageOpen className="size-7 text-muted-foreground/40 mb-2" />
+              <p className="text-sm text-muted-foreground">No revenue data yet.</p>
+              <p className="text-[11px] text-muted-foreground/70 mt-1">
+                The daily cron populates this at 9am PKT.
+              </p>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────── RefundsPulseCard ───────────────────────────
+
+/**
+ * Refunds context — total $ lost this month, recovery rate from
+ * AliExpress, per-team breakdown bars, and a click-through to /refunds.
+ *
+ * Reads from financials.combined.refundsMtd + financials.perTeam[].refundsMtd.
+ */
+function RefundsPulseCard({
+  financials,
+  showMoney,
+  onClick,
+}: {
+  financials: DashboardFinancials;
+  showMoney: boolean;
+  onClick: () => void;
+}) {
+  const { refundsMtd } = financials.combined;
+  const recoveryRate = refundsMtd.loss > 0 ? (refundsMtd.recovered / refundsMtd.loss) * 100 : 0;
+  const netLoss = refundsMtd.loss - refundsMtd.recovered;
+
+  // Per-team mini-bars — only Etsy teams have refunds (FB doesn't track).
+  const perTeam = financials.perTeam
+    .filter((t) => t.teamKey === "em" || t.teamKey === "ae" || t.teamKey === "me")
+    .map((t) => ({
+      teamKey: t.teamKey,
+      teamName: t.teamName ?? labelForTeamKey(t.teamKey),
+      count: t.refundsMtd.count,
+      loss: t.refundsMtd.loss,
+    }));
+  const maxLoss = Math.max(1, ...perTeam.map((t) => t.loss));
+
+  return (
+    <Card className="border shadow-none lg:col-span-1 group transition-colors cursor-pointer hover:bg-accent/10">
+      <div onClick={onClick} className="contents">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Receipt className="size-4 text-rose-500" />
+              Refunds pulse
+            </CardTitle>
+            <ArrowRight className="size-3.5 text-muted-foreground/60 group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-0.5">This month</p>
+        </CardHeader>
+        <CardContent className="pb-4">
+          {refundsMtd.count === 0 ? (
+            <div className="py-6 text-center">
+              <CheckCircle2 className="size-7 text-emerald-500/60 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                No refunds yet
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Clean slate this month.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="mb-4">
+                <div className="text-[26px] font-bold tabular-nums tracking-tight leading-none text-rose-700 dark:text-rose-400">
+                  -{masked(compactUsd(netLoss), showMoney)}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Net loss · {refundsMtd.count} refund{refundsMtd.count !== 1 ? "s" : ""} ·{" "}
+                  <span className="font-semibold text-foreground/80">
+                    {recoveryRate.toFixed(0)}%
+                  </span>{" "}
+                  recovered from AliExpress
+                </p>
+              </div>
+              <div className="space-y-2">
+                {perTeam.map((t) => (
+                  <div key={t.teamKey} className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-muted-foreground">{t.teamName}</span>
+                      <span className="tabular-nums">
+                        {t.count} · {masked(compactUsd(t.loss), showMoney)}
+                      </span>
+                    </div>
+                    <div className="h-1 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full bg-rose-400 rounded-full transition-all"
+                        style={{ width: `${(t.loss / maxLoss) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {perTeam.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground text-center py-2">
+                    No team-level breakdown available.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </div>
+    </Card>
+  );
+}
+
+function labelForTeamKey(k: string): string {
+  if (k === "em") return "Izaan (EM)";
+  if (k === "ae") return "Awais (AE)";
+  if (k === "me") return "Mubeen (ME)";
+  if (k === "fb-hq") return "Facebook HQ";
+  if (k === "fb-o2") return "Facebook O2";
+  return k;
 }

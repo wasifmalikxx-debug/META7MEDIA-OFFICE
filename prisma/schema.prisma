@@ -878,3 +878,51 @@ model Refund {
   @@index([userId, createdAt])
   @@index([createdAt])
 }
+
+// ─── Dashboard Daily Snapshots (Etsy + FB business metrics) ─────────
+//
+// Pre-computed per-team, per-day rollups so the CEO dashboard can render
+// instantly without fetching live Google Sheets data (each cold sheet
+// read takes 30-60s). Populated by the daily-report cron at 9am PKT.
+//
+// One row per (team, date) — for the 5 known teams (em, ae, me, fb-hq,
+// fb-o2) that's ~5 rows/day = ~150 rows/month. Backfill goes 1 month
+// per Wasif's preference; older history can be added later.
+//
+// Refund metrics are NOT stored here — they're read directly from the
+// Refund table which is already DB-native and fast. This table is only
+// for the slow-to-fetch sheet-derived metrics.
+
+model DailyTeamSnapshot {
+  id      String   @id @default(cuid())
+  date    DateTime @db.Date // YYYY-MM-DD, no time component
+  teamKey String // "em" | "ae" | "me" | "fb-hq" | "fb-o2"
+
+  // Optional human-readable labels carried alongside the metrics so the
+  // dashboard doesn't need to join back to Department/Office for display.
+  // teamName e.g. "Awais Team", departmentName e.g. "Etsy - AE",
+  // officeSlug e.g. "office-1".
+  teamName       String?
+  departmentName String?
+  officeSlug     String?
+
+  // Business metrics derived from the team's combined member sheets.
+  // grossProfit is canonical = totalSale - totalCost (NOT the sheet's
+  // misleading PROFIT column which is afterTax-cost).
+  orders      Int   @default(0)
+  totalSale   Float @default(0) // USD
+  totalCost   Float @default(0) // USD (Ali Express cost)
+  grossProfit Float @default(0) // USD (totalSale - totalCost)
+
+  // Optional carry-over of the sheet's after-tax column, for diagnostics
+  // and any future surface that needs it. Not used in the main dashboard.
+  afterTax Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One snapshot per team per day. Re-running the cron upserts.
+  @@unique([date, teamKey])
+  @@index([date])
+  @@index([teamKey, date])
+}
