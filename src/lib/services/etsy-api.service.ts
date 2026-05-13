@@ -6,7 +6,11 @@
  *   • Seller taxonomy (the full Etsy category tree)
  *   • Taxonomy node properties (required + optional attributes per category)
  *
- * Auth: single `x-api-key` header — no OAuth needed for public reads.
+ * Auth: `x-api-key` header in the format `keystring:shared_secret`.
+ *   Etsy changed this — it used to be keystring-only, now they require
+ *   both pieces colon-separated. If only the keystring is sent, Etsy
+ *   returns 403 with: "Shared secret is required in x-api-key header."
+ *   No OAuth bearer needed for the public read endpoints we use.
  *
  * Rate limit at Personal tier: 5 QPS · 5,000 requests/day. At full SEO
  * Autopilot usage (25 employees × 7 listings/day × ~3 queries) we burn ~10%
@@ -49,12 +53,20 @@ async function etsyFetch<T>(
   path: string,
   searchParams?: Record<string, string | number | undefined>,
 ): Promise<T> {
-  const apiKey = process.env.ETSY_API_KEYSTRING;
-  if (!apiKey) {
+  const keystring = process.env.ETSY_API_KEYSTRING;
+  const sharedSecret = process.env.ETSY_SHARED_SECRET;
+  if (!keystring) {
     throw new Error(
       "ETSY_API_KEYSTRING is not set. Add it to your environment variables.",
     );
   }
+  if (!sharedSecret) {
+    throw new Error(
+      "ETSY_SHARED_SECRET is not set. Etsy requires it in the x-api-key header as 'keystring:shared_secret'.",
+    );
+  }
+  // Etsy's current v3 auth format. See header doc at top of file.
+  const apiKey = `${keystring}:${sharedSecret}`;
 
   await takeToken();
 
