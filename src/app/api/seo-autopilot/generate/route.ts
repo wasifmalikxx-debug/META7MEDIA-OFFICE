@@ -9,6 +9,8 @@ import {
   getTaxonomyPath,
   getSellerTaxonomy,
   toCompetitorBriefs,
+  getTagDemandStatsBatch,
+  type TagDemand,
 } from "@/lib/services/etsy-api.service";
 import {
   extractSearchContext,
@@ -262,11 +264,29 @@ export async function POST(request: NextRequest) {
     listing.suggestedWhenMade = payload.whenMade.trim();
   }
 
-  // ─── Stage 5 — Haiku audits the text ───────────────────────────────
+  // ─── Stage 5 — Tag intelligence + text audit (parallel) ────────────
+  //
+  // Both calls are independent of each other and of the rest of the
+  // pipeline at this point. Run them concurrently to cut wall time.
 
   let textCompliance;
+  let tagIntelligence: TagDemand[] = [];
   try {
-    textCompliance = await validateListing(listing);
+    const [text, tags] = await Promise.all([
+      validateListing(listing).catch((err) => ({
+        ok: true,
+        issues: [
+          {
+            severity: "warn" as const,
+            field: "system",
+            message: `Text compliance scan skipped: ${err instanceof Error ? err.message : "unknown"}`,
+          },
+        ],
+      })),
+      getTagDemandStatsBatch(listing.tags).catch(() => []),
+    ]);
+    textCompliance = text;
+    tagIntelligence = tags;
   } catch (err) {
     textCompliance = {
       ok: true,
@@ -274,7 +294,7 @@ export async function POST(request: NextRequest) {
         {
           severity: "warn" as const,
           field: "system",
-          message: `Text compliance scan skipped: ${err instanceof Error ? err.message : "unknown"}`,
+          message: `Final checks skipped: ${err instanceof Error ? err.message : "unknown"}`,
         },
       ],
     };
@@ -299,6 +319,7 @@ export async function POST(request: NextRequest) {
       attributesAvailable: attributeSchema.length,
     },
     textCompliance,
+    tagIntelligence,
     // Echo back what the employee provided so the UI can show "your inputs"
     // alongside the AI output.
     inputs: {

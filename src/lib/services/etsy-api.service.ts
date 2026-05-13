@@ -322,6 +322,115 @@ export function toCompetitorBriefs(listings: EtsyListing[]): CompetitorBrief[] {
   }));
 }
 
+// ─── Tag intelligence (demand proxy) ────────────────────────────────
+
+/**
+ * Etsy doesn't expose real search volume publicly. As a proxy we look
+ * at how many active listings exist for the tag and how favorited the
+ * top-ranking ones are. Together they give a strong signal for:
+ *   • how much demand there is (high listing count + favs = real buyers)
+ *   • how saturated the market is (very high count = hard to rank)
+ *
+ * Costs one Etsy API call per tag.
+ */
+
+export type TagTier = "niche" | "moderate" | "hot" | "saturated";
+
+export interface TagDemand {
+  tag: string;
+  totalListings: number;
+  topFavorites: number[]; // up to 5
+  avgTopFavorites: number;
+  demandScore: number; // 0..100
+  tier: TagTier;
+  error?: string;
+}
+
+function classifyTier(totalListings: number): TagTier {
+  if (totalListings >= 50_000) return "saturated";
+  if (totalListings >= 10_000) return "hot";
+  if (totalListings >= 1_000) return "moderate";
+  return "niche";
+}
+
+function calcDemandScore(totalListings: number, avgFavs: number): number {
+  // Log-scaled listing count contributes up to ~75, average favs up to ~25.
+  const listingComponent = Math.min(75, Math.log10(totalListings + 1) * 15);
+  const favComponent = Math.min(25, avgFavs / 8);
+  return Math.round(Math.min(100, listingComponent + favComponent));
+}
+
+/**
+ * Fetch demand stats for a single tag.
+ *
+ * Strategy: one call to /listings/active with limit=5, sort_on=score.
+ * The response's `count` field gives total active listings (the
+ * "demand" proxy) and the 5 results give us top-favorite signal.
+ */
+export async function getTagDemandStats(tag: string): Promise<TagDemand> {
+  const apiKey = process.env.ETSY_API_KEYSTRING;
+  const sharedSecret = process.env.ETSY_SHARED_SECRET;
+  if (!apiKey || !sharedSecret) {
+    return {
+      tag,
+      totalListings: 0,
+      topFavorites: [],
+      avgTopFavorites: 0,
+      demandScore: 0,
+      tier: "niche",
+      error: "Etsy credentials missing",
+    };
+  }
+
+  try {
+    const data = await etsyFetch<ListingsResponse>("/listings/active", {
+      keywords: tag,
+      limit: 5,
+      sort_on: "score",
+      sort_order: "desc",
+    });
+    const totalListings = data.count ?? 0;
+    const topFavorites = (data.results ?? [])
+      .map((l) => l.num_favorers ?? 0)
+      .sort((a, b) => b - a);
+    const avgTopFavorites =
+      topFavorites.length > 0
+        ? Math.round(
+            topFavorites.reduce((s, n) => s + n, 0) / topFavorites.length,
+          )
+        : 0;
+    return {
+      tag,
+      totalListings,
+      topFavorites,
+      avgTopFavorites,
+      demandScore: calcDemandScore(totalListings, avgTopFavorites),
+      tier: classifyTier(totalListings),
+    };
+  } catch (err) {
+    return {
+      tag,
+      totalListings: 0,
+      topFavorites: [],
+      avgTopFavorites: 0,
+      demandScore: 0,
+      tier: "niche",
+      error: err instanceof Error ? err.message : "fetch failed",
+    };
+  }
+}
+
+/**
+ * Fetch demand stats for many tags. Calls go through the token bucket
+ * so we stay under 5 QPS even with 13 concurrent fetches.
+ */
+export async function getTagDemandStatsBatch(
+  tags: string[],
+): Promise<TagDemand[]> {
+  // Promise.all is fine — takeToken() inside etsyFetch serializes for us.
+  return Promise.all(tags.map((t) => getTagDemandStats(t)));
+}
+
 /**
  * Infer the target taxonomy node from a set of ranking listings.
  *

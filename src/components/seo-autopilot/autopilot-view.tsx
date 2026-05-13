@@ -86,6 +86,18 @@ interface TextCompliance {
   issues: Array<{ severity: "warn" | "block"; field: string; message: string }>;
 }
 
+type TagTier = "niche" | "moderate" | "hot" | "saturated";
+
+interface TagDemand {
+  tag: string;
+  totalListings: number;
+  topFavorites: number[];
+  avgTopFavorites: number;
+  demandScore: number;
+  tier: TagTier;
+  error?: string;
+}
+
 interface ResearchSummary {
   searchKeyword: string;
   productType: string;
@@ -115,6 +127,7 @@ interface GenerateResponse {
   listing: GeneratedListing | null;
   research: ResearchSummary;
   textCompliance: TextCompliance | null;
+  tagIntelligence?: TagDemand[];
   inputs?: UserInputsEcho;
   generatedAt: string;
 }
@@ -1202,7 +1215,10 @@ function ResultPanel({
 
       {/* ─── Etsy section: Attributes ─── */}
       <EtsySectionGroup n={4} title="Attributes" icon={Tags}>
-        <TagsCard tags={listing.tags} />
+        <TagsCard tags={listing.tags} intelligence={data.tagIntelligence ?? []} />
+        {data.tagIntelligence && data.tagIntelligence.length > 0 && (
+          <TagIntelligenceCard intelligence={data.tagIntelligence} />
+        )}
         <MaterialsCard materials={listing.materials} />
         {listing.attributes.length > 0 && (
           <AttributesCard attributes={listing.attributes} />
@@ -1708,8 +1724,15 @@ function TitleCard({ title }: { title: string }) {
   );
 }
 
-function TagsCard({ tags }: { tags: string[] }) {
+function TagsCard({
+  tags,
+  intelligence,
+}: {
+  tags: string[];
+  intelligence: TagDemand[];
+}) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const intelByTag = new Map(intelligence.map((i) => [i.tag, i]));
 
   async function copyOne(tag: string, idx: number) {
     await navigator.clipboard.writeText(tag);
@@ -1723,6 +1746,8 @@ function TagsCard({ tags }: { tags: string[] }) {
     toast.success(`Copied all ${tags.length} tags`);
   }
 
+  const hasIntel = intelligence.length > 0;
+
   return (
     <Card className="border shadow-none">
       <CardContent className="p-5">
@@ -1730,7 +1755,11 @@ function TagsCard({ tags }: { tags: string[] }) {
           <SectionHeading
             icon={Tags}
             label="Tags"
-            sub={`${tags.length} / 13 · ≤20 chars each`}
+            sub={
+              hasIntel
+                ? `${tags.length} / 13 · live demand data from Etsy`
+                : `${tags.length} / 13 · ≤20 chars each`
+            }
           />
           <CopyButton value={tags.join(", ")} label="all tags" />
         </div>
@@ -1738,19 +1767,24 @@ function TagsCard({ tags }: { tags: string[] }) {
           {tags.map((tag, idx) => {
             const isLong = tag.length > TAG_MAX;
             const copied = copiedIdx === idx;
+            const intel = intelByTag.get(tag);
             return (
               <button
                 key={`${tag}-${idx}`}
                 type="button"
                 onClick={() => copyOne(tag, idx)}
-                className={`group inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition-all ring-1 ${
+                className={`group inline-flex items-center gap-1.5 rounded-full pl-3 pr-1.5 py-1 text-[12px] font-medium transition-all ring-1 ${
                   isLong
                     ? "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 ring-rose-300/50"
                     : copied
                       ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 ring-emerald-400/50"
                       : "bg-muted/60 hover:bg-muted text-foreground/90 ring-border"
                 }`}
-                title={`Click to copy "${tag}"`}
+                title={
+                  intel
+                    ? `${tag} · ${formatCount(intel.totalListings)} listings · avg ${intel.avgTopFavorites} favs · ${TIER_LABEL[intel.tier]}`
+                    : `Click to copy "${tag}"`
+                }
               >
                 {copied ? (
                   <Check className="size-3 text-emerald-600" />
@@ -1758,9 +1792,17 @@ function TagsCard({ tags }: { tags: string[] }) {
                   <Hash className="size-3 opacity-50" />
                 )}
                 <span>{tag}</span>
-                <span className="text-[9px] opacity-60 tabular-nums ml-0.5">
+                <span className="text-[9px] opacity-50 tabular-nums">
                   {tag.length}
                 </span>
+                {intel && (
+                  <span
+                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold tabular-nums ring-1 ${TIER_STYLE[intel.tier]}`}
+                  >
+                    <span>{TIER_GLYPH[intel.tier]}</span>
+                    <span>{formatCount(intel.totalListings)}</span>
+                  </span>
+                )}
               </button>
             );
           })}
@@ -1768,6 +1810,14 @@ function TagsCard({ tags }: { tags: string[] }) {
             <p className="text-xs text-muted-foreground">No tags returned.</p>
           )}
         </div>
+        {hasIntel && (
+          <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
+            <LegendChip tier="niche" />
+            <LegendChip tier="moderate" />
+            <LegendChip tier="hot" />
+            <LegendChip tier="saturated" />
+          </div>
+        )}
         <div className="mt-4 pt-3 border-t flex items-center gap-2">
           <Button
             size="sm"
@@ -1781,6 +1831,330 @@ function TagsCard({ tags }: { tags: string[] }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Tag intelligence helpers ───────────────────────────────────────
+
+const TIER_LABEL: Record<TagTier, string> = {
+  niche: "Niche — low competition",
+  moderate: "Moderate demand",
+  hot: "Hot — high demand",
+  saturated: "Saturated market",
+};
+
+const TIER_GLYPH: Record<TagTier, string> = {
+  niche: "🌱",
+  moderate: "📊",
+  hot: "🔥",
+  saturated: "⚠️",
+};
+
+const TIER_STYLE: Record<TagTier, string> = {
+  niche:
+    "bg-sky-100 text-sky-700 ring-sky-300/50 dark:bg-sky-950/40 dark:text-sky-300",
+  moderate:
+    "bg-emerald-100 text-emerald-700 ring-emerald-300/50 dark:bg-emerald-950/40 dark:text-emerald-300",
+  hot: "bg-amber-100 text-amber-800 ring-amber-300/50 dark:bg-amber-950/40 dark:text-amber-300",
+  saturated:
+    "bg-rose-100 text-rose-700 ring-rose-300/50 dark:bg-rose-950/40 dark:text-rose-300",
+};
+
+const TIER_DESCRIPTION: Record<TagTier, string> = {
+  niche: "<1k listings — easy to rank for, but low traffic",
+  moderate: "1k-10k listings — sweet spot for most shops",
+  hot: "10k-50k listings — high demand, high competition",
+  saturated: ">50k listings — very hard to rank as a new shop",
+};
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${(n / 1_000).toFixed(0)}k`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toLocaleString();
+}
+
+function LegendChip({ tier }: { tier: TagTier }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ${TIER_STYLE[tier]}`}
+    >
+      <span>{TIER_GLYPH[tier]}</span>
+      <span className="capitalize">{tier}</span>
+    </span>
+  );
+}
+
+function TagIntelligenceCard({
+  intelligence,
+}: {
+  intelligence: TagDemand[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [sortBy, setSortBy] = useState<
+    "tag" | "listings" | "favs" | "score"
+  >("score");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function toggleSort(col: typeof sortBy) {
+    if (sortBy === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      setSortDir(col === "tag" ? "asc" : "desc");
+    }
+  }
+
+  const sorted = [...intelligence].sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    if (sortBy === "tag") return a.tag.localeCompare(b.tag) * dir;
+    if (sortBy === "listings") return (a.totalListings - b.totalListings) * dir;
+    if (sortBy === "favs")
+      return (a.avgTopFavorites - b.avgTopFavorites) * dir;
+    return (a.demandScore - b.demandScore) * dir;
+  });
+
+  // Summary chips
+  const tierCounts = intelligence.reduce(
+    (acc, t) => {
+      acc[t.tier] = (acc[t.tier] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<TagTier, number>,
+  );
+
+  return (
+    <Card className="border shadow-none">
+      <CardContent className="p-5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="w-full flex items-center justify-between gap-3 group"
+        >
+          <SectionHeading
+            icon={TrendingUp}
+            label="Tag intelligence"
+            sub={`${intelligence.length} tags analyzed · live Etsy demand data`}
+          />
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-1">
+              {(["niche", "moderate", "hot", "saturated"] as TagTier[]).map(
+                (t) =>
+                  tierCounts[t] ? (
+                    <span
+                      key={t}
+                      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ${TIER_STYLE[t]}`}
+                    >
+                      <span>{TIER_GLYPH[t]}</span>
+                      <span>{tierCounts[t]}</span>
+                    </span>
+                  ) : null,
+              )}
+            </div>
+            <ChevronDown
+              className={`size-4 text-muted-foreground transition-transform ${
+                open ? "rotate-180" : ""
+              }`}
+            />
+          </div>
+        </button>
+
+        {open && (
+          <div className="mt-4 space-y-3">
+            {/* Legend */}
+            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+              {(["niche", "moderate", "hot", "saturated"] as TagTier[]).map(
+                (t) => (
+                  <div
+                    key={t}
+                    className="rounded-lg border bg-muted/20 px-2.5 py-1.5 flex items-center gap-2"
+                  >
+                    <span
+                      className={`inline-flex items-center justify-center size-6 rounded-full text-[10px] ring-1 ${TIER_STYLE[t]}`}
+                    >
+                      {TIER_GLYPH[t]}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold capitalize leading-tight">
+                        {t}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground leading-tight">
+                        {TIER_DESCRIPTION[t]}
+                      </p>
+                    </div>
+                  </div>
+                ),
+              )}
+            </div>
+
+            {/* Sortable table */}
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-[12px]">
+                <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <SortableTh
+                      label="Tag"
+                      active={sortBy === "tag"}
+                      dir={sortDir}
+                      onClick={() => toggleSort("tag")}
+                      align="left"
+                    />
+                    <SortableTh
+                      label="Tier"
+                      active={false}
+                      dir={sortDir}
+                      onClick={() => {}}
+                      align="left"
+                      disabled
+                    />
+                    <SortableTh
+                      label="Listings"
+                      active={sortBy === "listings"}
+                      dir={sortDir}
+                      onClick={() => toggleSort("listings")}
+                      align="right"
+                    />
+                    <SortableTh
+                      label="Top avg favs"
+                      active={sortBy === "favs"}
+                      dir={sortDir}
+                      onClick={() => toggleSort("favs")}
+                      align="right"
+                    />
+                    <SortableTh
+                      label="Demand"
+                      active={sortBy === "score"}
+                      dir={sortDir}
+                      onClick={() => toggleSort("score")}
+                      align="right"
+                    />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((row) => (
+                    <tr
+                      key={row.tag}
+                      className="border-t hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="px-3 py-2 font-medium text-foreground">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Hash className="size-3 opacity-50" />
+                          {row.tag}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${TIER_STYLE[row.tier]}`}
+                        >
+                          <span>{TIER_GLYPH[row.tier]}</span>
+                          <span className="capitalize">{row.tier}</span>
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium">
+                        {row.error ? (
+                          <span className="text-muted-foreground/40">—</span>
+                        ) : (
+                          formatCount(row.totalListings)
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {row.error ? (
+                          <span className="text-muted-foreground/40">—</span>
+                        ) : (
+                          row.avgTopFavorites.toLocaleString()
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <DemandBar score={row.demandScore} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-[10px] text-muted-foreground/70 leading-snug">
+              Etsy doesn&apos;t share real search volume publicly. These
+              numbers are live counts from{" "}
+              <code className="text-[10px]">/listings/active</code> for each
+              tag — a strong proxy for demand + competition.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SortableTh({
+  label,
+  active,
+  dir,
+  onClick,
+  align,
+  disabled,
+}: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onClick: () => void;
+  align: "left" | "right";
+  disabled?: boolean;
+}) {
+  return (
+    <th
+      className={`px-3 py-2 font-semibold ${align === "right" ? "text-right" : "text-left"}`}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={`inline-flex items-center gap-1 ${
+          active
+            ? "text-foreground"
+            : "text-muted-foreground hover:text-foreground"
+        } disabled:cursor-default disabled:hover:text-muted-foreground`}
+      >
+        {label}
+        {active && (
+          <ChevronDown
+            className={`size-3 transition-transform ${dir === "asc" ? "rotate-180" : ""}`}
+          />
+        )}
+      </button>
+    </th>
+  );
+}
+
+function DemandBar({ score }: { score: number }) {
+  const tone =
+    score >= 75
+      ? "rose"
+      : score >= 50
+        ? "amber"
+        : score >= 25
+          ? "emerald"
+          : "sky";
+  return (
+    <div className="inline-flex items-center gap-2 min-w-[80px] justify-end">
+      <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full transition-all ${
+            tone === "rose"
+              ? "bg-rose-500"
+              : tone === "amber"
+                ? "bg-amber-500"
+                : tone === "emerald"
+                  ? "bg-emerald-500"
+                  : "bg-sky-500"
+          }`}
+          style={{ width: `${Math.min(100, score)}%` }}
+        />
+      </div>
+      <span className="text-[11px] tabular-nums font-semibold text-foreground/80 w-7 text-right">
+        {score}
+      </span>
+    </div>
   );
 }
 
