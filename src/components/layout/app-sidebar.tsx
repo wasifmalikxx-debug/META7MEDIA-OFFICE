@@ -29,6 +29,7 @@ import {
   RefreshCcw,
   FileText,
   Calculator,
+  Sparkles,
 } from "lucide-react";
 import {
   Sidebar,
@@ -439,6 +440,21 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     >
                       <Calculator className="size-4" />
                       <span>Price Calculator</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      render={<Link href="/seo-autopilot" />}
+                      isActive={isItemActive("/seo-autopilot")}
+                    >
+                      <Sparkles className="size-4" />
+                      <span>SEO Autopilot</span>
+                      {/* Tiny "soon" pill — the page is just a coming-soon
+                          placeholder until we build Phase 1 of the AI listing
+                          generator. Helps the team understand it's not live yet. */}
+                      <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
+                        Soon
+                      </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
