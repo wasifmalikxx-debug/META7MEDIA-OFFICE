@@ -38,7 +38,18 @@ export default async function EtsyAnalyticsPage({
   return (
     <div className="space-y-6">
       <PageHeader title={pageTitle} description={description} />
-      <EtsyAnalyticsView initialMonth={month} initialYear={year} teamKey={scope.teamKey} />
+      {/* Key on scope so React fully remounts the client view when the CEO
+          switches teams (?team=em → ?team=ae). The component stores `data`
+          in useState seeded from initial props; without the key, the OLD
+          team's analytics stays on screen for the 30–60s it takes the new
+          team's sheets to load (or until the user manually refreshes).
+          Same fix we applied to /refunds for the same root cause. */}
+      <EtsyAnalyticsView
+        key={`analytics-${scope.teamKey}`}
+        initialMonth={month}
+        initialYear={year}
+        teamKey={scope.teamKey}
+      />
     </div>
   );
 }
