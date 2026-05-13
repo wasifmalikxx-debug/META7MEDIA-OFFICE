@@ -5,6 +5,9 @@ import {
   searchActiveListings,
   getNodeProperties,
   inferCategoryFromListings,
+  searchTaxonomyNodes,
+  getTaxonomyPath,
+  getSellerTaxonomy,
   toCompetitorBriefs,
 } from "@/lib/services/etsy-api.service";
 import {
@@ -12,6 +15,7 @@ import {
   checkProductCompliance,
   generateListing,
   validateListing,
+  pickCategoryFromCandidates,
   type ImagePayload,
   type ComplianceVerdict,
 } from "@/lib/services/anthropic.service";
@@ -161,6 +165,49 @@ export async function POST(request: NextRequest) {
       context.productType,
       payload.aliExpressTitle,
     );
+
+    // Last-resort: Haiku classifier. Build a candidate set from the top
+    // ~30 fuzzy matches in the taxonomy + the level-1 root categories
+    // (~30 too) so Haiku always has something to pick from. Only fires
+    // when the heuristic cascade returned nothing.
+    if (!category) {
+      const candidateNodes = await searchTaxonomyNodes(
+        `${context.productType} ${payload.aliExpressTitle}`,
+        30,
+      );
+      const allNodes = await getSellerTaxonomy();
+      const level1 = allNodes.filter((n) => n.level === 1).slice(0, 30);
+      const candidatePool = [
+        ...new Map(
+          [...candidateNodes, ...level1].map((n) => [n.id, n]),
+        ).values(),
+      ];
+      const candidates = await Promise.all(
+        candidatePool.map(async (n) => ({
+          id: n.id,
+          name: n.name,
+          path: await getTaxonomyPath(n.id),
+        })),
+      );
+
+      const pickedId = await pickCategoryFromCandidates({
+        title: payload.aliExpressTitle,
+        productType: context.productType,
+        candidates,
+      });
+
+      if (pickedId) {
+        const node = allNodes.find((n) => n.id === pickedId);
+        if (node) {
+          category = {
+            id: node.id,
+            name: node.name,
+            path: await getTaxonomyPath(node.id),
+          };
+        }
+      }
+    }
+
     if (!category) {
       return error(
         `Couldn't match this product to an Etsy category. Try a more descriptive source title (include words like "ring", "dress", "wallet", etc.).`,

@@ -208,9 +208,19 @@ export async function getNodeProperties(
 // ─── Convenience helpers ──────────────────────────────────────────────
 
 /**
- * Find taxonomy nodes whose name matches a fuzzy query. Used by the
- * category autocomplete. Returns leaf-level matches first (level >= 2)
- * since those carry the most specific attribute schemas.
+ * Find taxonomy nodes that fuzzy-match a query. Scores each candidate
+ * along three dimensions and picks the highest-scoring matches:
+ *
+ *   1000 — node name is a substring of the query (e.g. node "Pants",
+ *          query "men's linen pants")
+ *    900 — query is a substring of the node name (e.g. node
+ *          "Pants & Capris", query "pants")
+ *   +100 — per shared whole word
+ *    +50 — per partial word prefix match (handles singular/plural drift,
+ *          e.g. "pant" ↔ "pants")
+ *
+ * Ties break first by depth (deeper / more specific node wins) then by
+ * shorter name. Returns up to `limit` results sorted by total score.
  */
 export async function searchTaxonomyNodes(
   query: string,
@@ -219,14 +229,56 @@ export async function searchTaxonomyNodes(
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const all = await getSellerTaxonomy();
-  const matches = all
-    .filter((n) => n.name.toLowerCase().includes(q))
-    // Prefer deeper nodes first — "Earrings" beats "Jewelry".
+
+  const tokenize = (s: string) =>
+    s
+      .toLowerCase()
+      .split(/[\s,\-_/|.()&]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length >= 3);
+
+  const qWords = new Set(tokenize(q));
+
+  const scored = all
+    .map((n) => {
+      const name = n.name.toLowerCase();
+      let score = 0;
+
+      // Direct substring match (either direction).
+      if (name === q) {
+        score = 2000;
+      } else if (name.includes(q)) {
+        score = 1000;
+      } else if (name.length >= 3 && q.includes(name)) {
+        score = 900;
+      } else {
+        // Word-level overlap.
+        const nWords = tokenize(name);
+        for (const w of nWords) {
+          if (qWords.has(w)) {
+            score += 100;
+          } else if (w.length >= 4) {
+            // Prefix/plural drift — "pant" matches "pants" and vice versa.
+            for (const qw of qWords) {
+              if (qw.length >= 4 && (qw.startsWith(w) || w.startsWith(qw))) {
+                score += 50;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      return { node: n, score };
+    })
+    .filter((s) => s.score > 0)
     .sort((a, b) => {
-      if (a.level !== b.level) return b.level - a.level;
-      return a.name.length - b.name.length;
+      if (a.score !== b.score) return b.score - a.score;
+      if (a.node.level !== b.node.level) return b.node.level - a.node.level;
+      return a.node.name.length - b.node.name.length;
     });
-  return matches.slice(0, limit);
+
+  return scored.slice(0, limit).map((s) => s.node);
 }
 
 /**

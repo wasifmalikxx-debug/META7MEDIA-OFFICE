@@ -141,6 +141,63 @@ export async function extractSearchContext(
   };
 }
 
+// ─── Optional — Category classifier (Haiku, text-only) ──────────────
+
+/**
+ * Pick the best Etsy taxonomy node from a candidate list.
+ *
+ * This is the LAST-RESORT category picker — only called when both the
+ * "tally taxonomy_id from ranking listings" and "fuzzy match by name"
+ * strategies fail. Given a small candidate set (we send level-1 and
+ * level-2 nodes that share words with the product description), Haiku
+ * picks the most appropriate node.
+ *
+ * Returns null if Haiku can't decide.
+ */
+export async function pickCategoryFromCandidates(opts: {
+  title: string;
+  productType: string;
+  candidates: Array<{ id: number; name: string; path: string }>;
+}): Promise<number | null> {
+  if (opts.candidates.length === 0) return null;
+
+  const numbered = opts.candidates
+    .slice(0, 40)
+    .map((c, i) => `${i + 1}. [id=${c.id}] ${c.path}`)
+    .join("\n");
+
+  const msg = await client().messages.create({
+    model: MODEL_VALIDATOR,
+    max_tokens: 100,
+    temperature: 0,
+    system: `You are an Etsy category classifier. Given a product and a numbered list of Etsy taxonomy categories, pick the ONE that best fits. Output strict JSON: {"id": <taxonomy_id>}. If none fit at all, output {"id": null}.`,
+    messages: [
+      {
+        role: "user",
+        content: `Product title: ${opts.title}
+Product type: ${opts.productType}
+
+Candidate Etsy categories:
+${numbered}
+
+Pick the best-fitting category id.`,
+      },
+      { role: "assistant", content: "{" },
+    ],
+  });
+
+  const raw = "{" + extractText(msg);
+  try {
+    const parsed = safeParseJson<{ id: number | null }>(raw);
+    if (typeof parsed.id === "number" && parsed.id > 0) {
+      return parsed.id;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 // ─── Stage 1 — Vision compliance gate (Sonnet, strict) ──────────────
 
 export interface ComplianceVerdict {
