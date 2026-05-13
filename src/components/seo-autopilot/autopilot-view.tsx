@@ -4,16 +4,18 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Sparkles,
   Wand2,
   Copy,
   Check,
   ChevronDown,
-  Search,
   Loader2,
   AlertTriangle,
   ShieldCheck,
+  ShieldAlert,
+  Ban,
   Tags,
   FileText,
   Type,
@@ -28,18 +30,50 @@ import {
   Heart,
   Hash,
   Target,
+  Ruler,
+  Palette,
+  DollarSign,
+  Package,
+  Truck,
+  Settings as SettingsIcon,
+  Eye,
+  Box,
+  ScrollText,
+  X,
+  Plus,
+  Calendar,
+  Hand,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  SeoImageUploader,
+  type UploadedImage,
+} from "./image-uploader";
 
 // ─── Types — mirror the API shape ────────────────────────────────────
 
+interface ComplianceVerdict {
+  verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
+  concerns: Array<{
+    severity: "block" | "warn";
+    category: "trademark" | "prohibited" | "counterfeit" | "policy" | "quality";
+    details: string;
+  }>;
+  summary: string;
+}
+
 interface GeneratedListing {
   title: string;
-  tags: string[];
   description: string;
+  tags: string[];
   materials: string[];
   attributes: { name: string; value: string }[];
-  altText: string;
+  altTexts: string[];
+  personalizationInstructions: string;
+  suggestedType: "physical" | "digital";
+  suggestedWhoMadeIt: "i_did" | "someone_else" | "collective";
+  suggestedWhatIsIt: "finished_product" | "supply";
+  suggestedWhenMade: string;
   rationale: {
     keywordFocus: string;
     titleStrategy: string;
@@ -47,9 +81,9 @@ interface GeneratedListing {
   };
 }
 
-interface ComplianceReport {
+interface TextCompliance {
   ok: boolean;
-  issues: { severity: "warn" | "block"; field: string; message: string }[];
+  issues: Array<{ severity: "warn" | "block"; field: string; message: string }>;
 }
 
 interface ResearchSummary {
@@ -64,51 +98,90 @@ interface ResearchSummary {
   attributesAvailable: number;
 }
 
+interface UserInputsEcho {
+  sizes: string[];
+  colors: string[];
+  hasPersonalization: boolean;
+  personalizationOptions: string;
+  price: number | null;
+  quantity: number | null;
+  sku: string;
+  processingDays: string;
+  returnsPolicy: string;
+}
+
 interface GenerateResponse {
-  listing: GeneratedListing;
-  compliance: ComplianceReport;
+  compliance: ComplianceVerdict;
+  listing: GeneratedListing | null;
   research: ResearchSummary;
+  textCompliance: TextCompliance | null;
+  inputs?: UserInputsEcho;
   generatedAt: string;
 }
 
-// ─── Etsy hard limits — also enforced server-side ────────────────────
+// ─── Etsy hard limits ────────────────────────────────────────────────
 
 const TITLE_MAX = 140;
 const TAG_MAX = 20;
 
+// Human labels for the enum suggestions.
+const WHO_MADE_LABEL = {
+  i_did: "I did",
+  someone_else: "Another company or person",
+  collective: "A member of my Etsy shop",
+} as const;
+const WHAT_IS_IT_LABEL = {
+  finished_product: "A finished product",
+  supply: "A supply or tool to make things",
+} as const;
+const TYPE_LABEL = { physical: "Physical item", digital: "Digital files" } as const;
+
 // ─── Main component ──────────────────────────────────────────────────
 
-/**
- * SEO Autopilot — full SaaS view (CEO-only).
- *
- * One-input UX (revised May 13 2026):
- *   • One big textarea: paste the AliExpress title (or any description)
- *   • One small textarea: optional "anything to highlight"
- *   • Generate → backend extracts keyword + category automatically and
- *     returns the full listing.
- *
- * The user used to have to pick a keyword, category, audience, style,
- * and shop maturity — Wasif: "why is this asking so many things?".
- * Now Autopilot does the work.
- */
 export function SeoAutopilotView() {
-  // ─── Form state ─────────────────────────────────────────────────────
+  // ─── Form state ───────────────────────────────────────────────────
   const [aliTitle, setAliTitle] = useState("");
   const [notes, setNotes] = useState("");
+  const [images, setImages] = useState<UploadedImage[]>([]);
 
-  // ─── Generation state ───────────────────────────────────────────────
+  // Variations
+  const [sizes, setSizes] = useState<string[]>([]);
+  const [colors, setColors] = useState<string[]>([]);
+  const [hasPersonalization, setHasPersonalization] = useState(false);
+  const [personalizationOptions, setPersonalizationOptions] = useState("");
+
+  // Pricing & inventory
+  const [price, setPrice] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [sku, setSku] = useState("");
+
+  // Production / delivery
+  const [whoMadeIt, setWhoMadeIt] = useState<
+    "i_did" | "someone_else" | "collective" | ""
+  >("");
+  const [whatIsIt, setWhatIsIt] = useState<"finished_product" | "supply" | "">("");
+  const [whenMade, setWhenMade] = useState("");
+  const [processingDays, setProcessingDays] = useState("");
+  const [returnsPolicy, setReturnsPolicy] = useState("");
+
+  // Section open/closed state
+  const [openSection, setOpenSection] = useState<Record<string, boolean>>({
+    variations: false,
+    pricing: false,
+    production: false,
+  });
+
+  // ─── Generation state ─────────────────────────────────────────────
   const [generating, setGenerating] = useState(false);
   const [stage, setStage] = useState<
-    "idle" | "reading" | "researching" | "writing" | "auditing"
+    "idle" | "reading" | "auditing-images" | "researching" | "writing" | "auditing-text"
   >("idle");
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // ─── Derived ───────────────────────────────────────────────────────
   const titleValid = aliTitle.trim().length >= 8;
   const canSubmit = titleValid && !generating;
 
-  // ─── Submit ────────────────────────────────────────────────────────
   async function handleGenerate() {
     if (!canSubmit) return;
     setGenerating(true);
@@ -116,19 +189,38 @@ export function SeoAutopilotView() {
     setResult(null);
     setStage("reading");
 
-    // The server flow is opaque to the client. Fake progressive stages
-    // on a timer so the UI feels responsive. Approx wall time: 8-14s.
-    const t1 = setTimeout(() => setStage("researching"), 1800);
-    const t2 = setTimeout(() => setStage("writing"), 4500);
-    const t3 = setTimeout(() => setStage("auditing"), 9500);
+    // Fake progressive stage timer — server is opaque to client.
+    const t1 = setTimeout(() => setStage("auditing-images"), 1500);
+    const t2 = setTimeout(() => setStage("researching"), 5500);
+    const t3 = setTimeout(() => setStage("writing"), 9500);
+    const t4 = setTimeout(() => setStage("auditing-text"), 22000);
 
     try {
+      const priceNum = price.trim() ? parseFloat(price) : null;
+      const qtyNum = quantity.trim() ? parseInt(quantity, 10) : null;
+
       const res = await fetch("/api/seo-autopilot/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           aliExpressTitle: aliTitle.trim(),
           notes: notes.trim() || null,
+          images: images.map((i) => ({
+            base64: i.base64,
+            mediaType: i.mediaType,
+          })),
+          sizes,
+          colors,
+          hasPersonalization,
+          personalizationOptions: personalizationOptions.trim() || null,
+          price: Number.isFinite(priceNum) ? priceNum : null,
+          quantity: Number.isFinite(qtyNum) ? qtyNum : null,
+          sku: sku.trim() || null,
+          whoMadeIt: whoMadeIt || null,
+          whatIsIt: whatIsIt || null,
+          whenMade: whenMade.trim() || null,
+          processingDays: processingDays.trim() || null,
+          returnsPolicy: returnsPolicy.trim() || null,
         }),
       });
 
@@ -140,20 +232,32 @@ export function SeoAutopilotView() {
       const data = (await res.json()) as GenerateResponse;
       setResult(data);
       setStage("idle");
-      toast.success("Listing ready", {
-        description: `Picked category: ${data.research.categoryPath}`,
-      });
+
+      if (data.compliance.verdict === "BLOCKED") {
+        toast.error("Product blocked", {
+          description: data.compliance.summary,
+        });
+      } else if (data.compliance.verdict === "REVIEW") {
+        toast.warning("Listing ready (with warnings)", {
+          description: data.compliance.summary,
+        });
+      } else {
+        toast.success("Listing ready", {
+          description: data.research?.categoryPath
+            ? `Picked category: ${data.research.categoryPath}`
+            : "Cleared for Etsy.",
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Generation failed";
       setErrorMsg(message);
-      toast.error("Generation failed", {
-        description: message || "Try again — the model or Etsy API may be busy.",
-      });
+      toast.error("Generation failed", { description: message });
       setStage("idle");
     } finally {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      clearTimeout(t4);
       setGenerating(false);
     }
   }
@@ -161,118 +265,342 @@ export function SeoAutopilotView() {
   function handleReset() {
     setAliTitle("");
     setNotes("");
+    setImages([]);
+    setSizes([]);
+    setColors([]);
+    setHasPersonalization(false);
+    setPersonalizationOptions("");
+    setPrice("");
+    setQuantity("");
+    setSku("");
+    setWhoMadeIt("");
+    setWhatIsIt("");
+    setWhenMade("");
+    setProcessingDays("");
+    setReturnsPolicy("");
     setResult(null);
     setErrorMsg(null);
+  }
+
+  function toggleSection(key: string) {
+    setOpenSection((s) => ({ ...s, [key]: !s[key] }));
   }
 
   return (
     <div className="space-y-6">
       <HeroBanner />
 
-      {/* ─────────────── Input card ─────────────── */}
+      {/* ───────── Source (always open, required) ───────── */}
       <Card className="border shadow-none overflow-hidden">
         <CardContent className="p-5 sm:p-6 space-y-5">
+          <SectionTitle
+            n={1}
+            label="Source"
+            sub="Required"
+            icon={Type}
+            tone="orange"
+          />
+
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="size-7 rounded-lg bg-gradient-to-br from-orange-500/15 to-violet-500/15 ring-1 ring-orange-500/20 flex items-center justify-center">
-                  <Type className="size-3.5 text-orange-600 dark:text-orange-400" />
-                </div>
-                <label
-                  htmlFor="ali-title"
-                  className="text-sm font-semibold tracking-tight"
-                >
-                  Paste your AliExpress title
-                </label>
-              </div>
-              <span className="text-[10px] text-muted-foreground tabular-nums">
-                {aliTitle.trim().length} chars
-              </span>
-            </div>
+            <FieldLabel icon={Type}>Paste AliExpress title *</FieldLabel>
             <Textarea
-              id="ali-title"
               value={aliTitle}
               onChange={(e) => setAliTitle(e.target.value)}
               placeholder="ROSES Pearl Gorgeous Prom Dress Sweetheart Off the Shoulder Hollow Prom Gown with Fishbone Shiny Sequins Formal Gown Customized"
-              className="min-h-[96px] resize-none text-sm"
+              className="min-h-[88px] resize-none text-sm"
               disabled={generating}
             />
-            <p className="text-[10px] text-muted-foreground/80 leading-snug">
-              Autopilot will read this and figure out the Etsy keyword,
-              category, audience, and style on its own.
+            <p className="text-[10px] text-muted-foreground/80 leading-snug flex justify-between">
+              <span>
+                Autopilot reads this to figure out the Etsy keyword, category,
+                and style.
+              </span>
+              <span className="tabular-nums">{aliTitle.length} chars</span>
             </p>
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="size-7 rounded-lg bg-muted/60 flex items-center justify-center">
-                <Lightbulb className="size-3.5 text-muted-foreground" />
-              </div>
-              <label
-                htmlFor="notes"
-                className="text-sm font-semibold tracking-tight"
-              >
-                Anything to highlight?{" "}
-                <span className="text-[10px] font-normal text-muted-foreground uppercase tracking-wider ml-1">
-                  Optional
-                </span>
-              </label>
-            </div>
+            <FieldLabel icon={Lightbulb} optional>
+              Anything to highlight?
+            </FieldLabel>
             <Textarea
-              id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Available in sizes 0-20 · Made-to-measure · Sweetheart neckline · For prom, wedding guest, formal events"
-              className="min-h-[64px] resize-none text-sm"
+              placeholder="Sweetheart neckline · Boned bodice · Hand-beaded details · Made-to-measure"
+              className="min-h-[60px] resize-none text-sm"
               disabled={generating}
             />
           </div>
 
-          <div className="pt-1 space-y-2">
-            <Button
-              type="button"
-              onClick={handleGenerate}
-              disabled={!canSubmit}
-              className="w-full h-12 gap-2 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 text-white font-semibold text-sm shadow-lg shadow-orange-500/20 hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Generating
-                </>
-              ) : (
-                <>
-                  <Wand2 className="size-4" />
-                  Generate Etsy listing
-                </>
-              )}
-            </Button>
-            {(aliTitle || notes) && !generating && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReset}
-                className="w-full text-xs"
-              >
-                <RotateCw className="size-3" />
-                Reset
-              </Button>
-            )}
-            {!titleValid && aliTitle.length > 0 && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 text-center">
-                Paste at least 8 characters of title text.
-              </p>
-            )}
+          <div className="space-y-2">
+            <FieldLabel icon={ImageIcon} optional>
+              Product images (2 recommended)
+            </FieldLabel>
+            <SeoImageUploader
+              images={images}
+              onChange={setImages}
+              disabled={generating}
+            />
+            <p className="text-[10px] text-muted-foreground/70 leading-snug">
+              Upload your Nano Banana regenerated images — never raw AliExpress
+              files (they have watermarks). Used for compliance check + better
+              attribute accuracy.
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* ─────────────── Output ─────────────── */}
+      {/* ───────── Variations & options (collapsible) ───────── */}
+      <CollapsibleCard
+        open={openSection.variations}
+        onToggle={() => toggleSection("variations")}
+        n={2}
+        label="Variations & options"
+        sub="Sizes, colors, personalization"
+        icon={Box}
+      >
+        <ChipInput
+          label="Available sizes"
+          icon={Ruler}
+          values={sizes}
+          onChange={setSizes}
+          placeholder="XS, S, M, L, XL"
+          suggestions={["XS", "S", "M", "L", "XL", "XXL", "One Size"]}
+          disabled={generating}
+        />
+        <ChipInput
+          label="Available colors"
+          icon={Palette}
+          values={colors}
+          onChange={setColors}
+          placeholder="black, white, ivory, blush"
+          disabled={generating}
+        />
+        <div className="space-y-2">
+          <FieldLabel icon={Hand}>Personalization</FieldLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <ToggleButton
+              active={!hasPersonalization}
+              onClick={() => setHasPersonalization(false)}
+              label="No"
+              sub="Standard listing"
+              disabled={generating}
+            />
+            <ToggleButton
+              active={hasPersonalization}
+              onClick={() => setHasPersonalization(true)}
+              label="Yes"
+              sub="Buyer adds custom info"
+              disabled={generating}
+            />
+          </div>
+          {hasPersonalization && (
+            <Textarea
+              value={personalizationOptions}
+              onChange={(e) => setPersonalizationOptions(e.target.value)}
+              placeholder="What can buyers customize? E.g. 'name to be engraved, max 12 characters' or 'date for wedding'"
+              className="min-h-[60px] resize-none text-sm mt-2"
+              disabled={generating}
+            />
+          )}
+        </div>
+      </CollapsibleCard>
+
+      {/* ───────── Pricing & inventory (collapsible) ───────── */}
+      <CollapsibleCard
+        open={openSection.pricing}
+        onToggle={() => toggleSection("pricing")}
+        n={3}
+        label="Pricing & inventory"
+        sub="Optional reference values"
+        icon={DollarSign}
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <FieldLabel icon={DollarSign}>Price (USD)</FieldLabel>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="24.99"
+              className="text-sm"
+              disabled={generating}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel icon={Package}>Quantity</FieldLabel>
+            <Input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              placeholder="100"
+              className="text-sm"
+              disabled={generating}
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <FieldLabel icon={Hash}>SKU</FieldLabel>
+          <Input
+            value={sku}
+            onChange={(e) => setSku(e.target.value)}
+            placeholder="DRESS-OFF-001"
+            className="text-sm"
+            disabled={generating}
+          />
+        </div>
+        <p className="text-[10px] text-muted-foreground/70 leading-snug">
+          These values are echoed back in the result so you can copy them
+          straight into Etsy. They don&apos;t affect AI generation.
+        </p>
+      </CollapsibleCard>
+
+      {/* ───────── Production & delivery (collapsible) ───────── */}
+      <CollapsibleCard
+        open={openSection.production}
+        onToggle={() => toggleSection("production")}
+        n={4}
+        label="Production & delivery"
+        sub="Who made it, when, processing time"
+        icon={Truck}
+      >
+        <div className="space-y-1.5">
+          <FieldLabel icon={Hand}>Who made it?</FieldLabel>
+          <div className="grid grid-cols-3 gap-2">
+            <ToggleButton
+              active={whoMadeIt === "i_did"}
+              onClick={() => setWhoMadeIt("i_did")}
+              label="I did"
+              sub="Solo seller"
+              disabled={generating}
+            />
+            <ToggleButton
+              active={whoMadeIt === "collective"}
+              onClick={() => setWhoMadeIt("collective")}
+              label="Shop member"
+              sub="Etsy team"
+              disabled={generating}
+            />
+            <ToggleButton
+              active={whoMadeIt === "someone_else"}
+              onClick={() => setWhoMadeIt("someone_else")}
+              label="Someone else"
+              sub="3rd party"
+              disabled={generating}
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <FieldLabel icon={Box}>What is it?</FieldLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <ToggleButton
+              active={whatIsIt === "finished_product"}
+              onClick={() => setWhatIsIt("finished_product")}
+              label="Finished product"
+              sub="Ready to sell"
+              disabled={generating}
+            />
+            <ToggleButton
+              active={whatIsIt === "supply"}
+              onClick={() => setWhatIsIt("supply")}
+              label="Supply / tool"
+              sub="For other makers"
+              disabled={generating}
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <FieldLabel icon={Calendar}>When was it made?</FieldLabel>
+          <div className="grid grid-cols-2 gap-2">
+            <ToggleButton
+              active={whenMade === "made_to_order"}
+              onClick={() => setWhenMade("made_to_order")}
+              label="Made to order"
+              sub="Per buyer"
+              disabled={generating}
+            />
+            <ToggleButton
+              active={whenMade === "2020_2026"}
+              onClick={() => setWhenMade("2020_2026")}
+              label="2020-2026"
+              sub="Current"
+              disabled={generating}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <FieldLabel icon={Truck}>Processing time</FieldLabel>
+            <Input
+              value={processingDays}
+              onChange={(e) => setProcessingDays(e.target.value)}
+              placeholder="1-3 business days"
+              className="text-sm"
+              disabled={generating}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel icon={RotateCw}>Returns policy</FieldLabel>
+            <Input
+              value={returnsPolicy}
+              onChange={(e) => setReturnsPolicy(e.target.value)}
+              placeholder="30-day returns accepted"
+              className="text-sm"
+              disabled={generating}
+            />
+          </div>
+        </div>
+      </CollapsibleCard>
+
+      {/* ───────── Generate button ───────── */}
+      <div className="space-y-2">
+        <Button
+          type="button"
+          onClick={handleGenerate}
+          disabled={!canSubmit}
+          className="w-full h-14 gap-2 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 text-white font-semibold text-sm shadow-lg shadow-orange-500/20 hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {generating ? (
+            <>
+              <Loader2 className="size-5 animate-spin" />
+              Generating
+            </>
+          ) : (
+            <>
+              <Wand2 className="size-5" />
+              Generate Etsy listing
+            </>
+          )}
+        </Button>
+        {(aliTitle || notes || images.length > 0) && !generating && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReset}
+            className="w-full text-xs"
+          >
+            <RotateCw className="size-3" />
+            Reset everything
+          </Button>
+        )}
+        {!titleValid && aliTitle.length > 0 && (
+          <p className="text-[10px] text-amber-600 dark:text-amber-400 text-center">
+            Paste at least 8 characters of title text.
+          </p>
+        )}
+      </div>
+
+      {/* ───────── Output ───────── */}
       <div>
-        {generating && <GeneratingPanel stage={stage} />}
+        {generating && <GeneratingPanel stage={stage} hasImages={images.length > 0} />}
         {errorMsg && !generating && <ErrorPanel message={errorMsg} />}
-        {!generating && !result && !errorMsg && <EmptyPanel />}
-        {!generating && result && <ResultPanel data={result} />}
+        {!generating && !result && !errorMsg && <EmptyPanel hasImages={images.length > 0} />}
+        {!generating && result && <ResultPanel data={result} userImages={images} />}
       </div>
     </div>
   );
@@ -322,19 +650,24 @@ function HeroBanner() {
             </span>
             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-white/90 tracking-wider uppercase bg-black/15 backdrop-blur-sm px-2 py-0.5 rounded-full">
               <Zap className="size-3" />
-              Claude + Etsy live data
+              Vision · Claude + Etsy
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-white/90 tracking-wider uppercase bg-black/15 backdrop-blur-sm px-2 py-0.5 rounded-full">
+              <ShieldCheck className="size-3" />
+              Strict compliance gate
             </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
             SEO Autopilot
           </h2>
           <p className="text-[12px] sm:text-sm text-white/85 mt-1 leading-snug max-w-2xl">
-            Paste your AliExpress title → get a complete, compliance-checked
-            Etsy listing back. Autopilot reads live{" "}
+            Paste an AliExpress title, drop in your regenerated product photos,
+            click Generate. Autopilot checks the product is allowed on Etsy
+            then writes the{" "}
             <span className="underline decoration-white/70 decoration-2 underline-offset-[3px] font-semibold">
-              ranking data
+              complete listing
             </span>{" "}
-            and figures out the keyword, category, and style on its own.
+            — title, tags, description, materials, and every category attribute.
           </p>
         </div>
       </div>
@@ -342,12 +675,273 @@ function HeroBanner() {
   );
 }
 
-// ─── Output panels ──────────────────────────────────────────────────
+// ─── Reusable bits ──────────────────────────────────────────────────
 
-function EmptyPanel() {
+function SectionTitle({
+  n,
+  label,
+  sub,
+  icon: Icon,
+  tone = "muted",
+}: {
+  n: number;
+  label: string;
+  sub?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone?: "orange" | "muted";
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div
+          className={`size-8 rounded-lg flex items-center justify-center font-bold text-xs tabular-nums ${
+            tone === "orange"
+              ? "bg-gradient-to-br from-orange-500 to-violet-600 text-white shadow shadow-orange-500/30"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {n}
+        </div>
+        <div>
+          <p className="text-sm font-semibold tracking-tight">{label}</p>
+          {sub && (
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
+              {sub}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="size-7 rounded-lg bg-muted/40 flex items-center justify-center">
+        <Icon className="size-3.5 text-muted-foreground" />
+      </div>
+    </div>
+  );
+}
+
+function CollapsibleCard({
+  open,
+  onToggle,
+  n,
+  label,
+  sub,
+  icon: Icon,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  n: number;
+  label: string;
+  sub?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="border shadow-none overflow-hidden">
+      <CardContent className="p-5 sm:p-6 space-y-4">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="w-full flex items-center justify-between group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="size-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center font-bold text-xs tabular-nums">
+              {n}
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-semibold tracking-tight">{label}</p>
+              {sub && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {sub}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="size-7 rounded-lg bg-muted/40 flex items-center justify-center">
+              <Icon className="size-3.5 text-muted-foreground" />
+            </div>
+            <ChevronDown
+              className={`size-4 text-muted-foreground transition-transform ${
+                open ? "rotate-180" : ""
+              }`}
+            />
+          </div>
+        </button>
+        {open && <div className="space-y-4 pt-1">{children}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FieldLabel({
+  children,
+  icon: Icon,
+  optional,
+}: {
+  children: React.ReactNode;
+  icon?: React.ComponentType<{ className?: string }>;
+  optional?: boolean;
+}) {
+  return (
+    <label className="text-[11px] font-semibold text-foreground/80 uppercase tracking-[0.14em] flex items-center gap-1.5">
+      {Icon && <Icon className="size-3" />}
+      {children}
+      {optional && (
+        <span className="text-[9px] font-normal text-muted-foreground normal-case tracking-normal ml-1">
+          (optional)
+        </span>
+      )}
+    </label>
+  );
+}
+
+function ToggleButton({
+  active,
+  onClick,
+  label,
+  sub,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  sub?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-lg border px-3 py-2 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+        active
+          ? "border-orange-500/60 bg-orange-50 dark:bg-orange-950/30 ring-1 ring-orange-500/30"
+          : "border-border bg-card hover:bg-muted/40"
+      }`}
+    >
+      <p
+        className={`text-xs font-semibold leading-tight ${
+          active ? "text-orange-700 dark:text-orange-300" : "text-foreground"
+        }`}
+      >
+        {label}
+      </p>
+      {sub && (
+        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+          {sub}
+        </p>
+      )}
+    </button>
+  );
+}
+
+function ChipInput({
+  label,
+  icon: Icon,
+  values,
+  onChange,
+  placeholder,
+  suggestions,
+  disabled,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  values: string[];
+  onChange: (next: string[]) => void;
+  placeholder?: string;
+  suggestions?: string[];
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function commit(raw: string) {
+    const tokens = raw
+      .split(/[,\n]/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (tokens.length === 0) return;
+    const set = new Set(values.map((v) => v.toLowerCase()));
+    const next = [...values];
+    for (const t of tokens) {
+      if (!set.has(t.toLowerCase()) && next.length < 30) {
+        next.push(t);
+        set.add(t.toLowerCase());
+      }
+    }
+    onChange(next);
+    setDraft("");
+  }
+
+  function removeAt(i: number) {
+    onChange(values.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <FieldLabel icon={Icon} optional>
+        {label}
+      </FieldLabel>
+      <div className="rounded-lg border bg-card px-2 py-2 min-h-[42px] flex flex-wrap gap-1.5 items-center">
+        {values.map((v, i) => (
+          <span
+            key={`${v}-${i}`}
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium"
+          >
+            {v}
+            <button
+              type="button"
+              onClick={() => removeAt(i)}
+              disabled={disabled}
+              className="hover:text-rose-500 disabled:opacity-50"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.key === "Enter" || e.key === ",") && draft.trim()) {
+              e.preventDefault();
+              commit(draft);
+            } else if (e.key === "Backspace" && !draft && values.length > 0) {
+              removeAt(values.length - 1);
+            }
+          }}
+          onBlur={() => draft.trim() && commit(draft)}
+          placeholder={values.length === 0 ? placeholder : ""}
+          disabled={disabled}
+          className="flex-1 min-w-[80px] bg-transparent outline-none text-sm placeholder:text-muted-foreground/60"
+        />
+      </div>
+      {suggestions && suggestions.length > 0 && values.length === 0 && (
+        <div className="flex flex-wrap gap-1">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => commit(s)}
+              disabled={disabled}
+              className="inline-flex items-center gap-1 rounded-full bg-muted/40 hover:bg-muted px-2 py-0.5 text-[10px] text-muted-foreground transition-colors disabled:opacity-50"
+            >
+              <Plus className="size-2.5" />
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Output states ─────────────────────────────────────────────────
+
+function EmptyPanel({ hasImages }: { hasImages: boolean }) {
   return (
     <Card className="border-dashed border-2 shadow-none">
-      <CardContent className="py-14 px-6 text-center">
+      <CardContent className="py-12 px-6 text-center">
         <div className="inline-flex size-14 rounded-2xl bg-gradient-to-br from-orange-500/15 to-violet-500/15 ring-1 ring-orange-500/20 items-center justify-center mb-4">
           <Sparkles className="size-7 text-orange-500" />
         </div>
@@ -355,16 +949,16 @@ function EmptyPanel() {
           Ready when you are
         </h3>
         <p className="text-[12px] text-muted-foreground mt-1.5 max-w-md mx-auto leading-relaxed">
-          Paste an AliExpress title above and hit{" "}
-          <span className="font-semibold text-foreground">Generate</span> —
-          Autopilot will read it, search Etsy for the best matches, pick the
-          right category, and write the whole listing.
+          {hasImages
+            ? "Looking good — images are loaded. Click Generate to start the compliance check."
+            : "Paste the AliExpress title above. Adding 2 regenerated product images unlocks the strict visual compliance check."}
         </p>
-        <div className="mt-5 grid grid-cols-4 gap-2 max-w-2xl mx-auto">
-          <EmptyPill icon={Type} label="Read title" sub="Haiku" />
-          <EmptyPill icon={Search} label="Research" sub="20 top listings" />
-          <EmptyPill icon={Wand2} label="Generate" sub="Sonnet" />
-          <EmptyPill icon={ShieldCheck} label="Audit" sub="Haiku" />
+        <div className="mt-5 grid grid-cols-5 gap-2 max-w-2xl mx-auto">
+          <EmptyPill icon={Type} label="Read" sub="Haiku" />
+          <EmptyPill icon={Eye} label="Audit" sub="Vision" tone="orange" />
+          <EmptyPill icon={TrendingUp} label="Research" sub="Etsy" />
+          <EmptyPill icon={Wand2} label="Write" sub="Sonnet" tone="orange" />
+          <EmptyPill icon={ShieldCheck} label="Verify" sub="Haiku" />
         </div>
       </CardContent>
     </Card>
@@ -375,14 +969,26 @@ function EmptyPill({
   icon: Icon,
   label,
   sub,
+  tone = "muted",
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   sub: string;
+  tone?: "orange" | "muted";
 }) {
   return (
-    <div className="rounded-lg border bg-muted/30 px-2 py-2 text-center">
-      <Icon className="size-3.5 mx-auto text-muted-foreground" />
+    <div
+      className={`rounded-lg border px-2 py-2 text-center ${
+        tone === "orange"
+          ? "bg-orange-50/50 dark:bg-orange-950/20 border-orange-300/40"
+          : "bg-muted/30"
+      }`}
+    >
+      <Icon
+        className={`size-3.5 mx-auto ${
+          tone === "orange" ? "text-orange-500" : "text-muted-foreground"
+        }`}
+      />
       <p className="text-[11px] font-semibold mt-1">{label}</p>
       <p className="text-[9px] text-muted-foreground">{sub}</p>
     </div>
@@ -391,8 +997,16 @@ function EmptyPill({
 
 function GeneratingPanel({
   stage,
+  hasImages,
 }: {
-  stage: "idle" | "reading" | "researching" | "writing" | "auditing";
+  stage:
+    | "idle"
+    | "reading"
+    | "auditing-images"
+    | "researching"
+    | "writing"
+    | "auditing-text";
+  hasImages: boolean;
 }) {
   return (
     <Card className="border shadow-none overflow-hidden relative">
@@ -410,7 +1024,7 @@ function GeneratingPanel({
               Autopilot is working
             </h3>
             <p className="text-[12px] text-muted-foreground mt-1">
-              Usually 8-14 seconds.
+              Usually 20-40 seconds with images.
             </p>
           </div>
 
@@ -420,16 +1034,24 @@ function GeneratingPanel({
               status={stageStatus(stage, "reading")}
             />
             <StageRow
+              label={
+                hasImages
+                  ? "Auditing the product for Etsy compliance"
+                  : "Auditing the title for Etsy compliance"
+              }
+              status={stageStatus(stage, "auditing-images")}
+            />
+            <StageRow
               label="Researching live Etsy ranking data"
               status={stageStatus(stage, "researching")}
             />
             <StageRow
-              label="Writing original title, tags, description"
+              label="Writing your complete Etsy listing"
               status={stageStatus(stage, "writing")}
             />
             <StageRow
-              label="Auditing for compliance & rule breaks"
-              status={stageStatus(stage, "auditing")}
+              label="Final text rule check"
+              status={stageStatus(stage, "auditing-text")}
             />
           </div>
         </div>
@@ -438,9 +1060,21 @@ function GeneratingPanel({
   );
 }
 
-type Stage = "idle" | "reading" | "researching" | "writing" | "auditing";
+type Stage =
+  | "idle"
+  | "reading"
+  | "auditing-images"
+  | "researching"
+  | "writing"
+  | "auditing-text";
 type StageStatus = "pending" | "active" | "done";
-const STAGE_ORDER = ["reading", "researching", "writing", "auditing"] as const;
+const STAGE_ORDER = [
+  "reading",
+  "auditing-images",
+  "researching",
+  "writing",
+  "auditing-text",
+] as const;
 type ActiveStage = (typeof STAGE_ORDER)[number];
 
 function stageStatus(current: Stage, target: ActiveStage): StageStatus {
@@ -469,11 +1103,9 @@ function StageRow({ label, status }: { label: string; status: StageStatus }) {
       </div>
       <p
         className={`text-xs font-medium ${
-          status === "done"
+          status === "done" || status === "active"
             ? "text-foreground"
-            : status === "active"
-              ? "text-foreground"
-              : "text-muted-foreground/60"
+            : "text-muted-foreground/60"
         }`}
       >
         {label}
@@ -502,34 +1134,303 @@ function ErrorPanel({ message }: { message: string }) {
   );
 }
 
-function ResultPanel({ data }: { data: GenerateResponse }) {
-  const { listing, compliance, research } = data;
+function ResultPanel({
+  data,
+  userImages,
+}: {
+  data: GenerateResponse;
+  userImages: UploadedImage[];
+}) {
+  const { compliance, listing, research, textCompliance, inputs } = data;
+
+  // BLOCKED — short-circuit, show only the compliance verdict.
+  if (compliance.verdict === "BLOCKED" || !listing) {
+    return <BlockedPanel verdict={compliance} />;
+  }
 
   return (
     <div className="space-y-4">
+      <ComplianceCard verdict={compliance} />
       <ResearchStrip research={research} />
-      <ComplianceBanner report={compliance} />
-      <TitleCard title={listing.title} />
-      <TagsCard tags={listing.tags} />
-      <DescriptionCard description={listing.description} />
-      <div className="grid gap-4 md:grid-cols-2">
-        <MaterialsCard materials={listing.materials} />
-        <AltTextCard altText={listing.altText} />
-      </div>
-      {listing.attributes.length > 0 && (
-        <AttributesCard attributes={listing.attributes} />
+      {textCompliance && <TextComplianceBanner report={textCompliance} />}
+
+      {/* ─── Etsy section: Category ─── */}
+      <EtsySectionGroup
+        n={1}
+        title="Category"
+        icon={Layers}
+        sub="Paste into Etsy's category picker"
+      >
+        <FieldCard
+          label="Category path"
+          value={research.categoryPath}
+          icon={Layers}
+        />
+        <FieldRow
+          label="Item type"
+          value={TYPE_LABEL[listing.suggestedType]}
+          icon={Box}
+          hint="Etsy form: 'What type of item is it?'"
+        />
+        <FieldRow
+          label="When was it made"
+          value={whenMadeLabel(listing.suggestedWhenMade)}
+          icon={Calendar}
+          hint="Etsy form: 'When was it made?'"
+        />
+      </EtsySectionGroup>
+
+      {/* ─── Etsy section: Item details ─── */}
+      <EtsySectionGroup n={2} title="Item details" icon={FileText}>
+        <TitleCard title={listing.title} />
+        <DescriptionCard description={listing.description} />
+      </EtsySectionGroup>
+
+      {/* ─── Etsy section: Item options ─── */}
+      {(inputs?.sizes.length || inputs?.colors.length || listing.personalizationInstructions) && (
+        <EtsySectionGroup n={3} title="Item options" icon={Box}>
+          {(inputs?.sizes.length || inputs?.colors.length) && (
+            <VariationsCard sizes={inputs?.sizes ?? []} colors={inputs?.colors ?? []} />
+          )}
+          {listing.personalizationInstructions && (
+            <PersonalizationCard
+              instructions={listing.personalizationInstructions}
+            />
+          )}
+        </EtsySectionGroup>
       )}
+
+      {/* ─── Etsy section: Attributes ─── */}
+      <EtsySectionGroup n={4} title="Attributes" icon={Tags}>
+        <TagsCard tags={listing.tags} />
+        <MaterialsCard materials={listing.materials} />
+        {listing.attributes.length > 0 && (
+          <AttributesCard attributes={listing.attributes} />
+        )}
+      </EtsySectionGroup>
+
+      {/* ─── Etsy section: Pricing & inventory ─── */}
+      {(inputs?.price || inputs?.quantity || inputs?.sku) && (
+        <EtsySectionGroup n={5} title="Price and inventory" icon={DollarSign}>
+          <PricingCard inputs={inputs} />
+        </EtsySectionGroup>
+      )}
+
+      {/* ─── Etsy section: Delivery ─── */}
+      {(inputs?.processingDays || inputs?.returnsPolicy) && (
+        <EtsySectionGroup
+          n={6}
+          title="Delivery, processing and returns"
+          icon={Truck}
+        >
+          <DeliveryCard inputs={inputs} />
+        </EtsySectionGroup>
+      )}
+
+      {/* ─── Etsy section: Image alt text ─── */}
+      <EtsySectionGroup n={7} title="Image alt text" icon={ImageIcon}>
+        <AltTextsCard altTexts={listing.altTexts} userImages={userImages} />
+      </EtsySectionGroup>
+
+      {/* ─── Etsy section: How it's made ─── */}
+      <EtsySectionGroup n={8} title="How it's made" icon={Hand}>
+        <FieldRow
+          label="Who made it"
+          value={WHO_MADE_LABEL[listing.suggestedWhoMadeIt]}
+          icon={Hand}
+          hint="Etsy form: 'Who made it?'"
+        />
+        <FieldRow
+          label="What is it"
+          value={WHAT_IS_IT_LABEL[listing.suggestedWhatIsIt]}
+          icon={Box}
+          hint="Etsy form: 'What is it?'"
+        />
+      </EtsySectionGroup>
+
+      {/* ─── Etsy section: Settings ─── */}
+      <EtsySectionGroup n={9} title="Settings" icon={SettingsIcon}>
+        <FieldRow
+          label="Renewal options"
+          value="Automatic"
+          icon={RotateCw}
+          hint="Etsy form: 'Renewal options'"
+        />
+      </EtsySectionGroup>
+
       <RationaleCard rationale={listing.rationale} />
       <CompetitorCard competitors={research.topCompetitors} />
     </div>
   );
 }
 
-// ─── Result sub-cards ───────────────────────────────────────────────
+// ─── Result sub-components ──────────────────────────────────────────
+
+function whenMadeLabel(v: string): string {
+  if (v === "made_to_order") return "Made to order";
+  if (v === "2020_2026") return "2020-2026";
+  if (v === "2010_2019") return "2010-2019";
+  if (v === "2000_2009") return "2000-2009";
+  return v;
+}
+
+function ComplianceCard({ verdict }: { verdict: ComplianceVerdict }) {
+  if (verdict.verdict === "ALLOWED" && verdict.concerns.length === 0) {
+    return (
+      <div className="rounded-xl border border-emerald-300/50 dark:border-emerald-700/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-4 py-3 flex items-center gap-3">
+        <div className="size-9 rounded-lg bg-emerald-500/20 ring-1 ring-emerald-500/30 flex items-center justify-center shrink-0">
+          <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
+            Product cleared for Etsy listing
+          </p>
+          <p className="text-[12px] text-foreground/80 mt-0.5 leading-snug">
+            {verdict.summary || "No trademark, IP, or prohibited content detected."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  // REVIEW
+  return (
+    <div className="rounded-xl border border-amber-300/50 dark:border-amber-700/40 bg-amber-50/60 dark:bg-amber-950/20 p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="size-9 rounded-lg bg-amber-500/20 ring-1 ring-amber-500/30 flex items-center justify-center shrink-0">
+          <ShieldAlert className="size-4 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div>
+          <p className="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
+            Listing generated — review carefully
+          </p>
+          <p className="text-[12px] text-foreground/80 mt-0.5 leading-snug">
+            {verdict.summary}
+          </p>
+        </div>
+      </div>
+      <ul className="space-y-1.5 pl-1">
+        {verdict.concerns.map((c, i) => (
+          <li key={i} className="text-[12px] flex gap-2 items-start">
+            <span className="mt-1 size-1.5 rounded-full bg-amber-500 shrink-0" />
+            <span>
+              <span className="font-semibold uppercase text-[10px] tracking-wider mr-1.5 opacity-70">
+                {c.category}
+              </span>
+              {c.details}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function BlockedPanel({ verdict }: { verdict: ComplianceVerdict }) {
+  return (
+    <div className="rounded-xl border-2 border-rose-400 dark:border-rose-700 bg-rose-50/80 dark:bg-rose-950/40 p-5 sm:p-6 space-y-4 shadow-lg shadow-rose-500/10">
+      <div className="flex items-center gap-3">
+        <div className="size-12 rounded-xl bg-rose-500/20 ring-1 ring-rose-500/40 flex items-center justify-center shrink-0">
+          <Ban className="size-6 text-rose-600 dark:text-rose-400" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-[0.18em]">
+            Compliance · Blocked
+          </p>
+          <h3 className="text-lg sm:text-xl font-bold text-rose-900 dark:text-rose-200 leading-tight">
+            Do NOT list this on Etsy
+          </h3>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-card border border-rose-200 dark:border-rose-900/40 p-4">
+        <p className="text-sm text-foreground leading-relaxed">{verdict.summary}</p>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 uppercase tracking-[0.16em]">
+          Specific concerns
+        </p>
+        <ul className="space-y-2">
+          {verdict.concerns.map((c, i) => (
+            <li
+              key={i}
+              className="rounded-lg bg-card border px-3 py-2 flex items-start gap-3"
+            >
+              <span
+                className={`mt-1.5 size-2 rounded-full shrink-0 ${
+                  c.severity === "block" ? "bg-rose-500" : "bg-amber-500"
+                }`}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider opacity-70 mb-0.5">
+                  {c.category} · {c.severity}
+                </p>
+                <p className="text-[12px] leading-relaxed">{c.details}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-lg bg-rose-100/60 dark:bg-rose-900/20 border border-rose-300/50 dark:border-rose-700/40 px-3 py-2.5">
+        <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-snug">
+          <span className="font-bold">Why this matters:</span> Etsy can remove
+          listings that violate IP / policy within hours and may issue a strike
+          against the shop. Source a different (non-IP) version of this product
+          or pick a different one to list.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TextComplianceBanner({ report }: { report: TextCompliance }) {
+  if (report.ok && report.issues.length === 0) return null;
+  const blocks = report.issues.filter((i) => i.severity === "block");
+  const warns = report.issues.filter((i) => i.severity === "warn");
+  if (blocks.length === 0 && warns.length === 0) return null;
+  const tone = blocks.length > 0 ? "rose" : "amber";
+  return (
+    <div
+      className={`rounded-xl border ${
+        tone === "rose"
+          ? "border-rose-300/50 dark:border-rose-700/40 bg-rose-50/60 dark:bg-rose-950/20"
+          : "border-amber-300/50 dark:border-amber-700/40 bg-amber-50/60 dark:bg-amber-950/20"
+      } p-3 space-y-2`}
+    >
+      <p
+        className={`text-[10px] font-bold uppercase tracking-wider ${
+          tone === "rose"
+            ? "text-rose-700 dark:text-rose-300"
+            : "text-amber-700 dark:text-amber-300"
+        }`}
+      >
+        Text rule check · {blocks.length} blocker · {warns.length} warning
+      </p>
+      <ul className="space-y-1">
+        {[...blocks, ...warns].map((iss, idx) => (
+          <li key={idx} className="text-[12px] flex gap-2 items-start">
+            <span
+              className={`mt-1 size-1.5 rounded-full shrink-0 ${
+                iss.severity === "block" ? "bg-rose-500" : "bg-amber-500"
+              }`}
+            />
+            <span>
+              <span className="font-semibold uppercase text-[10px] tracking-wider mr-1.5 opacity-70">
+                {iss.field}
+              </span>
+              {iss.message}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function ResearchStrip({ research }: { research: ResearchSummary }) {
   return (
-    <Card className="border shadow-none overflow-hidden">
+    <Card className="border shadow-none overflow-hidden relative">
       <div
         aria-hidden
         className="absolute inset-0 bg-gradient-to-r from-emerald-50/60 via-card to-emerald-50/30 dark:from-emerald-950/20 dark:via-card dark:to-emerald-950/10 pointer-events-none"
@@ -545,8 +1446,8 @@ function ResearchStrip({ research }: { research: ResearchSummary }) {
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           <DecisionRow
-            icon={Search}
-            label="Searched for"
+            icon={Target}
+            label="Searched Etsy for"
             value={research.searchKeyword}
           />
           <DecisionRow
@@ -555,14 +1456,14 @@ function ResearchStrip({ research }: { research: ResearchSummary }) {
             value={research.categoryPath}
           />
           <DecisionRow
-            icon={Target}
+            icon={Box}
             label="Product type"
             value={research.productType}
           />
           <DecisionRow
             icon={Crown}
-            label="Listings analyzed"
-            value={`${research.competitorsAnalyzed} ranking · ${research.attributesAvailable} attribute slots`}
+            label="Data analyzed"
+            value={`${research.competitorsAnalyzed} ranking · ${research.attributesAvailable} attrs`}
           />
           {research.audienceHint && (
             <DecisionRow
@@ -608,79 +1509,41 @@ function DecisionRow({
   );
 }
 
-function ComplianceBanner({ report }: { report: ComplianceReport }) {
-  if (report.ok && report.issues.length === 0) {
-    return (
-      <div className="rounded-xl border border-emerald-300/50 dark:border-emerald-700/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-4 py-3 flex items-center gap-3">
-        <div className="size-8 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
-          <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
-        </div>
-        <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-          Compliance: clean. No trademark, IP, or rule issues detected.
-        </p>
-      </div>
-    );
-  }
-
-  const blocks = report.issues.filter((i) => i.severity === "block");
-  const warns = report.issues.filter((i) => i.severity === "warn");
-  const tone = blocks.length > 0 ? "rose" : "amber";
-
+function EtsySectionGroup({
+  n,
+  title,
+  icon: Icon,
+  sub,
+  children,
+}: {
+  n: number;
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  sub?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div
-      className={`rounded-xl border ${
-        tone === "rose"
-          ? "border-rose-300/50 dark:border-rose-700/40 bg-rose-50/60 dark:bg-rose-950/20"
-          : "border-amber-300/50 dark:border-amber-700/40 bg-amber-50/60 dark:bg-amber-950/20"
-      } p-4 space-y-3`}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className={`size-8 rounded-lg flex items-center justify-center shrink-0 ${
-            tone === "rose" ? "bg-rose-500/15" : "bg-amber-500/15"
-          }`}
-        >
-          <AlertTriangle
-            className={`size-4 ${
-              tone === "rose"
-                ? "text-rose-600 dark:text-rose-400"
-                : "text-amber-600 dark:text-amber-400"
-            }`}
-          />
+    <section className="space-y-2">
+      <div className="flex items-center gap-2.5 px-1">
+        <div className="size-6 rounded-md bg-gradient-to-br from-orange-500/15 to-violet-500/15 ring-1 ring-orange-500/20 flex items-center justify-center">
+          <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 tabular-nums">
+            {n}
+          </span>
         </div>
-        <p
-          className={`text-xs font-semibold ${
-            tone === "rose"
-              ? "text-rose-700 dark:text-rose-300"
-              : "text-amber-700 dark:text-amber-300"
-          }`}
-        >
-          {blocks.length > 0
-            ? `${blocks.length} blocker${blocks.length === 1 ? "" : "s"} · ${warns.length} warning${warns.length === 1 ? "" : "s"}`
-            : `${warns.length} warning${warns.length === 1 ? "" : "s"}`}
-        </p>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold text-foreground/70 uppercase tracking-[0.18em]">
+            Etsy section · {title}
+          </p>
+          {sub && (
+            <p className="text-[9px] text-muted-foreground mt-0.5">{sub}</p>
+          )}
+        </div>
+        <div className="ml-auto size-6 rounded-md bg-muted/40 flex items-center justify-center">
+          <Icon className="size-3 text-muted-foreground" />
+        </div>
       </div>
-      <ul className="space-y-1.5">
-        {[...blocks, ...warns].map((iss, idx) => (
-          <li
-            key={idx}
-            className="text-[12px] text-foreground/85 flex gap-2 items-start"
-          >
-            <span
-              className={`mt-1 size-1.5 rounded-full shrink-0 ${
-                iss.severity === "block" ? "bg-rose-500" : "bg-amber-500"
-              }`}
-            />
-            <span>
-              <span className="font-semibold uppercase text-[10px] tracking-wider mr-1.5 opacity-70">
-                {iss.field}
-              </span>
-              {iss.message}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
+      <div className="space-y-3">{children}</div>
+    </section>
   );
 }
 
@@ -736,6 +1599,65 @@ function CopyButton({
   );
 }
 
+function FieldCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <Card className="border shadow-none">
+      <CardContent className="p-4 flex items-center gap-3">
+        <div className="size-9 rounded-lg bg-muted/60 flex items-center justify-center shrink-0">
+          <Icon className="size-4 text-muted-foreground" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            {label}
+          </p>
+          <p className="text-sm font-semibold text-foreground truncate">
+            {value || "—"}
+          </p>
+        </div>
+        {value && <CopyButton value={value} label={label.toLowerCase()} />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FieldRow({
+  label,
+  value,
+  icon: Icon,
+  hint,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-card px-3 py-2.5 flex items-center gap-3">
+      <Icon className="size-3.5 text-muted-foreground shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
+          {label}
+        </p>
+        <p className="text-sm font-semibold text-foreground leading-tight mt-0.5">
+          {value}
+        </p>
+        {hint && (
+          <p className="text-[9px] text-muted-foreground/60 mt-0.5">{hint}</p>
+        )}
+      </div>
+      <CopyButton value={value} label={label.toLowerCase()} size="xs" />
+    </div>
+  );
+}
+
 function TitleCard({ title }: { title: string }) {
   const charCount = title.length;
   const pct = (charCount / TITLE_MAX) * 100;
@@ -744,7 +1666,7 @@ function TitleCard({ title }: { title: string }) {
 
   return (
     <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5">
         <div className="flex items-center justify-between mb-3">
           <SectionHeading icon={Type} label="Title" />
           <CopyButton value={title} label="title" />
@@ -803,7 +1725,7 @@ function TagsCard({ tags }: { tags: string[] }) {
 
   return (
     <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5">
         <div className="flex items-center justify-between mb-3">
           <SectionHeading
             icon={Tags}
@@ -843,9 +1765,7 @@ function TagsCard({ tags }: { tags: string[] }) {
             );
           })}
           {tags.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              No tags returned.
-            </p>
+            <p className="text-xs text-muted-foreground">No tags returned.</p>
           )}
         </div>
         <div className="mt-4 pt-3 border-t flex items-center gap-2">
@@ -867,10 +1787,10 @@ function TagsCard({ tags }: { tags: string[] }) {
 function DescriptionCard({ description }: { description: string }) {
   return (
     <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5">
         <div className="flex items-center justify-between mb-3">
           <SectionHeading
-            icon={FileText}
+            icon={ScrollText}
             label="Description"
             sub={`${description.length} chars`}
           />
@@ -885,50 +1805,25 @@ function DescriptionCard({ description }: { description: string }) {
 }
 
 function MaterialsCard({ materials }: { materials: string[] }) {
+  if (materials.length === 0) return null;
   return (
     <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5">
         <div className="flex items-center justify-between mb-3">
           <SectionHeading icon={Layers} label="Materials" />
-          {materials.length > 0 && (
-            <CopyButton value={materials.join(", ")} label="materials" />
-          )}
+          <CopyButton value={materials.join(", ")} label="materials" />
         </div>
-        {materials.length === 0 ? (
-          <p className="text-xs text-muted-foreground">None suggested.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {materials.map((m) => (
-              <li
-                key={m}
-                className="text-[12px] text-foreground/85 flex items-center gap-2"
-              >
-                <span className="size-1 rounded-full bg-orange-500" />
-                {m}
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AltTextCard({ altText }: { altText: string }) {
-  return (
-    <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
-        <div className="flex items-center justify-between mb-3">
-          <SectionHeading icon={ImageIcon} label="Image alt text" />
-          {altText && <CopyButton value={altText} label="alt text" />}
-        </div>
-        {altText ? (
-          <p className="text-[13px] leading-relaxed text-foreground/90 italic">
-            &ldquo;{altText}&rdquo;
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground">No alt text generated.</p>
-        )}
+        <ul className="grid gap-1.5 sm:grid-cols-2">
+          {materials.map((m) => (
+            <li
+              key={m}
+              className="text-[12px] text-foreground/85 flex items-center gap-2 rounded-md bg-muted/30 px-2 py-1.5"
+            >
+              <span className="size-1 rounded-full bg-orange-500" />
+              {m}
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );
@@ -941,18 +1836,18 @@ function AttributesCard({
 }) {
   return (
     <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5">
         <div className="flex items-center justify-between mb-3">
           <SectionHeading
             icon={ListChecks}
             label="Category attributes"
-            sub={`${attributes.length} pre-filled`}
+            sub={`${attributes.length} pre-filled · paste into matching Etsy field`}
           />
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          {attributes.map((a) => (
+          {attributes.map((a, idx) => (
             <div
-              key={`${a.name}-${a.value}`}
+              key={`${a.name}-${idx}`}
               className="rounded-lg border bg-muted/30 px-3 py-2 flex items-center justify-between gap-3"
             >
               <div className="min-w-0">
@@ -972,6 +1867,187 @@ function AttributesCard({
   );
 }
 
+function VariationsCard({
+  sizes,
+  colors,
+}: {
+  sizes: string[];
+  colors: string[];
+}) {
+  return (
+    <Card className="border shadow-none">
+      <CardContent className="p-5 space-y-3">
+        <SectionHeading
+          icon={Box}
+          label="Variations"
+          sub="Your values — copy into Etsy's Variations setup"
+        />
+        {sizes.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <Ruler className="size-3" /> Sizes ({sizes.length})
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {sizes.map((s) => (
+                <span
+                  key={s}
+                  className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium"
+                >
+                  {s}
+                </span>
+              ))}
+              <CopyButton value={sizes.join(", ")} label="sizes" size="xs" />
+            </div>
+          </div>
+        )}
+        {colors.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <Palette className="size-3" /> Colors ({colors.length})
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {colors.map((c) => (
+                <span
+                  key={c}
+                  className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium"
+                >
+                  {c}
+                </span>
+              ))}
+              <CopyButton value={colors.join(", ")} label="colors" size="xs" />
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PersonalizationCard({ instructions }: { instructions: string }) {
+  return (
+    <Card className="border shadow-none">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <SectionHeading
+            icon={Hand}
+            label="Personalization instructions"
+            sub="Buyers see this when ordering"
+          />
+          <CopyButton value={instructions} label="instructions" />
+        </div>
+        <div className="rounded-lg bg-muted/30 p-3 text-[13px] leading-relaxed italic">
+          &ldquo;{instructions}&rdquo;
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AltTextsCard({
+  altTexts,
+  userImages,
+}: {
+  altTexts: string[];
+  userImages: UploadedImage[];
+}) {
+  if (altTexts.length === 0) return null;
+  return (
+    <Card className="border shadow-none">
+      <CardContent className="p-5 space-y-3">
+        <SectionHeading
+          icon={ImageIcon}
+          label="Image alt text"
+          sub="One per image · paste into Etsy's image alt-text field"
+        />
+        <div className="space-y-2.5">
+          {altTexts.map((alt, idx) => {
+            const img = userImages[idx];
+            return (
+              <div
+                key={idx}
+                className="rounded-lg border bg-muted/20 p-3 flex gap-3 items-start"
+              >
+                {img ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={img.previewUrl}
+                    alt=""
+                    className="size-14 rounded-md object-cover shrink-0 ring-1 ring-border"
+                  />
+                ) : (
+                  <div className="size-14 rounded-md bg-muted flex items-center justify-center shrink-0">
+                    <ImageIcon className="size-5 text-muted-foreground/40" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Image {idx + 1}
+                    </p>
+                    <CopyButton value={alt} label={`image ${idx + 1} alt`} size="xs" />
+                  </div>
+                  <p className="text-[12px] text-foreground/90 leading-relaxed italic">
+                    &ldquo;{alt}&rdquo;
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PricingCard({ inputs }: { inputs: UserInputsEcho }) {
+  return (
+    <Card className="border shadow-none">
+      <CardContent className="p-5 grid gap-3 sm:grid-cols-3">
+        {inputs.price != null && (
+          <FieldRow
+            label="Price"
+            value={`$${inputs.price.toFixed(2)}`}
+            icon={DollarSign}
+          />
+        )}
+        {inputs.quantity != null && (
+          <FieldRow
+            label="Quantity"
+            value={String(inputs.quantity)}
+            icon={Package}
+          />
+        )}
+        {inputs.sku && (
+          <FieldRow label="SKU" value={inputs.sku} icon={Hash} />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DeliveryCard({ inputs }: { inputs: UserInputsEcho }) {
+  return (
+    <Card className="border shadow-none">
+      <CardContent className="p-5 grid gap-3 sm:grid-cols-2">
+        {inputs.processingDays && (
+          <FieldRow
+            label="Processing time"
+            value={inputs.processingDays}
+            icon={Truck}
+          />
+        )}
+        {inputs.returnsPolicy && (
+          <FieldRow
+            label="Returns policy"
+            value={inputs.returnsPolicy}
+            icon={RotateCw}
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function RationaleCard({
   rationale,
 }: {
@@ -980,7 +2056,7 @@ function RationaleCard({
   const [open, setOpen] = useState(false);
   return (
     <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -1029,7 +2105,7 @@ function CompetitorCard({
   if (competitors.length === 0) return null;
   return (
     <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
+      <CardContent className="p-5">
         <SectionHeading
           icon={Crown}
           label="Top competitors"
@@ -1052,7 +2128,9 @@ function CompetitorCard({
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
                   <Heart className="size-2.5" />
-                  <span className="tabular-nums">{c.favorites.toLocaleString()}</span>
+                  <span className="tabular-nums">
+                    {c.favorites.toLocaleString()}
+                  </span>
                   <span>favorites</span>
                 </p>
               </div>
