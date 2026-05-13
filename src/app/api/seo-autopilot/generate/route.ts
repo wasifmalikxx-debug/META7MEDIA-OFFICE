@@ -156,10 +156,14 @@ export async function POST(request: NextRequest) {
     const listings = await searchActiveListings(context.searchKeyword, 20);
     competitors = toCompetitorBriefs(listings);
 
-    category = await inferCategoryFromListings(listings, context.productType);
+    category = await inferCategoryFromListings(
+      listings,
+      context.productType,
+      payload.aliExpressTitle,
+    );
     if (!category) {
       return error(
-        `Couldn't infer an Etsy category from ranking listings for "${context.searchKeyword}". Try a more descriptive source title.`,
+        `Couldn't match this product to an Etsy category. Try a more descriptive source title (include words like "ring", "dress", "wallet", etc.).`,
         422,
       );
     }

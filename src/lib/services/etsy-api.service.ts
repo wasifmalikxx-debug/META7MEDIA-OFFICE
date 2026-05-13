@@ -271,34 +271,117 @@ export function toCompetitorBriefs(listings: EtsyListing[]): CompetitorBrief[] {
 }
 
 /**
- * Infer the target taxonomy node from a set of ranking listings. The
- * idea: if the top 5-10 listings ranking for our keyword all sit in
- * the same category, that's almost certainly where ours should live
- * too. Returns the most-frequent `taxonomy_id` among the supplied
- * listings.
+ * Infer the target taxonomy node from a set of ranking listings.
  *
- * Falls back to a fuzzy taxonomy name search using `productTypeHint`
- * if the listings have no agreement (or no taxonomy_id at all).
+ * Cascade (stops at first hit):
+ *   1. Tally `taxonomy_id` across the top 15 ranking listings,
+ *      weighted by rank. Best signal when Etsy returns it.
+ *   2. Fuzzy search the full `productTypeHint` in node names.
+ *   3. Same query with possessives/quotes stripped ("men's" → "men").
+ *   4. Each word of the hint, longest first (≥3 chars).
+ *   5. Each meaningful word from the original title, longest first
+ *      (≥4 chars, skipping pure numbers and obvious filler words).
+ *
+ * Only returns null when all five strategies miss — should be very
+ * rare in practice.
  */
+
+const FILLER_WORDS = new Set([
+  "with",
+  "from",
+  "this",
+  "that",
+  "your",
+  "ours",
+  "have",
+  "more",
+  "also",
+  "very",
+  "just",
+  "only",
+  "into",
+  "over",
+  "best",
+  "wholesale",
+  "cheap",
+  "free",
+  "new",
+  "hot",
+  "sale",
+  "shipping",
+  "premium",
+  "luxury",
+  "high",
+  "quality",
+  "fashion",
+  "style",
+  "design",
+]);
+
+function buildFallbackQueries(
+  productTypeHint: string,
+  rawTitle?: string,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (q: string) => {
+    const cleaned = q
+      .toLowerCase()
+      .replace(/['’]s\b/g, "") // possessives ("men's" → "men")
+      .replace(/['’]/g, " ")
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleaned.length < 3 || seen.has(cleaned)) return;
+    seen.add(cleaned);
+    out.push(cleaned);
+  };
+
+  // Full + cleaned versions of the hint
+  if (productTypeHint) {
+    add(productTypeHint);
+  }
+
+  const wordsOf = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/['’]/g, " ")
+      .split(/[\s,\-_/|.()]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length >= 3 && !/^\d+$/.test(w) && !FILLER_WORDS.has(w));
+
+  // Hint words, longest first
+  const hintWords = wordsOf(productTypeHint);
+  hintWords.sort((a, b) => b.length - a.length);
+  hintWords.forEach(add);
+
+  // Title words, longest first, top 10
+  if (rawTitle) {
+    const titleWords = wordsOf(rawTitle).filter((w) => w.length >= 4);
+    titleWords.sort((a, b) => b.length - a.length);
+    titleWords.slice(0, 10).forEach(add);
+  }
+
+  return out;
+}
+
 export async function inferCategoryFromListings(
   listings: EtsyListing[],
   productTypeHint: string,
+  rawTitle?: string,
 ): Promise<{ id: number; name: string; path: string } | null> {
-  // Tally taxonomy ids from the top 10 listings, weighted by rank.
+  const all = await getSellerTaxonomy();
+
+  // ─── Strategy 1: tally taxonomy_id, weighted by rank ───────────────
   const tally = new Map<number, number>();
-  listings.slice(0, 10).forEach((l, i) => {
+  listings.slice(0, 15).forEach((l, i) => {
     if (!l.taxonomy_id) return;
-    // Rank 1 is worth 10, rank 10 is worth 1 — top-ranking signals matter more.
-    const weight = 10 - i;
+    const weight = 15 - i; // rank 1 = 15× weight, rank 15 = 1×
     tally.set(l.taxonomy_id, (tally.get(l.taxonomy_id) ?? 0) + weight);
   });
-
   if (tally.size > 0) {
-    // Pick the highest-weighted taxonomy id.
     const winner = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]!;
-    const [taxonomyId] = winner;
-    const all = await getSellerTaxonomy();
-    const node = all.find((n) => n.id === taxonomyId);
+    const node = all.find((n) => n.id === winner[0]);
     if (node) {
       return {
         id: node.id,
@@ -308,11 +391,12 @@ export async function inferCategoryFromListings(
     }
   }
 
-  // Fallback — fuzzy taxonomy search using the product-type hint.
-  if (productTypeHint.trim().length >= 2) {
-    const matches = await searchTaxonomyNodes(productTypeHint, 1);
-    const node = matches[0];
-    if (node) {
+  // ─── Strategy 2-5: cascade through fallback queries ────────────────
+  const queries = buildFallbackQueries(productTypeHint, rawTitle);
+  for (const q of queries) {
+    const matches = await searchTaxonomyNodes(q, 1);
+    if (matches.length > 0) {
+      const node = matches[0];
       return {
         id: node.id,
         name: node.name,
