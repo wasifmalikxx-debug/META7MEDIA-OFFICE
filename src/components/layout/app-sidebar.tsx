@@ -28,6 +28,7 @@ import {
   AlertOctagon,
   RefreshCcw,
   FileText,
+  Calculator,
 } from "lucide-react";
 import {
   Sidebar,
@@ -454,6 +455,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     </SidebarGroupContent>
                   </SidebarGroup>
                 )}
+
             </>
           );
         })()}
@@ -511,6 +513,50 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })()}
+
+        {/* Etsy Tools — utility links that aren't team-scoped. Sits below the
+            team sections so it reads as a shared utility rather than nested
+            inside any one partner's group. Strictly Etsy-side: FB-team
+            employees (SMM-*) and the FB partner (Zain) never see this. */}
+        {(() => {
+          const isCeo = user.role === "SUPER_ADMIN";
+          const isHrAdmin = user.role === "HR_ADMIN";
+          const isIzaan = user.role === "MANAGER" && user.employeeId === "EM-4";
+          const isEtsyPartner =
+            user.role === "PARTNER" &&
+            (user.partnerTeams ?? []).some(
+              (t) =>
+                t.departmentName.includes(" - EM") ||
+                t.departmentName.includes(" - AE") ||
+                t.departmentName.includes(" - ME"),
+            );
+          const isEtsyEmployee =
+            (user.employeeId?.startsWith("EM") ||
+              user.employeeId?.startsWith("AE") ||
+              user.employeeId?.startsWith("ME")) &&
+            user.employeeId !== "EM-4L";
+          const showTools =
+            isCeo || isHrAdmin || isIzaan || isEtsyPartner || isEtsyEmployee;
+          if (!showTools) return null;
+          return (
+            <SidebarGroup>
+              <SidebarGroupLabel>Etsy Tools</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      render={<Link href="/price-calculator" />}
+                      isActive={isItemActive("/price-calculator")}
+                    >
+                      <Calculator className="size-4" />
+                      <span>Price Calculator</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
