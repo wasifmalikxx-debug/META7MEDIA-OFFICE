@@ -449,12 +449,22 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     >
                       <Sparkles className="size-4" />
                       <span>SEO Autopilot</span>
-                      {/* Tiny "soon" pill — the page is just a coming-soon
-                          placeholder until we build Phase 1 of the AI listing
-                          generator. Helps the team understand it's not live yet. */}
-                      <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
-                        Soon
-                      </span>
+                      {/* CEO sees the live tool → green "BETA" pill. Everyone
+                          else still lands on the Coming Soon placeholder →
+                          violet "SOON" pill so they know it's being built. */}
+                      {isCeo ? (
+                        <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
+                          <span className="relative flex size-1">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                            <span className="relative inline-flex size-1 rounded-full bg-emerald-500" />
+                          </span>
+                          Beta
+                        </span>
+                      ) : (
+                        <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
+                          Soon
+                        </span>
+                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
