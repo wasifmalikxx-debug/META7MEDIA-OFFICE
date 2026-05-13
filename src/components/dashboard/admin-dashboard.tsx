@@ -37,7 +37,9 @@ import {
   Crown,
   Briefcase,
   PackageOpen,
+  RefreshCcw,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
@@ -1415,6 +1417,44 @@ function DashboardControls({
   showMoney: boolean;
   onToggleMoney: () => void;
 }) {
+  const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+
+  // Hits POST /api/dashboard/refresh-financials → rebuilds today's
+  // DailyTeamSnapshot rows from the live sheets, then triggers a
+  // router.refresh() so the server re-renders with the new data.
+  // Sheet reads take 20–40s, so we hold a loading state the whole time.
+  async function handleRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/dashboard/refresh-financials", {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || `Refresh failed (${res.status})`);
+        return;
+      }
+      const body = await res.json();
+      const rows = body.snapshot?.rowsUpserted ?? 0;
+      toast.success(
+        rows > 0
+          ? `Refreshed · ${rows} day-team rows updated from live sheets`
+          : "Refreshed",
+      );
+      setLastRefreshedAt(new Date());
+      // Re-render the dashboard server-side. Reads back the fresh
+      // snapshot rows we just wrote.
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const tabs = [{ slug: "all", name: "All offices", isPrimary: false }, ...offices];
   return (
     <Card className="border shadow-none">
@@ -1447,26 +1487,52 @@ function DashboardControls({
             })}
           </div>
 
-          {/* Show/hide money */}
-          <button
-            type="button"
-            onClick={onToggleMoney}
-            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground rounded-md border bg-card px-3 py-1.5 transition-colors shrink-0"
-            aria-pressed={!showMoney}
-            title={showMoney ? "Hide all $ figures" : "Show all $ figures"}
-          >
-            {showMoney ? (
-              <>
-                <EyeOff className="size-3.5" />
-                <span>Hide values</span>
-              </>
-            ) : (
-              <>
-                <Eye className="size-3.5" />
-                <span>Show values</span>
-              </>
+          <div className="flex items-center gap-2 shrink-0">
+            {lastRefreshedAt && !refreshing && (
+              <span className="hidden md:inline text-[10px] text-muted-foreground/70 tabular-nums">
+                Last refreshed{" "}
+                {lastRefreshedAt.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
             )}
-          </button>
+
+            {/* Refresh now — re-pulls live sheets + rebuilds snapshots. */}
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground rounded-md border bg-card px-3 py-1.5 transition-colors shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Re-pull live sheet data and rebuild today's numbers (~30s)"
+            >
+              <RefreshCcw
+                className={`size-3.5 ${refreshing ? "animate-spin" : ""}`}
+              />
+              <span>{refreshing ? "Refreshing…" : "Refresh now"}</span>
+            </button>
+
+            {/* Show/hide money */}
+            <button
+              type="button"
+              onClick={onToggleMoney}
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground rounded-md border bg-card px-3 py-1.5 transition-colors shrink-0"
+              aria-pressed={!showMoney}
+              title={showMoney ? "Hide all $ figures" : "Show all $ figures"}
+            >
+              {showMoney ? (
+                <>
+                  <EyeOff className="size-3.5" />
+                  <span>Hide values</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="size-3.5" />
+                  <span>Show values</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </CardContent>
     </Card>
