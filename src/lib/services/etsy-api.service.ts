@@ -581,6 +581,79 @@ export async function getTagDemandStatsBatch(
   return Promise.all(tags.map((t) => getTagDemandStats(t)));
 }
 
+// ─── Buyer-language keyword evaluation ──────────────────────────────
+
+/**
+ * Score a batch of candidate long-tail keywords against real Etsy
+ * data. For each candidate we fetch the same demand stats we use for
+ * generated tags. The output is sorted by a "buyer-search score" that
+ * rewards listings ranking well for that phrase WITHOUT over-rewarding
+ * mega-saturated terms.
+ *
+ * Score formula:
+ *   • base = log10(totalListings + 1) * 12   (rewards volume)
+ *   • + avgTopFavorites / 8                  (rewards engagement)
+ *   • - saturation penalty if >100k listings (avoid hopeless terms)
+ *
+ * Penalising over-saturation matters because a tag like "necklace"
+ * has millions of listings but we'd never rank for it.
+ *
+ * Used by /api/seo-autopilot/generate to pick the best 10 buyer-search
+ * phrases as anchor keywords for Sonnet.
+ */
+export interface BuyerKeywordScore {
+  keyword: string;
+  totalListings: number;
+  avgTopFavorites: number;
+  tier: TagTier;
+  buyerScore: number; // 0-100
+}
+
+function calcBuyerScore(
+  totalListings: number,
+  avgFavs: number,
+): number {
+  if (totalListings === 0) return 0;
+  const base = Math.log10(totalListings + 1) * 12;
+  const favs = avgFavs / 8;
+  // Penalty for over-saturation: above 100k listings, every 10x reduces score
+  const saturationPenalty = totalListings >= 100_000
+    ? Math.log10(totalListings / 100_000) * 15
+    : 0;
+  return Math.round(
+    Math.max(0, Math.min(100, base + favs - saturationPenalty)),
+  );
+}
+
+export async function evaluateKeywordCandidates(
+  candidates: string[],
+): Promise<BuyerKeywordScore[]> {
+  if (candidates.length === 0) return [];
+
+  // Dedup + clean
+  const cleaned = [
+    ...new Set(
+      candidates
+        .map((c) => c.toLowerCase().trim())
+        .filter((c) => c.length >= 3),
+    ),
+  ];
+
+  // Reuse getTagDemandStats since it's the same query shape we need.
+  const stats = await Promise.all(cleaned.map((c) => getTagDemandStats(c)));
+
+  return stats
+    .filter((s) => !s.error && s.totalListings > 0)
+    .map((s) => ({
+      keyword: s.tag,
+      totalListings: s.totalListings,
+      avgTopFavorites: s.avgTopFavorites,
+      tier: s.tier,
+      buyerScore: calcBuyerScore(s.totalListings, s.avgTopFavorites),
+    }))
+    .sort((a, b) => b.buyerScore - a.buyerScore);
+}
+
 /**
  * Infer the target taxonomy node from a set of ranking listings.
  *

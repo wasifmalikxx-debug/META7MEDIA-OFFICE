@@ -25,7 +25,11 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { CompetitorBrief, AnchorKeywords } from "./etsy-api.service";
+import type {
+  CompetitorBrief,
+  AnchorKeywords,
+  BuyerKeywordScore,
+} from "./etsy-api.service";
 
 // Lazy singleton — the SDK init grabs ANTHROPIC_API_KEY from env, but we
 // want a clear error message if it's not set.
@@ -139,6 +143,168 @@ export async function extractSearchContext(
     audienceHint: (parsed.audienceHint ?? "").trim().slice(0, 80),
     styleHint: (parsed.styleHint ?? "").trim().slice(0, 80),
   };
+}
+
+// ─── Tag swap suggestions (Haiku, text-only) ───────────────────────
+
+/**
+ * Given an existing tag the user wants to replace (usually because
+ * it's saturated/hot or just feels wrong), brainstorm 3 alternatives
+ * of similar intent but with different positioning.
+ *
+ * Used by /api/seo-autopilot/swap-tag.
+ */
+export interface TagReplacement {
+  tag: string;
+  reason: string;
+}
+
+export async function suggestTagReplacements(opts: {
+  currentTag: string;
+  productTitle: string;
+  productType: string;
+  category: string;
+  existingTags: string[];
+  reason?: string;
+}): Promise<TagReplacement[]> {
+  const reasonLine = opts.reason
+    ? `Reason for swapping: ${opts.reason}`
+    : "Reason for swapping: the seller wants a fresh take on this tag (often because it's too saturated to rank for).";
+
+  const msg = await client().messages.create({
+    model: MODEL_VALIDATOR, // Haiku — cheap, good at this kind of task
+    max_tokens: 400,
+    temperature: 0.4,
+    system: `You are an Etsy SEO expert. Given a tag a seller wants to REPLACE, suggest 3 alternative tags that:
+1. Are ≤20 characters each, lowercase, no punctuation
+2. Cover SIMILAR buyer intent to the one being replaced
+3. Lean LONGER and more SPECIFIC (long-tail beats short-tail for new shops)
+4. Are NOT already in the seller's existing tag list (avoid duplicates / near-duplicates)
+5. NO brand names or trademarks (Disney, Marvel, Nike, etc.)
+6. Vary in approach: one go-after-niche (very specific), one expanded-context (gift / occasion / recipient), one stylistic (material / aesthetic)
+
+OUTPUT FORMAT — strict JSON, no prose:
+{
+  "replacements": [
+    { "tag": "...", "reason": "1-line why this is a better choice" },
+    { "tag": "...", "reason": "..." },
+    { "tag": "...", "reason": "..." }
+  ]
+}`,
+    messages: [
+      {
+        role: "user",
+        content: `Product: ${opts.productTitle}
+Product type: ${opts.productType}
+Category: ${opts.category}
+
+Tag being swapped: "${opts.currentTag}"
+${reasonLine}
+
+Existing tag list (don't duplicate any of these):
+${opts.existingTags.map((t) => `- ${t}`).join("\n")}
+
+Suggest 3 replacement tags.`,
+      },
+      { role: "assistant", content: "{" },
+    ],
+  });
+
+  const raw = "{" + extractText(msg);
+  try {
+    const parsed = safeParseJson<{ replacements: TagReplacement[] }>(raw);
+    const existingLower = new Set(
+      opts.existingTags.map((t) => t.toLowerCase()),
+    );
+    return (parsed.replacements ?? [])
+      .map((r) => ({
+        tag: (r.tag ?? "").toString().trim().toLowerCase().slice(0, 20),
+        reason: (r.reason ?? "").toString().trim().slice(0, 150),
+      }))
+      .filter(
+        (r) =>
+          r.tag.length >= 3 &&
+          !existingLower.has(r.tag) &&
+          r.tag !== opts.currentTag.toLowerCase(),
+      )
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
+// ─── Long-tail keyword brainstorm (Haiku, text-only) ───────────────
+
+/**
+ * Brainstorm long-tail search variants for a product. The goal is to
+ * surface phrases REAL BUYERS would type into Etsy search — not what
+ * competitors wrote in their titles.
+ *
+ * Output is a string[] of 20-30 candidate phrases. Each is then scored
+ * downstream via Etsy demand data (count + top-favs) so we know which
+ * are actually trafficked.
+ *
+ * Used by the SEO Autopilot pipeline as a parallel pass alongside the
+ * standard competitor analysis.
+ */
+export async function expandSearchVariants(opts: {
+  seedKeyword: string;
+  productType: string;
+  audienceHint?: string;
+  styleHint?: string;
+}): Promise<string[]> {
+  const audienceLine = opts.audienceHint
+    ? `Target audience hint: ${opts.audienceHint}`
+    : "";
+  const styleLine = opts.styleHint ? `Style hint: ${opts.styleHint}` : "";
+
+  const msg = await client().messages.create({
+    model: MODEL_VALIDATOR, // Haiku — cheap brainstorm
+    max_tokens: 600,
+    temperature: 0.5,
+    system: `You are an Etsy buyer behaviour expert. Given a product, brainstorm 25 long-tail search phrases real buyers would type into Etsy's search bar.
+
+Rules:
+1. Each phrase is 2-5 words, lowercase, no punctuation.
+2. Cover diverse buyer intents: gifts, occasions, recipients, styles, materials, sizes, use cases.
+3. Lean into LONG-TAIL (3-5 words) — those rank easier than single words.
+4. Avoid the seed keyword verbatim — vary the wording, add modifiers.
+5. NO brand names, NO trademarks (Disney/Nike/Marvel/etc).
+6. Mix demand levels: include some obvious popular searches AND some niche/specific ones.
+7. Think about WHO buys this product and WHY — friend's wedding gift, father's day, summer vacation, etc.
+
+OUTPUT FORMAT — strict JSON, no prose:
+{
+  "variants": [
+    "phrase 1",
+    "phrase 2",
+    ... 25 items
+  ]
+}`,
+    messages: [
+      {
+        role: "user",
+        content: `Seed keyword: ${opts.seedKeyword}
+Product type: ${opts.productType}
+${audienceLine}
+${styleLine}
+
+Generate 25 long-tail Etsy search variants.`,
+      },
+      { role: "assistant", content: "{" },
+    ],
+  });
+
+  const raw = "{" + extractText(msg);
+  try {
+    const parsed = safeParseJson<{ variants: string[] }>(raw);
+    return (parsed.variants ?? [])
+      .map((v) => (v ?? "").toString().trim().toLowerCase())
+      .filter((v) => v.length >= 3 && v.length <= 80)
+      .slice(0, 30);
+  } catch {
+    return [];
+  }
 }
 
 // ─── Optional — Category classifier (Haiku, text-only) ──────────────
@@ -372,6 +538,8 @@ export interface GenerationInput {
   competitors: CompetitorBrief[];
   /** High-frequency phrases + tags extracted from the competitors. */
   anchorKeywords: AnchorKeywords;
+  /** Buyer-search keywords scored against live Etsy demand. */
+  buyerKeywords: BuyerKeywordScore[];
   /** Required + optional attribute slots for this category. */
   attributeSchema: {
     name: string;
@@ -551,6 +719,33 @@ ${tagsBlock || "   (no high-frequency tags found)"}
 `
       : "";
 
+  // Buyer-language anchors — long-tail variants we brainstormed and then
+  // scored against real Etsy demand. These are HIGHER signal than the
+  // competitor-derived anchors because they reflect what buyers actually
+  // type, not just what other sellers wrote.
+  const buyerKeywordsBlock =
+    input.buyerKeywords.length > 0
+      ? `# BUYER-SEARCH KEYWORDS — real demand data per phrase
+
+We brainstormed long-tail variants of the seed keyword and pulled live
+demand stats for each from Etsy. The list below is sorted by a "buyer
+score" combining listing count + top-favourites + saturation penalty.
+
+These are HIGHER signal than the anchor keywords above — these are
+phrases buyers ACTUALLY TYPE. Prioritise the top 5-6 of these when
+selecting tags. Front-load 1-2 of the top phrases in the title if they
+fit naturally.
+
+${input.buyerKeywords
+  .slice(0, 12)
+  .map(
+    (b) =>
+      `   • "${b.keyword}" — buyerScore ${b.buyerScore}/100 · ${b.totalListings.toLocaleString()} listings · ${b.avgTopFavorites} avg top-favs · ${b.tier}`,
+  )
+  .join("\n")}
+`
+      : "";
+
   const attributeBlock = input.attributeSchema
     .map((a) => {
       const vals =
@@ -589,7 +784,7 @@ ${input.style ? `Style: ${input.style}` : "Style: (infer from images)"}
 # Variations & options
 ${variationsBlock.join("\n")}
 
-${anchorBlock}# Live Etsy ranking data — full top 20 for this keyword space
+${anchorBlock}${buyerKeywordsBlock}# Live Etsy ranking data — full top 20 for this keyword space
 
 Reference only — DON'T copy phrasing. Identify recurring keywords and write something ORIGINAL that targets the same buyer better.
 

@@ -10,12 +10,15 @@ import {
   getSellerTaxonomy,
   toCompetitorBriefs,
   analyzeKeywordFrequencies,
+  evaluateKeywordCandidates,
   getTagDemandStatsBatch,
   type TagDemand,
   type AnchorKeywords,
+  type BuyerKeywordScore,
 } from "@/lib/services/etsy-api.service";
 import {
   extractSearchContext,
+  expandSearchVariants,
   checkProductCompliance,
   generateListing,
   validateListing,
@@ -113,19 +116,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ─── Stage 2 — Sonnet vision compliance gate ───────────────────────
+  // ─── Stage 2 — Sonnet vision compliance + Haiku buyer-keyword
+  //                brainstorm (parallel — both independent) ─────────────
 
   let compliance: ComplianceVerdict;
-  // If no images are provided, compliance is text-only (less powerful).
-  // We still run it so we catch obvious trademark words in the title.
+  let buyerVariants: string[] = [];
   try {
-    compliance = await checkProductCompliance({
-      title: payload.aliExpressTitle,
-      notes: payload.notes ?? undefined,
-      images,
-    });
+    [compliance, buyerVariants] = await Promise.all([
+      checkProductCompliance({
+        title: payload.aliExpressTitle,
+        notes: payload.notes ?? undefined,
+        images,
+      }),
+      // Best-effort — if the brainstorm fails we still proceed with just
+      // the competitor-derived anchors.
+      expandSearchVariants({
+        seedKeyword: context.searchKeyword,
+        productType: context.productType,
+        audienceHint: context.audienceHint || undefined,
+        styleHint: context.styleHint || undefined,
+      }).catch(() => [] as string[]),
+    ]);
   } catch (err) {
-    // If compliance check fails, don't proceed — better safe than sorry.
     return error(
       `Compliance check failed: ${err instanceof Error ? err.message : "unknown"}`,
       502,
@@ -150,6 +162,8 @@ export async function POST(request: NextRequest) {
         attributesAvailable: 0,
       },
       listing: null,
+      anchorKeywords: { topPhrases: [], topTags: [], totalListings: 0 },
+      buyerKeywords: [] as BuyerKeywordScore[],
       textCompliance: null,
       generatedAt: new Date().toISOString(),
     });
@@ -165,10 +179,23 @@ export async function POST(request: NextRequest) {
     topTags: [],
     totalListings: 0,
   };
+  // Buyer-language anchors — scored variants we'll feed into generation.
+  // Populated in parallel with the rest of the research.
+  let buyerKeywords: BuyerKeywordScore[] = [];
   try {
-    const listings = await searchActiveListings(context.searchKeyword, 20);
+    // Search + (in parallel) score the buyer-language variants. Both run
+    // against the Etsy API and share the token bucket; total wall time
+    // ≈ max of the two, not sum.
+    const [listings, scoredVariants] = await Promise.all([
+      searchActiveListings(context.searchKeyword, 20),
+      buyerVariants.length > 0
+        ? evaluateKeywordCandidates(buyerVariants).catch(() => [])
+        : Promise.resolve([] as BuyerKeywordScore[]),
+    ]);
     competitors = toCompetitorBriefs(listings);
     anchorKeywords = analyzeKeywordFrequencies(listings, 10);
+    // Keep the top 12 — Sonnet sees them in its prompt.
+    buyerKeywords = scoredVariants.slice(0, 12);
 
     category = await inferCategoryFromListings(
       listings,
@@ -251,6 +278,7 @@ export async function POST(request: NextRequest) {
       category: { id: category.id, name: category.name, path: category.path },
       competitors,
       anchorKeywords,
+      buyerKeywords,
       attributeSchema,
       audience: context.audienceHint || undefined,
       style: context.styleHint || undefined,
@@ -328,6 +356,7 @@ export async function POST(request: NextRequest) {
       attributesAvailable: attributeSchema.length,
     },
     anchorKeywords,
+    buyerKeywords,
     textCompliance,
     tagIntelligence,
     // Echo back what the employee provided so the UI can show "your inputs"

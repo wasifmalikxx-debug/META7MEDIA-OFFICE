@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Sparkles,
   Wand2,
   Copy,
@@ -22,6 +27,7 @@ import {
   Heart,
   TrendingUp,
   ImageIcon,
+  Shuffle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SeoImageUploader, type UploadedImage } from "./image-uploader";
@@ -101,12 +107,20 @@ interface AnchorKeywords {
   topTags: KeywordFrequency[];
   totalListings: number;
 }
+interface BuyerKeywordScore {
+  keyword: string;
+  totalListings: number;
+  avgTopFavorites: number;
+  tier: TagTier;
+  buyerScore: number; // 0-100
+}
 
 interface GenerateResponse {
   compliance: ComplianceVerdict;
   listing: GeneratedListing | null;
   research: ResearchSummary;
   anchorKeywords?: AnchorKeywords;
+  buyerKeywords?: BuyerKeywordScore[];
   textCompliance: TextCompliance | null;
   tagIntelligence?: TagDemand[];
   inputs?: UserInputsEcho;
@@ -454,7 +468,11 @@ export function SeoAutopilotView() {
         result.compliance.verdict !== "BLOCKED" &&
         result.listing && (
           <>
-            <ResultCard data={result} userImages={images} />
+            <ResultCard
+              key={result.generatedAt}
+              data={result}
+              userImages={images}
+            />
             <InsightsCard data={result} />
           </>
         )}
@@ -1011,6 +1029,15 @@ function ResultCard({
   userImages: UploadedImage[];
 }) {
   const { listing, compliance, research, textCompliance, inputs } = data;
+
+  // Mutable copies of tags + intel so the swap-tag UI can rewrite them
+  // in place. The parent passes `key={data.generatedAt}` so a fresh
+  // generation remounts this component and re-initializes state.
+  const [tags, setTags] = useState<string[]>(listing?.tags ?? []);
+  const [tagIntel, setTagIntel] = useState<TagDemand[]>(
+    data.tagIntelligence ?? [],
+  );
+
   if (!listing) return null;
 
   const hasVariations =
@@ -1018,6 +1045,25 @@ function ResultCard({
   const hasPricing =
     inputs?.price != null || inputs?.quantity != null || !!inputs?.sku;
   const hasDelivery = !!inputs?.processingDays || !!inputs?.returnsPolicy;
+
+  function handleSwapTag(oldTag: string, newSuggestion: SwapSuggestion) {
+    setTags((prev) => prev.map((t) => (t === oldTag ? newSuggestion.tag : t)));
+    setTagIntel((prev) => {
+      const without = prev.filter((t) => t.tag !== oldTag);
+      // Add a synthesised TagDemand record for the new tag using the
+      // demand data the API returned.
+      const next: TagDemand = {
+        tag: newSuggestion.tag,
+        totalListings: newSuggestion.totalListings,
+        topFavorites: [],
+        avgTopFavorites: newSuggestion.avgTopFavorites,
+        demandScore: 0,
+        tier: newSuggestion.tier,
+      };
+      return [...without, next];
+    });
+    toast.success("Tag swapped", { description: `${oldTag} → ${newSuggestion.tag}` });
+  }
 
   return (
     <Card className="border shadow-none">
@@ -1097,7 +1143,14 @@ function ResultCard({
 
         <Divider />
 
-        <TagsRow tags={listing.tags} intelligence={data.tagIntelligence ?? []} />
+        <TagsRow
+          tags={tags}
+          intelligence={tagIntel}
+          productTitle={research.searchKeyword}
+          productType={research.productType}
+          category={research.categoryPath}
+          onSwap={handleSwapTag}
+        />
 
         {listing.materials.length > 0 && (
           <Row
@@ -1421,21 +1474,34 @@ function ChipDisplay({
   );
 }
 
+interface SwapSuggestion {
+  tag: string;
+  reason: string;
+  totalListings: number;
+  avgTopFavorites: number;
+  tier: TagTier;
+}
+
 function TagsRow({
   tags,
   intelligence,
+  productTitle,
+  productType,
+  category,
+  onSwap,
 }: {
   tags: string[];
   intelligence: TagDemand[];
+  productTitle: string;
+  productType: string;
+  category: string;
+  onSwap: (oldTag: string, newSuggestion: SwapSuggestion) => void;
 }) {
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const intelByTag = new Map(intelligence.map((i) => [i.tag, i]));
 
-  async function copyOne(tag: string, idx: number) {
-    await navigator.clipboard.writeText(tag);
-    setCopiedIdx(idx);
-    toast.success(`Copied "${tag}"`);
-    setTimeout(() => setCopiedIdx(null), 1500);
+  async function copyAll() {
+    await navigator.clipboard.writeText(tags.join(", "));
+    toast.success(`Copied all ${tags.length} tags`);
   }
 
   return (
@@ -1444,53 +1510,261 @@ function TagsRow({
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           Tags{" "}
           <span className="text-muted-foreground/60 font-normal normal-case tracking-normal">
-            · {tags.length}/13
+            · {tags.length}/13 · tap to copy · ↻ to swap
           </span>
         </p>
-        <CopyButton value={tags.join(", ")} label="all tags" />
+        <button
+          type="button"
+          onClick={copyAll}
+          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium border border-border hover:bg-muted/60 text-foreground/80 transition-colors"
+        >
+          <Copy className="size-3" /> Copy all
+        </button>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {tags.map((tag, idx) => {
-          const isLong = tag.length > TAG_MAX;
-          const copied = copiedIdx === idx;
           const intel = intelByTag.get(tag);
           return (
-            <button
-              key={`${tag}-${idx}`}
-              type="button"
-              onClick={() => copyOne(tag, idx)}
-              className={`inline-flex items-center gap-1.5 rounded-full pl-2.5 pr-1.5 py-1 text-[11px] font-medium ring-1 transition-colors ${
-                isLong
-                  ? "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 ring-rose-300/50"
-                  : copied
-                    ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 ring-emerald-300/50"
-                    : "bg-card hover:bg-muted/50 text-foreground/85 ring-border"
-              }`}
-              title={
-                intel
-                  ? `${tag} · ${formatCount(intel.totalListings)} listings · avg ${intel.avgTopFavorites} favs`
-                  : `Copy "${tag}"`
-              }
-            >
-              {copied ? (
-                <Check className="size-3 text-emerald-600" />
-              ) : (
-                <Hash className="size-3 opacity-40" />
-              )}
-              <span>{tag}</span>
-              {intel && (
-                <span
-                  className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ring-1 ${TIER_STYLE[intel.tier]}`}
-                >
-                  <span>{TIER_GLYPH[intel.tier]}</span>
-                  <span>{formatCount(intel.totalListings)}</span>
-                </span>
-              )}
-            </button>
+            <TagPillWithSwap
+              key={`${tag}-${idx}-${tag.length}`}
+              tag={tag}
+              intel={intel}
+              productTitle={productTitle}
+              productType={productType}
+              category={category}
+              existingTags={tags}
+              onSwap={(suggestion) => onSwap(tag, suggestion)}
+            />
           );
         })}
       </div>
     </div>
+  );
+}
+
+function TagPillWithSwap({
+  tag,
+  intel,
+  productTitle,
+  productType,
+  category,
+  existingTags,
+  onSwap,
+}: {
+  tag: string;
+  intel?: TagDemand;
+  productTitle: string;
+  productType: string;
+  category: string;
+  existingTags: string[];
+  onSwap: (suggestion: SwapSuggestion) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<SwapSuggestion[] | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const isLong = tag.length > TAG_MAX;
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(tag);
+    setCopied(true);
+    toast.success(`Copied "${tag}"`);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function fetchSuggestions() {
+    setLoading(true);
+    setFetchError(null);
+    setSuggestions(null);
+    try {
+      const res = await fetch("/api/seo-autopilot/swap-tag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentTag: tag,
+          productTitle,
+          productType,
+          category,
+          existingTags,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? `Failed (${res.status})`);
+      }
+      const data = await res.json();
+      setSuggestions(data.suggestions ?? []);
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handlePickSuggestion(s: SwapSuggestion) {
+    onSwap(s);
+    setOpen(false);
+    setSuggestions(null);
+    setFetchError(null);
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) {
+          setSuggestions(null);
+          setFetchError(null);
+        }
+      }}
+    >
+      <div
+        className={`inline-flex items-center gap-1 rounded-full ring-1 transition-colors ${
+          isLong
+            ? "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 ring-rose-300/50"
+            : copied
+              ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 ring-emerald-300/50"
+              : "bg-card hover:bg-muted/50 text-foreground/85 ring-border"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1.5 pl-2.5 py-1 text-[11px] font-medium"
+          title={
+            intel
+              ? `${tag} · ${formatCount(intel.totalListings)} listings · avg ${intel.avgTopFavorites} favs · tap to copy`
+              : `Copy "${tag}"`
+          }
+        >
+          {copied ? (
+            <Check className="size-3 text-emerald-600" />
+          ) : (
+            <Hash className="size-3 opacity-40" />
+          )}
+          <span>{tag}</span>
+          {intel && (
+            <span
+              className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ring-1 ${TIER_STYLE[intel.tier]}`}
+            >
+              <span>{TIER_GLYPH[intel.tier]}</span>
+              <span>{formatCount(intel.totalListings)}</span>
+            </span>
+          )}
+        </button>
+        <PopoverTrigger
+          render={
+            <button
+              type="button"
+              className="size-6 rounded-full hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center mr-0.5"
+              title="Suggest replacement tags"
+            />
+          }
+        >
+          <Shuffle className="size-3" />
+        </PopoverTrigger>
+      </div>
+      <PopoverContent
+        align="start"
+        className="w-80 p-3 space-y-3"
+      >
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+            Replace this tag
+          </p>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold">&ldquo;{tag}&rdquo;</span>
+            {intel && (
+              <span
+                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ring-1 ${TIER_STYLE[intel.tier]}`}
+              >
+                <span>{TIER_GLYPH[intel.tier]}</span>
+                <span>{formatCount(intel.totalListings)}</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {!suggestions && !loading && !fetchError && (
+          <Button
+            type="button"
+            onClick={fetchSuggestions}
+            size="sm"
+            className="w-full h-8 gap-1.5 text-xs"
+          >
+            <Shuffle className="size-3" />
+            Suggest 3 alternatives
+          </Button>
+        )}
+
+        {loading && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+            <Loader2 className="size-3.5 animate-spin" />
+            Finding better alternatives…
+          </div>
+        )}
+
+        {fetchError && (
+          <div className="text-xs text-rose-600 dark:text-rose-400 py-2">
+            {fetchError}
+            <button
+              type="button"
+              onClick={fetchSuggestions}
+              className="ml-2 underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {suggestions && suggestions.length === 0 && (
+          <p className="text-xs text-muted-foreground py-2">
+            No good alternatives found — your current tag may already be the best fit.
+          </p>
+        )}
+
+        {suggestions && suggestions.length > 0 && (
+          <ul className="space-y-1.5">
+            {suggestions.map((s) => (
+              <li key={s.tag}>
+                <button
+                  type="button"
+                  onClick={() => handlePickSuggestion(s)}
+                  className="w-full text-left rounded-md border bg-card hover:bg-muted/40 px-2.5 py-2 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <span className="text-sm font-semibold">{s.tag}</span>
+                    <span
+                      className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ring-1 ${TIER_STYLE[s.tier]}`}
+                    >
+                      <span>{TIER_GLYPH[s.tier]}</span>
+                      <span>{formatCount(s.totalListings)}</span>
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {s.reason}
+                  </p>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {suggestions && (
+          <button
+            type="button"
+            onClick={fetchSuggestions}
+            disabled={loading}
+            className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {loading ? "Regenerating…" : "Try 3 new ones"}
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1587,14 +1861,17 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
   const [open, setOpen] = useState(false);
   const tagIntel = data.tagIntelligence ?? [];
   const anchors = data.anchorKeywords;
+  const buyerKeywords = data.buyerKeywords ?? [];
   const hasAnchors =
     !!anchors &&
     (anchors.topPhrases.length > 0 || anchors.topTags.length > 0);
+  const hasBuyerKeywords = buyerKeywords.length > 0;
   const hasInsights =
     tagIntel.length > 0 ||
     data.research.topCompetitors.length > 0 ||
     data.listing?.rationale.keywordFocus ||
-    hasAnchors;
+    hasAnchors ||
+    hasBuyerKeywords;
 
   if (!hasInsights) return null;
 
@@ -1610,7 +1887,7 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
             <TrendingUp className="size-4 text-muted-foreground" />
             <p className="text-sm font-semibold">More insights</p>
             <p className="text-[11px] text-muted-foreground">
-              Anchor keywords · tag demand · why this works · competitors
+              Buyer searches · anchors · tag demand · competitors
             </p>
           </div>
           <ChevronDown
@@ -1620,6 +1897,9 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
 
         {open && (
           <div className="mt-5 space-y-6">
+            {hasBuyerKeywords && (
+              <BuyerKeywordsSection buyerKeywords={buyerKeywords} />
+            )}
             {hasAnchors && anchors && <AnchorKeywordsSection anchors={anchors} />}
             {tagIntel.length > 0 && <TagIntelligenceTable intel={tagIntel} />}
             {data.listing?.rationale.keywordFocus && (
@@ -1634,6 +1914,64 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function BuyerKeywordsSection({
+  buyerKeywords,
+}: {
+  buyerKeywords: BuyerKeywordScore[];
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Buyer-search keywords
+        </p>
+        <p className="text-[11px] text-muted-foreground/80 leading-snug">
+          Long-tail variants Autopilot brainstormed, scored against live
+          Etsy demand. These are what real buyers TYPE into the search
+          bar — higher signal than what competitors wrote.
+        </p>
+      </div>
+      <div className="rounded-md border overflow-hidden">
+        <table className="w-full text-[12px]">
+          <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 font-semibold text-left">Phrase</th>
+              <th className="px-3 py-2 font-semibold text-right">Listings</th>
+              <th className="px-3 py-2 font-semibold text-right">Top favs</th>
+              <th className="px-3 py-2 font-semibold text-right">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {buyerKeywords.map((kw) => (
+              <tr key={kw.keyword} className="border-t hover:bg-muted/20">
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`size-5 rounded-full flex items-center justify-center text-[10px] ring-1 ${TIER_STYLE[kw.tier]}`}
+                    >
+                      {TIER_GLYPH[kw.tier]}
+                    </span>
+                    <span className="font-medium">{kw.keyword}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {formatCount(kw.totalListings)}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                  {kw.avgTopFavorites.toLocaleString()}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <DemandBar score={kw.buyerScore} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
