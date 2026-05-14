@@ -230,9 +230,11 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
 
   // ─── User history state ─────────────────────────────────────────
-  // Last 30 days of THIS user's own generations. Used by the
-  // "Your recent generations" section.
+  // Current PKT calendar month of THIS user's own generations. Used
+  // by the "Your recent generations" section. Resets on the 1st of
+  // every month at PKT midnight.
   const [history, setHistory] = useState<MyHistoryEntry[]>([]);
+  const [historyWindowLabel, setHistoryWindowLabel] = useState<string>("");
   const [historyLoading, setHistoryLoading] = useState(true);
 
   useEffect(() => {
@@ -259,6 +261,8 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
         const data = await res.json();
         if (cancelled) return;
         if (Array.isArray(data.entries)) setHistory(data.entries);
+        if (typeof data.windowLabel === "string")
+          setHistoryWindowLabel(data.windowLabel);
       } catch {
         // Silent — history section just stays empty
       } finally {
@@ -485,6 +489,7 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
         {showInput && !historyLoading && history.length > 0 && (
           <MyHistorySection
             entries={history}
+            windowLabel={historyWindowLabel}
             onRestore={handleRestoreHistory}
           />
         )}
@@ -2832,9 +2837,11 @@ function CompetitorsBlock({
  */
 function MyHistorySection({
   entries,
+  windowLabel,
   onRestore,
 }: {
   entries: MyHistoryEntry[];
+  windowLabel: string;
   onRestore: (entry: MyHistoryEntry) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -2865,7 +2872,7 @@ function MyHistorySection({
                 Your recent generations
               </p>
               <h3 className="text-[17px] font-bold tracking-tight leading-tight mt-0.5">
-                Last 30 days · {entries.length}{" "}
+                {windowLabel || "This month"} · {entries.length}{" "}
                 {entries.length === 1 ? "listing" : "listings"}
               </h3>
               <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
@@ -2895,9 +2902,10 @@ function MyHistorySection({
           ))}
 
           <p className="text-[10px] text-muted-foreground/70 leading-snug mt-4 pt-3 border-t border-border/40">
-            Generations older than 30 days drop off this list. Tap{" "}
-            <strong>Restore</strong> to load any past listing back into the
-            result panel — no new quota slot used.
+            This list shows the current Pakistan calendar month and resets
+            cleanly at midnight on the 1st. Tap <strong>Restore</strong> to
+            load any past listing back into the result panel — no new quota
+            slot used.
           </p>
         </div>
       )}

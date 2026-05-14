@@ -50,6 +50,55 @@ export function nextPktMidnight(now: Date = new Date()): Date {
   return new Date(tomorrowAsUtcMidnight.getTime() - 5 * 60 * 60 * 1000);
 }
 
+/**
+ * Returns the actual UTC moment when the CURRENT calendar month (in
+ * Pakistan time) started. Used to filter "Your recent generations" to
+ * month-to-date — list resets clean on the 1st of every PKT month.
+ *
+ * Example: if it's Nov 14 in PKT, returns the UTC instant for Nov 1
+ * 00:00 PKT (= Oct 31 19:00 UTC). Anything with `createdAt >=` that is
+ * "this month" in the user's mental model.
+ */
+export function pktCurrentMonthStartUtc(now: Date = new Date()): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const y = parseInt(parts.find((p) => p.type === "year")!.value, 10);
+  const m = parseInt(parts.find((p) => p.type === "month")!.value, 10);
+  // Day-1 in PKT (UTC+5) → subtract 5h from the day-1-at-UTC-midnight.
+  return new Date(Date.UTC(y, m - 1, 1) - 5 * 60 * 60 * 1000);
+}
+
+/**
+ * Returns the next PKT-month-start moment (when the history list will
+ * next clear). For Nov 14 PKT, returns Dec 1 00:00 PKT in UTC.
+ */
+export function nextPktMonthStartUtc(now: Date = new Date()): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const y = parseInt(parts.find((p) => p.type === "year")!.value, 10);
+  const m = parseInt(parts.find((p) => p.type === "month")!.value, 10);
+  // Month after the current one (m is 1-indexed; Date.UTC takes 0-indexed)
+  return new Date(Date.UTC(y, m, 1) - 5 * 60 * 60 * 1000);
+}
+
+/**
+ * Human label for the current PKT month — used in the UI header so the
+ * user sees "November 2026" instead of an opaque "this month".
+ */
+export function pktCurrentMonthLabel(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Karachi",
+    month: "long",
+    year: "numeric",
+  }).format(now);
+}
+
 export interface UsageSummary {
   count: number;
   limit: number;
@@ -784,25 +833,42 @@ export interface MyHistoryEntry {
   listing: SavedListing | null;
 }
 
+export interface MyHistoryResponse {
+  /** Human label for the active window e.g. "November 2026" */
+  windowLabel: string;
+  /** UTC instant when this window started (PKT month start) */
+  windowStartIso: string;
+  /** UTC instant when this window will end (next PKT month start) */
+  windowEndIso: string;
+  entries: MyHistoryEntry[];
+}
+
 /**
- * Pull a user's own generations from the last 30 days, newest first.
+ * Pull a user's own generations from the CURRENT PKT calendar month,
+ * newest first. The list resets cleanly at PKT midnight on the 1st of
+ * every month — gens from previous months disappear from this view
+ * (they're still in the DB for CEO audit).
+ *
  * Used by /api/seo-autopilot/my-history so employees can revisit + copy
  * past listings without burning a fresh quota slot.
  */
 export async function getMyHistory(
   userId: string,
-  limit = 30,
-): Promise<MyHistoryEntry[]> {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  limit = 200,
+): Promise<MyHistoryResponse> {
+  const monthStart = pktCurrentMonthStartUtc();
+  const monthEnd = nextPktMonthStartUtc();
+
   const rows = await prisma.seoAutopilotLog.findMany({
     where: {
       userId,
-      createdAt: { gte: thirtyDaysAgo },
+      createdAt: { gte: monthStart },
     },
     orderBy: { createdAt: "desc" },
     take: limit,
   });
-  return rows.map((r) => ({
+
+  const entries: MyHistoryEntry[] = rows.map((r) => ({
     id: r.id,
     createdAt: r.createdAt.toISOString(),
     sourceTitle: r.sourceTitle,
@@ -821,4 +887,11 @@ export async function getMyHistory(
     variants: r.variants ?? [],
     listing: (r.listingJson as SavedListing | null) ?? null,
   }));
+
+  return {
+    windowLabel: pktCurrentMonthLabel(),
+    windowStartIso: monthStart.toISOString(),
+    windowEndIso: monthEnd.toISOString(),
+    entries,
+  };
 }
