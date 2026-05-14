@@ -24,24 +24,34 @@
 
 const ETSY_BASE = "https://openapi.etsy.com/v3/application";
 
-// ─── Tiny token-bucket so concurrent generations don't exceed 5 QPS ───
-// We size the bucket at 4 (one below the cap) for headroom. Each request
-// takes a token and refills on a 250 ms cadence (= 4 tokens/sec).
+// ─── Token bucket — keeps us under Etsy's 5 QPS cap ──────────────────
+//
+// Bucket cap = 1, refill = 1 token per 300 ms ⇒ sustained 3.3 QPS with
+// NO initial burst. The earlier "cap = 4" version let a single
+// generation fire 4 requests in <1 ms, which combined with the natural
+// refill rate spiked to ~8 requests in the first second and tripped
+// Etsy's per-second limit.
+//
+// Sustained 3.3 QPS still finishes a full generation (~40 Etsy calls
+// at peak: search + taxonomy + properties + 13 tag intel + 25 buyer-
+// keyword evaluations) in ~12 seconds, comfortably under the 90 s route
+// timeout.
 
-let tokens = 4;
+let tokens = 1;
 let lastRefill = Date.now();
+const BUCKET_CAP = 1;
+const REFILL_MS = 300;
 
 async function takeToken(): Promise<void> {
   while (tokens <= 0) {
-    // Refill on a fixed cadence.
     const now = Date.now();
     const elapsed = now - lastRefill;
-    if (elapsed >= 250) {
-      tokens = Math.min(4, tokens + Math.floor(elapsed / 250));
+    if (elapsed >= REFILL_MS) {
+      tokens = Math.min(BUCKET_CAP, tokens + Math.floor(elapsed / REFILL_MS));
       lastRefill = now;
     }
     if (tokens <= 0) {
-      await new Promise((r) => setTimeout(r, 60));
+      await new Promise((r) => setTimeout(r, 80));
     }
   }
   tokens--;
@@ -68,8 +78,6 @@ async function etsyFetch<T>(
   // Etsy's current v3 auth format. See header doc at top of file.
   const apiKey = `${keystring}:${sharedSecret}`;
 
-  await takeToken();
-
   const url = new URL(`${ETSY_BASE}${path}`);
   if (searchParams) {
     for (const [k, v] of Object.entries(searchParams)) {
@@ -78,23 +86,51 @@ async function etsyFetch<T>(
     }
   }
 
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: { "x-api-key": apiKey, Accept: "application/json" },
-    // Always go fresh — Etsy's data changes constantly and we want true
-    // ranking signals each generation. Caching at this layer would hide
-    // changes from the AI's context window.
-    cache: "no-store",
-  });
+  // Retry-with-backoff on 429 (and 5xx). Cold-start instances or
+  // concurrent Vercel functions can briefly exceed the global 5 QPS
+  // even with our token bucket — the retry catches that. Backoff:
+  // 800 ms → 1.6 s → 3.2 s.
+  const MAX_ATTEMPTS = 4;
+  let lastError: Error | null = null;
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Etsy API ${res.status} on ${path}: ${body.slice(0, 200) || res.statusText}`,
-    );
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    await takeToken();
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: { "x-api-key": apiKey, Accept: "application/json" },
+      // Always go fresh — Etsy's data changes constantly and we want
+      // true ranking signals each generation. Caching at this layer
+      // would hide changes from the AI's context window.
+      cache: "no-store",
+    });
+
+    if (res.status === 429 || res.status >= 500) {
+      // Etsy is asking us to slow down (or had an internal glitch).
+      // Wait, then retry.
+      const backoffMs = 800 * Math.pow(2, attempt);
+      const body = await res.text().catch(() => "");
+      lastError = new Error(
+        `Etsy API ${res.status} on ${path} (attempt ${attempt + 1}/${MAX_ATTEMPTS}): ${body.slice(0, 120) || res.statusText}`,
+      );
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+      throw lastError;
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `Etsy API ${res.status} on ${path}: ${body.slice(0, 200) || res.statusText}`,
+      );
+    }
+
+    return (await res.json()) as T;
   }
 
-  return (await res.json()) as T;
+  throw lastError ?? new Error(`Etsy API exhausted retries on ${path}`);
 }
 
 // ─── Types — only the fields we use ───────────────────────────────────
