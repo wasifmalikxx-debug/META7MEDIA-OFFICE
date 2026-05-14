@@ -52,6 +52,78 @@ const MODEL_GENERATOR = "claude-sonnet-4-5-20250929";
 const MODEL_COMPLIANCE = "claude-haiku-4-5-20251001";
 const MODEL_VALIDATOR = "claude-haiku-4-5-20251001"; // Haiku — cheap text checks
 
+// ─── Cost tracking ──────────────────────────────────────────────────
+//
+// Every Anthropic call returns `msg.usage` with token counts. We use
+// these + the model's pricing to compute the actual USD cost per call,
+// then sum across all calls in a generation request. The route passes
+// a CostAccumulator into each helper; helpers push their per-call
+// usage in after every API response.
+//
+// Pricing — May 2026, per Anthropic's published rates. Values are
+// dollars per MILLION tokens.
+const PRICING_PER_M = {
+  sonnet: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  haiku: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+} as const;
+
+type AnthropicModelKind = "sonnet" | "haiku";
+
+function modelKindFromId(modelId: string): AnthropicModelKind {
+  return modelId.includes("sonnet") ? "sonnet" : "haiku";
+}
+
+export interface CostAccumulator {
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+}
+
+export function createCostAccumulator(): CostAccumulator {
+  return {
+    totalCostUsd: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalCacheReadTokens: 0,
+    totalCacheWriteTokens: 0,
+  };
+}
+
+/**
+ * Compute the actual USD cost of a single Anthropic message response
+ * and push the token + cost numbers into the accumulator. The token
+ * counts on `msg.usage` are authoritative — Anthropic bills off these
+ * exactly. cache_read_input_tokens and cache_creation_input_tokens may
+ * be undefined on responses with no caching activity (treat as 0).
+ */
+function trackUsage(
+  accum: CostAccumulator | undefined,
+  msg: Anthropic.Message,
+  model: AnthropicModelKind,
+): void {
+  if (!accum) return;
+  const u = msg.usage;
+  const inputTokens = u.input_tokens ?? 0;
+  const outputTokens = u.output_tokens ?? 0;
+  const cacheRead = u.cache_read_input_tokens ?? 0;
+  const cacheWrite = u.cache_creation_input_tokens ?? 0;
+  const p = PRICING_PER_M[model];
+  const costUsd =
+    (inputTokens * p.input +
+      outputTokens * p.output +
+      cacheRead * p.cacheRead +
+      cacheWrite * p.cacheWrite) /
+    1_000_000;
+
+  accum.totalCostUsd += costUsd;
+  accum.totalInputTokens += inputTokens;
+  accum.totalOutputTokens += outputTokens;
+  accum.totalCacheReadTokens += cacheRead;
+  accum.totalCacheWriteTokens += cacheWrite;
+}
+
 // ─── Etsy listing rules — the source of truth for output validation ──
 
 export const ETSY_LIMITS = {
@@ -114,6 +186,7 @@ Rules:
 
 export async function extractSearchContext(
   rawTitle: string,
+  accum?: CostAccumulator,
 ): Promise<ExtractedContext> {
   const userPrompt = `AliExpress / source title:\n${rawTitle}`;
 
@@ -127,6 +200,7 @@ export async function extractSearchContext(
       { role: "assistant", content: "{" },
     ],
   });
+  trackUsage(accum, msg, modelKindFromId(MODEL_VALIDATOR));
 
   const raw = "{" + extractText(msg);
   const parsed = safeParseJson<ExtractedContext>(raw);
@@ -241,12 +315,15 @@ Suggest 3 replacement tags.`,
  * Used by the SEO Autopilot pipeline as a parallel pass alongside the
  * standard competitor analysis.
  */
-export async function expandSearchVariants(opts: {
-  seedKeyword: string;
-  productType: string;
-  audienceHint?: string;
-  styleHint?: string;
-}): Promise<string[]> {
+export async function expandSearchVariants(
+  opts: {
+    seedKeyword: string;
+    productType: string;
+    audienceHint?: string;
+    styleHint?: string;
+  },
+  accum?: CostAccumulator,
+): Promise<string[]> {
   const audienceLine = opts.audienceHint
     ? `Target audience hint: ${opts.audienceHint}`
     : "";
@@ -288,6 +365,7 @@ Generate 25 long-tail Etsy search variants.`,
       { role: "assistant", content: "{" },
     ],
   });
+  trackUsage(accum, msg, modelKindFromId(MODEL_VALIDATOR));
 
   const raw = "{" + extractText(msg);
   try {
@@ -314,11 +392,14 @@ Generate 25 long-tail Etsy search variants.`,
  *
  * Returns null if Haiku can't decide.
  */
-export async function pickCategoryFromCandidates(opts: {
-  title: string;
-  productType: string;
-  candidates: Array<{ id: number; name: string; path: string }>;
-}): Promise<number | null> {
+export async function pickCategoryFromCandidates(
+  opts: {
+    title: string;
+    productType: string;
+    candidates: Array<{ id: number; name: string; path: string }>;
+  },
+  accum?: CostAccumulator,
+): Promise<number | null> {
   if (opts.candidates.length === 0) return null;
 
   const numbered = opts.candidates
@@ -345,6 +426,7 @@ Pick the best-fitting category id.`,
       { role: "assistant", content: "{" },
     ],
   });
+  trackUsage(accum, msg, modelKindFromId(MODEL_VALIDATOR));
 
   const raw = "{" + extractText(msg);
   try {
@@ -448,10 +530,13 @@ OUTPUT FORMAT — strict JSON, NO prose before/after, NO markdown fences
 
 If verdict is ALLOWED, "concerns" may be an empty array. If BLOCKED, every blocking concern MUST have severity "block". Each "details" field should be specific enough that the seller knows EXACTLY what part of the product or title triggered the concern.`;
 
-export async function checkProductCompliance(opts: {
-  title: string;
-  images: ImagePayload[];
-}): Promise<ComplianceVerdict> {
+export async function checkProductCompliance(
+  opts: {
+    title: string;
+    images: ImagePayload[];
+  },
+  accum?: CostAccumulator,
+): Promise<ComplianceVerdict> {
   const { title, images } = opts;
 
   // Build a multimodal content array: images first, then the text prompt.
@@ -489,6 +574,7 @@ Review the product image(s) above and the title. Decide whether this product is 
       { role: "assistant", content: "{" },
     ],
   });
+  trackUsage(accum, msg, modelKindFromId(MODEL_COMPLIANCE));
 
   const raw = "{" + extractText(msg);
   const parsed = safeParseJson<ComplianceVerdict>(raw);
@@ -749,6 +835,7 @@ Now produce the listing JSON.`;
 
 export async function generateListing(
   input: GenerationInput,
+  accum?: CostAccumulator,
 ): Promise<GeneratedListing> {
   const userContent: ContentBlock[] = [];
 
@@ -780,6 +867,7 @@ export async function generateListing(
       { role: "assistant", content: "{" },
     ],
   });
+  trackUsage(accum, msg, modelKindFromId(MODEL_GENERATOR));
 
   const raw = "{" + extractText(msg);
   const parsed = safeParseJson<GeneratedListing>(raw);

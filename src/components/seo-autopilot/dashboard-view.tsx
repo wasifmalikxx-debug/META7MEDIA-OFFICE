@@ -1476,8 +1476,10 @@ function FooterNote({ limit }: { limit: number }) {
         <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
           Daily limit is <strong>{limit}</strong> generations per user (CEO
           unlimited). Resets at midnight Pakistan time. Cost numbers are{" "}
-          <strong>estimates</strong> — ~$0.04 per ALLOWED/REVIEW gen, ~$0.007
-          per BLOCKED. For the actual invoice see the Anthropic console.
+          <strong>actual</strong> — derived from Anthropic&apos;s{" "}
+          <code className="bg-muted/40 rounded px-1">usage</code> response on
+          every API call (input + output + cached tokens × current pricing).
+          Should match the Anthropic console to within a fraction of a cent.
         </p>
       </CardContent>
     </Card>

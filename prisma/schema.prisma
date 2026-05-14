@@ -982,7 +982,22 @@ model SeoAutopilotLog {
   generatedTitle String?  @db.VarChar(160)
   verdict        String   @db.VarChar(20)
   category       String?  @db.VarChar(200)
-  createdAt      DateTime @default(now())
+
+  // Actual Anthropic cost — captured from msg.usage on every call in
+  // the pipeline (Haiku context + Haiku brainstorm + Haiku compliance
+  // vision + Sonnet generation + optional Haiku category fallback).
+  // Null for rows logged before this column was added — the read path
+  // falls back to a verdict-based estimate for those.
+  actualCostUsd Float? @db.Real
+
+  // Token usage for transparency / debugging. Sum across every API
+  // call made for this generation. Null on historical rows.
+  inputTokens      Int?
+  outputTokens     Int?
+  cacheReadTokens  Int?
+  cacheWriteTokens Int?
+
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([createdAt])

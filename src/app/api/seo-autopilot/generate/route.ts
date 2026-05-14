@@ -19,6 +19,7 @@ import {
   checkProductCompliance,
   generateListing,
   pickCategoryFromCandidates,
+  createCostAccumulator,
   type ImagePayload,
   type ComplianceVerdict,
 } from "@/lib/services/anthropic.service";
@@ -155,11 +156,17 @@ export async function POST(request: NextRequest) {
 
   const images: ImagePayload[] = payload.images;
 
+  // Capture exact Anthropic cost across every API call in this request.
+  // Each helper trackUsage()'s its msg.usage into this accumulator;
+  // we log the total on the SeoAutopilotLog row at the end. Replaces
+  // the previous verdict-based estimate ($0.04 flat) with real numbers.
+  const costAccum = createCostAccumulator();
+
   // ─── Stage 1 — Haiku reads title ────────────────────────────────────
 
   let context;
   try {
-    context = await extractSearchContext(payload.aliExpressTitle);
+    context = await extractSearchContext(payload.aliExpressTitle, costAccum);
   } catch (err) {
     await refundQuotaIfStillPending();
     return error(
@@ -183,18 +190,24 @@ export async function POST(request: NextRequest) {
   let buyerVariants: string[] = [];
   try {
     [compliance, buyerVariants] = await Promise.all([
-      checkProductCompliance({
-        title: payload.aliExpressTitle,
-        images,
-      }),
+      checkProductCompliance(
+        {
+          title: payload.aliExpressTitle,
+          images,
+        },
+        costAccum,
+      ),
       // Best-effort — if the brainstorm fails we still proceed with just
       // the competitor-derived anchors.
-      expandSearchVariants({
-        seedKeyword: context.searchKeyword,
-        productType: context.productType,
-        audienceHint: context.audienceHint || undefined,
-        styleHint: context.styleHint || undefined,
-      }).catch(() => [] as string[]),
+      expandSearchVariants(
+        {
+          seedKeyword: context.searchKeyword,
+          productType: context.productType,
+          audienceHint: context.audienceHint || undefined,
+          styleHint: context.styleHint || undefined,
+        },
+        costAccum,
+      ).catch(() => [] as string[]),
     ]);
   } catch (err) {
     await refundQuotaIfStillPending();
@@ -215,6 +228,11 @@ export async function POST(request: NextRequest) {
       generatedTitle: null,
       verdict: "BLOCKED",
       category: null,
+      actualCostUsd: costAccum.totalCostUsd,
+      inputTokens: costAccum.totalInputTokens,
+      outputTokens: costAccum.totalOutputTokens,
+      cacheReadTokens: costAccum.totalCacheReadTokens,
+      cacheWriteTokens: costAccum.totalCacheWriteTokens,
     });
     return json({
       compliance,
@@ -284,11 +302,14 @@ export async function POST(request: NextRequest) {
         })),
       );
 
-      const pickedId = await pickCategoryFromCandidates({
-        title: payload.aliExpressTitle,
-        productType: context.productType,
-        candidates,
-      });
+      const pickedId = await pickCategoryFromCandidates(
+        {
+          title: payload.aliExpressTitle,
+          productType: context.productType,
+          candidates,
+        },
+        costAccum,
+      );
 
       if (pickedId) {
         const node = allNodes.find((n) => n.id === pickedId);
@@ -321,18 +342,21 @@ export async function POST(request: NextRequest) {
 
   let listing;
   try {
-    listing = await generateListing({
-      productBrief: payload.aliExpressTitle,
-      images,
-      category: { id: category.id, name: category.name, path: category.path },
-      competitors,
-      anchorKeywords,
-      buyerVariants,
-      audience: context.audienceHint || undefined,
-      style: context.styleHint || undefined,
-      sizes: payload.sizes,
-      variants: payload.variants,
-    });
+    listing = await generateListing(
+      {
+        productBrief: payload.aliExpressTitle,
+        images,
+        category: { id: category.id, name: category.name, path: category.path },
+        competitors,
+        anchorKeywords,
+        buyerVariants,
+        audience: context.audienceHint || undefined,
+        style: context.styleHint || undefined,
+        sizes: payload.sizes,
+        variants: payload.variants,
+      },
+      costAccum,
+    );
   } catch (err) {
     await refundQuotaIfStillPending();
     return error(
@@ -351,6 +375,11 @@ export async function POST(request: NextRequest) {
     generatedTitle: listing.title,
     verdict: compliance.verdict === "REVIEW" ? "REVIEW" : "ALLOWED",
     category: category.path,
+    actualCostUsd: costAccum.totalCostUsd,
+    inputTokens: costAccum.totalInputTokens,
+    outputTokens: costAccum.totalOutputTokens,
+    cacheReadTokens: costAccum.totalCacheReadTokens,
+    cacheWriteTokens: costAccum.totalCacheWriteTokens,
   });
 
   // ─── Stage 5 — Tag intelligence ────────────────────────────────────

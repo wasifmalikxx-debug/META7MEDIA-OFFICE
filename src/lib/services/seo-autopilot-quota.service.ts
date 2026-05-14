@@ -444,7 +444,13 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
 
   for (const log of logRows) {
     if (!log.user) continue;
-    const logCost = estimateGenerationCostUsd(log.verdict);
+    // Prefer the actual Anthropic invoice cost captured at generate
+    // time. Falls back to the verdict-based estimate only for old log
+    // rows written before token tracking was added.
+    const logCost =
+      typeof log.actualCostUsd === "number" && log.actualCostUsd > 0
+        ? log.actualCostUsd
+        : estimateGenerationCostUsd(log.verdict);
     // Anchor the log to a PKT calendar day (UTC midnight of that day).
     const logDayUtcMidnight = pktDateAsUtcMidnight(log.createdAt);
     const logDayTime = logDayUtcMidnight.getTime();
@@ -622,7 +628,11 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         : "ALLOWED") as RecentGeneration["verdict"],
     category: l.category,
     createdAt: l.createdAt.toISOString(),
-    estimatedCostUsd: estimateGenerationCostUsd(l.verdict),
+    // Actual Anthropic cost when available, else verdict-based estimate
+    estimatedCostUsd:
+      typeof l.actualCostUsd === "number" && l.actualCostUsd > 0
+        ? l.actualCostUsd
+        : estimateGenerationCostUsd(l.verdict),
   }));
 
   // ─── Build daily-trend series (oldest → newest, 7 points) ──────
@@ -687,6 +697,12 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
  * Insert a per-event log row. Called by /api/seo-autopilot/generate
  * right after the slot becomes permanent (i.e. won't be refunded).
  *
+ * The actualCostUsd + token columns come from the request's
+ * CostAccumulator (anthropic.service.ts). When present they replace the
+ * verdict-based estimate for everything downstream — dashboard totals,
+ * per-user spend, etc. Old log rows have nulls here and continue to
+ * use the estimate.
+ *
  * Best-effort: any failure is swallowed — logging must never break a
  * successful generation.
  */
@@ -696,6 +712,11 @@ export async function logGeneration(opts: {
   generatedTitle: string | null;
   verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
   category: string | null;
+  actualCostUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }): Promise<void> {
   try {
     await prisma.seoAutopilotLog.create({
@@ -705,6 +726,11 @@ export async function logGeneration(opts: {
         generatedTitle: opts.generatedTitle?.slice(0, 160) ?? null,
         verdict: opts.verdict,
         category: opts.category?.slice(0, 200) ?? null,
+        actualCostUsd: opts.actualCostUsd ?? null,
+        inputTokens: opts.inputTokens ?? null,
+        outputTokens: opts.outputTokens ?? null,
+        cacheReadTokens: opts.cacheReadTokens ?? null,
+        cacheWriteTokens: opts.cacheWriteTokens ?? null,
       },
     });
   } catch {
