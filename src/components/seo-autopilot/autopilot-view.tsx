@@ -121,6 +121,39 @@ interface UsageSummary {
   date: string;
 }
 
+// ─── User history types ────────────────────────────────────────────
+
+interface SavedListing {
+  title: string;
+  description: string;
+  tags: string[];
+  altTexts: string[];
+  rationale: {
+    keywordFocus: string;
+    titleStrategy: string;
+    audienceHook: string;
+  };
+  categoryPath: string;
+  categoryId: number;
+  searchKeyword: string;
+  productType: string;
+  audienceHint: string;
+  styleHint: string;
+}
+
+interface MyHistoryEntry {
+  id: string;
+  createdAt: string;
+  sourceTitle: string;
+  generatedTitle: string | null;
+  verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
+  category: string | null;
+  costUsd: number;
+  sizes: string[];
+  variants: string[];
+  listing: SavedListing | null;
+}
+
 
 type Stage =
   | "idle"
@@ -196,6 +229,12 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
   // analytics dashboard lives at /seo-autopilot/dashboard (CEO-only).
   const [usage, setUsage] = useState<UsageSummary | null>(null);
 
+  // ─── User history state ─────────────────────────────────────────
+  // Last 30 days of THIS user's own generations. Used by the
+  // "Your recent generations" section.
+  const [history, setHistory] = useState<MyHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
   useEffect(() => {
     let cancelled = false;
     const fetchUsage = async () => {
@@ -211,13 +250,85 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
         // Silent — UI just doesn't show the chip
       }
     };
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch("/api/seo-autopilot/my-history", {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (Array.isArray(data.entries)) setHistory(data.entries);
+      } catch {
+        // Silent — history section just stays empty
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    };
     fetchUsage();
+    fetchHistory();
     return () => {
       cancelled = true;
     };
     // Re-fetch when result.generatedAt changes (after a successful gen)
-    // so the chip stays accurate.
+    // so both the chip + history list stay accurate.
   }, [result?.generatedAt]);
+
+  // Restore a past generation into the current result panel — no API
+  // call, no quota usage, just rehydrate the same shape the result
+  // panel expects from the saved snapshot.
+  const handleRestoreHistory = (entry: MyHistoryEntry) => {
+    if (!entry.listing) {
+      toast.error("This generation has no saved listing", {
+        description: "BLOCKED gens don't store output.",
+      });
+      return;
+    }
+    const l = entry.listing;
+    const restored: GenerateResponse = {
+      compliance: {
+        verdict: entry.verdict,
+        concerns: [],
+        summary:
+          entry.verdict === "ALLOWED"
+            ? "Cleared to list (restored from history)."
+            : "Review warnings (restored from history).",
+      },
+      listing: {
+        title: l.title,
+        description: l.description,
+        tags: l.tags,
+        altTexts: l.altTexts,
+        rationale: l.rationale,
+      },
+      research: {
+        searchKeyword: l.searchKeyword,
+        productType: l.productType,
+        audienceHint: l.audienceHint,
+        styleHint: l.styleHint,
+        categoryPath: l.categoryPath,
+        categoryId: l.categoryId,
+        competitorsAnalyzed: 0,
+        topCompetitors: [],
+      },
+      anchorKeywords: { topPhrases: [], topTags: [], totalListings: 0 },
+      tagIntelligence: [],
+      inputs: {
+        sizes: entry.sizes,
+        variants: entry.variants,
+      },
+      generatedAt: entry.createdAt,
+    };
+    setResult(restored);
+    setSizes(entry.sizes);
+    setVariants(entry.variants);
+    setErrorMsg(null);
+    toast.success("Restored from history", {
+      description: relativeFromNow(entry.createdAt),
+    });
+    // Scroll to top so the result panel is visible
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const atLimit =
     !!usage && !usage.isUnlimited && usage.remaining <= 0;
@@ -368,6 +479,16 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
           </div>
         )}
 
+        {/* ──────────────── RECENT GENERATIONS ──────────────── */}
+        {/* Shown only when no generation is in-flight and no result is
+            currently displayed — keeps the input flow focused. */}
+        {showInput && !historyLoading && history.length > 0 && (
+          <MyHistorySection
+            entries={history}
+            onRestore={handleRestoreHistory}
+          />
+        )}
+
         {/* ──────────────── GENERATING ──────────────── */}
         {generating && <GenerationCinema stage={stage} />}
 
@@ -487,7 +608,7 @@ function HeroBanner({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-80" />
               <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
             </span>
-            Private beta · CEO only
+            Beta version
           </span>
           <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
             <ShieldCheck className="size-3" />
@@ -2695,6 +2816,351 @@ function CompetitorsBlock({
       </ul>
     </div>
   );
+}
+
+// ─── My recent generations (per-user history, last 30 days) ────────
+
+/**
+ * "Your recent generations" — shown to every user (not just CEO) on
+ * the tool page when there's no active gen + no result displayed.
+ * Lets them browse the last 30 days of their own gens and either
+ * inline-expand to see the full listing or one-click "Restore" to load
+ * the listing back into the result panel for fresh copy-paste.
+ *
+ * History is fetched once on mount + after each successful gen (so the
+ * newest gen shows up at the top immediately).
+ */
+function MyHistorySection({
+  entries,
+  onRestore,
+}: {
+  entries: MyHistoryEntry[];
+  onRestore: (entry: MyHistoryEntry) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const totalCost = entries.reduce((s, e) => s + e.costUsd, 0);
+
+  return (
+    <PremiumCard>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left transition-colors hover:bg-muted/20"
+      >
+        <div className="p-6 sm:p-7 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative shrink-0">
+              <span
+                aria-hidden
+                className="absolute -inset-1 rounded-2xl bg-amber-400/20 blur-md"
+              />
+              <div className="relative size-10 rounded-2xl bg-gradient-to-br from-amber-400/20 via-orange-500/15 to-pink-500/20 ring-1 ring-amber-500/30 flex items-center justify-center">
+                <Clock className="size-4 text-amber-600 dark:text-amber-400" />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-[0.22em]">
+                Your recent generations
+              </p>
+              <h3 className="text-[17px] font-bold tracking-tight leading-tight mt-0.5">
+                Last 30 days · {entries.length}{" "}
+                {entries.length === 1 ? "listing" : "listings"}
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+                Total spend on AI: {formatHistoryCost(totalCost)}
+              </p>
+            </div>
+          </div>
+          <ChevronDown
+            className={`size-5 text-muted-foreground transition-transform shrink-0 ${open ? "rotate-180" : ""}`}
+          />
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-6 sm:px-7 pb-7 border-t border-border/60 pt-5 space-y-2">
+          {entries.map((entry, i) => (
+            <HistoryRow
+              key={entry.id}
+              entry={entry}
+              expanded={expandedId === entry.id}
+              onToggleExpand={() =>
+                setExpandedId(expandedId === entry.id ? null : entry.id)
+              }
+              onRestore={() => onRestore(entry)}
+              animationDelay={i * 30}
+            />
+          ))}
+
+          <p className="text-[10px] text-muted-foreground/70 leading-snug mt-4 pt-3 border-t border-border/40">
+            Generations older than 30 days drop off this list. Tap{" "}
+            <strong>Restore</strong> to load any past listing back into the
+            result panel — no new quota slot used.
+          </p>
+        </div>
+      )}
+    </PremiumCard>
+  );
+}
+
+function HistoryRow({
+  entry,
+  expanded,
+  onToggleExpand,
+  onRestore,
+  animationDelay,
+}: {
+  entry: MyHistoryEntry;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onRestore: () => void;
+  animationDelay: number;
+}) {
+  const verdictTone =
+    entry.verdict === "BLOCKED"
+      ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 ring-rose-500/30"
+      : entry.verdict === "REVIEW"
+        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30"
+        : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30";
+  const hasListing = !!entry.listing;
+
+  return (
+    <div
+      className="rounded-xl border border-border/60 bg-card hover:bg-muted/15 transition-colors ap-stagger-in overflow-hidden"
+      style={{ animationDelay: `${animationDelay}ms` }}
+    >
+      <div className="px-4 py-3">
+        <div className="flex items-start gap-3">
+          {/* Verdict square */}
+          <div
+            className={`size-9 rounded-lg ring-1 flex items-center justify-center shrink-0 ${verdictTone}`}
+          >
+            {entry.verdict === "BLOCKED" ? (
+              <Ban className="size-4" />
+            ) : entry.verdict === "REVIEW" ? (
+              <AlertTriangle className="size-4" />
+            ) : (
+              <Check className="size-4" strokeWidth={3} />
+            )}
+          </div>
+
+          {/* Main info */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <p
+                  className={`text-[10px] font-bold uppercase tracking-wider ${
+                    entry.verdict === "BLOCKED"
+                      ? "text-rose-700 dark:text-rose-300"
+                      : entry.verdict === "REVIEW"
+                        ? "text-amber-700 dark:text-amber-300"
+                        : "text-emerald-700 dark:text-emerald-300"
+                  }`}
+                >
+                  {entry.verdict}
+                </p>
+                <span className="text-[10px] text-muted-foreground/70 tabular-nums">
+                  ·{" "}
+                  {new Intl.DateTimeFormat("en-PK", {
+                    timeZone: "Asia/Karachi",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  }).format(new Date(entry.createdAt))}
+                </span>
+                <span className="text-[10px] font-bold tabular-nums text-violet-700 dark:text-violet-300">
+                  · {formatHistoryCost(entry.costUsd)}
+                </span>
+              </div>
+            </div>
+            {entry.generatedTitle ? (
+              <p className="text-[13px] font-semibold leading-snug mt-1 line-clamp-1">
+                {entry.generatedTitle}
+              </p>
+            ) : (
+              <p className="text-[13px] font-semibold leading-snug mt-1 line-clamp-1 italic text-muted-foreground">
+                {entry.sourceTitle}
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+              {entry.category ?? "—"}
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {hasListing && (
+              <>
+                <button
+                  type="button"
+                  onClick={onToggleExpand}
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 hover:border-orange-500/40 transition-colors"
+                  title={expanded ? "Collapse details" : "Show full listing"}
+                >
+                  <ChevronDown
+                    className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+                  />
+                  {expanded ? "Less" : "More"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onRestore}
+                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-violet-600 text-white hover:opacity-90 transition-opacity"
+                  title="Load this listing into the result panel"
+                >
+                  <RotateCw className="size-3" />
+                  Restore
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded preview */}
+      {expanded && entry.listing && (
+        <div className="border-t border-border/60 bg-muted/10 px-4 py-3 space-y-3">
+          <HistoryDetailBlock label="Title" value={entry.listing.title} />
+          <HistoryDetailBlock
+            label="Description"
+            value={entry.listing.description}
+            multiline
+          />
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-1.5">
+              Tags ({entry.listing.tags.length})
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {entry.listing.tags.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1 rounded-full bg-card ring-1 ring-border/70 px-2 py-0.5 text-[10px] font-medium"
+                >
+                  <Hash className="size-2.5 opacity-40" />
+                  {t}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(entry.listing!.tags.join(", "));
+                toast.success("Copied all tags");
+              }}
+              className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Copy className="size-2.5" />
+              Copy all tags
+            </button>
+          </div>
+          {entry.listing.altTexts.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-1.5">
+                Image alt text ({entry.listing.altTexts.length})
+              </p>
+              <div className="space-y-1.5">
+                {entry.listing.altTexts.map((alt, i) => (
+                  <p
+                    key={i}
+                    className="text-[11px] text-foreground/85 italic leading-snug rounded-md bg-card ring-1 ring-border/40 px-2.5 py-1.5"
+                  >
+                    &ldquo;{alt}&rdquo;
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+          {(entry.sizes.length > 0 || entry.variants.length > 0) && (
+            <div className="flex gap-4 flex-wrap text-[11px]">
+              {entry.sizes.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground mb-0.5">
+                    Sizes
+                  </p>
+                  <p>{entry.sizes.join(", ")}</p>
+                </div>
+              )}
+              {entry.variants.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground mb-0.5">
+                    Variants
+                  </p>
+                  <p>{entry.variants.join(", ")}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoryDetailBlock({
+  label,
+  value,
+  multiline,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    toast.success(`Copied ${label.toLowerCase()}`);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          {label}
+        </p>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {copied ? (
+            <Check className="size-2.5 text-emerald-500" strokeWidth={3} />
+          ) : (
+            <Copy className="size-2.5" />
+          )}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <p
+        className={`text-[12px] leading-relaxed rounded-md bg-card ring-1 ring-border/40 px-2.5 py-1.5 ${
+          multiline ? "whitespace-pre-wrap" : "truncate"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function formatHistoryCost(n: number): string {
+  if (n === 0) return "$0";
+  if (n < 0.1) return `$${n.toFixed(3)}`;
+  return `$${n.toFixed(2)}`;
+}
+
+function relativeFromNow(iso: string): string {
+  return new Intl.DateTimeFormat("en-PK", {
+    timeZone: "Asia/Karachi",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(iso));
 }
 
 // ─── Restart button ─────────────────────────────────────────────────

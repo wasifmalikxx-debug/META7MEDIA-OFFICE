@@ -233,6 +233,11 @@ export async function POST(request: NextRequest) {
       outputTokens: costAccum.totalOutputTokens,
       cacheReadTokens: costAccum.totalCacheReadTokens,
       cacheWriteTokens: costAccum.totalCacheWriteTokens,
+      // No listing on BLOCKED — user's history will show the source
+      // title + the BLOCKED verdict but no listing detail to expand.
+      listing: null,
+      sizes: payload.sizes,
+      variants: payload.variants,
     });
     return json({
       compliance,
@@ -380,6 +385,22 @@ export async function POST(request: NextRequest) {
     outputTokens: costAccum.totalOutputTokens,
     cacheReadTokens: costAccum.totalCacheReadTokens,
     cacheWriteTokens: costAccum.totalCacheWriteTokens,
+    // Full listing snapshot for the user's 30-day history view
+    listing: {
+      title: listing.title,
+      description: listing.description,
+      tags: listing.tags,
+      altTexts: listing.altTexts,
+      rationale: listing.rationale,
+      categoryPath: category.path,
+      categoryId: category.id,
+      searchKeyword: context.searchKeyword,
+      productType: context.productType,
+      audienceHint: context.audienceHint,
+      styleHint: context.styleHint,
+    },
+    sizes: payload.sizes,
+    variants: payload.variants,
   });
 
   // ─── Stage 5 — Tag intelligence ────────────────────────────────────

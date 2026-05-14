@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/common/page-header";
 import { SeoAutopilotComingSoon } from "@/components/seo-autopilot/coming-soon-view";
 import { SeoAutopilotView } from "@/components/seo-autopilot/autopilot-view";
 
@@ -86,26 +85,12 @@ export default async function SeoAutopilotPage() {
   const canUseRealTool = isCeo || isEmTeam;
 
   if (canUseRealTool) {
-    return (
-      <div className="space-y-6">
-        <PageHeader
-          title="SEO Autopilot"
-          description="AI-powered Etsy listing generator — title, tags, description, and attributes from a single product brief."
-        />
-        <SeoAutopilotView isCeo={isCeo} />
-      </div>
-    );
+    // No PageHeader — the hero banner inside the view already provides
+    // the title + tagline. PageHeader was a duplicate.
+    return <SeoAutopilotView isCeo={isCeo} />;
   }
 
   // AE / ME employees, Awais, Mubeen, HR all land here during the test
   // phase. They see Coming Soon until we broaden access.
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="SEO Autopilot"
-        description="AI-powered Etsy listing generator — title, tags, description, and attributes from a single product brief."
-      />
-      <SeoAutopilotComingSoon />
-    </div>
-  );
+  return <SeoAutopilotComingSoon />;
 }

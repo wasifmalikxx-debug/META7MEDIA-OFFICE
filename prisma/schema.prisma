@@ -997,6 +997,22 @@ model SeoAutopilotLog {
   cacheReadTokens  Int?
   cacheWriteTokens Int?
 
+  // Full generated listing payload — so users can revisit their own
+  // past generations without burning a fresh quota slot. Shape:
+  //   { title, description, tags: string[], altTexts: string[],
+  //     rationale: { keywordFocus, titleStrategy, audienceHook },
+  //     categoryPath, categoryId, searchKeyword, productType,
+  //     audienceHint, styleHint }
+  // Null when BLOCKED (no listing was generated) or on historical
+  // rows logged before this column existed.
+  listingJson Json?
+
+  // User-supplied variations preserved for restore. Arrays of strings,
+  // empty arrays if none given. Stored separately from listingJson so
+  // they're easy to query without parsing JSON.
+  sizes    String[] @default([])
+  variants String[] @default([])
+
   createdAt DateTime @default(now())
 
   @@index([userId])

@@ -706,6 +706,29 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
  * Best-effort: any failure is swallowed — logging must never break a
  * successful generation.
  */
+/**
+ * Shape of the full listing snapshot we persist for user history.
+ * Stored as a JSON column so adding fields later doesn't need a
+ * migration. Null on BLOCKED.
+ */
+export interface SavedListing {
+  title: string;
+  description: string;
+  tags: string[];
+  altTexts: string[];
+  rationale: {
+    keywordFocus: string;
+    titleStrategy: string;
+    audienceHook: string;
+  };
+  categoryPath: string;
+  categoryId: number;
+  searchKeyword: string;
+  productType: string;
+  audienceHint: string;
+  styleHint: string;
+}
+
 export async function logGeneration(opts: {
   userId: string;
   sourceTitle: string;
@@ -717,6 +740,10 @@ export async function logGeneration(opts: {
   outputTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  // Full listing snapshot — saved for 30-day user history view
+  listing?: SavedListing | null;
+  sizes?: string[];
+  variants?: string[];
 }): Promise<void> {
   try {
     await prisma.seoAutopilotLog.create({
@@ -731,9 +758,67 @@ export async function logGeneration(opts: {
         outputTokens: opts.outputTokens ?? null,
         cacheReadTokens: opts.cacheReadTokens ?? null,
         cacheWriteTokens: opts.cacheWriteTokens ?? null,
+        // Prisma's Json column accepts any serializable value
+        listingJson: (opts.listing ?? null) as never,
+        sizes: opts.sizes ?? [],
+        variants: opts.variants ?? [],
       },
     });
   } catch {
     // Silent — never fail a generation because audit logging failed.
   }
+}
+
+// ─── Per-user history (for the "Your recent generations" UI) ────────
+
+export interface MyHistoryEntry {
+  id: string;
+  createdAt: string;
+  sourceTitle: string;
+  generatedTitle: string | null;
+  verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
+  category: string | null;
+  costUsd: number;
+  sizes: string[];
+  variants: string[];
+  listing: SavedListing | null;
+}
+
+/**
+ * Pull a user's own generations from the last 30 days, newest first.
+ * Used by /api/seo-autopilot/my-history so employees can revisit + copy
+ * past listings without burning a fresh quota slot.
+ */
+export async function getMyHistory(
+  userId: string,
+  limit = 30,
+): Promise<MyHistoryEntry[]> {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const rows = await prisma.seoAutopilotLog.findMany({
+    where: {
+      userId,
+      createdAt: { gte: thirtyDaysAgo },
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    createdAt: r.createdAt.toISOString(),
+    sourceTitle: r.sourceTitle,
+    generatedTitle: r.generatedTitle,
+    verdict: (r.verdict === "REVIEW"
+      ? "REVIEW"
+      : r.verdict === "BLOCKED"
+        ? "BLOCKED"
+        : "ALLOWED") as MyHistoryEntry["verdict"],
+    category: r.category,
+    costUsd:
+      typeof r.actualCostUsd === "number" && r.actualCostUsd > 0
+        ? r.actualCostUsd
+        : estimateGenerationCostUsd(r.verdict),
+    sizes: r.sizes ?? [],
+    variants: r.variants ?? [],
+    listing: (r.listingJson as SavedListing | null) ?? null,
+  }));
 }
