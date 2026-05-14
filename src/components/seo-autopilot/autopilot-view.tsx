@@ -91,20 +91,11 @@ interface AnchorKeywords {
   topTags: KeywordFrequency[];
   totalListings: number;
 }
-interface BuyerKeywordScore {
-  keyword: string;
-  totalListings: number;
-  avgTopFavorites: number;
-  tier: TagTier;
-  buyerScore: number; // 0-100
-}
-
 interface GenerateResponse {
   compliance: ComplianceVerdict;
   listing: GeneratedListing | null;
   research: ResearchSummary;
   anchorKeywords?: AnchorKeywords;
-  buyerKeywords?: BuyerKeywordScore[];
   tagIntelligence?: TagDemand[];
   inputs?: UserInputsEcho;
   generatedAt: string;
@@ -1410,17 +1401,14 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
   const [open, setOpen] = useState(false);
   const tagIntel = data.tagIntelligence ?? [];
   const anchors = data.anchorKeywords;
-  const buyerKeywords = data.buyerKeywords ?? [];
   const hasAnchors =
     !!anchors &&
     (anchors.topPhrases.length > 0 || anchors.topTags.length > 0);
-  const hasBuyerKeywords = buyerKeywords.length > 0;
   const hasInsights =
     tagIntel.length > 0 ||
     data.research.topCompetitors.length > 0 ||
     data.listing?.rationale.keywordFocus ||
-    hasAnchors ||
-    hasBuyerKeywords;
+    hasAnchors;
 
   if (!hasInsights) return null;
 
@@ -1444,7 +1432,7 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
                 More insights
               </h3>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                Buyer searches · anchor keywords · tag demand · competitors · strategy
+                Anchor keywords · tag demand · competitors · strategy
               </p>
             </div>
           </div>
@@ -1456,9 +1444,6 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
 
       {open && (
         <div className="px-6 sm:px-7 pb-6 sm:pb-7 space-y-7 border-t pt-6">
-          {hasBuyerKeywords && (
-            <BuyerKeywordsSection buyerKeywords={buyerKeywords} />
-          )}
           {hasAnchors && anchors && <AnchorKeywordsSection anchors={anchors} />}
           {tagIntel.length > 0 && <TagIntelligenceTable intel={tagIntel} />}
           {data.listing?.rationale.keywordFocus && (
@@ -1472,64 +1457,6 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
         </div>
       )}
     </Card>
-  );
-}
-
-function BuyerKeywordsSection({
-  buyerKeywords,
-}: {
-  buyerKeywords: BuyerKeywordScore[];
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="space-y-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Buyer-search keywords
-        </p>
-        <p className="text-[11px] text-muted-foreground/80 leading-snug">
-          Long-tail variants Autopilot brainstormed, scored against live
-          Etsy demand. These are what real buyers TYPE into the search
-          bar — higher signal than what competitors wrote.
-        </p>
-      </div>
-      <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-[12px]">
-          <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-semibold text-left">Phrase</th>
-              <th className="px-3 py-2 font-semibold text-right">Listings</th>
-              <th className="px-3 py-2 font-semibold text-right">Top favs</th>
-              <th className="px-3 py-2 font-semibold text-right">Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {buyerKeywords.map((kw) => (
-              <tr key={kw.keyword} className="border-t hover:bg-muted/20">
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`size-5 rounded-full flex items-center justify-center text-[10px] ring-1 ${TIER_STYLE[kw.tier]}`}
-                    >
-                      {TIER_GLYPH[kw.tier]}
-                    </span>
-                    <span className="font-medium">{kw.keyword}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {formatCount(kw.totalListings)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                  {kw.avgTopFavorites.toLocaleString()}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <DemandBar score={kw.buyerScore} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
   );
 }
 

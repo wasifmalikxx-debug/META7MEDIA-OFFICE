@@ -9,11 +9,9 @@ import {
   getSellerTaxonomy,
   toCompetitorBriefs,
   analyzeKeywordFrequencies,
-  evaluateKeywordCandidates,
   getTagDemandStatsBatch,
   type TagDemand,
   type AnchorKeywords,
-  type BuyerKeywordScore,
 } from "@/lib/services/etsy-api.service";
 import {
   extractSearchContext,
@@ -149,7 +147,6 @@ export async function POST(request: NextRequest) {
       },
       listing: null,
       anchorKeywords: { topPhrases: [], topTags: [], totalListings: 0 },
-      buyerKeywords: [] as BuyerKeywordScore[],
       generatedAt: new Date().toISOString(),
     });
   }
@@ -163,23 +160,15 @@ export async function POST(request: NextRequest) {
     topTags: [],
     totalListings: 0,
   };
-  // Buyer-language anchors — scored variants we'll feed into generation.
-  // Populated in parallel with the rest of the research.
-  let buyerKeywords: BuyerKeywordScore[] = [];
   try {
-    // Search + (in parallel) score the buyer-language variants. Both run
-    // against the Etsy API and share the token bucket; total wall time
-    // ≈ max of the two, not sum.
-    const [listings, scoredVariants] = await Promise.all([
-      searchActiveListings(context.searchKeyword, 20),
-      buyerVariants.length > 0
-        ? evaluateKeywordCandidates(buyerVariants).catch(() => [])
-        : Promise.resolve([] as BuyerKeywordScore[]),
-    ]);
+    // Just the search — we used to ALSO fire 25× getTagDemandStats here
+    // to score the buyer-search variants against live Etsy demand, but
+    // that was 64% of our per-gen Etsy quota for marginal SEO gain. The
+    // unscored Haiku brainstorm still flows into Sonnet's prompt as
+    // alternative-angle inspiration.
+    const listings = await searchActiveListings(context.searchKeyword, 20);
     competitors = toCompetitorBriefs(listings);
     anchorKeywords = analyzeKeywordFrequencies(listings, 10);
-    // Keep the top 12 — Sonnet sees them in its prompt.
-    buyerKeywords = scoredVariants.slice(0, 12);
 
     category = await inferCategoryFromListings(
       listings,
@@ -252,7 +241,7 @@ export async function POST(request: NextRequest) {
       category: { id: category.id, name: category.name, path: category.path },
       competitors,
       anchorKeywords,
-      buyerKeywords,
+      buyerVariants,
       audience: context.audienceHint || undefined,
       style: context.styleHint || undefined,
       sizes: payload.sizes,
@@ -295,7 +284,6 @@ export async function POST(request: NextRequest) {
       })),
     },
     anchorKeywords,
-    buyerKeywords,
     tagIntelligence,
     // Echo back the SEO-relevant inputs so the UI can show the
     // variations / personalization sections in the result.

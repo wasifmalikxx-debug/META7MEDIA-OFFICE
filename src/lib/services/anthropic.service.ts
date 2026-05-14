@@ -1,24 +1,21 @@
 /**
  * Anthropic Claude client for SEO Autopilot.
  *
- * Four-stage pipeline:
+ * Pipeline:
  *
  *   0. HAIKU extracts search context from the raw AliExpress title
  *      (keyword + product type). Drives the Etsy search.
  *
- *   1. SONNET (vision) gatekeeps — looks at the regenerated product
- *      images + title and decides whether the product is even allowed
- *      on Etsy. If BLOCKED (trademark, prohibited item, counterfeit,
- *      adult-in-wrong-category), the pipeline stops here and no listing
- *      is generated.
+ *   1. HAIKU VISION gatekeeps — looks at the regenerated product images
+ *      + title and decides whether the product is allowed on Etsy. If
+ *      BLOCKED (trademark, prohibited item, counterfeit, adult-in-wrong-
+ *      category), the pipeline stops here and no listing is generated.
+ *      Switched from Sonnet → Haiku May 14 to cut per-gen cost by ~$0.01:
+ *      Haiku 4.5 reads images at ~1/3 the input cost and is plenty for
+ *      a binary verdict on visible IP / trademarks.
  *
  *   2. SONNET (vision) writes the full listing — title, 13 tags,
- *      description, materials, every category attribute, alt text per
- *      image, suggested type/when-made/who-made-it/what-is-it,
- *      personalization instructions if requested.
- *
- *   3. HAIKU audits the generated TEXT for things vision can't catch
- *      (banned terms in title/tags, length violations, etc.).
+ *      description, alt text per image.
  *
  * Output is forced into strict JSON via the prefilled-`{` trick + a
  * schema-shaped system prompt. We then JSON.parse and normalize.
@@ -28,7 +25,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import type {
   CompetitorBrief,
   AnchorKeywords,
-  BuyerKeywordScore,
 } from "./etsy-api.service";
 
 // Lazy singleton — the SDK init grabs ANTHROPIC_API_KEY from env, but we
@@ -49,7 +45,11 @@ function client(): Anthropic {
 // Pinned model snapshots — bump deliberately when we want behaviour changes,
 // don't let the alias drift mid-month.
 const MODEL_GENERATOR = "claude-sonnet-4-5-20250929";
-const MODEL_COMPLIANCE = "claude-sonnet-4-5-20250929"; // Sonnet — strict, vision
+// Haiku 4.5 — vision-capable, 1/3 the input cost of Sonnet. Compliance
+// is a strict yes / no / maybe verdict; the heavier reasoning Sonnet
+// offers isn't paying its way here. Haiku still catches obvious IP
+// (Disney/Pokemon/Nike/etc) reliably in real-world product photos.
+const MODEL_COMPLIANCE = "claude-haiku-4-5-20251001";
 const MODEL_VALIDATOR = "claude-haiku-4-5-20251001"; // Haiku — cheap text checks
 
 // ─── Etsy listing rules — the source of truth for output validation ──
@@ -475,8 +475,8 @@ Review the product image(s) above and the title. Decide whether this product is 
     temperature: 0,
     // System prompt is large + static (~2.5k tokens) → cache it. First
     // call writes the cache (~25% surcharge), every subsequent call
-    // within 5 min reads it at ~10% of nominal input cost. With one
-    // active CEO + team rollout, payback is ~2 calls.
+    // within 5 min reads it at ~10% of nominal input cost. Even on Haiku
+    // the static prompt benefits — saves ~$0.002 per warm call.
     system: [
       {
         type: "text",
@@ -529,8 +529,14 @@ export interface GenerationInput {
   competitors: CompetitorBrief[];
   /** High-frequency phrases + tags extracted from the competitors. */
   anchorKeywords: AnchorKeywords;
-  /** Buyer-search keywords scored against live Etsy demand. */
-  buyerKeywords: BuyerKeywordScore[];
+  /**
+   * Long-tail buyer-search variants brainstormed by Haiku. Raw phrases
+   * only — we used to score each against Etsy demand, but the demand
+   * step cost 25 Etsy API calls per gen (64% of the daily quota) for
+   * marginal SEO gain. Sonnet still uses these as alternative-angle
+   * inspiration alongside the proven anchor keywords above.
+   */
+  buyerVariants: string[];
   /** Audience / style hints (from Stage 0). */
   audience?: string;
   style?: string;
@@ -638,13 +644,16 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
 }`;
 
 function buildGeneratorUserPrompt(input: GenerationInput): string {
+  // Top 10 competitors, titles only. We used to send 20 + each one's full
+  // tag array — but the ANCHOR KEYWORDS block already distils both into
+  // top-frequency phrases + tags, so the per-competitor tag dump was just
+  // noise (and ~750 input tokens). Titles still earn their slot — Sonnet
+  // reads them for positioning + hook patterns, which frequency analysis
+  // can't capture.
   const competitorBlock = input.competitors
-    .slice(0, 20)
-    .map(
-      (c) =>
-        `#${c.rank} (${c.favorites} favs) — ${c.title}\n   tags: ${c.tags.slice(0, 13).join(", ") || "n/a"}`,
-    )
-    .join("\n\n");
+    .slice(0, 10)
+    .map((c) => `#${c.rank} (${c.favorites} favs) — ${c.title}`)
+    .join("\n");
 
   // Anchor keyword block — distilled from the competitors above. These
   // are the high-frequency phrases Sonnet MUST front-load.
@@ -675,29 +684,25 @@ ${tagsBlock || "   (no high-frequency tags found)"}
 `
       : "";
 
-  // Buyer-language anchors — long-tail variants we brainstormed and then
-  // scored against real Etsy demand. These are HIGHER signal than the
-  // competitor-derived anchors because they reflect what buyers actually
-  // type, not just what other sellers wrote.
-  const buyerKeywordsBlock =
-    input.buyerKeywords.length > 0
-      ? `# BUYER-SEARCH KEYWORDS — real demand data per phrase
+  // Buyer-language brainstorm — long-tail variants Haiku generated by
+  // reasoning about how real buyers phrase searches. Unscored (we
+  // removed the per-phrase Etsy demand scoring to save 25 calls/gen);
+  // Sonnet uses these as alternative-angle inspiration. The anchor
+  // keywords block above is still the primary signal since those
+  // phrases are PROVEN to rank.
+  const buyerVariantsBlock =
+    input.buyerVariants.length > 0
+      ? `# ALTERNATIVE BUYER-SEARCH ANGLES (brainstorm)
 
-We brainstormed long-tail variants of the seed keyword and pulled live
-demand stats for each from Etsy. The list below is sorted by a "buyer
-score" combining listing count + top-favourites + saturation penalty.
+Long-tail phrases a real buyer might type, generated from how the
+product looks + the seed keyword. These are unproven — use them as
+inspiration for tag variety + audience hooks, but PRIORITISE the
+anchor keywords above when there's a conflict (those are observed to
+rank, these are inferred).
 
-These are HIGHER signal than the anchor keywords above — these are
-phrases buyers ACTUALLY TYPE. Prioritise the top 5-6 of these when
-selecting tags. Front-load 1-2 of the top phrases in the title if they
-fit naturally.
-
-${input.buyerKeywords
-  .slice(0, 12)
-  .map(
-    (b) =>
-      `   • "${b.keyword}" — buyerScore ${b.buyerScore}/100 · ${b.totalListings.toLocaleString()} listings · ${b.avgTopFavorites} avg top-favs · ${b.tier}`,
-  )
+${input.buyerVariants
+  .slice(0, 20)
+  .map((v) => `   • ${v}`)
   .join("\n")}
 `
       : "";
@@ -723,9 +728,9 @@ ${input.category.path}  (taxonomy_id: ${input.category.id})
 ${input.audience ? `Audience: ${input.audience}` : "Audience: (infer from images + title)"}
 ${input.style ? `Style: ${input.style}` : "Style: (infer from images)"}
 
-${variationsBlock.length > 0 ? `# Variations & options\n${variationsBlock.join("\n")}\n\n` : ""}${anchorBlock}${buyerKeywordsBlock}# Live Etsy ranking data — full top 20 for this keyword space
+${variationsBlock.length > 0 ? `# Variations & options\n${variationsBlock.join("\n")}\n\n` : ""}${anchorBlock}${buyerVariantsBlock}# Live Etsy top-10 ranking titles for this keyword space
 
-Reference only — DON'T copy phrasing. Identify recurring keywords and write something ORIGINAL that targets the same buyer better.
+Reference only — DON'T copy phrasing. Identify positioning + hook patterns and write something ORIGINAL that targets the same buyer better.
 
 ${competitorBlock || "(no competitor data — generate based on the brief alone)"}
 
