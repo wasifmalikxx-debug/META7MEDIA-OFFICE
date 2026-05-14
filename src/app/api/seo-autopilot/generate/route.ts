@@ -21,7 +21,6 @@ import {
   expandSearchVariants,
   checkProductCompliance,
   generateListing,
-  validateListing,
   pickCategoryFromCandidates,
   type ImagePayload,
   type ComplianceVerdict,
@@ -153,7 +152,6 @@ export async function POST(request: NextRequest) {
       listing: null,
       anchorKeywords: { topPhrases: [], topTags: [], totalListings: 0 },
       buyerKeywords: [] as BuyerKeywordScore[],
-      textCompliance: null,
       generatedAt: new Date().toISOString(),
     });
   }
@@ -280,41 +278,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ─── Stage 5 — Tag intelligence + text audit (parallel) ────────────
+  // ─── Stage 5 — Tag intelligence ────────────────────────────────────
   //
-  // Both calls are independent of each other and of the rest of the
-  // pipeline at this point. Run them concurrently to cut wall time.
+  // The Haiku text audit was removed May 14: it produced stylistic
+  // "consider rephrasing" advice rather than hard rule blockers, and
+  // normalize() inside generateListing() already clamps every output
+  // to Etsy's hard limits (140-char title, 13 tags ≤20 chars each,
+  // 5000-char description, etc.).
 
-  let textCompliance;
-  let tagIntelligence: TagDemand[] = [];
-  try {
-    const [text, tags] = await Promise.all([
-      validateListing(listing).catch((err) => ({
-        ok: true,
-        issues: [
-          {
-            severity: "warn" as const,
-            field: "system",
-            message: `Text compliance scan skipped: ${err instanceof Error ? err.message : "unknown"}`,
-          },
-        ],
-      })),
-      getTagDemandStatsBatch(listing.tags).catch(() => []),
-    ]);
-    textCompliance = text;
-    tagIntelligence = tags;
-  } catch (err) {
-    textCompliance = {
-      ok: true,
-      issues: [
-        {
-          severity: "warn" as const,
-          field: "system",
-          message: `Final checks skipped: ${err instanceof Error ? err.message : "unknown"}`,
-        },
-      ],
-    };
-  }
+  const tagIntelligence: TagDemand[] = await getTagDemandStatsBatch(
+    listing.tags,
+  ).catch(() => []);
 
   return json({
     compliance,
@@ -336,7 +310,6 @@ export async function POST(request: NextRequest) {
     },
     anchorKeywords,
     buyerKeywords,
-    textCompliance,
     tagIntelligence,
     // Echo back the SEO-relevant inputs so the UI can show the
     // variations / personalization sections in the result.

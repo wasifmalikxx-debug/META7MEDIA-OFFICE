@@ -63,10 +63,6 @@ interface GeneratedListing {
     audienceHook: string;
   };
 }
-interface TextCompliance {
-  ok: boolean;
-  issues: Array<{ severity: "warn" | "block"; field: string; message: string }>;
-}
 type TagTier = "niche" | "moderate" | "hot" | "saturated";
 interface TagDemand {
   tag: string;
@@ -116,7 +112,6 @@ interface GenerateResponse {
   research: ResearchSummary;
   anchorKeywords?: AnchorKeywords;
   buyerKeywords?: BuyerKeywordScore[];
-  textCompliance: TextCompliance | null;
   tagIntelligence?: TagDemand[];
   inputs?: UserInputsEcho;
   generatedAt: string;
@@ -750,7 +745,7 @@ function ResultCard({
   data: GenerateResponse;
   userImages: UploadedImage[];
 }) {
-  const { listing, compliance, research, textCompliance, inputs } = data;
+  const { listing, compliance, research, inputs } = data;
 
   // Mutable copies of tags + intel so the swap-tag UI can rewrite them
   // in place. The parent passes `key={data.generatedAt}` so a fresh
@@ -819,20 +814,6 @@ function ResultCard({
             }))}
           />
         )}
-
-        {/* Text compliance warnings */}
-        {textCompliance &&
-          textCompliance.issues.length > 0 &&
-          (compliance.verdict === "ALLOWED" || compliance.verdict === "REVIEW") && (
-            <WarningStrip
-              title="Text rule check"
-              issues={textCompliance.issues.map((i) => ({
-                severity: i.severity,
-                label: i.field,
-                message: i.message,
-              }))}
-            />
-          )}
 
         {/* ── FIELDS ── */}
         <Row
