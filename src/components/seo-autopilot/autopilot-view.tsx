@@ -50,8 +50,6 @@ interface GeneratedListing {
   title: string;
   description: string;
   tags: string[];
-  materials: string[];
-  attributes: { name: string; value: string }[];
   altTexts: string[];
   rationale: {
     keywordFocus: string;
@@ -78,7 +76,6 @@ interface ResearchSummary {
   categoryId: number;
   competitorsAnalyzed: number;
   topCompetitors: { rank: number; title: string; favorites: number }[];
-  attributesAvailable: number;
 }
 interface UserInputsEcho {
   sizes: string[];
@@ -810,18 +807,6 @@ function ResultCard({
           onSwap={handleSwapTag}
         />
 
-        {listing.materials.length > 0 && (
-          <Row
-            label="Materials"
-            value={listing.materials.join(", ")}
-            copyValue={listing.materials.join(", ")}
-          />
-        )}
-
-        {listing.attributes.length > 0 && (
-          <AttributesRow attributes={listing.attributes} />
-        )}
-
         <Divider />
 
         <AltTextRow altTexts={listing.altTexts} images={userImages} />
@@ -915,35 +900,6 @@ function Divider() {
   return <div className="my-2 border-t border-border/60" />;
 }
 
-function Row({
-  label,
-  value,
-  copyValue,
-  valueClass,
-}: {
-  label: string;
-  value: string;
-  copyValue?: string;
-  valueClass?: string;
-}) {
-  return (
-    <div className="py-3 flex items-start justify-between gap-4">
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-1">
-          {label}
-        </p>
-        <p
-          className={`text-sm font-medium text-foreground leading-relaxed break-words ${valueClass ?? ""}`}
-        >
-          {value}
-        </p>
-      </div>
-      {copyValue && (
-        <CopyButton value={copyValue} label={label.toLowerCase()} />
-      )}
-    </div>
-  );
-}
 
 
 function TitleRow({ title }: { title: string }) {
@@ -1393,41 +1349,6 @@ function TagPillWithSwap({
         )}
       </PopoverContent>
     </Popover>
-  );
-}
-
-function AttributesRow({
-  attributes,
-}: {
-  attributes: { name: string; value: string }[];
-}) {
-  return (
-    <div className="py-3.5 space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        Category attributes{" "}
-        <span className="text-muted-foreground/60 font-normal normal-case tracking-normal">
-          · {attributes.length} pre-filled
-        </span>
-      </p>
-      <div className="grid sm:grid-cols-2 gap-x-6">
-        {attributes.map((a, i) => (
-          <div
-            key={`${a.name}-${i}`}
-            className="py-1.5 flex items-center justify-between gap-2 border-b border-border/40 last:border-0"
-          >
-            <div className="min-w-0">
-              <p className="text-[9px] font-semibold text-muted-foreground/80 uppercase tracking-wider">
-                {a.name}
-              </p>
-              <p className="text-[12px] font-medium text-foreground truncate">
-                {a.value}
-              </p>
-            </div>
-            <CopyButton value={a.value} label={a.name} size="xs" />
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

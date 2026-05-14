@@ -3,7 +3,6 @@ import { z } from "zod";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import {
   searchActiveListings,
-  getNodeProperties,
   inferCategoryFromListings,
   searchTaxonomyNodes,
   getTaxonomyPath,
@@ -147,7 +146,6 @@ export async function POST(request: NextRequest) {
         categoryId: 0,
         competitorsAnalyzed: 0,
         topCompetitors: [],
-        attributesAvailable: 0,
       },
       listing: null,
       anchorKeywords: { topPhrases: [], topTags: [], totalListings: 0 },
@@ -160,7 +158,6 @@ export async function POST(request: NextRequest) {
 
   let competitors;
   let category;
-  let properties;
   let anchorKeywords: AnchorKeywords = {
     topPhrases: [],
     topTags: [],
@@ -238,21 +235,12 @@ export async function POST(request: NextRequest) {
         422,
       );
     }
-
-    properties = await getNodeProperties(category.id).catch(() => []);
   } catch (err) {
     return error(
       `Etsy API error during research: ${err instanceof Error ? err.message : "unknown"}`,
       502,
     );
   }
-
-  const attributeSchema = properties.map((p) => ({
-    name: p.name,
-    displayName: p.display_name || p.name,
-    required: Boolean(p.is_required),
-    possibleValues: (p.possible_values ?? []).map((v) => v.name).filter(Boolean),
-  }));
 
   // ─── Stage 4 — Sonnet writes the listing (with vision) ─────────────
 
@@ -265,7 +253,6 @@ export async function POST(request: NextRequest) {
       competitors,
       anchorKeywords,
       buyerKeywords,
-      attributeSchema,
       audience: context.audienceHint || undefined,
       style: context.styleHint || undefined,
       sizes: payload.sizes,
@@ -306,7 +293,6 @@ export async function POST(request: NextRequest) {
         title: c.title,
         favorites: c.favorites,
       })),
-      attributesAvailable: attributeSchema.length,
     },
     anchorKeywords,
     buyerKeywords,

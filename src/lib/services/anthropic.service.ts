@@ -59,7 +59,6 @@ export const ETSY_LIMITS = {
   TAG_MAX_CHARS: 20,
   TAG_COUNT: 13,
   DESCRIPTION_MAX: 5000,
-  MATERIALS_MAX: 13,
   ALT_TEXT_MAX: 250,
 } as const;
 
@@ -532,13 +531,6 @@ export interface GenerationInput {
   anchorKeywords: AnchorKeywords;
   /** Buyer-search keywords scored against live Etsy demand. */
   buyerKeywords: BuyerKeywordScore[];
-  /** Required + optional attribute slots for this category. */
-  attributeSchema: {
-    name: string;
-    displayName: string;
-    required: boolean;
-    possibleValues: string[];
-  }[];
   /** Audience / style hints (from Stage 0). */
   audience?: string;
   style?: string;
@@ -552,8 +544,6 @@ export interface GeneratedListing {
   title: string;
   description: string;
   tags: string[]; // exactly 13
-  materials: string[]; // up to 13
-  attributes: { name: string; value: string }[]; // category-driven
   altTexts: string[]; // one per image (matches images.length, or 1 if no images)
   rationale: {
     keywordFocus: string;
@@ -602,17 +592,14 @@ CORE RULES
 
 5. DESCRIPTION — 3 sections, separated by a blank line:
    Section 1: HOOK (1-2 lines, benefit-led, why this product matters to the buyer)
-   Section 2: FEATURES (4-7 bullets starting with "•" of specific attributes visible in the image)
+   Section 2: FEATURES (4-7 bullets starting with "•" of specific details visible in the image)
    Section 3: CARE / SIZING / SHIPPING note (1 short paragraph, 2-3 sentences)
    Total target length: 600-1500 chars. Long-tail keywords sprinkled naturally.
 
-6. CATEGORY ATTRIBUTES:
-   Fill from the supplied possibleValues list. Cover BOTH required AND optional attributes when confident — more attributes = better Etsy ranking. Skip any slot you can't pick a confident value for.
-
-7. VARIATIONS:
+6. VARIATIONS:
    If sizes and/or variants were supplied, mention them ONCE in the description in a natural way that fits the actual axis ("Available in XS-XXL and 5 colors", "Available in 3 phone models and 4 designs", "Comes in gold, silver, and rose gold"). Do NOT put them in title or tags — Etsy handles them as separate variation fields.
 
-8. IMAGE ALT TEXTS:
+7. IMAGE ALT TEXTS:
    ONE per image you see (matching the image count). ≤ 250 chars each. Describe color, material, style, key features. Front-load the primary keyword (good for image SEO).
 
 ============================================================
@@ -642,8 +629,6 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
   "title": "string ≤140 chars",
   "description": "string, multi-line OK",
   "tags": ["...", ... exactly 13 items],
-  "materials": ["...", "..."],
-  "attributes": [{"name": "Style", "value": "Vintage"}, ...],
   "altTexts": ["...", "..."],
   "rationale": {
     "keywordFocus": "1 line — which anchor keyword(s) you anchored on and why",
@@ -717,16 +702,6 @@ ${input.buyerKeywords
 `
       : "";
 
-  const attributeBlock = input.attributeSchema
-    .map((a) => {
-      const vals =
-        a.possibleValues.length > 0
-          ? `   possible values: ${a.possibleValues.slice(0, 30).join(" / ")}${a.possibleValues.length > 30 ? " ..." : ""}`
-          : "   (free-text)";
-      return `- ${a.displayName}${a.required ? " (REQUIRED)" : ""}\n${vals}`;
-    })
-    .join("\n");
-
   const variationsBlock: string[] = [];
   if (input.sizes && input.sizes.length > 0) {
     variationsBlock.push(`Available sizes: ${input.sizes.join(", ")}`);
@@ -754,14 +729,8 @@ Reference only — DON'T copy phrasing. Identify recurring keywords and write so
 
 ${competitorBlock || "(no competitor data — generate based on the brief alone)"}
 
-# Category attribute schema
-Fill the slots below using realistic values. Use ONLY values from the possible-values list when one is provided. Skip slots you cannot confidently fill.
-
-${attributeBlock || "(no defined attributes for this category — return an empty attributes array)"}
-
 # Output count expected
 - altTexts: ${input.images.length || 1} items
-- attributes: as many as you can confidently fill from the schema above
 
 Now produce the listing JSON.`;
 }
@@ -845,8 +814,6 @@ export async function validateListing(
             title: listing.title,
             tags: listing.tags,
             description: listing.description,
-            materials: listing.materials,
-            attributes: listing.attributes,
           },
           null,
           2,
@@ -906,18 +873,6 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
 
   const description = (out.description ?? "").slice(0, ETSY_LIMITS.DESCRIPTION_MAX);
 
-  const materials = (out.materials ?? [])
-    .map((m) => (m ?? "").toString().trim())
-    .filter(Boolean)
-    .slice(0, ETSY_LIMITS.MATERIALS_MAX);
-
-  const attributes = (out.attributes ?? [])
-    .filter((a) => a && a.name && a.value)
-    .map((a) => ({
-      name: a.name.toString().trim(),
-      value: a.value.toString().trim(),
-    }));
-
   // Alt texts — clamp each to 250 chars, pad/truncate to expected count.
   const altTexts: string[] = [];
   const targetCount = Math.max(1, expectedAlts);
@@ -936,8 +891,6 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
     title,
     description,
     tags,
-    materials,
-    attributes,
     altTexts,
     rationale,
   };
