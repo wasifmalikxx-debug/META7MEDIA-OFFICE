@@ -128,3 +128,83 @@
     @apply font-sans;
   }
 }
+
+/* ─── SEO Autopilot premium animations ────────────────────────────── */
+
+@keyframes ap-aurora-1 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.55; }
+  50% { transform: translate3d(8%, -6%, 0) scale(1.15); opacity: 0.8; }
+}
+
+@keyframes ap-aurora-2 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.45; }
+  50% { transform: translate3d(-10%, 8%, 0) scale(0.9); opacity: 0.7; }
+}
+
+@keyframes ap-aurora-3 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.4; }
+  50% { transform: translate3d(5%, 10%, 0) scale(1.08); opacity: 0.65; }
+}
+
+@keyframes ap-orb-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.18); opacity: 0.85; }
+}
+
+@keyframes ap-orb-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ap-shimmer-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes ap-bar-fill {
+  from { width: 0%; }
+  to { width: var(--bar-w, 100%); }
+}
+
+@keyframes ap-tag-pop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.92); }
+  60% { transform: translateY(0) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ap-particle-drift {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  10% { opacity: 0.6; }
+  85% { opacity: 0.4; }
+  100% { transform: translate3d(var(--dx, 30px), var(--dy, -60px), 0); opacity: 0; }
+}
+
+@keyframes ap-text-reveal {
+  from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes ap-stagger-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ap-aurora-1 { animation: ap-aurora-1 14s ease-in-out infinite; }
+.ap-aurora-2 { animation: ap-aurora-2 18s ease-in-out infinite; }
+.ap-aurora-3 { animation: ap-aurora-3 22s ease-in-out infinite; }
+.ap-orb-pulse { animation: ap-orb-pulse 2.6s ease-in-out infinite; }
+.ap-orb-spin { animation: ap-orb-spin 8s linear infinite; }
+.ap-shimmer { animation: ap-shimmer-slide 2.2s ease-in-out infinite; }
+.ap-bar-fill { animation: ap-bar-fill 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.ap-tag-pop { animation: ap-tag-pop 420ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.ap-text-reveal { animation: ap-text-reveal 600ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.ap-stagger-in { animation: ap-stagger-in 520ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+
+/* Respect prefers-reduced-motion — disable all autopilot animations */
+@media (prefers-reduced-motion: reduce) {
+  .ap-aurora-1, .ap-aurora-2, .ap-aurora-3,
+  .ap-orb-pulse, .ap-orb-spin, .ap-shimmer,
+  .ap-bar-fill, .ap-tag-pop, .ap-text-reveal, .ap-stagger-in {
+    animation: none !important;
+  }
+}

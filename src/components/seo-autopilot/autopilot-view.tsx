@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,12 +30,18 @@ import {
   Type,
   Lightbulb,
   Crown,
+  Eye,
+  Search,
+  PenLine,
+  Zap,
+  Target,
+  Award,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SeoImageUploader, type UploadedImage } from "./image-uploader";
 import { SizeSelector, VariantSelector } from "./option-selectors";
 
-// ─── API response shape ─────────────────────────────────────────────
+// ─── API response shape (preserved — backend untouched) ─────────────
 
 interface ComplianceVerdict {
   verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
@@ -101,6 +107,14 @@ interface GenerateResponse {
   generatedAt: string;
 }
 
+type Stage =
+  | "idle"
+  | "reading"
+  | "checking"
+  | "researching"
+  | "writing"
+  | "auditing";
+
 // ─── Constants ──────────────────────────────────────────────────────
 
 const TITLE_MAX = 140;
@@ -138,34 +152,27 @@ function formatCount(n: number): string {
 // ─── Main component ─────────────────────────────────────────────────
 
 /**
- * SEO Autopilot — single-flow redesign (May 14 2026).
+ * SEO Autopilot — premium redesign (May 14 2026).
  *
- * Replaces the previous 4-section input + 9-section result with ONE
- * input card and ONE result card. Numbered steps in the input, clean
- * row-by-row fields in the result. Less colour, more typography. The
- * goal: an employee opens this and immediately knows what to do.
+ * Full-bleed hero with animated aurora background, single combined input
+ * panel with two sub-cards (source + variations), cinematic generation
+ * panel with an orbiting central orb, and a staggered result reveal with
+ * subtle motion on every section. Insights drawer animates its bars and
+ * cards in on open.
  *
- * Layout:
- *   - Brand header (one row)
- *   - Input card (steps 1, 2, optional 3 + CTA)
- *   - One of: progress / error / blocked / result + insights
+ * Backend contract is untouched — same POST /api/seo-autopilot/generate
+ * with { aliExpressTitle, images, sizes, variants }, same response shape.
  */
 export function SeoAutopilotView() {
   // ─── Form state ───────────────────────────────────────────────────
   const [aliTitle, setAliTitle] = useState("");
   const [images, setImages] = useState<UploadedImage[]>([]);
-
-  // Variations — always visible (every product has sizes / variants).
-  // Personalization, price, qty, SKU, who/what/when made, processing
-  // time, returns policy AND notes were all removed in earlier passes.
   const [sizes, setSizes] = useState<string[]>([]);
   const [variants, setVariants] = useState<string[]>([]);
 
   // ─── Generation state ─────────────────────────────────────────────
   const [generating, setGenerating] = useState(false);
-  const [stage, setStage] = useState<
-    "idle" | "reading" | "checking" | "researching" | "writing" | "auditing"
-  >("idle");
+  const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -210,7 +217,9 @@ export function SeoAutopilotView() {
       setStage("idle");
 
       if (data.compliance.verdict === "BLOCKED") {
-        toast.error("Product blocked", { description: data.compliance.summary });
+        toast.error("Product blocked", {
+          description: data.compliance.summary,
+        });
       } else if (data.compliance.verdict === "REVIEW") {
         toast.warning("Listing ready — review warnings", {
           description: data.compliance.summary,
@@ -243,297 +252,469 @@ export function SeoAutopilotView() {
     setErrorMsg(null);
   }
 
+  const showInput = !generating && !result;
+  const showResult =
+    !!result && !generating && result.compliance.verdict !== "BLOCKED" && !!result.listing;
+
   return (
-    <div className="max-w-3xl mx-auto space-y-5 pb-12">
-      <HeroBanner />
+    <div className="relative">
+      {/* Page background — radial gradient + dot mesh that's barely there */}
+      <PageBackdrop />
 
-      {/* ──────────────── SOURCE CARD ──────────────── */}
-      <Card className="border shadow-none">
-        <CardContent className="p-6 sm:p-8 space-y-6">
-          <StepHeader
-            n={1}
-            label="Step 1"
-            title="Source material"
-            required
-          />
+      <div className="relative max-w-3xl mx-auto space-y-6 pb-16 pt-1">
+        <HeroBanner generating={generating} hasResult={!!result} />
 
-          <div className="space-y-2">
-            <SectionLabel icon={Type} required>AliExpress title</SectionLabel>
-            <Textarea
-              value={aliTitle}
-              onChange={(e) => setAliTitle(e.target.value)}
-              placeholder="ROSES Pearl Gorgeous Prom Dress Sweetheart Off the Shoulder Hollow Prom Gown..."
-              className="min-h-[92px] resize-none text-sm leading-relaxed"
-              disabled={generating}
-            />
-            <div className="flex items-start justify-between gap-3 text-[11px] text-muted-foreground/70">
-              <span className="leading-snug">
-                Autopilot reads this to extract the keyword, category, audience &amp; style.
-              </span>
-              <span className="tabular-nums shrink-0 font-medium">
-                {aliTitle.length} chars
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <SectionLabel icon={ImageIcon} required>Product images</SectionLabel>
-            <SeoImageUploader
+        {/* ──────────────── INPUT ──────────────── */}
+        {showInput && (
+          <div className="space-y-5 ap-stagger-in" style={{ animationDelay: "120ms" }}>
+            <SourceCard
+              aliTitle={aliTitle}
+              onAliTitleChange={setAliTitle}
               images={images}
-              onChange={setImages}
+              onImagesChange={setImages}
+              disabled={generating}
+              titleValid={titleValid}
+              imagesValid={imagesValid}
+            />
+            <VariationsCard
+              sizes={sizes}
+              onSizesChange={setSizes}
+              variants={variants}
+              onVariantsChange={setVariants}
               disabled={generating}
             />
-            <p className="text-[11px] text-muted-foreground/70 leading-snug">
-              Upload your Nano Banana regenerated photos — never raw AliExpress files. Sonnet sees them for the compliance check and alt text.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ──────────────── VARIATIONS CARD (always visible) ──────────────── */}
-      <Card className="border shadow-none">
-        <CardContent className="p-6 sm:p-8 space-y-6">
-          <StepHeader n={2} label="Step 2" title="Variations" required />
-
-          <div className="space-y-2">
-            <SectionLabel icon={Ruler}>Available sizes</SectionLabel>
-            <SizeSelector
-              values={sizes}
-              onChange={setSizes}
-              disabled={generating}
+            <GenerateCta
+              canSubmit={canSubmit}
+              generating={generating}
+              titleValid={titleValid}
+              imagesValid={imagesValid}
+              hasAnyInput={
+                aliTitle.length > 0 ||
+                images.length > 0 ||
+                sizes.length > 0 ||
+                variants.length > 0
+              }
+              onGenerate={handleGenerate}
+              onReset={handleReset}
             />
           </div>
+        )}
 
-          <div className="space-y-2">
-            <SectionLabel icon={Palette}>Available variants</SectionLabel>
-            <VariantSelector
-              values={variants}
-              onChange={setVariants}
-              disabled={generating}
-            />
-          </div>
-        </CardContent>
-      </Card>
+        {/* ──────────────── GENERATING ──────────────── */}
+        {generating && <GenerationCinema stage={stage} />}
 
-      {/* ──────────────── CTA ──────────────── */}
-      {/* The CTA + validation messages disappear once a listing has
-          been generated. The "Start a new listing" link inside the
-          result panel handles the restart path from then on. */}
-      {!result && (
-        <div className="space-y-2">
-          <Button
-            type="button"
-            onClick={handleGenerate}
-            disabled={!canSubmit}
-            className="w-full h-14 gap-2.5 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 hover:from-[#F1641E] hover:via-orange-500 hover:to-violet-600 text-white font-semibold text-[15px] shadow-lg shadow-orange-500/25 ring-1 ring-orange-700/30 hover:opacity-95 hover:shadow-xl hover:shadow-orange-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="size-4 animate-spin" /> Generating your listing…
-              </>
-            ) : (
-              <>
-                <Wand2 className="size-4" /> Generate Etsy listing
-              </>
-            )}
-          </Button>
-          {!generating && (aliTitle.length > 0 || images.length > 0) && (
-            <div className="space-y-0.5">
-              {!titleValid && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
-                  Paste at least 8 characters of title text.
-                </p>
-              )}
-              {!imagesValid && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
-                  Upload at least one product image.
-                </p>
-              )}
-            </div>
+        {/* ──────────────── ERROR ──────────────── */}
+        {errorMsg && !generating && <ErrorPanel message={errorMsg} />}
+
+        {/* ──────────────── BLOCKED ──────────────── */}
+        {result &&
+          !generating &&
+          result.compliance.verdict === "BLOCKED" && (
+            <BlockedPanel verdict={result.compliance} onReset={handleReset} />
           )}
-          {(aliTitle || images.length > 0 || sizes.length > 0 || variants.length > 0) &&
-            !generating && (
-              <button
-                type="button"
-                onClick={handleReset}
-                className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center justify-center gap-1.5 py-1"
-              >
-                <RotateCw className="size-3" /> Reset everything
-              </button>
-            )}
-        </div>
-      )}
 
-      {/* ──────────────── OUTPUT ──────────────── */}
-      {generating && <ProgressCard stage={stage} />}
-      {errorMsg && !generating && <ErrorCard message={errorMsg} />}
-      {result && !generating && result.compliance.verdict === "BLOCKED" && (
-        <BlockedCard verdict={result.compliance} />
-      )}
-      {result &&
-        !generating &&
-        result.compliance.verdict !== "BLOCKED" &&
-        result.listing && (
+        {/* ──────────────── RESULT ──────────────── */}
+        {showResult && result && (
           <>
-            <ResultCard
+            <ResultPanel
               key={result.generatedAt}
               data={result}
               userImages={images}
             />
-            <InsightsCard data={result} />
+            <InsightsDrawer data={result} />
+            <RestartButton onReset={handleReset} />
           </>
         )}
-
-      {/* Restart path — only visible after a generation. The CTA above
-          is hidden once `result` is set, so this is how the user
-          starts a fresh listing. */}
-      {result && !generating && (
-        <div className="pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleReset}
-            className="w-full h-11 gap-2 text-sm font-semibold border-dashed hover:border-solid hover:bg-muted/40"
-          >
-            <RotateCw className="size-4" />
-            Start a new listing
-          </Button>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ─── Hero banner (matches the price calculator's premium banner) ────
+// ─── Page backdrop — radial wash that anchors the premium feel ──────
 
-function HeroBanner() {
+function PageBackdrop() {
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#F1641E] via-orange-600 to-violet-700 shadow-xl shadow-orange-500/25 ring-1 ring-orange-700/40">
-      {/* Glow blobs for depth */}
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 -top-10 -z-0 overflow-hidden"
+    >
       <div
-        aria-hidden
-        className="absolute -top-20 -left-16 size-64 rounded-full bg-amber-300/30 blur-3xl pointer-events-none"
-      />
-      <div
-        aria-hidden
-        className="absolute -bottom-24 -right-16 size-72 rounded-full bg-violet-400/35 blur-3xl pointer-events-none"
-      />
-      {/* Diagonal stripe texture */}
-      <div
-        aria-hidden
-        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        className="absolute -top-40 left-1/2 -translate-x-1/2 size-[1200px] rounded-full opacity-30 dark:opacity-20 blur-3xl"
         style={{
-          backgroundImage:
-            "repeating-linear-gradient(45deg, transparent 0, transparent 20px, rgba(255,255,255,0.6) 20px, rgba(255,255,255,0.6) 21px)",
+          background:
+            "radial-gradient(closest-side, rgba(241,100,30,0.18), rgba(124,58,237,0.10) 55%, transparent 75%)",
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── Hero banner — premium animated aurora ──────────────────────────
+
+function HeroBanner({
+  generating,
+  hasResult,
+}: {
+  generating: boolean;
+  hasResult: boolean;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-orange-500/20 ap-stagger-in">
+      {/* Base gradient + dark wash so the aurora pops */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#1a0d1f] via-[#2a1612] to-[#1a0d1f]" />
+
+      {/* Animated aurora blobs */}
+      <div
+        aria-hidden
+        className="absolute -top-32 -left-20 size-[420px] rounded-full blur-3xl ap-aurora-1"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(241,100,30,0.85), rgba(241,100,30,0) 70%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="absolute -bottom-40 right-0 size-[520px] rounded-full blur-3xl ap-aurora-2"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(124,58,237,0.75), rgba(124,58,237,0) 70%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="absolute top-1/3 right-1/4 size-[300px] rounded-full blur-3xl ap-aurora-3"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(244,114,182,0.55), rgba(244,114,182,0) 70%)",
         }}
       />
 
-      <div className="relative flex flex-col sm:flex-row sm:items-center gap-5 px-6 sm:px-8 py-6 sm:py-7">
-        {/* Frosted-glass icon chip with pulsing halo */}
-        <div className="relative shrink-0">
-          <span
-            aria-hidden
-            className="absolute inset-0 rounded-2xl bg-white/40 animate-pulse blur-md"
-          />
-          <div className="relative size-14 rounded-2xl bg-white/15 ring-1 ring-white/40 flex items-center justify-center backdrop-blur-sm shadow-inner">
-            <Sparkles className="size-7 text-white" />
+      {/* Subtle dot pattern for texture */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.08]"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle, rgba(255,255,255,0.6) 1px, transparent 1px)",
+          backgroundSize: "18px 18px",
+        }}
+      />
+
+      {/* Top highlight + bottom darkening for depth */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent"
+      />
+
+      <div className="relative px-7 sm:px-9 py-8 sm:py-10">
+        {/* Status pills */}
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 shadow-inner">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-80" />
+              <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+            </span>
+            Private beta · CEO only
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
+            <ShieldCheck className="size-3" />
+            Strict compliance gate
+          </span>
+          {hasResult && (
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-200 tracking-[0.16em] uppercase bg-emerald-500/20 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-emerald-300/30">
+              <Check className="size-3" />
+              Listing ready
+            </span>
+          )}
+          {generating && (
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.16em] uppercase bg-orange-500/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-orange-300/40">
+              <Loader2 className="size-3 animate-spin" />
+              Generating
+            </span>
+          )}
+        </div>
+
+        {/* Title + icon */}
+        <div className="flex items-center gap-4 sm:gap-5">
+          <div className="relative shrink-0">
+            <span
+              aria-hidden
+              className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-orange-400/40 to-violet-500/40 blur-lg ap-orb-pulse"
+            />
+            <div className="relative size-16 sm:size-[68px] rounded-2xl bg-gradient-to-br from-white/20 to-white/5 ring-1 ring-white/30 flex items-center justify-center backdrop-blur-md shadow-2xl shadow-orange-900/40">
+              <Sparkles className="size-7 sm:size-8 text-white drop-shadow-lg" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-[1.05]">
+              SEO Autopilot
+            </h1>
+            <p className="text-[13px] sm:text-sm text-white/75 mt-2 leading-relaxed max-w-xl">
+              Drop your AliExpress title + 2 product photos. Autopilot
+              researches live Etsy data, checks compliance, then writes the
+              complete listing for you to paste into Etsy.
+            </p>
           </div>
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.18em] uppercase bg-white/15 backdrop-blur-sm px-2 py-0.5 rounded-full ring-1 ring-white/25">
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-300" />
-              </span>
-              Private beta · CEO only
-            </span>
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-white/90 tracking-wider uppercase bg-black/15 backdrop-blur-sm px-2 py-0.5 rounded-full">
-              <ShieldCheck className="size-3" />
-              Strict compliance gate
-            </span>
-          </div>
-          <h2 className="text-2xl sm:text-[26px] font-bold text-white tracking-tight leading-tight">
-            SEO Autopilot
-          </h2>
-          <p className="text-[13px] sm:text-sm text-white/85 mt-1.5 leading-snug max-w-xl">
-            Drop your AliExpress title + 2 product photos. Autopilot
-            researches live Etsy data, checks compliance, then writes the
-            complete listing for you to paste into Etsy.
-          </p>
+        {/* Bottom feature strip */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-7 pt-5 border-t border-white/10">
+          <FeatureCell
+            icon={Eye}
+            label="Compliance"
+            sub="Strict IP check"
+          />
+          <FeatureCell
+            icon={Search}
+            label="Research"
+            sub="20 top listings"
+          />
+          <FeatureCell
+            icon={PenLine}
+            label="Writes copy"
+            sub="Title · tags · desc"
+          />
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Step header (used by Source + Variations cards) ────────────────
+function FeatureCell({
+  icon: Icon,
+  label,
+  sub,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  sub: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 min-w-0">
+      <div className="size-8 rounded-lg bg-white/10 ring-1 ring-white/15 flex items-center justify-center shrink-0">
+        <Icon className="size-4 text-white/90" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] sm:text-[12px] font-semibold text-white leading-tight truncate">
+          {label}
+        </p>
+        <p className="text-[10px] text-white/55 leading-tight truncate">{sub}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Source card ────────────────────────────────────────────────────
+
+function SourceCard({
+  aliTitle,
+  onAliTitleChange,
+  images,
+  onImagesChange,
+  disabled,
+  titleValid,
+  imagesValid,
+}: {
+  aliTitle: string;
+  onAliTitleChange: (v: string) => void;
+  images: UploadedImage[];
+  onImagesChange: (imgs: UploadedImage[]) => void;
+  disabled: boolean;
+  titleValid: boolean;
+  imagesValid: boolean;
+}) {
+  return (
+    <PremiumCard>
+      <CardContent className="p-7 sm:p-8 space-y-7">
+        <StepHeader
+          stepN={1}
+          eyebrow="Step one"
+          title="Source material"
+          subtitle="What Autopilot reads first"
+          required
+        />
+
+        {/* ── AliExpress title ── */}
+        <div className="space-y-2.5">
+          <SectionLabel icon={Type} required filled={titleValid}>
+            AliExpress title
+          </SectionLabel>
+          <div className="relative">
+            <Textarea
+              value={aliTitle}
+              onChange={(e) => onAliTitleChange(e.target.value)}
+              placeholder="ROSES Pearl Gorgeous Prom Dress Sweetheart Off the Shoulder Hollow Prom Gown..."
+              className="min-h-[110px] resize-none text-sm leading-relaxed bg-muted/20 border-border/70 focus-visible:border-orange-500/60 focus-visible:ring-orange-500/15 transition-colors"
+              disabled={disabled}
+            />
+            {/* Char counter floating in bottom-right */}
+            <div className="absolute bottom-2.5 right-3 text-[10px] font-bold tabular-nums text-muted-foreground/60 bg-card/80 backdrop-blur-sm rounded px-1.5 py-0.5">
+              {aliTitle.length}
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground/75 leading-snug">
+            Autopilot reads this to extract the keyword, category, audience &amp; style.
+          </p>
+        </div>
+
+        {/* ── Product images ── */}
+        <div className="space-y-2.5">
+          <SectionLabel icon={ImageIcon} required filled={imagesValid}>
+            Product images
+          </SectionLabel>
+          <SeoImageUploader
+            images={images}
+            onChange={onImagesChange}
+            disabled={disabled}
+          />
+          <p className="text-[11px] text-muted-foreground/75 leading-snug">
+            Upload your Nano Banana regenerated photos — never raw AliExpress
+            files. Sonnet sees them for the compliance check and alt text.
+          </p>
+        </div>
+      </CardContent>
+    </PremiumCard>
+  );
+}
+
+// ─── Variations card ────────────────────────────────────────────────
+
+function VariationsCard({
+  sizes,
+  onSizesChange,
+  variants,
+  onVariantsChange,
+  disabled,
+}: {
+  sizes: string[];
+  onSizesChange: (s: string[]) => void;
+  variants: string[];
+  onVariantsChange: (s: string[]) => void;
+  disabled: boolean;
+}) {
+  return (
+    <PremiumCard>
+      <CardContent className="p-7 sm:p-8 space-y-7">
+        <StepHeader
+          stepN={2}
+          eyebrow="Step two"
+          title="Variations"
+          subtitle="Sizes & options buyers can pick"
+          required
+        />
+
+        <div className="space-y-2.5">
+          <SectionLabel icon={Ruler}>Available sizes</SectionLabel>
+          <SizeSelector
+            values={sizes}
+            onChange={onSizesChange}
+            disabled={disabled}
+          />
+        </div>
+
+        <div className="space-y-2.5">
+          <SectionLabel icon={Palette}>Available variants</SectionLabel>
+          <VariantSelector
+            values={variants}
+            onChange={onVariantsChange}
+            disabled={disabled}
+          />
+        </div>
+      </CardContent>
+    </PremiumCard>
+  );
+}
+
+// ─── Premium card wrapper ───────────────────────────────────────────
+
+function PremiumCard({ children }: { children: React.ReactNode }) {
+  return (
+    <Card className="border border-border/60 bg-card/95 backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_12px_36px_-12px_rgba(0,0,0,0.5)] overflow-hidden relative">
+      {/* Top highlight line */}
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+      {children}
+    </Card>
+  );
+}
+
+// ─── Step header ────────────────────────────────────────────────────
 
 function StepHeader({
-  n,
-  label,
+  stepN,
+  eyebrow,
   title,
-  hint,
+  subtitle,
   required,
 }: {
-  n: number;
-  label: string;
+  stepN: number;
+  eyebrow: string;
   title: string;
-  hint?: string;
+  subtitle: string;
   required?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-4">
       <div className="relative shrink-0">
-        <div className="size-9 rounded-xl bg-gradient-to-br from-orange-500/15 via-orange-500/10 to-violet-500/15 ring-1 ring-orange-500/25 flex items-center justify-center">
-          <span className="text-[13px] font-bold tabular-nums text-orange-600 dark:text-orange-400">
-            {n}
+        <span
+          aria-hidden
+          className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-orange-400/30 to-violet-500/30 blur-md"
+        />
+        <div className="relative size-11 rounded-2xl bg-gradient-to-br from-orange-500 to-violet-600 ring-1 ring-orange-700/30 flex items-center justify-center shadow-lg shadow-orange-500/25">
+          <span className="text-base font-bold tabular-nums text-white">
+            {stepN}
           </span>
         </div>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-[0.18em]">
-            {label}
+          <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-[0.22em]">
+            {eyebrow}
           </p>
           {required && (
-            <span className="text-[9px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+            <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-[0.18em] text-rose-600 dark:text-rose-400">
               Required
             </span>
           )}
-          {hint && !required && (
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              · {hint}
-            </span>
-          )}
         </div>
-        <h3 className="text-base font-bold tracking-tight leading-tight mt-0.5">
+        <h3 className="text-[17px] font-bold tracking-tight leading-tight mt-1">
           {title}
         </h3>
+        <p className="text-[12px] text-muted-foreground/80 mt-0.5">{subtitle}</p>
       </div>
     </div>
   );
 }
 
-// ─── Section label (used inside step cards) ─────────────────────────
+// ─── Section label ──────────────────────────────────────────────────
 
 function SectionLabel({
   children,
   icon: Icon,
   required,
+  filled,
 }: {
   children: React.ReactNode;
   icon?: React.ComponentType<{ className?: string }>;
   required?: boolean;
+  filled?: boolean;
 }) {
   return (
-    <label className="text-[11px] font-semibold text-foreground/80 uppercase tracking-[0.16em] flex items-center gap-1.5">
-      {Icon && <Icon className="size-3" />}
+    <label className="text-[11px] font-bold text-foreground/80 uppercase tracking-[0.18em] flex items-center gap-2">
+      {Icon && (
+        <span
+          className={`size-5 rounded-md flex items-center justify-center ring-1 transition-colors ${
+            filled
+              ? "bg-emerald-500/15 ring-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+              : "bg-muted/40 ring-border/60 text-muted-foreground"
+          }`}
+        >
+          {filled ? <Check className="size-3" strokeWidth={3} /> : <Icon className="size-3" />}
+        </span>
+      )}
       {children}
       {required && (
         <span
-          className="text-rose-500 dark:text-rose-400 normal-case tracking-normal font-bold leading-none"
+          className="text-rose-500 dark:text-rose-400 normal-case tracking-normal font-bold leading-none ml-0.5"
           aria-label="required"
           title="Required"
         >
@@ -544,91 +725,316 @@ function SectionLabel({
   );
 }
 
+// ─── Generate CTA ────────────────────────────────────────────────────
 
-
-
-// ─── Progress / Error / Blocked ─────────────────────────────────────
-
-function ProgressCard({
-  stage,
+function GenerateCta({
+  canSubmit,
+  generating,
+  titleValid,
+  imagesValid,
+  hasAnyInput,
+  onGenerate,
+  onReset,
 }: {
-  stage: "idle" | "reading" | "checking" | "researching" | "writing" | "auditing";
+  canSubmit: boolean;
+  generating: boolean;
+  titleValid: boolean;
+  imagesValid: boolean;
+  hasAnyInput: boolean;
+  onGenerate: () => void;
+  onReset: () => void;
 }) {
-  const order = ["reading", "checking", "researching", "writing", "auditing"] as const;
-  const idx = order.indexOf(stage as (typeof order)[number]);
-  const labels = {
-    reading: "Reading your title",
-    checking: "Strict compliance check",
-    researching: "Researching live Etsy data",
-    writing: "Writing your listing",
-    auditing: "Final rule check",
-  } as const;
   return (
-    <Card className="border shadow-none overflow-hidden relative">
-      {/* Subtle gradient backdrop — calls out that something's happening */}
-      <div
-        aria-hidden
-        className="absolute inset-0 bg-gradient-to-br from-orange-50/60 via-card to-violet-50/40 dark:from-orange-950/15 dark:via-card dark:to-violet-950/15 pointer-events-none"
-      />
-      <CardContent className="relative p-6 sm:p-8 space-y-6">
-        <div className="flex items-center gap-4">
-          <div className="relative shrink-0">
-            <span
+    <div className="space-y-3 ap-stagger-in" style={{ animationDelay: "240ms" }}>
+      <div className="relative group">
+        {/* Soft glow that intensifies on hover */}
+        <div
+          aria-hidden
+          className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-[#F1641E] via-pink-500 to-violet-600 blur-md opacity-50 group-hover:opacity-75 transition-opacity ${canSubmit ? "" : "opacity-0 group-hover:opacity-0"}`}
+        />
+        <Button
+          type="button"
+          onClick={onGenerate}
+          disabled={!canSubmit}
+          className="relative w-full h-16 gap-3 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 hover:from-[#F1641E] hover:via-orange-500 hover:to-violet-600 text-white font-bold text-[15px] tracking-wide rounded-2xl shadow-xl shadow-orange-500/30 ring-1 ring-orange-700/30 hover:shadow-2xl hover:shadow-orange-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+        >
+          {generating ? (
+            <>
+              <Loader2 className="size-5 animate-spin" />
+              Generating your listing…
+            </>
+          ) : (
+            <>
+              <Wand2 className="size-5" />
+              <span>Generate Etsy listing</span>
+              <span className="ml-1 text-xs font-semibold opacity-80 hidden sm:inline">
+                · 25–40s
+              </span>
+            </>
+          )}
+        </Button>
+      </div>
+
+      {!generating && (aliTitleHasContent(titleValid, imagesValid)) && (
+        <div className="space-y-1">
+          {!titleValid && (
+            <ValidationLine text="Paste at least 8 characters of title text." />
+          )}
+          {!imagesValid && (
+            <ValidationLine text="Upload at least one product image." />
+          )}
+        </div>
+      )}
+
+      {hasAnyInput && !generating && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center justify-center gap-1.5 py-1"
+        >
+          <RotateCw className="size-3" />
+          Reset everything
+        </button>
+      )}
+    </div>
+  );
+}
+
+function aliTitleHasContent(titleValid: boolean, imagesValid: boolean): boolean {
+  // Show validation lines whenever ANY required field is invalid.
+  return !titleValid || !imagesValid;
+}
+
+function ValidationLine({ text }: { text: string }) {
+  return (
+    <p className="text-[11px] text-amber-700 dark:text-amber-400 text-center flex items-center justify-center gap-1.5">
+      <AlertTriangle className="size-3" />
+      {text}
+    </p>
+  );
+}
+
+// ─── Generation cinema — animated orb + step list ───────────────────
+
+function GenerationCinema({ stage }: { stage: Stage }) {
+  const order: Stage[] = ["reading", "checking", "researching", "writing", "auditing"];
+  const idx = order.indexOf(stage);
+  const labels: Record<Exclude<Stage, "idle">, { title: string; sub: string; icon: React.ComponentType<{ className?: string }>}> = {
+    reading: {
+      title: "Reading your title",
+      sub: "Extracting keyword · category · audience",
+      icon: Eye,
+    },
+    checking: {
+      title: "Compliance check",
+      sub: "Scanning images + title for IP issues",
+      icon: ShieldCheck,
+    },
+    researching: {
+      title: "Researching Etsy",
+      sub: "Pulling top 20 ranking listings live",
+      icon: Search,
+    },
+    writing: {
+      title: "Writing your listing",
+      sub: "Title · 13 tags · description · alt text",
+      icon: PenLine,
+    },
+    auditing: {
+      title: "Final polish",
+      sub: "Tag intelligence + tier badges",
+      icon: Zap,
+    },
+  };
+
+  // Elapsed seconds — gives the panel a live, breathing feel.
+  // React 19 purity: don't call Date.now() in render. Seed the ref with
+  // 0, then capture the real start time inside useEffect on mount.
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number>(0);
+  useEffect(() => {
+    startRef.current = Date.now();
+    const i = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  return (
+    <PremiumCard>
+      <CardContent className="relative p-8 sm:p-10 overflow-hidden">
+        {/* Background gradient breathing */}
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-br from-orange-50/50 via-transparent to-violet-50/40 dark:from-orange-950/15 dark:via-transparent dark:to-violet-950/15"
+        />
+        <div
+          aria-hidden
+          className="absolute -top-32 -left-20 size-[300px] rounded-full blur-3xl ap-aurora-1 opacity-50"
+          style={{
+            background:
+              "radial-gradient(closest-side, rgba(241,100,30,0.5), transparent 70%)",
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute -bottom-32 -right-20 size-[340px] rounded-full blur-3xl ap-aurora-2 opacity-50"
+          style={{
+            background:
+              "radial-gradient(closest-side, rgba(124,58,237,0.45), transparent 70%)",
+          }}
+        />
+
+        <div className="relative flex flex-col items-center text-center">
+          {/* Central orb */}
+          <div className="relative size-32 sm:size-36 mb-6">
+            {/* Outer halo — pulsing */}
+            <div
               aria-hidden
-              className="absolute inset-0 rounded-xl bg-orange-500/30 animate-pulse blur-md"
+              className="absolute -inset-6 rounded-full bg-gradient-to-br from-orange-400/30 to-violet-500/30 blur-2xl ap-orb-pulse"
             />
-            <div className="relative size-12 rounded-xl bg-gradient-to-br from-orange-500 to-violet-600 ring-1 ring-orange-600/30 flex items-center justify-center shadow-lg shadow-orange-500/25">
-              <Loader2 className="size-6 text-white animate-spin" />
+            {/* Orbiting ring 1 */}
+            <div
+              aria-hidden
+              className="absolute inset-0 rounded-full ring-2 ring-orange-400/30 ap-orb-spin"
+              style={{ borderTopColor: "rgba(241,100,30,0.8)" }}
+            >
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 size-3 rounded-full bg-orange-500 shadow-lg shadow-orange-500/60" />
+            </div>
+            {/* Orbiting ring 2 (slower, reverse) */}
+            <div
+              aria-hidden
+              className="absolute inset-3 rounded-full ring-2 ring-violet-400/30 ap-orb-spin"
+              style={{
+                animationDirection: "reverse",
+                animationDuration: "11s",
+              }}
+            >
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 size-2.5 rounded-full bg-violet-500 shadow-lg shadow-violet-500/60" />
+            </div>
+            {/* Core */}
+            <div className="absolute inset-7 rounded-full bg-gradient-to-br from-[#F1641E] via-orange-500 to-violet-600 ring-1 ring-white/30 flex items-center justify-center shadow-2xl shadow-orange-500/40">
+              <Sparkles className="size-7 text-white" />
             </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-base font-bold tracking-tight">
-              Autopilot is working
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Usually 25–40 seconds with images.
-            </p>
+
+          <p className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-[0.22em] mb-1">
+            Autopilot is working
+          </p>
+          <h3 className="text-xl sm:text-2xl font-bold tracking-tight">
+            {idx >= 0 ? labels[order[idx] as Exclude<Stage, "idle">].title : "Starting"}
+          </h3>
+          <p className="text-[13px] text-muted-foreground mt-1.5 max-w-xs">
+            {idx >= 0
+              ? labels[order[idx] as Exclude<Stage, "idle">].sub
+              : "Spinning up Autopilot…"}
+          </p>
+
+          {/* Elapsed time */}
+          <div className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80 tabular-nums">
+            <Loader2 className="size-3 animate-spin" />
+            <span>{elapsed}s elapsed · usually 25–40s with images</span>
           </div>
         </div>
-        <div className="space-y-2 pl-1">
+
+        {/* Step list */}
+        <div className="relative mt-8 grid gap-1.5">
           {order.map((s, i) => {
             const done = i < idx;
             const active = i === idx;
+            const Icon = labels[s as Exclude<Stage, "idle">].icon;
             return (
               <div
                 key={s}
-                className="flex items-center gap-3 text-xs"
+                className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                  active
+                    ? "bg-orange-50/60 dark:bg-orange-950/20 ring-1 ring-orange-500/30"
+                    : done
+                      ? "bg-emerald-50/40 dark:bg-emerald-950/10"
+                      : "bg-muted/20"
+                }`}
               >
-                {done ? (
-                  <Check className="size-4 text-emerald-500 shrink-0" strokeWidth={3} />
-                ) : active ? (
-                  <Loader2 className="size-4 text-orange-500 animate-spin shrink-0" />
-                ) : (
-                  <div className="size-4 rounded-full border-2 border-muted shrink-0" />
+                {/* Step indicator */}
+                <div className="relative shrink-0">
+                  {done ? (
+                    <div className="size-8 rounded-full bg-emerald-500 ring-1 ring-emerald-600/30 flex items-center justify-center shadow-sm shadow-emerald-500/30">
+                      <Check className="size-4 text-white" strokeWidth={3} />
+                    </div>
+                  ) : active ? (
+                    <>
+                      <span
+                        aria-hidden
+                        className="absolute -inset-1 rounded-full bg-orange-400/40 blur-md animate-pulse"
+                      />
+                      <div className="relative size-8 rounded-full bg-gradient-to-br from-orange-500 to-violet-600 ring-1 ring-orange-700/30 flex items-center justify-center shadow-md shadow-orange-500/30">
+                        <Loader2 className="size-4 text-white animate-spin" />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="size-8 rounded-full bg-muted/60 ring-1 ring-border flex items-center justify-center">
+                      <Icon className="size-4 text-muted-foreground/50" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Step label */}
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`text-[13px] font-semibold leading-tight ${
+                      done || active ? "text-foreground" : "text-muted-foreground/60"
+                    }`}
+                  >
+                    {labels[s as Exclude<Stage, "idle">].title}
+                  </p>
+                  <p
+                    className={`text-[11px] leading-tight mt-0.5 ${
+                      done || active ? "text-muted-foreground" : "text-muted-foreground/50"
+                    }`}
+                  >
+                    {labels[s as Exclude<Stage, "idle">].sub}
+                  </p>
+                </div>
+
+                {/* Shimmer on active row */}
+                {active && (
+                  <div
+                    aria-hidden
+                    className="absolute inset-y-0 right-0 w-1/3 overflow-hidden rounded-r-xl pointer-events-none"
+                  >
+                    <div
+                      className="absolute inset-y-0 w-full ap-shimmer"
+                      style={{
+                        background:
+                          "linear-gradient(to right, transparent, rgba(241,100,30,0.18), transparent)",
+                      }}
+                    />
+                  </div>
                 )}
-                <span
-                  className={
-                    done || active ? "text-foreground" : "text-muted-foreground/60"
-                  }
-                >
-                  {labels[s]}
+
+                {/* Step number marker on the right */}
+                <span className="shrink-0 text-[10px] font-bold tabular-nums text-muted-foreground/40 tracking-wider">
+                  {String(i + 1).padStart(2, "0")} / {String(order.length).padStart(2, "0")}
                 </span>
               </div>
             );
           })}
         </div>
       </CardContent>
-    </Card>
+    </PremiumCard>
   );
 }
 
-function ErrorCard({ message }: { message: string }) {
+// ─── Error panel ────────────────────────────────────────────────────
+
+function ErrorPanel({ message }: { message: string }) {
   return (
-    <Card className="border-rose-300/50 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 shadow-none">
+    <Card className="border-rose-300/50 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 shadow-none ap-stagger-in">
       <CardContent className="p-5 flex items-start gap-3">
-        <AlertTriangle className="size-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+        <div className="size-9 rounded-xl bg-rose-500/20 ring-1 ring-rose-500/40 flex items-center justify-center shrink-0">
+          <AlertTriangle className="size-4 text-rose-600 dark:text-rose-400" />
+        </div>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-rose-900 dark:text-rose-200">
+          <p className="text-sm font-bold text-rose-900 dark:text-rose-200">
             Generation failed
           </p>
           <p className="text-[12px] text-rose-700/90 dark:text-rose-300/80 mt-1 leading-relaxed">
@@ -640,19 +1046,33 @@ function ErrorCard({ message }: { message: string }) {
   );
 }
 
-function BlockedCard({ verdict }: { verdict: ComplianceVerdict }) {
+// ─── Blocked panel ──────────────────────────────────────────────────
+
+function BlockedPanel({
+  verdict,
+  onReset,
+}: {
+  verdict: ComplianceVerdict;
+  onReset: () => void;
+}) {
   return (
-    <Card className="border-rose-400 dark:border-rose-700 bg-rose-50/60 dark:bg-rose-950/30 shadow-none">
-      <CardContent className="p-6 sm:p-7 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="size-11 rounded-xl bg-rose-500/20 ring-1 ring-rose-500/40 flex items-center justify-center shrink-0">
-            <Ban className="size-5 text-rose-600 dark:text-rose-400" />
+    <Card className="border-rose-400 dark:border-rose-700 bg-rose-50/60 dark:bg-rose-950/30 shadow-xl shadow-rose-500/10 ap-stagger-in overflow-hidden">
+      <CardContent className="p-7 sm:p-8 space-y-5">
+        <div className="flex items-center gap-3.5">
+          <div className="relative shrink-0">
+            <span
+              aria-hidden
+              className="absolute -inset-1 rounded-2xl bg-rose-500/30 blur-md animate-pulse"
+            />
+            <div className="relative size-12 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 ring-1 ring-rose-800/30 flex items-center justify-center shadow-lg shadow-rose-500/30">
+              <Ban className="size-6 text-white" />
+            </div>
           </div>
           <div>
-            <p className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-[0.18em]">
-              Blocked
+            <p className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-[0.22em]">
+              Blocked by compliance gate
             </p>
-            <h3 className="text-lg font-bold text-rose-900 dark:text-rose-200 leading-tight">
+            <h3 className="text-xl font-bold text-rose-900 dark:text-rose-200 leading-tight">
               Do not list this on Etsy
             </h3>
           </div>
@@ -662,19 +1082,19 @@ function BlockedCard({ verdict }: { verdict: ComplianceVerdict }) {
           {verdict.summary}
         </p>
 
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-[0.16em]">
+        <div className="space-y-2.5">
+          <p className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-[0.18em]">
             Why
           </p>
           <ul className="space-y-1.5">
             {verdict.concerns.map((c, i) => (
               <li
                 key={i}
-                className="text-[12px] text-foreground/85 flex gap-2 items-start"
+                className="text-[12px] text-foreground/90 flex gap-2 items-start"
               >
                 <span className="mt-1 size-1.5 rounded-full bg-rose-500 shrink-0" />
                 <span>
-                  <span className="font-semibold uppercase text-[10px] tracking-wider opacity-70 mr-1.5">
+                  <span className="font-bold uppercase text-[10px] tracking-wider opacity-70 mr-1.5">
                     {c.category}
                   </span>
                   {c.details}
@@ -684,19 +1104,29 @@ function BlockedCard({ verdict }: { verdict: ComplianceVerdict }) {
           </ul>
         </div>
 
-        <p className="text-[11px] text-rose-700/90 dark:text-rose-300/80 leading-snug border-t border-rose-300/40 dark:border-rose-700/40 pt-3">
+        <p className="text-[11px] text-rose-700/90 dark:text-rose-300/80 leading-snug border-t border-rose-300/40 dark:border-rose-700/40 pt-3.5">
           Etsy can remove listings within hours of detecting IP/policy issues
           and may strike the shop. Source a different version of this product
           or pick something else to list.
         </p>
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onReset}
+          className="w-full h-11 gap-2 text-sm font-semibold border-dashed border-rose-300/60 hover:border-solid hover:bg-rose-100/50 dark:hover:bg-rose-900/20"
+        >
+          <RotateCw className="size-4" />
+          Try a different product
+        </Button>
       </CardContent>
     </Card>
   );
 }
 
-// ─── Result card ─────────────────────────────────────────────────────
+// ─── Result panel ────────────────────────────────────────────────────
 
-function ResultCard({
+function ResultPanel({
   data,
   userImages,
 }: {
@@ -705,9 +1135,6 @@ function ResultCard({
 }) {
   const { listing, compliance, research, inputs } = data;
 
-  // Mutable copies of tags + intel so the swap-tag UI can rewrite them
-  // in place. The parent passes `key={data.generatedAt}` so a fresh
-  // generation remounts this component and re-initializes state.
   const [tags, setTags] = useState<string[]>(listing?.tags ?? []);
   const [tagIntel, setTagIntel] = useState<TagDemand[]>(
     data.tagIntelligence ?? [],
@@ -722,8 +1149,6 @@ function ResultCard({
     setTags((prev) => prev.map((t) => (t === oldTag ? newSuggestion.tag : t)));
     setTagIntel((prev) => {
       const without = prev.filter((t) => t.tag !== oldTag);
-      // Add a synthesised TagDemand record for the new tag using the
-      // demand data the API returned.
       const next: TagDemand = {
         tag: newSuggestion.tag,
         totalListings: newSuggestion.totalListings,
@@ -734,23 +1159,34 @@ function ResultCard({
       };
       return [...without, next];
     });
-    toast.success("Tag swapped", { description: `${oldTag} → ${newSuggestion.tag}` });
+    toast.success("Tag swapped", {
+      description: `${oldTag} → ${newSuggestion.tag}`,
+    });
   }
 
   return (
-    <Card className="border shadow-none overflow-hidden">
-      <CardContent className="p-6 sm:p-8">
-        {/* Header — "listing ready" announcement */}
-        <div className="flex flex-wrap items-start justify-between gap-3 pb-5 mb-5 border-b">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="size-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 ring-1 ring-emerald-700/30 flex items-center justify-center shadow-sm shadow-emerald-500/20 shrink-0">
-              <ShieldCheck className="size-5 text-white" />
+    <PremiumCard>
+      <CardContent className="p-7 sm:p-9 space-y-1">
+        {/* Header */}
+        <div
+          className="flex flex-wrap items-start justify-between gap-3 pb-5 mb-1 border-b border-border/60 ap-stagger-in"
+          style={{ animationDelay: "0ms" }}
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative shrink-0">
+              <span
+                aria-hidden
+                className="absolute -inset-1 rounded-2xl bg-emerald-400/30 blur-md"
+              />
+              <div className="relative size-11 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 ring-1 ring-emerald-700/30 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                <ShieldCheck className="size-5 text-white" />
+              </div>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
+              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.22em]">
                 Generated listing
               </p>
-              <h3 className="text-lg font-bold tracking-tight leading-tight">
+              <h3 className="text-xl font-bold tracking-tight leading-tight mt-0.5">
                 Ready to paste into Etsy
               </h3>
             </div>
@@ -758,51 +1194,67 @@ function ResultCard({
           <ComplianceChip verdict={compliance} />
         </div>
 
-        {/* Auto-decisions chip row */}
-        <DecisionStrip research={research} />
+        {/* Decision strip */}
+        <div className="ap-stagger-in" style={{ animationDelay: "100ms" }}>
+          <DecisionStrip research={research} />
+        </div>
 
-        {/* Compliance warnings (if REVIEW) */}
+        {/* REVIEW warnings */}
         {compliance.verdict === "REVIEW" && compliance.concerns.length > 0 && (
-          <WarningStrip
-            title="Review before listing"
-            issues={compliance.concerns.map((c) => ({
-              severity: c.severity,
-              label: c.category,
-              message: c.details,
-            }))}
-          />
+          <div className="ap-stagger-in" style={{ animationDelay: "150ms" }}>
+            <WarningStrip
+              title="Review before listing"
+              issues={compliance.concerns.map((c) => ({
+                severity: c.severity,
+                label: c.category,
+                message: c.details,
+              }))}
+            />
+          </div>
         )}
 
-        {/* ── FIELDS ── */}
-        {/* Category / Item type / When made dropped May 14: Category is
-            already in the Decisions chip strip above, Item type is
-            always "Physical", When made is always "Ready to ship". */}
+        {/* Title */}
+        <div className="ap-stagger-in" style={{ animationDelay: "200ms" }}>
+          <TitleRow title={listing.title} />
+        </div>
 
-        <TitleRow title={listing.title} />
-        <DescriptionRow description={listing.description} />
+        {/* Description */}
+        <div className="ap-stagger-in" style={{ animationDelay: "300ms" }}>
+          <DescriptionRow description={listing.description} />
+        </div>
 
-        {hasVariations && <Divider />}
-
+        {/* Variations */}
         {hasVariations && inputs && (
-          <VariationsRow sizes={inputs.sizes} variants={inputs.variants} />
+          <>
+            <Divider />
+            <div className="ap-stagger-in" style={{ animationDelay: "400ms" }}>
+              <VariationsRow sizes={inputs.sizes} variants={inputs.variants} />
+            </div>
+          </>
         )}
 
         <Divider />
 
-        <TagsRow
-          tags={tags}
-          intelligence={tagIntel}
-          productTitle={research.searchKeyword}
-          productType={research.productType}
-          category={research.categoryPath}
-          onSwap={handleSwapTag}
-        />
+        {/* Tags */}
+        <div className="ap-stagger-in" style={{ animationDelay: "500ms" }}>
+          <TagsRow
+            tags={tags}
+            intelligence={tagIntel}
+            productTitle={research.searchKeyword}
+            productType={research.productType}
+            category={research.categoryPath}
+            onSwap={handleSwapTag}
+          />
+        </div>
 
         <Divider />
 
-        <AltTextRow altTexts={listing.altTexts} images={userImages} />
+        {/* Alt text */}
+        <div className="ap-stagger-in" style={{ animationDelay: "650ms" }}>
+          <AltTextRow altTexts={listing.altTexts} images={userImages} />
+        </div>
       </CardContent>
-    </Card>
+    </PremiumCard>
   );
 }
 
@@ -811,15 +1263,15 @@ function ResultCard({
 function ComplianceChip({ verdict }: { verdict: ComplianceVerdict }) {
   if (verdict.verdict === "ALLOWED") {
     return (
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 ring-1 ring-emerald-300/40 px-2.5 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase shrink-0">
-        <ShieldCheck className="size-3" />
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/30 px-3 py-1.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 tracking-[0.18em] uppercase shrink-0">
+        <ShieldCheck className="size-3.5" />
         Cleared
       </div>
     );
   }
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-950/40 ring-1 ring-amber-300/40 px-2.5 py-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase shrink-0">
-      <AlertTriangle className="size-3" />
+    <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 ring-1 ring-amber-500/30 px-3 py-1.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 tracking-[0.18em] uppercase shrink-0">
+      <AlertTriangle className="size-3.5" />
       Review
     </div>
   );
@@ -827,27 +1279,37 @@ function ComplianceChip({ verdict }: { verdict: ComplianceVerdict }) {
 
 function DecisionStrip({ research }: { research: ResearchSummary }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5 mt-4 mb-2 text-[11px]">
-      <DecisionChip label="Searched" value={research.searchKeyword} />
-      <DecisionChip label="Category" value={research.categoryPath} />
+    <div className="flex flex-wrap items-center gap-1.5 mt-4 mb-1">
+      <DecisionChip label="Searched" value={research.searchKeyword} icon={Search} />
+      <DecisionChip label="Category" value={research.categoryPath} icon={Target} />
       <DecisionChip
         label="Read"
         value={`${research.competitorsAnalyzed} listings`}
+        icon={Eye}
       />
       {research.audienceHint && (
-        <DecisionChip label="Audience" value={research.audienceHint} />
+        <DecisionChip label="Audience" value={research.audienceHint} icon={Heart} />
       )}
     </div>
   );
 }
 
-function DecisionChip({ label, value }: { label: string; value: string }) {
+function DecisionChip({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-muted/40 px-2 py-1 max-w-full">
-      <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/80">
+    <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted/40 ring-1 ring-border/60 px-2.5 py-1.5 max-w-full">
+      <Icon className="size-3 text-muted-foreground/70 shrink-0" />
+      <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/80">
         {label}
       </span>
-      <span className="text-[11px] font-medium text-foreground truncate">
+      <span className="text-[11px] font-semibold text-foreground truncate">
         {value}
       </span>
     </span>
@@ -862,8 +1324,8 @@ function WarningStrip({
   issues: Array<{ severity: "warn" | "block"; label: string; message: string }>;
 }) {
   return (
-    <div className="mt-3 mb-1 rounded-lg border border-amber-300/50 dark:border-amber-800/40 bg-amber-50/40 dark:bg-amber-950/15 px-3 py-2.5">
-      <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mb-1.5">
+    <div className="mt-3 mb-1 rounded-xl border border-amber-300/50 dark:border-amber-800/40 bg-amber-50/40 dark:bg-amber-950/15 px-4 py-3">
+      <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-[0.18em] mb-1.5">
         {title}
       </p>
       <ul className="space-y-1">
@@ -875,7 +1337,7 @@ function WarningStrip({
               }`}
             />
             <span>
-              <span className="font-semibold uppercase text-[9px] tracking-wider opacity-70 mr-1">
+              <span className="font-bold uppercase text-[9px] tracking-wider opacity-70 mr-1">
                 {i.label}
               </span>
               {i.message}
@@ -888,64 +1350,67 @@ function WarningStrip({
 }
 
 function Divider() {
-  return <div className="my-2 border-t border-border/60" />;
+  return <div className="my-3 border-t border-border/40" />;
 }
-
-
 
 function TitleRow({ title }: { title: string }) {
   const pct = (title.length / TITLE_MAX) * 100;
   const tone =
     pct > 100
-      ? "rose"
+      ? ("rose" as const)
       : pct >= 80
-        ? "emerald"
+        ? ("emerald" as const)
         : pct >= 50
-          ? "amber"
-          : "muted";
+          ? ("amber" as const)
+          : ("muted" as const);
+  const toneClass = {
+    rose: "bg-rose-500",
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-500",
+    muted: "bg-muted-foreground/40",
+  } as const;
+  const toneText = {
+    rose: "text-rose-600 dark:text-rose-400",
+    emerald: "text-emerald-600 dark:text-emerald-400",
+    amber: "text-amber-600 dark:text-amber-400",
+    muted: "text-muted-foreground",
+  } as const;
+
   return (
     <div className="py-4">
-      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-orange-50/60 via-card to-violet-50/40 dark:from-orange-950/15 dark:via-card dark:to-violet-950/15 ring-1 ring-orange-500/10">
+      <div className="relative overflow-hidden rounded-2xl border border-orange-500/15 bg-gradient-to-br from-orange-50/70 via-card to-violet-50/50 dark:from-orange-950/20 dark:via-card dark:to-violet-950/15 ring-1 ring-orange-500/10 shadow-sm shadow-orange-500/5">
+        {/* Subtle inner shimmer line */}
+        <div
+          aria-hidden
+          className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-orange-400/40 to-transparent"
+        />
         <div className="p-5 sm:p-6 space-y-3.5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <div className="size-8 rounded-lg bg-gradient-to-br from-orange-500/15 to-violet-500/15 ring-1 ring-orange-500/25 flex items-center justify-center">
+              <div className="size-8 rounded-lg bg-gradient-to-br from-orange-500/20 to-violet-500/20 ring-1 ring-orange-500/30 flex items-center justify-center">
                 <Type className="size-4 text-orange-600 dark:text-orange-400" />
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-700/80 dark:text-orange-300/80">
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-orange-700/85 dark:text-orange-300/85">
                 Title
               </p>
             </div>
             <CopyButton value={title} label="title" />
           </div>
-          <p className="text-base sm:text-lg font-semibold leading-snug break-words text-foreground">
+          <p
+            className="text-base sm:text-lg font-semibold leading-snug break-words text-foreground ap-text-reveal"
+            style={{ animationDelay: "250ms" }}
+          >
             {title}
           </p>
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-1.5 rounded-full bg-muted/70 overflow-hidden">
+            <div className="flex-1 h-2 rounded-full bg-muted/60 overflow-hidden">
               <div
-                className={`h-full transition-all ${
-                  tone === "rose"
-                    ? "bg-rose-500"
-                    : tone === "emerald"
-                      ? "bg-emerald-500"
-                      : tone === "amber"
-                        ? "bg-amber-500"
-                        : "bg-muted-foreground/40"
-                }`}
-                style={{ width: `${Math.min(100, pct)}%` }}
+                className={`h-full ap-bar-fill ${toneClass[tone]}`}
+                style={{ ["--bar-w" as string]: `${Math.min(100, pct)}%` }}
               />
             </div>
             <p
-              className={`text-[11px] font-bold tabular-nums ${
-                tone === "rose"
-                  ? "text-rose-600 dark:text-rose-400"
-                  : tone === "emerald"
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : tone === "amber"
-                      ? "text-amber-600 dark:text-amber-400"
-                      : "text-muted-foreground"
-              }`}
+              className={`text-[11px] font-bold tabular-nums ${toneText[tone]}`}
             >
               {title.length} / {TITLE_MAX}
             </p>
@@ -960,10 +1425,10 @@ function DescriptionRow({ description }: { description: string }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = description.length > 320;
   return (
-    <div className="py-3.5 space-y-2.5">
+    <div className="py-4 space-y-2.5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
             Description
           </p>
           <span className="text-[10px] tabular-nums font-medium text-muted-foreground/60">
@@ -973,20 +1438,20 @@ function DescriptionRow({ description }: { description: string }) {
         <CopyButton value={description} label="description" />
       </div>
       <div
-        className={`rounded-xl border bg-muted/20 px-4 py-3.5 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90 ${
-          expanded || !isLong ? "" : "max-h-[160px] overflow-hidden relative"
+        className={`rounded-xl border border-border/60 bg-muted/15 px-4 py-3.5 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90 relative ${
+          expanded || !isLong ? "" : "max-h-[180px] overflow-hidden"
         }`}
       >
         {description}
         {!expanded && isLong && (
-          <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-muted/40 via-muted/20 to-transparent pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card via-card/70 to-transparent pointer-events-none" />
         )}
       </div>
       {isLong && (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+          className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
         >
           <ChevronDown
             className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -1006,13 +1471,11 @@ function VariationsRow({
   variants: string[];
 }) {
   return (
-    <div className="py-3.5 space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+    <div className="py-4 space-y-2.5">
+      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
         Variations
       </p>
-      {sizes.length > 0 && (
-        <ChipDisplay label="Sizes" values={sizes} copyAll />
-      )}
+      {sizes.length > 0 && <ChipDisplay label="Sizes" values={sizes} copyAll />}
       {variants.length > 0 && (
         <ChipDisplay label="Variants" values={variants} copyAll />
       )}
@@ -1031,19 +1494,24 @@ function ChipDisplay({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-wider mr-1">
+      <span className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-[0.16em] mr-1">
         {label}
       </span>
-      {values.map((v) => (
+      {values.map((v, idx) => (
         <span
           key={v}
-          className="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium"
+          className="inline-flex items-center rounded-full bg-muted/60 ring-1 ring-border/40 px-2.5 py-0.5 text-[11px] font-medium ap-tag-pop"
+          style={{ animationDelay: `${idx * 25}ms` }}
         >
           {v}
         </span>
       ))}
       {copyAll && (
-        <CopyButton value={values.join(", ")} label={label.toLowerCase()} size="xs" />
+        <CopyButton
+          value={values.join(", ")}
+          label={label.toLowerCase()}
+          size="xs"
+        />
       )}
     </div>
   );
@@ -1080,18 +1548,18 @@ function TagsRow({
   }
 
   return (
-    <div className="py-3.5 space-y-2.5">
+    <div className="py-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Tags{" "}
-          <span className="text-muted-foreground/60 font-normal normal-case tracking-normal">
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+          Tags
+          <span className="ml-1.5 text-muted-foreground/60 font-medium normal-case tracking-normal">
             · {tags.length}/13 · tap to copy · ↻ to swap
           </span>
         </p>
         <button
           type="button"
           onClick={copyAll}
-          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium border border-border hover:bg-muted/60 text-foreground/80 transition-colors"
+          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-semibold border border-border hover:bg-muted/60 text-foreground/80 transition-colors"
         >
           <Copy className="size-3" /> Copy all
         </button>
@@ -1100,16 +1568,21 @@ function TagsRow({
         {tags.map((tag, idx) => {
           const intel = intelByTag.get(tag);
           return (
-            <TagPillWithSwap
+            <div
               key={`${tag}-${idx}-${tag.length}`}
-              tag={tag}
-              intel={intel}
-              productTitle={productTitle}
-              productType={productType}
-              category={category}
-              existingTags={tags}
-              onSwap={(suggestion) => onSwap(tag, suggestion)}
-            />
+              className="ap-tag-pop"
+              style={{ animationDelay: `${idx * 35}ms` }}
+            >
+              <TagPillWithSwap
+                tag={tag}
+                intel={intel}
+                productTitle={productTitle}
+                productType={productType}
+                category={category}
+                existingTags={tags}
+                onSwap={(suggestion) => onSwap(tag, suggestion)}
+              />
+            </div>
           );
         })}
       </div>
@@ -1197,12 +1670,12 @@ function TagPillWithSwap({
       }}
     >
       <div
-        className={`inline-flex items-center gap-1 rounded-full ring-1 transition-colors ${
+        className={`inline-flex items-center gap-1 rounded-full ring-1 transition-all hover:-translate-y-px ${
           isLong
             ? "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 ring-rose-300/50"
             : copied
               ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 ring-emerald-300/50"
-              : "bg-card hover:bg-muted/50 text-foreground/85 ring-border"
+              : "bg-card hover:bg-muted/40 text-foreground/85 ring-border/70"
         }`}
       >
         <button
@@ -1216,7 +1689,7 @@ function TagPillWithSwap({
           }
         >
           {copied ? (
-            <Check className="size-3 text-emerald-600" />
+            <Check className="size-3 text-emerald-600" strokeWidth={3} />
           ) : (
             <Hash className="size-3 opacity-40" />
           )}
@@ -1234,7 +1707,7 @@ function TagPillWithSwap({
           render={
             <button
               type="button"
-              className="size-6 rounded-full hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center mr-0.5"
+              className="size-6 rounded-full hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center mr-0.5 transition-colors"
               title="Suggest replacement tags"
             />
           }
@@ -1242,12 +1715,9 @@ function TagPillWithSwap({
           <Shuffle className="size-3" />
         </PopoverTrigger>
       </div>
-      <PopoverContent
-        align="start"
-        className="w-80 p-3 space-y-3"
-      >
+      <PopoverContent align="start" className="w-80 p-3 space-y-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-1">
             Replace this tag
           </p>
           <div className="flex items-center gap-2">
@@ -1303,12 +1773,16 @@ function TagPillWithSwap({
 
         {suggestions && suggestions.length > 0 && (
           <ul className="space-y-1.5">
-            {suggestions.map((s) => (
-              <li key={s.tag}>
+            {suggestions.map((s, i) => (
+              <li
+                key={s.tag}
+                className="ap-stagger-in"
+                style={{ animationDelay: `${i * 80}ms` }}
+              >
                 <button
                   type="button"
                   onClick={() => handlePickSuggestion(s)}
-                  className="w-full text-left rounded-md border bg-card hover:bg-muted/40 px-2.5 py-2 transition-colors"
+                  className="w-full text-left rounded-lg border border-border/70 bg-card hover:bg-muted/40 hover:border-orange-500/40 px-3 py-2.5 transition-colors"
                 >
                   <div className="flex items-center justify-between gap-2 mb-0.5">
                     <span className="text-sm font-semibold">{s.tag}</span>
@@ -1352,8 +1826,8 @@ function AltTextRow({
 }) {
   if (altTexts.length === 0) return null;
   return (
-    <div className="py-3.5 space-y-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+    <div className="py-4 space-y-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
         Image alt text
       </p>
       <div className="space-y-2">
@@ -1362,26 +1836,30 @@ function AltTextRow({
           return (
             <div
               key={idx}
-              className="rounded-md bg-muted/30 px-3 py-2 flex gap-3 items-start"
+              className="rounded-xl border border-border/60 bg-muted/15 px-3.5 py-3 flex gap-3 items-start"
             >
               {img ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={img.previewUrl}
                   alt=""
-                  className="size-12 rounded-md object-cover shrink-0 ring-1 ring-border"
+                  className="size-14 rounded-lg object-cover shrink-0 ring-1 ring-border"
                 />
               ) : (
-                <div className="size-12 rounded-md bg-muted flex items-center justify-center shrink-0">
+                <div className="size-14 rounded-lg bg-muted flex items-center justify-center shrink-0">
                   <ImageIcon className="size-4 text-muted-foreground/40" />
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <p className="text-[9px] font-semibold text-muted-foreground/80 uppercase tracking-wider">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
                     Image {idx + 1}
                   </p>
-                  <CopyButton value={alt} label={`image ${idx + 1} alt`} size="xs" />
+                  <CopyButton
+                    value={alt}
+                    label={`image ${idx + 1} alt`}
+                    size="xs"
+                  />
                 </div>
                 <p className="text-[12px] text-foreground/90 leading-relaxed italic">
                   &ldquo;{alt}&rdquo;
@@ -1395,9 +1873,9 @@ function AltTextRow({
   );
 }
 
-// ─── Insights card (collapsible) ────────────────────────────────────
+// ─── Insights drawer ────────────────────────────────────────────────
 
-function InsightsCard({ data }: { data: GenerateResponse }) {
+function InsightsDrawer({ data }: { data: GenerateResponse }) {
   const [open, setOpen] = useState(false);
   const tagIntel = data.tagIntelligence ?? [];
   const anchors = data.anchorKeywords;
@@ -1413,22 +1891,28 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
   if (!hasInsights) return null;
 
   return (
-    <Card className="border shadow-none overflow-hidden">
+    <PremiumCard>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full text-left transition-colors hover:bg-muted/30"
+        className="w-full text-left transition-colors hover:bg-muted/20"
       >
         <div className="p-6 sm:p-7 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="size-9 rounded-xl bg-gradient-to-br from-emerald-500/15 via-emerald-500/10 to-sky-500/15 ring-1 ring-emerald-500/25 flex items-center justify-center shrink-0">
-              <TrendingUp className="size-4 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative shrink-0">
+              <span
+                aria-hidden
+                className="absolute -inset-1 rounded-2xl bg-emerald-400/20 blur-md"
+              />
+              <div className="relative size-10 rounded-2xl bg-gradient-to-br from-emerald-400/20 via-emerald-500/15 to-sky-500/20 ring-1 ring-emerald-500/30 flex items-center justify-center">
+                <TrendingUp className="size-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
+              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.22em]">
                 Deep dive
               </p>
-              <h3 className="text-base font-bold tracking-tight leading-tight mt-0.5">
+              <h3 className="text-[17px] font-bold tracking-tight leading-tight mt-0.5">
                 More insights
               </h3>
               <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -1443,47 +1927,93 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
       </button>
 
       {open && (
-        <div className="px-6 sm:px-7 pb-6 sm:pb-7 space-y-7 border-t pt-6">
-          {hasAnchors && anchors && <AnchorKeywordsSection anchors={anchors} />}
-          {tagIntel.length > 0 && <TagIntelligenceTable intel={tagIntel} />}
+        <div className="px-6 sm:px-7 pb-7 space-y-8 border-t border-border/60 pt-7">
+          {hasAnchors && anchors && (
+            <div className="ap-stagger-in" style={{ animationDelay: "0ms" }}>
+              <AnchorKeywordsBlock anchors={anchors} />
+            </div>
+          )}
+          {tagIntel.length > 0 && (
+            <div className="ap-stagger-in" style={{ animationDelay: "100ms" }}>
+              <TagIntelligenceBlock intel={tagIntel} />
+            </div>
+          )}
           {data.listing?.rationale.keywordFocus && (
-            <RationaleSection rationale={data.listing.rationale} />
+            <div className="ap-stagger-in" style={{ animationDelay: "200ms" }}>
+              <RationaleBlock rationale={data.listing.rationale} />
+            </div>
           )}
           {data.research.topCompetitors.length > 0 && (
-            <CompetitorsSection
-              competitors={data.research.topCompetitors}
-            />
+            <div className="ap-stagger-in" style={{ animationDelay: "300ms" }}>
+              <CompetitorsBlock competitors={data.research.topCompetitors} />
+            </div>
           )}
         </div>
       )}
-    </Card>
+    </PremiumCard>
   );
 }
 
-function AnchorKeywordsSection({ anchors }: { anchors: AnchorKeywords }) {
+function InsightsSectionHeader({
+  icon: Icon,
+  label,
+  description,
+  tone,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  description: string;
+  tone: "emerald" | "amber" | "violet" | "sky";
+}) {
+  const toneClass = {
+    emerald:
+      "bg-emerald-500/15 ring-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+    amber:
+      "bg-amber-500/15 ring-amber-500/30 text-amber-600 dark:text-amber-400",
+    violet:
+      "bg-violet-500/15 ring-violet-500/30 text-violet-600 dark:text-violet-400",
+    sky: "bg-sky-500/15 ring-sky-500/30 text-sky-600 dark:text-sky-400",
+  } as const;
   return (
-    <div className="space-y-3">
-      <div className="space-y-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Anchor keywords
+    <div className="flex items-center gap-2.5">
+      <div
+        className={`size-7 rounded-lg ring-1 flex items-center justify-center shrink-0 ${toneClass[tone]}`}
+      >
+        <Icon className="size-3.5" />
+      </div>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+          {label}
         </p>
-        <p className="text-[11px] text-muted-foreground/80 leading-snug">
-          High-frequency phrases + tags pulled from the top{" "}
-          {anchors.totalListings} ranking listings. Autopilot front-loads these
-          in the title and tag set to mirror what&apos;s already winning.
+        <p className="text-[11px] text-muted-foreground/75 leading-snug">
+          {description}
         </p>
       </div>
+    </div>
+  );
+}
+
+function AnchorKeywordsBlock({ anchors }: { anchors: AnchorKeywords }) {
+  return (
+    <div className="space-y-3.5">
+      <InsightsSectionHeader
+        icon={Target}
+        label="Anchor keywords"
+        description={`High-frequency phrases + tags from the top ${anchors.totalListings} ranking listings — Autopilot front-loads these.`}
+        tone="emerald"
+      />
 
       {anchors.topPhrases.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[9px] font-semibold text-muted-foreground/80 uppercase tracking-wider">
+          <p className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
             Phrases (title signal)
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {anchors.topPhrases.map((p) => (
+            {anchors.topPhrases.map((p, i) => (
               <span
                 key={p.phrase}
-                className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 ring-1 ring-border px-2.5 py-0.5 text-[11px]"
+                className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 ring-1 ring-border px-2.5 py-1 text-[11px] ap-tag-pop"
+                style={{ animationDelay: `${i * 25}ms` }}
                 title={`${p.count} of ${anchors.totalListings} listings`}
               >
                 <span className="font-medium">{p.phrase}</span>
@@ -1498,14 +2028,15 @@ function AnchorKeywordsSection({ anchors }: { anchors: AnchorKeywords }) {
 
       {anchors.topTags.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[9px] font-semibold text-muted-foreground/80 uppercase tracking-wider">
+          <p className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
             Tags (seller-curated signal)
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {anchors.topTags.map((t) => (
+            {anchors.topTags.map((t, i) => (
               <span
                 key={t.phrase}
-                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300/40 px-2.5 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-300"
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300/40 px-2.5 py-1 text-[11px] text-emerald-700 dark:text-emerald-300 ap-tag-pop"
+                style={{ animationDelay: `${i * 25}ms` }}
                 title={`${t.count} of ${anchors.totalListings} listings`}
               >
                 <span className="font-medium">{t.phrase}</span>
@@ -1521,7 +2052,7 @@ function AnchorKeywordsSection({ anchors }: { anchors: AnchorKeywords }) {
   );
 }
 
-function TagIntelligenceTable({ intel }: { intel: TagDemand[] }) {
+function TagIntelligenceBlock({ intel }: { intel: TagDemand[] }) {
   const [sortBy, setSortBy] = useState<"score" | "listings" | "tag">("score");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
 
@@ -1549,17 +2080,20 @@ function TagIntelligenceTable({ intel }: { intel: TagDemand[] }) {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Tag intelligence — live Etsy demand
-        </p>
+        <InsightsSectionHeader
+          icon={Zap}
+          label="Tag intelligence — live Etsy demand"
+          description="Listings per tag = live demand signal. Listings + top-favs combined give demand score."
+          tone="amber"
+        />
         <div className="flex items-center gap-1">
           {(["niche", "moderate", "hot", "saturated"] as TagTier[]).map((t) =>
             counts[t] ? (
               <span
                 key={t}
-                className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ${TIER_STYLE[t]}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-bold ring-1 ${TIER_STYLE[t]}`}
                 title={TIER_DESCRIPTION[t]}
               >
                 <span>{TIER_GLYPH[t]}</span>
@@ -1570,9 +2104,9 @@ function TagIntelligenceTable({ intel }: { intel: TagDemand[] }) {
         </div>
       </div>
 
-      <div className="rounded-md border overflow-hidden">
+      <div className="rounded-xl border border-border/60 overflow-hidden">
         <table className="w-full text-[12px]">
-          <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <thead className="bg-muted/40 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
             <tr>
               <Th
                 label="Tag"
@@ -1605,9 +2139,13 @@ function TagIntelligenceTable({ intel }: { intel: TagDemand[] }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((r) => (
-              <tr key={r.tag} className="border-t hover:bg-muted/20">
-                <td className="px-3 py-2 font-medium">
+            {sorted.map((r, i) => (
+              <tr
+                key={r.tag}
+                className="border-t border-border/40 hover:bg-muted/15 transition-colors ap-stagger-in"
+                style={{ animationDelay: `${i * 25}ms` }}
+              >
+                <td className="px-3 py-2.5 font-semibold">
                   <div className="flex items-center gap-2">
                     <span
                       className={`size-5 rounded-full flex items-center justify-center text-[10px] ring-1 ${TIER_STYLE[r.tier]}`}
@@ -1617,13 +2155,13 @@ function TagIntelligenceTable({ intel }: { intel: TagDemand[] }) {
                     <span>{r.tag}</span>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">
+                <td className="px-3 py-2.5 text-right tabular-nums">
                   {r.error ? "—" : formatCount(r.totalListings)}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
                   {r.error ? "—" : r.avgTopFavorites.toLocaleString()}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2.5 text-right">
                   <DemandBar score={r.demandScore} />
                 </td>
               </tr>
@@ -1634,8 +2172,10 @@ function TagIntelligenceTable({ intel }: { intel: TagDemand[] }) {
 
       <p className="text-[10px] text-muted-foreground/70 leading-snug">
         Etsy doesn&apos;t share real search volume. These are live counts from{" "}
-        <code>/listings/active</code> for each tag — a strong proxy for demand
-        and competition.
+        <code className="rounded bg-muted/60 px-1 py-0.5 text-[10px]">
+          /listings/active
+        </code>{" "}
+        for each tag — a strong proxy for demand and competition.
       </p>
     </div>
   );
@@ -1658,13 +2198,13 @@ function Th({
 }) {
   return (
     <th
-      className={`px-3 py-2 font-semibold ${align === "right" ? "text-right" : "text-left"}`}
+      className={`px-3 py-2.5 font-bold ${align === "right" ? "text-right" : "text-left"}`}
     >
       <button
         type="button"
         onClick={onClick}
         disabled={disabled}
-        className={`inline-flex items-center gap-1 ${
+        className={`inline-flex items-center gap-1 transition-colors ${
           active
             ? "text-foreground"
             : "text-muted-foreground hover:text-foreground"
@@ -1684,36 +2224,34 @@ function Th({
 function DemandBar({ score }: { score: number }) {
   const tone =
     score >= 75
-      ? "rose"
+      ? ("rose" as const)
       : score >= 50
-        ? "amber"
+        ? ("amber" as const)
         : score >= 25
-          ? "emerald"
-          : "sky";
+          ? ("emerald" as const)
+          : ("sky" as const);
+  const toneClass = {
+    rose: "bg-rose-500",
+    amber: "bg-amber-500",
+    emerald: "bg-emerald-500",
+    sky: "bg-sky-500",
+  } as const;
   return (
     <div className="inline-flex items-center gap-2">
-      <div className="w-12 h-1 rounded-full bg-muted overflow-hidden">
+      <div className="w-14 h-1.5 rounded-full bg-muted/70 overflow-hidden">
         <div
-          className={`h-full ${
-            tone === "rose"
-              ? "bg-rose-500"
-              : tone === "amber"
-                ? "bg-amber-500"
-                : tone === "emerald"
-                  ? "bg-emerald-500"
-                  : "bg-sky-500"
-          }`}
-          style={{ width: `${Math.min(100, score)}%` }}
+          className={`h-full ap-bar-fill ${toneClass[tone]}`}
+          style={{ ["--bar-w" as string]: `${Math.min(100, score)}%` }}
         />
       </div>
-      <span className="text-[11px] tabular-nums font-semibold w-7 text-right">
+      <span className="text-[11px] tabular-nums font-bold w-7 text-right">
         {score}
       </span>
     </div>
   );
 }
 
-function RationaleSection({
+function RationaleBlock({
   rationale,
 }: {
   rationale: GeneratedListing["rationale"];
@@ -1751,34 +2289,33 @@ function RationaleSection({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="size-7 rounded-lg bg-gradient-to-br from-amber-500/15 to-orange-500/15 ring-1 ring-amber-500/25 flex items-center justify-center shrink-0">
-          <Lightbulb className="size-3.5 text-amber-600 dark:text-amber-400" />
-        </div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-          Why this works
-        </p>
-      </div>
+      <InsightsSectionHeader
+        icon={Lightbulb}
+        label="Why this works"
+        description="Autopilot's strategic reasoning behind the title, keywords and hook."
+        tone="violet"
+      />
       <div className="grid gap-2">
-        {rows.map((r) => {
+        {rows.map((r, i) => {
           const Icon = r.icon;
           return (
             <div
               key={r.label}
-              className={`rounded-xl ring-1 px-4 py-3 flex items-start gap-3 ${toneStyles[r.tone]}`}
+              className={`rounded-xl ring-1 px-4 py-3.5 flex items-start gap-3 ap-stagger-in ${toneStyles[r.tone]}`}
+              style={{ animationDelay: `${i * 80}ms` }}
             >
               <div
-                className={`size-8 rounded-lg bg-card/80 ring-1 ${toneStyles[r.tone]} flex items-center justify-center shrink-0`}
+                className={`size-9 rounded-lg bg-card/80 ring-1 ${toneStyles[r.tone]} flex items-center justify-center shrink-0`}
               >
                 <Icon className="size-4" />
               </div>
               <div className="min-w-0 flex-1">
                 <p
-                  className={`text-[10px] font-bold uppercase tracking-[0.16em] ${toneStyles[r.tone].split(" ").pop()}`}
+                  className={`text-[10px] font-bold uppercase tracking-[0.22em] ${toneStyles[r.tone].split(" ").pop()}`}
                 >
                   {r.label}
                 </p>
-                <p className="text-[12px] text-foreground/85 leading-relaxed mt-0.5">
+                <p className="text-[12px] text-foreground/90 leading-relaxed mt-1">
                   {r.value}
                 </p>
               </div>
@@ -1790,13 +2327,11 @@ function RationaleSection({
   );
 }
 
-function CompetitorsSection({
+function CompetitorsBlock({
   competitors,
 }: {
   competitors: { rank: number; title: string; favorites: number }[];
 }) {
-  // Pick a tone for each rank — the #1 listing gets a gold "Crown" chip,
-  // the others get a clean neutral chip with the rank number.
   const rankTone = (rank: number) => {
     if (rank === 1)
       return {
@@ -1829,25 +2364,23 @@ function CompetitorsSection({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="size-7 rounded-lg bg-gradient-to-br from-amber-400/15 to-orange-500/15 ring-1 ring-amber-500/25 flex items-center justify-center shrink-0">
-          <Crown className="size-3.5 text-amber-600 dark:text-amber-400" />
-        </div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-          Top 5 competitors Autopilot read
-        </p>
-      </div>
+      <InsightsSectionHeader
+        icon={Award}
+        label="Top 5 competitors Autopilot read"
+        description="Live snapshot of the highest-ranking listings for this keyword."
+        tone="sky"
+      />
       <ul className="space-y-2">
-        {competitors.map((c) => {
+        {competitors.map((c, i) => {
           const t = rankTone(c.rank);
           return (
             <li
               key={c.rank}
-              className="rounded-xl border bg-card hover:bg-muted/30 transition-colors px-3.5 py-3 flex items-start gap-3"
+              className="rounded-xl border border-border/60 bg-card hover:bg-muted/20 transition-colors px-3.5 py-3 flex items-start gap-3 ap-stagger-in"
+              style={{ animationDelay: `${i * 60}ms` }}
             >
-              {/* Rank chip — gold for #1, silver #2, bronze #3 */}
               <div
-                className={`size-9 rounded-xl ring-1 flex items-center justify-center shrink-0 shadow-sm ${t.bg} ${t.ring}`}
+                className={`size-10 rounded-xl ring-1 flex items-center justify-center shrink-0 shadow-sm ${t.bg} ${t.ring}`}
               >
                 {t.showCrown ? (
                   <Crown className={`size-4 ${t.text}`} />
@@ -1859,18 +2392,20 @@ function CompetitorsSection({
                   </span>
                 )}
               </div>
-              {/* Title + favorites */}
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] font-medium text-foreground/90 leading-snug line-clamp-2">
                   {c.title}
                 </p>
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
-                    <Heart className="size-2.5 text-rose-500" fill="currentColor" />
+                <div className="flex items-center gap-3 mt-1.5">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground">
+                    <Heart
+                      className="size-3 text-rose-500"
+                      fill="currentColor"
+                    />
                     <span className="tabular-nums">
                       {c.favorites.toLocaleString()}
                     </span>
-                    <span className="font-normal">favorites</span>
+                    <span className="font-medium">favorites</span>
                   </span>
                 </div>
               </div>
@@ -1878,6 +2413,24 @@ function CompetitorsSection({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+// ─── Restart button ─────────────────────────────────────────────────
+
+function RestartButton({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="pt-3 ap-stagger-in" style={{ animationDelay: "800ms" }}>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onReset}
+        className="w-full h-12 gap-2 text-sm font-semibold border-dashed border-2 hover:border-solid hover:bg-muted/40 transition-all"
+      >
+        <RotateCw className="size-4" />
+        Start a new listing
+      </Button>
     </div>
   );
 }
@@ -1905,10 +2458,10 @@ function CopyButton({
       <button
         onClick={handleCopy}
         type="button"
-        className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md hover:bg-muted/60 text-muted-foreground transition-colors shrink-0"
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors shrink-0"
       >
         {copied ? (
-          <Check className="size-3 text-emerald-500" />
+          <Check className="size-3 text-emerald-500" strokeWidth={3} />
         ) : (
           <Copy className="size-3" />
         )}
@@ -1920,11 +2473,11 @@ function CopyButton({
     <button
       onClick={handleCopy}
       type="button"
-      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium border border-border hover:bg-muted/60 text-foreground/80 transition-colors shrink-0"
+      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border border-border/70 hover:bg-muted/60 hover:border-orange-500/40 text-foreground/80 transition-colors shrink-0"
     >
       {copied ? (
         <>
-          <Check className="size-3 text-emerald-500" /> Copied
+          <Check className="size-3 text-emerald-500" strokeWidth={3} /> Copied
         </>
       ) : (
         <>
@@ -1934,4 +2487,3 @@ function CopyButton({
     </button>
   );
 }
-
