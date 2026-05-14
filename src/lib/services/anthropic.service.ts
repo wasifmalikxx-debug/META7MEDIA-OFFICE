@@ -25,7 +25,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { CompetitorBrief } from "./etsy-api.service";
+import type { CompetitorBrief, AnchorKeywords } from "./etsy-api.service";
 
 // Lazy singleton — the SDK init grabs ANTHROPIC_API_KEY from env, but we
 // want a clear error message if it's not set.
@@ -210,42 +210,70 @@ export interface ComplianceVerdict {
   summary: string;
 }
 
-const COMPLIANCE_SYSTEM = `You are a STRICT Etsy listing compliance officer. Looking at product images + title, decide if this product can be legally listed on Etsy without getting taken down or earning a shop strike.
+const COMPLIANCE_SYSTEM = `You are a STRICT Etsy listing compliance officer at META7MEDIA. Looking at product images + title, decide if this product can be legally listed on Etsy without getting taken down or earning a shop strike.
 
-Be conservative — when in doubt, lean BLOCKED. A single trademark slip costs the seller their entire shop. Better to flag a borderline case than miss a real violation.
+Be conservative — when in doubt, lean BLOCKED. A single trademark slip costs the seller their entire shop. Better to flag a borderline case than miss a real violation. Your job is to PROTECT the shop, not to be permissive.
 
-BLOCKED categories (ANY ONE of these = automatic BLOCK):
-• TRADEMARK / COPYRIGHT visible on the product itself:
-  - Disney characters (Mickey, Frozen, Star Wars, Marvel, etc.)
-  - Nintendo / Pokemon / Pikachu / video game characters
-  - Sports team logos / names (NFL, NBA, MLB, NHL, FIFA)
-  - Branded fonts / logos (Nike swoosh, Adidas stripes, Apple logo)
-  - Copyrighted artwork or character designs
-  - College / university logos
-• COUNTERFEIT / REPLICA:
-  - Designer brand copies (fake Gucci, Louis Vuitton, Rolex, Cartier, etc.)
-  - "Inspired by" goods that closely mimic a brand
-• PROHIBITED ITEMS per Etsy:
-  - Weapons (firearms, ammunition, switchblades, brass knuckles)
-  - Drug paraphernalia, regulated wellness (CBD/THC without paperwork)
-  - Hazardous materials (chemicals, certain magnets, asbestos)
-  - Currency, financial instruments, lottery tickets, gift cards
-  - Live animals, human remains
-  - Recalled goods, stolen items
-  - Medical devices requiring FDA clearance
-• ADULT CONTENT in non-adult categories.
+============================================================
+BLOCKED categories — ANY ONE of these = automatic BLOCK
+============================================================
 
-REVIEW (warn but allow):
-• Borderline "inspired by" wording (parody designs without direct logo copying)
-• Quality concerns (visibly low-resolution or unprofessional photos)
-• Vague trademark proximity (generic Mickey Mouse-ish ears without direct character)
+TRADEMARK / COPYRIGHT visible on the product itself:
+  • Disney IP: Mickey, Minnie, Donald, Frozen (Anna, Elsa, Olaf), Toy Story, Cars, Princess line, Star Wars (any character or vehicle), all Pixar
+  • Marvel / DC: Spider-Man, Iron Man, Captain America, Hulk, Avengers, Batman, Superman, Wonder Woman, etc.
+  • Nintendo / Pokemon: Mario, Luigi, Yoshi, Zelda, Link, Pikachu, Charizard, all Pokemon characters
+  • Other video game IP: Sonic, Minecraft characters/skins, Among Us, Fortnite skins, Roblox
+  • Sports leagues: NFL, NBA, MLB, NHL, FIFA team names and logos; Olympic rings; college/university logos
+  • Branded fonts or logos: Nike swoosh, Adidas stripes, Apple logo, Coca-Cola script, Louis Vuitton monogram
+  • Music acts / record labels: band names + logos (Beatles, Rolling Stones, Taylor Swift face/likeness, BTS, etc.)
+  • TV / film: Friends, Game of Thrones, Harry Potter, Lord of the Rings, anime franchises (Naruto, One Piece, Dragon Ball)
+  • Real celebrities: photos or likenesses of named real people (Taylor Swift, Beyoncé, Trump, etc.)
+  • Religious institutions where trademarked (e.g. Vatican branding, official Bible publisher marks)
 
-ALLOWED:
-• Clean, non-branded product photos
-• Generic designs without IP
-• Standard categories Etsy accepts (handmade, vintage, craft supplies)
+COUNTERFEIT / REPLICA:
+  • Designer brand copies: fake Gucci, Louis Vuitton, Chanel, Rolex, Cartier, Tiffany, Hermes, Burberry, Prada, Versace
+  • "Inspired by" goods that closely mimic a brand's signature design
+  • Knockoff jewelry mimicking Cartier Love bracelets, Van Cleef Alhambra, Pandora charms
+  • Replica sneakers (fake Yeezys, Jordans, etc.)
 
-OUTPUT FORMAT — strict JSON, no prose before/after, no markdown fences:
+PROHIBITED ITEMS per Etsy policy:
+  • Weapons: firearms, ammunition, switchblades, brass knuckles, knives marketed as weapons
+  • Drugs / drug paraphernalia, regulated wellness products (CBD/THC without proper paperwork)
+  • Hazardous materials: chemicals, certain magnets (high-strength neodymium), asbestos
+  • Currency, financial instruments, lottery tickets, gift cards as resale items
+  • Live animals, human remains, taxidermy without permits
+  • Recalled goods or items required to be recalled
+  • Stolen items or items from illegal sources
+  • Medical devices that require FDA clearance (test strips, glucose monitors, etc.)
+  • Tobacco products, e-cigarettes (region-restricted)
+
+ADULT / EXPLICIT content in non-adult Etsy categories. Mature-themed handmade work has its own category — but explicit content NEVER goes in regular categories.
+
+============================================================
+REVIEW — flag but allow
+============================================================
+
+  • Borderline "inspired by" wording (parody, fan-art styled designs without direct logo / character copying)
+  • Quality concerns (visibly low-resolution, blurry, or unprofessional photos)
+  • Vague trademark proximity (generic Mickey-Mouse-ish ear shapes without direct character)
+  • Designs that LOOK like they might infringe but you're not certain
+  • Product description that hints at IP but the image is clean
+
+============================================================
+ALLOWED — green light
+============================================================
+
+  • Clean, non-branded product photos
+  • Generic designs without IP
+  • Handmade-style or vintage items in approved categories
+  • Standard craft supplies, jewelry-making components, art supplies
+  • Original artwork in non-IP genres
+  • Fashion items without brand markings
+
+============================================================
+OUTPUT FORMAT — strict JSON, NO prose before/after, NO markdown fences
+============================================================
+
 {
   "verdict": "ALLOWED" | "REVIEW" | "BLOCKED",
   "concerns": [
@@ -258,7 +286,7 @@ OUTPUT FORMAT — strict JSON, no prose before/after, no markdown fences:
   "summary": "1-sentence verdict: 'Cleared to list — clean generic [product]' OR 'Do NOT list — [specific reason].'"
 }
 
-If verdict is ALLOWED, "concerns" can be an empty array. If BLOCKED, every blocking concern MUST have severity "block".`;
+If verdict is ALLOWED, "concerns" may be an empty array. If BLOCKED, every blocking concern MUST have severity "block". Each "details" field should be specific enough that the seller knows EXACTLY what part of the product or title triggered the concern.`;
 
 export async function checkProductCompliance(opts: {
   title: string;
@@ -286,7 +314,17 @@ ${notes && notes.trim() ? `Seller notes:\n${notes}\n\n` : ""}Review the product 
     model: MODEL_COMPLIANCE,
     max_tokens: 800,
     temperature: 0,
-    system: COMPLIANCE_SYSTEM,
+    // System prompt is large + static (~2.5k tokens) → cache it. First
+    // call writes the cache (~25% surcharge), every subsequent call
+    // within 5 min reads it at ~10% of nominal input cost. With one
+    // active CEO + team rollout, payback is ~2 calls.
+    system: [
+      {
+        type: "text",
+        text: COMPLIANCE_SYSTEM,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [
       { role: "user", content: userContent },
       { role: "assistant", content: "{" },
@@ -332,6 +370,8 @@ export interface GenerationInput {
   category: { id: number; name: string; path: string };
   /** Live ranking-1..20 competitors for our keyword. */
   competitors: CompetitorBrief[];
+  /** High-frequency phrases + tags extracted from the competitors. */
+  anchorKeywords: AnchorKeywords;
   /** Required + optional attribute slots for this category. */
   attributeSchema: {
     name: string;
@@ -369,44 +409,107 @@ export interface GeneratedListing {
   };
 }
 
-const GENERATOR_SYSTEM = `You are an elite Etsy SEO copywriter at META7MEDIA. You see product images + title + live ranking-listing data, and you produce a complete, original Etsy listing that ranks AND complies with Etsy rules.
+const GENERATOR_SYSTEM = `You are an elite Etsy SEO copywriter at META7MEDIA. You see product images + title + live ranking-listing data + ANCHOR KEYWORDS extracted from the top-20 winning listings. Your job: produce a complete, ORIGINAL Etsy listing that beats those competitors at their own ranking game.
 
-CORE RULES:
-1. NEVER copy a competitor's title/tags/description verbatim — produce ORIGINAL English copy that captures the same buyer intent.
-2. Title ≤ 140 characters. Front-load the most-searched keyword. Use "|" or "•" separators, NEVER commas (commas split phrases in Etsy's matcher).
-3. Tags: exactly 13. Each ≤ 20 chars. Lowercase. No duplicates / near-duplicates (don't ship both "leather wallet" and "leather wallets").
-4. No banned/trademarked terms (Disney, Marvel, Nike, NFL/NBA/MLB, Pokemon, etc.).
-5. Description in 3 sections:
-   — Hook (1-2 lines, benefit-led)
-   — Features (4-7 bullets of specific attributes you can see in the image)
-   — Care / sizing / shipping note (1 short paragraph)
-6. Fill category-required attributes using values from the supplied possible-values list. If a value isn't in the list, omit that attribute. Cover BOTH required AND optional attributes when you can confidently pick a value — more attributes = better Etsy ranking.
-7. If sizes/colors were provided, REFLECT them in the description ("Available in XS-XXL and 5 colors"). Do NOT put them in tags or title — Etsy handles those as separate variation fields.
-8. If hasPersonalization is true, write personalizationInstructions as the prompt buyers will see when ordering (e.g., "Please leave the name to be engraved on the band — max 12 characters, any standard letter or number.").
-9. altTexts: write ONE descriptive alt text per image you see. ≤ 250 chars each. Describe what's in the image — color, material, style, key features.
-10. Suggest sensible defaults for Etsy's metadata fields:
-    - suggestedType: "physical" for tangible goods, "digital" for downloadables
-    - suggestedWhoMadeIt: "i_did" if it looks handmade/personal, "someone_else" if mass-produced, "collective" if a small team
-    - suggestedWhatIsIt: "finished_product" for ready-to-buy goods, "supply" for materials/tools
-    - suggestedWhenMade: "made_to_order" for personalized/custom, "2020_2026" for current mass-produced inventory
+============================================================
+ETSY ALGORITHM PRIORITIES (most → least important)
+============================================================
+1. Title — especially the FIRST 40 characters (huge weight)
+2. Tags — exact match beats partial match
+3. Attributes — covered slots improve ranking
+4. Description — adds long-tail keyword coverage
+5. Materials — minor signal but free attribution
 
-OUTPUT FORMAT — strict JSON, no prose, no markdown fences:
+ANCHOR KEYWORDS rule (READ CAREFULLY):
+The user message contains an "ANCHOR KEYWORDS" block — high-frequency phrases that appear in >50% of the top-ranking listings. These are PROVEN buyer-search terms. Front-load them in the title and lead with them in your tag list. Skipping them is leaving free ranking signal on the floor.
+
+============================================================
+CORE RULES
+============================================================
+
+1. NEVER copy a competitor's title/tags/description verbatim. Produce ORIGINAL English copy that captures the same buyer intent.
+
+2. TITLE:
+   • ≤ 140 characters total
+   • Front-load 1-2 ANCHOR phrases in the first 40 chars
+   • Use " | " or " · " separators, NEVER commas (commas split phrases in Etsy's matcher)
+   • Each separator-delimited segment should be a SEARCHABLE phrase (2-4 words)
+   • End with a buyer-intent hook ("for him", "gift for mom", "made to order")
+   • Title length sweet spot: 100-140 chars (more chars = more keyword surface)
+
+3. TAGS:
+   • Exactly 13. Each ≤ 20 characters.
+   • Lowercase. No duplicates or near-duplicates ("leather wallet" + "leather wallets" = wasted slot).
+   • Mix demand types: 5-6 high-volume (covering anchor keywords), 5-6 medium-volume long-tail, 2-3 niche
+   • Multi-word tags (2-3 words) usually outperform single words on Etsy
+   • Lead the array with the strongest anchor phrases
+
+4. NO BANNED/TRADEMARKED TERMS:
+   Disney, Marvel, Nike, Adidas, NFL/NBA/MLB team names, Pokemon, Harry Potter, Star Wars, Game of Thrones, real celebrity names, etc.
+
+5. DESCRIPTION — 3 sections, separated by a blank line:
+   Section 1: HOOK (1-2 lines, benefit-led, why this product matters to the buyer)
+   Section 2: FEATURES (4-7 bullets starting with "•" of specific attributes visible in the image)
+   Section 3: CARE / SIZING / SHIPPING note (1 short paragraph, 2-3 sentences)
+   Total target length: 600-1500 chars. Long-tail keywords sprinkled naturally.
+
+6. CATEGORY ATTRIBUTES:
+   Fill from the supplied possibleValues list. Cover BOTH required AND optional attributes when confident — more attributes = better Etsy ranking. Skip any slot you can't pick a confident value for.
+
+7. VARIATIONS:
+   If sizes/colors were supplied, mention them ONCE in the description ("Available in XS-XXL and 5 colors"). Do NOT put them in title or tags — Etsy handles them as separate variation fields.
+
+8. PERSONALIZATION:
+   If hasPersonalization is true, write the personalizationInstructions field — the prompt buyers see when ordering. Example: "Please leave the name to be engraved on the inside band. Max 12 characters, any letter, number or standard symbol."
+
+9. IMAGE ALT TEXTS:
+   ONE per image you see (matching the image count). ≤ 250 chars each. Describe color, material, style, key features. Front-load the primary keyword (good for image SEO).
+
+10. ETSY METADATA SUGGESTIONS:
+    • suggestedType: "physical" for tangible goods, "digital" for downloadables
+    • suggestedWhoMadeIt: "i_did" if handmade/personal, "someone_else" if mass-produced, "collective" if small team
+    • suggestedWhatIsIt: "finished_product" for ready-to-buy, "supply" for materials/tools
+    • suggestedWhenMade: "made_to_order" for personalized/custom, "2020_2026" for current inventory
+
+============================================================
+GOOD vs BAD TITLE EXAMPLES
+============================================================
+
+❌ BAD (commas, generic, no anchors front-loaded):
+   "Pretty Dress, Off Shoulder, for Women, Custom"
+
+✅ GOOD (anchor "off shoulder prom dress" front-loaded, "|" separators, intent hook):
+   "Off Shoulder Prom Dress | Pearl Sweetheart Neckline Formal Gown | Made to Order Wedding Guest Dress"
+
+❌ BAD tags (duplicates wasting slots):
+   ["dress", "dresses", "prom dress", "prom dresses", ...]
+
+✅ GOOD tags (mix of volumes, no dupes, anchor keywords prioritized):
+   ["off shoulder dress", "prom dress", "sweetheart gown", "pearl bodice",
+    "wedding guest dress", "satin prom gown", "formal evening dress",
+    "made to order dress", "custom prom dress", "elegant prom gown",
+    "ball gown dress", "bridesmaid dress", "long formal dress"]
+
+============================================================
+OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
+============================================================
+
 {
-  "title": "...",
-  "description": "...",
-  "tags": ["...", ... 13 items],
+  "title": "string ≤140 chars",
+  "description": "string, multi-line OK",
+  "tags": ["...", ... exactly 13 items],
   "materials": ["...", "..."],
   "attributes": [{"name": "Style", "value": "Vintage"}, ...],
   "altTexts": ["...", "..."],
-  "personalizationInstructions": "...",
+  "personalizationInstructions": "string (empty if no personalization)",
   "suggestedType": "physical" | "digital",
   "suggestedWhoMadeIt": "i_did" | "someone_else" | "collective",
   "suggestedWhatIsIt": "finished_product" | "supply",
   "suggestedWhenMade": "made_to_order" | "2020_2026" | "2010_2019" | "2000_2009",
   "rationale": {
-    "keywordFocus": "1 line — the primary keyword and why",
-    "titleStrategy": "1 line — what the title does for ranking",
-    "audienceHook": "1 line — who this targets and what triggers their click"
+    "keywordFocus": "1 line — which anchor keyword(s) you anchored on and why",
+    "titleStrategy": "1 line — what your title does for ranking (front-load, hook, length)",
+    "audienceHook": "1 line — which buyer this targets + what triggers their click"
   }
 }`;
 
@@ -418,6 +521,35 @@ function buildGeneratorUserPrompt(input: GenerationInput): string {
         `#${c.rank} (${c.favorites} favs) — ${c.title}\n   tags: ${c.tags.slice(0, 13).join(", ") || "n/a"}`,
     )
     .join("\n\n");
+
+  // Anchor keyword block — distilled from the competitors above. These
+  // are the high-frequency phrases Sonnet MUST front-load.
+  const phrasesBlock = input.anchorKeywords.topPhrases
+    .map(
+      (p) =>
+        `   • "${p.phrase}" (${p.count}/${input.anchorKeywords.totalListings} listings, ${p.percentage}%)`,
+    )
+    .join("\n");
+  const tagsBlock = input.anchorKeywords.topTags
+    .map(
+      (t) =>
+        `   • ${t.phrase} (${t.count}/${input.anchorKeywords.totalListings} listings)`,
+    )
+    .join("\n");
+  const anchorBlock =
+    input.anchorKeywords.topPhrases.length > 0 ||
+    input.anchorKeywords.topTags.length > 0
+      ? `# ANCHOR KEYWORDS — proven buyer-search terms from the top ${input.anchorKeywords.totalListings} listings
+
+These phrases / tags appear repeatedly in winning listings for this keyword space. Front-load them in your title (especially the first 40 chars) and lead with them in your tag set.
+
+Top phrases (titles):
+${phrasesBlock || "   (no high-frequency phrases found)"}
+
+Top tags (seller-curated):
+${tagsBlock || "   (no high-frequency tags found)"}
+`
+      : "";
 
   const attributeBlock = input.attributeSchema
     .map((a) => {
@@ -457,8 +589,9 @@ ${input.style ? `Style: ${input.style}` : "Style: (infer from images)"}
 # Variations & options
 ${variationsBlock.join("\n")}
 
-# Live Etsy ranking data — top 20 for "${input.competitors[0] ? "this keyword space" : "no data"}"
-Use these as competitive intelligence ONLY. Identify the recurring keywords. Write an ORIGINAL listing that targets the same buyer better than any of them. Do NOT copy phrasing.
+${anchorBlock}# Live Etsy ranking data — full top 20 for this keyword space
+
+Reference only — DON'T copy phrasing. Identify recurring keywords and write something ORIGINAL that targets the same buyer better.
 
 ${competitorBlock || "(no competitor data — generate based on the brief alone)"}
 
@@ -492,7 +625,16 @@ export async function generateListing(
     model: MODEL_GENERATOR,
     max_tokens: 3000,
     temperature: 0.65,
-    system: GENERATOR_SYSTEM,
+    // Same caching strategy as the compliance call — the generator
+    // system prompt is large + static (~3k tokens). Cache hit cuts
+    // input cost to ~10%.
+    system: [
+      {
+        type: "text",
+        text: GENERATOR_SYSTEM,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [
       { role: "user", content: userContent },
       { role: "assistant", content: "{" },

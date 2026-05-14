@@ -91,10 +91,22 @@ interface UserInputsEcho {
   processingDays: string;
   returnsPolicy: string;
 }
+interface KeywordFrequency {
+  phrase: string;
+  count: number;
+  percentage: number;
+}
+interface AnchorKeywords {
+  topPhrases: KeywordFrequency[];
+  topTags: KeywordFrequency[];
+  totalListings: number;
+}
+
 interface GenerateResponse {
   compliance: ComplianceVerdict;
   listing: GeneratedListing | null;
   research: ResearchSummary;
+  anchorKeywords?: AnchorKeywords;
   textCompliance: TextCompliance | null;
   tagIntelligence?: TagDemand[];
   inputs?: UserInputsEcho;
@@ -1574,10 +1586,15 @@ function AltTextRow({
 function InsightsCard({ data }: { data: GenerateResponse }) {
   const [open, setOpen] = useState(false);
   const tagIntel = data.tagIntelligence ?? [];
+  const anchors = data.anchorKeywords;
+  const hasAnchors =
+    !!anchors &&
+    (anchors.topPhrases.length > 0 || anchors.topTags.length > 0);
   const hasInsights =
     tagIntel.length > 0 ||
     data.research.topCompetitors.length > 0 ||
-    data.listing?.rationale.keywordFocus;
+    data.listing?.rationale.keywordFocus ||
+    hasAnchors;
 
   if (!hasInsights) return null;
 
@@ -1593,7 +1610,7 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
             <TrendingUp className="size-4 text-muted-foreground" />
             <p className="text-sm font-semibold">More insights</p>
             <p className="text-[11px] text-muted-foreground">
-              Tag demand · why this works · competitors
+              Anchor keywords · tag demand · why this works · competitors
             </p>
           </div>
           <ChevronDown
@@ -1603,6 +1620,7 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
 
         {open && (
           <div className="mt-5 space-y-6">
+            {hasAnchors && anchors && <AnchorKeywordsSection anchors={anchors} />}
             {tagIntel.length > 0 && <TagIntelligenceTable intel={tagIntel} />}
             {data.listing?.rationale.keywordFocus && (
               <RationaleSection rationale={data.listing.rationale} />
@@ -1616,6 +1634,67 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function AnchorKeywordsSection({ anchors }: { anchors: AnchorKeywords }) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Anchor keywords
+        </p>
+        <p className="text-[11px] text-muted-foreground/80 leading-snug">
+          High-frequency phrases + tags pulled from the top{" "}
+          {anchors.totalListings} ranking listings. Autopilot front-loads these
+          in the title and tag set to mirror what&apos;s already winning.
+        </p>
+      </div>
+
+      {anchors.topPhrases.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[9px] font-semibold text-muted-foreground/80 uppercase tracking-wider">
+            Phrases (title signal)
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {anchors.topPhrases.map((p) => (
+              <span
+                key={p.phrase}
+                className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 ring-1 ring-border px-2.5 py-0.5 text-[11px]"
+                title={`${p.count} of ${anchors.totalListings} listings`}
+              >
+                <span className="font-medium">{p.phrase}</span>
+                <span className="text-[9px] font-bold text-muted-foreground tabular-nums">
+                  {p.percentage}%
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {anchors.topTags.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[9px] font-semibold text-muted-foreground/80 uppercase tracking-wider">
+            Tags (seller-curated signal)
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {anchors.topTags.map((t) => (
+              <span
+                key={t.phrase}
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300/40 px-2.5 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-300"
+                title={`${t.count} of ${anchors.totalListings} listings`}
+              >
+                <span className="font-medium">{t.phrase}</span>
+                <span className="text-[9px] font-bold tabular-nums">
+                  {t.percentage}%
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -9,8 +9,10 @@ import {
   getTaxonomyPath,
   getSellerTaxonomy,
   toCompetitorBriefs,
+  analyzeKeywordFrequencies,
   getTagDemandStatsBatch,
   type TagDemand,
+  type AnchorKeywords,
 } from "@/lib/services/etsy-api.service";
 import {
   extractSearchContext,
@@ -158,9 +160,15 @@ export async function POST(request: NextRequest) {
   let competitors;
   let category;
   let properties;
+  let anchorKeywords: AnchorKeywords = {
+    topPhrases: [],
+    topTags: [],
+    totalListings: 0,
+  };
   try {
     const listings = await searchActiveListings(context.searchKeyword, 20);
     competitors = toCompetitorBriefs(listings);
+    anchorKeywords = analyzeKeywordFrequencies(listings, 10);
 
     category = await inferCategoryFromListings(
       listings,
@@ -242,6 +250,7 @@ export async function POST(request: NextRequest) {
       images,
       category: { id: category.id, name: category.name, path: category.path },
       competitors,
+      anchorKeywords,
       attributeSchema,
       audience: context.audienceHint || undefined,
       style: context.styleHint || undefined,
@@ -318,6 +327,7 @@ export async function POST(request: NextRequest) {
       })),
       attributesAvailable: attributeSchema.length,
     },
+    anchorKeywords,
     textCompliance,
     tagIntelligence,
     // Echo back what the employee provided so the UI can show "your inputs"

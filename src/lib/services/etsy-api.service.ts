@@ -322,6 +322,156 @@ export function toCompetitorBriefs(listings: EtsyListing[]): CompetitorBrief[] {
   }));
 }
 
+// ─── Keyword frequency analysis ─────────────────────────────────────
+
+/**
+ * Extract the highest-signal keywords from a set of ranking listings.
+ * Goal: surface the phrases and tags that REPEATEDLY appear in winning
+ * listings so we can deliberately front-load them in our title + tags.
+ *
+ * Etsy's search algorithm weights:
+ *   - title (especially first 40 chars) >> tags > description
+ *
+ * Phrases (especially 2-word bigrams) that appear in 50%+ of the top
+ * 20 listings are basically free ranking signal — we'd be dumb not to
+ * use them.
+ *
+ * Used by: /api/seo-autopilot/generate
+ */
+
+const STOP_WORDS = new Set([
+  // common English filler
+  "the", "and", "for", "with", "from", "this", "that", "these", "those",
+  "your", "our", "their", "his", "her", "its", "him", "she", "have", "has",
+  "had", "are", "is", "was", "were", "be", "been", "being",
+  "as", "at", "in", "on", "of", "to", "by", "but", "or", "if", "not",
+  "all", "any", "some", "each", "every", "no", "yes",
+  // marketing fluff
+  "new", "hot", "best", "premium", "luxury", "free", "fast", "sale", "deal",
+  "exclusive", "limited", "amazing", "perfect", "great", "good", "gorgeous",
+  "stunning", "beautiful", "pretty", "lovely", "shiny", "trendy",
+  "high", "low", "top", "wholesale", "cheap",
+  // size/color descriptors (handled as variations elsewhere)
+  "size", "color", "colour", "design", "style", "type", "kind",
+]);
+
+function tokenizeTitle(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9'\s]/g, " ")
+    .replace(/'s\b/g, "") // possessives
+    .replace(/'/g, "")
+    .split(/\s+/)
+    .filter(
+      (t) =>
+        t.length >= 3 &&
+        !STOP_WORDS.has(t) &&
+        !/^\d+$/.test(t),
+    );
+}
+
+export interface KeywordFrequency {
+  phrase: string;
+  count: number;
+  /** Percentage of analyzed listings the phrase appears in (0-100). */
+  percentage: number;
+}
+
+export interface AnchorKeywords {
+  topPhrases: KeywordFrequency[]; // mix of 1-word and 2-word phrases
+  topTags: KeywordFrequency[]; // seller-curated tags
+  totalListings: number;
+}
+
+/**
+ * Surface high-frequency phrases + tags from ranking listings.
+ *
+ * Algorithm:
+ *   1. Tokenize each title, drop stop words and short tokens.
+ *   2. Count single-word occurrences (per listing — multi-occurrence
+ *      in one title counts once).
+ *   3. Count 2-word bigrams the same way.
+ *   4. Sort by occurrence count, tie-break favouring bigrams (more
+ *      specific). Threshold: must appear in at least 2 listings.
+ *   5. Do the same for explicit tags (already curated by sellers, so
+ *      a strong intent signal).
+ */
+export function analyzeKeywordFrequencies(
+  listings: EtsyListing[],
+  topN = 10,
+): AnchorKeywords {
+  const totalListings = listings.length;
+  if (totalListings === 0) {
+    return { topPhrases: [], topTags: [], totalListings: 0 };
+  }
+
+  // Phrase frequencies in titles.
+  const phraseFreq = new Map<string, number>();
+
+  for (const l of listings) {
+    if (!l.title) continue;
+    const words = tokenizeTitle(l.title);
+
+    // Unique single words (per listing).
+    const uniqueWords = new Set(words);
+    for (const w of uniqueWords) {
+      phraseFreq.set(w, (phraseFreq.get(w) ?? 0) + 1);
+    }
+
+    // Unique bigrams (per listing).
+    const uniqueBigrams = new Set<string>();
+    for (let i = 0; i < words.length - 1; i++) {
+      uniqueBigrams.add(`${words[i]} ${words[i + 1]}`);
+    }
+    for (const bg of uniqueBigrams) {
+      phraseFreq.set(bg, (phraseFreq.get(bg) ?? 0) + 1);
+    }
+  }
+
+  const topPhrases: KeywordFrequency[] = [...phraseFreq.entries()]
+    .filter(([, c]) => c >= 2) // must appear in 2+ listings
+    .sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      // tie: prefer bigrams (more specific) and shorter words
+      const aBg = a[0].includes(" ");
+      const bBg = b[0].includes(" ");
+      if (aBg !== bBg) return aBg ? -1 : 1;
+      return a[0].length - b[0].length;
+    })
+    .slice(0, topN)
+    .map(([phrase, count]) => ({
+      phrase,
+      count,
+      percentage: Math.round((count / totalListings) * 100),
+    }));
+
+  // Tag frequencies — sellers manually pick these so it's high signal.
+  const tagFreq = new Map<string, number>();
+  for (const l of listings) {
+    if (!l.tags) continue;
+    const uniq = new Set<string>();
+    for (const t of l.tags) {
+      const cleaned = (t ?? "").toLowerCase().trim();
+      if (cleaned.length >= 2) uniq.add(cleaned);
+    }
+    for (const t of uniq) {
+      tagFreq.set(t, (tagFreq.get(t) ?? 0) + 1);
+    }
+  }
+
+  const topTags: KeywordFrequency[] = [...tagFreq.entries()]
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([tag, count]) => ({
+      phrase: tag,
+      count,
+      percentage: Math.round((count / totalListings) * 100),
+    }));
+
+  return { topPhrases, topTags, totalListings };
+}
+
 // ─── Tag intelligence (demand proxy) ────────────────────────────────
 
 /**
