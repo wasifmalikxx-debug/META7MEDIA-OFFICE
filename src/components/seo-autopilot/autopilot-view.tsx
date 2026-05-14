@@ -134,6 +134,7 @@ interface TeamStatsEntry {
   reviewCount: number;
   blockedCount: number;
   lastGeneratedAt: string | null;
+  cost7DayUsd: number;
 }
 
 interface RecentGeneration {
@@ -147,6 +148,7 @@ interface RecentGeneration {
   verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
   category: string | null;
   createdAt: string;
+  estimatedCostUsd: number;
 }
 
 interface TeamStats {
@@ -155,8 +157,19 @@ interface TeamStats {
   totalToday: number;
   totalYesterday: number;
   total7Day: number;
+  costTodayUsd: number;
+  costYesterdayUsd: number;
+  cost7DayUsd: number;
   entries: TeamStatsEntry[];
   recent: RecentGeneration[];
+}
+
+// Format a USD amount. Under $0.10 we show 3 decimals so per-event
+// cost ($0.007 for BLOCKED) doesn't disappear into "$0.01".
+function formatUsd(n: number): string {
+  if (n === 0) return "$0";
+  if (n < 0.1) return `$${n.toFixed(3)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 type Stage =
@@ -2812,11 +2825,26 @@ function TeamStatsPanel({ stats }: { stats: TeamStats }) {
           </div>
         </div>
 
-        {/* KPI strip — always shown */}
+        {/* KPI strip — gens + estimated $ spend, side by side */}
         <div className="grid grid-cols-3 gap-2 mt-5">
-          <KpiCell label="Today" value={stats.totalToday} tone="emerald" />
-          <KpiCell label="Yesterday" value={stats.totalYesterday} tone="sky" />
-          <KpiCell label="Last 7 days" value={stats.total7Day} tone="violet" />
+          <KpiCell
+            label="Today"
+            value={stats.totalToday}
+            subtitle={`${formatUsd(stats.costTodayUsd)} spent`}
+            tone="emerald"
+          />
+          <KpiCell
+            label="Yesterday"
+            value={stats.totalYesterday}
+            subtitle={`${formatUsd(stats.costYesterdayUsd)} spent`}
+            tone="sky"
+          />
+          <KpiCell
+            label="Last 7 days"
+            value={stats.total7Day}
+            subtitle={`${formatUsd(stats.cost7DayUsd)} spent`}
+            tone="violet"
+          />
         </div>
 
         {/* Tab switch */}
@@ -2855,8 +2883,10 @@ function TeamStatsPanel({ stats }: { stats: TeamStats }) {
 
         <p className="text-[10px] text-muted-foreground/70 leading-snug mt-5">
           Daily limit is <strong>{stats.limit}</strong> generations per user
-          (CEO is unlimited). Counts reset at midnight Pakistan time. Use the
-          event log to spot suspicious titles or repeated BLOCKED attempts.
+          (CEO is unlimited). Counts reset at midnight Pakistan time. Cost
+          numbers are <strong>estimates</strong> — ~$0.04 per ALLOWED/REVIEW
+          gen, ~$0.007 per BLOCKED. Real invoice numbers live in the
+          Anthropic console; these are within ~20% for budgeting.
         </p>
       </div>
     </PremiumCard>
@@ -2935,6 +2965,7 @@ function PeopleBreakdown({
             <th className="px-3 py-2.5 font-bold text-right">Yesterday</th>
             <th className="px-3 py-2.5 font-bold text-right">7-day</th>
             <th className="px-3 py-2.5 font-bold text-left">Outcomes (7d)</th>
+            <th className="px-3 py-2.5 font-bold text-right">Spend (7d)</th>
             <th className="px-3 py-2.5 font-bold text-right">Last seen</th>
           </tr>
         </thead>
@@ -2983,6 +3014,9 @@ function PeopleBreakdown({
                   review={e.reviewCount}
                   blocked={e.blockedCount}
                 />
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums font-bold text-[11px]">
+                {formatUsd(e.cost7DayUsd)}
               </td>
               <td className="px-3 py-3 text-right text-[10px] text-muted-foreground tabular-nums">
                 {e.lastGeneratedAt ? relativeTime(e.lastGeneratedAt) : "—"}
@@ -3069,6 +3103,13 @@ function RecentEventsBreakdown({
                     {evt.category}
                   </span>
                 )}
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-bold tabular-nums bg-violet-500/10 ring-1 ring-violet-500/25 text-violet-700 dark:text-violet-300 rounded-md px-2 py-0.5"
+                  title="Estimated Anthropic cost for this generation"
+                >
+                  <Gauge className="size-2.5" />
+                  {formatUsd(evt.estimatedCostUsd)}
+                </span>
               </div>
             </div>
           </div>
@@ -3200,10 +3241,12 @@ function relativeTime(iso: string): string {
 function KpiCell({
   label,
   value,
+  subtitle,
   tone,
 }: {
   label: string;
   value: number;
+  subtitle?: string;
   tone: "emerald" | "sky" | "violet";
 }) {
   const toneClass = {
@@ -3220,7 +3263,15 @@ function KpiCell({
       </p>
       <p className="text-2xl font-bold tabular-nums leading-tight mt-1">
         {value}
+        <span className="text-[10px] font-bold opacity-60 ml-1 align-baseline">
+          gens
+        </span>
       </p>
+      {subtitle && (
+        <p className="text-[10px] font-bold tabular-nums opacity-70 leading-tight mt-0.5">
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }

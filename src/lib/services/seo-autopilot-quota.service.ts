@@ -171,6 +171,8 @@ export interface TeamUsageEntry {
   reviewCount: number;
   blockedCount: number;
   lastGeneratedAt: string | null;
+  // Estimated USD spend over last 7 days (sum of per-event estimates)
+  cost7DayUsd: number;
 }
 
 export interface RecentGeneration {
@@ -184,6 +186,7 @@ export interface RecentGeneration {
   verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
   category: string | null;
   createdAt: string; // ISO
+  estimatedCostUsd: number;
 }
 
 export interface TeamStatsResponse {
@@ -192,8 +195,39 @@ export interface TeamStatsResponse {
   totalToday: number;
   totalYesterday: number;
   total7Day: number;
+  // Estimated USD spend across all users in each window
+  costTodayUsd: number;
+  costYesterdayUsd: number;
+  cost7DayUsd: number;
   entries: TeamUsageEntry[];
   recent: RecentGeneration[]; // newest first, capped at 50
+}
+
+// ─── Cost estimation ────────────────────────────────────────────────
+//
+// We don't ship per-call token tracking yet, so cost is derived from
+// the verdict alone — same number every time for a given outcome.
+// These are MID-RANGE estimates (between fully-cold and fully-warm)
+// based on the cost analysis on May 14 2026:
+//
+//   ALLOWED / REVIEW: $0.044 cold ↔ $0.031 warm  →  estimate $0.040
+//   BLOCKED:          $0.011 cold ↔ $0.005 warm  →  estimate $0.007
+//
+// These will be within ~20-25% of the real Anthropic invoice. For
+// exact reconciliation, check the Anthropic console. We can swap to
+// token-precise tracking later by adding an `estimatedCostUsd` column
+// to SeoAutopilotLog and capturing usage from the SDK response.
+
+const COST_ESTIMATE_USD = {
+  ALLOWED: 0.04,
+  REVIEW: 0.04,
+  BLOCKED: 0.007,
+} as const;
+
+export function estimateGenerationCostUsd(verdict: string): number {
+  return (
+    COST_ESTIMATE_USD[verdict as keyof typeof COST_ESTIMATE_USD] ?? 0.04
+  );
 }
 
 /**
@@ -256,6 +290,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       reviewCount: number;
       blockedCount: number;
       lastGeneratedAt: Date | null;
+      cost7DayUsd: number;
     }
   >();
 
@@ -275,6 +310,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         reviewCount: 0,
         blockedCount: 0,
         lastGeneratedAt: null,
+        cost7DayUsd: 0,
       };
     const t = r.date.getTime();
     if (t === todayTime) entry.countToday += r.count;
@@ -283,9 +319,23 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     byUser.set(key, entry);
   }
 
-  // ─── Layer in log-derived verdict breakdown + last-generated ────
+  // ─── Layer in log-derived verdict breakdown + cost + last-gen ───
+  // Track per-day total cost across all users (today / yesterday / 7d)
+  // by iterating logRows once — cheaper than another aggregate query.
+  let costTodayUsd = 0;
+  let costYesterdayUsd = 0;
+  let cost7DayUsd = 0;
+
   for (const log of logRows) {
     if (!log.user) continue;
+    const logCost = estimateGenerationCostUsd(log.verdict);
+    // Anchor the log to a PKT calendar day (UTC midnight of that day).
+    const logDayUtcMidnight = pktDateAsUtcMidnight(log.createdAt);
+    const logDayTime = logDayUtcMidnight.getTime();
+    cost7DayUsd += logCost;
+    if (logDayTime === todayTime) costTodayUsd += logCost;
+    if (logDayTime === yesterdayTime) costYesterdayUsd += logCost;
+
     const entry = byUser.get(log.userId);
     if (!entry) {
       // User has a log row but no usage row — possible if usage row got
@@ -301,12 +351,14 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         reviewCount: log.verdict === "REVIEW" ? 1 : 0,
         blockedCount: log.verdict === "BLOCKED" ? 1 : 0,
         lastGeneratedAt: log.createdAt,
+        cost7DayUsd: logCost,
       });
       continue;
     }
     if (log.verdict === "ALLOWED") entry.allowedCount += 1;
     else if (log.verdict === "REVIEW") entry.reviewCount += 1;
     else if (log.verdict === "BLOCKED") entry.blockedCount += 1;
+    entry.cost7DayUsd += logCost;
     if (!entry.lastGeneratedAt || log.createdAt > entry.lastGeneratedAt) {
       entry.lastGeneratedAt = log.createdAt;
     }
@@ -325,6 +377,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       reviewCount: v.reviewCount,
       blockedCount: v.blockedCount,
       lastGeneratedAt: v.lastGeneratedAt?.toISOString() ?? null,
+      cost7DayUsd: v.cost7DayUsd,
       isOverLimit:
         v.role !== "SUPER_ADMIN" && v.countToday >= SEO_AUTOPILOT_DAILY_LIMIT,
     }))
@@ -354,6 +407,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         : "ALLOWED") as RecentGeneration["verdict"],
     category: l.category,
     createdAt: l.createdAt.toISOString(),
+    estimatedCostUsd: estimateGenerationCostUsd(l.verdict),
   }));
 
   return {
@@ -362,6 +416,9 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     totalToday: entries.reduce((s, e) => s + e.countToday, 0),
     totalYesterday: entries.reduce((s, e) => s + e.countYesterday, 0),
     total7Day: entries.reduce((s, e) => s + e.count7Day, 0),
+    costTodayUsd,
+    costYesterdayUsd,
+    cost7DayUsd,
     entries,
     recent,
   };
