@@ -599,8 +599,15 @@ CORE RULES
 5. DESCRIPTION — 3 sections, separated by a blank line:
    Section 1: HOOK (1-2 lines, benefit-led, why this product matters to the buyer)
    Section 2: FEATURES (4-7 bullets starting with "•" of specific details visible in the image)
-   Section 3: CARE / SIZING / SHIPPING note (1 short paragraph, 2-3 sentences)
+   Section 3: CARE & SIZING note (1 short paragraph, 2-3 sentences)
    Total target length: 600-1500 chars. Long-tail keywords sprinkled naturally.
+
+   NEVER write shipping time, processing time, dispatch time, or any
+   "ships in X days" / "ready to ship in X business days" / "ships
+   ready to wear within X-X business days" / "delivery in X weeks"
+   language. Etsy's shop settings handle delivery promises — putting
+   timing in the description creates conflicting promises and TOS risk.
+   The description must be silent on shipping / processing / dispatch.
 
 6. VARIATIONS:
    If sizes and/or variants were supplied, mention them ONCE in the description in a natural way that fits the actual axis ("Available in XS-XXL and 5 colors", "Available in 3 phone models and 4 designs", "Comes in gold, silver, and rose gold"). Do NOT put them in title or tags — Etsy handles them as separate variation fields.
