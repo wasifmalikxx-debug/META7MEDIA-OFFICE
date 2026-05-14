@@ -53,8 +53,6 @@ interface GeneratedListing {
   materials: string[];
   attributes: { name: string; value: string }[];
   altTexts: string[];
-  suggestedType: "physical" | "digital";
-  suggestedWhenMade: string;
   rationale: {
     keywordFocus: string;
     titleStrategy: string;
@@ -120,11 +118,6 @@ interface GenerateResponse {
 const TITLE_MAX = 140;
 const TAG_MAX = 20;
 
-const TYPE_LABEL = {
-  physical: "Physical item",
-  digital: "Digital files",
-} as const;
-
 const TIER_GLYPH: Record<TagTier, string> = {
   niche: "🌱",
   moderate: "📊",
@@ -146,18 +139,6 @@ const TIER_DESCRIPTION: Record<TagTier, string> = {
   hot: "10k-50k listings — high demand, high competition",
   saturated: ">50k — very hard to rank as a new shop",
 };
-
-function whenMadeLabel(v: string): string {
-  // All META7MEDIA products are ready-stock (regenerated AliExpress
-  // dropship), so we surface the "2020_2026" Etsy code as "Ready to
-  // ship". Sonnet should never suggest "made_to_order" anymore — but
-  // if it slips through, we render it as Ready to ship too so the
-  // employee never copies the wrong value into Etsy.
-  if (v === "made_to_order" || v === "2020_2026") return "Ready to ship";
-  if (v === "2010_2019") return "2010-2019";
-  if (v === "2000_2009") return "2000-2009";
-  return v;
-}
 
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -805,18 +786,9 @@ function ResultCard({
         )}
 
         {/* ── FIELDS ── */}
-        <Row
-          label="Category"
-          value={research.categoryPath}
-          copyValue={research.categoryPath}
-        />
-        <Row label="Item type" value={TYPE_LABEL[listing.suggestedType]} />
-        <Row
-          label="When made"
-          value={whenMadeLabel(listing.suggestedWhenMade)}
-        />
-
-        <Divider />
+        {/* Category / Item type / When made dropped May 14: Category is
+            already in the Decisions chip strip above, Item type is
+            always "Physical", When made is always "Ready to ship". */}
 
         <TitleRow title={listing.title} />
         <DescriptionRow description={listing.description} />

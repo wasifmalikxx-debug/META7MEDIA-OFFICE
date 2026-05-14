@@ -555,8 +555,6 @@ export interface GeneratedListing {
   materials: string[]; // up to 13
   attributes: { name: string; value: string }[]; // category-driven
   altTexts: string[]; // one per image (matches images.length, or 1 if no images)
-  suggestedType: "physical" | "digital";
-  suggestedWhenMade: string; // forced to "2020_2026" — see normalize()
   rationale: {
     keywordFocus: string;
     titleStrategy: string;
@@ -617,9 +615,6 @@ CORE RULES
 8. IMAGE ALT TEXTS:
    ONE per image you see (matching the image count). ≤ 250 chars each. Describe color, material, style, key features. Front-load the primary keyword (good for image SEO).
 
-9. ETSY METADATA SUGGESTION:
-    • suggestedType: "physical" for tangible goods, "digital" for downloadables.
-
 ============================================================
 GOOD vs BAD TITLE EXAMPLES
 ============================================================
@@ -650,7 +645,6 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
   "materials": ["...", "..."],
   "attributes": [{"name": "Style", "value": "Vintage"}, ...],
   "altTexts": ["...", "..."],
-  "suggestedType": "physical" | "digital",
   "rationale": {
     "keywordFocus": "1 line — which anchor keyword(s) you anchored on and why",
     "titleStrategy": "1 line — what your title does for ranking (front-load, hook, length)",
@@ -932,14 +926,6 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
     altTexts.push(raw.toString().trim().slice(0, ETSY_LIMITS.ALT_TEXT_MAX));
   }
 
-  // Clamp Etsy enum suggestions to known values.
-  const suggestedType: GeneratedListing["suggestedType"] =
-    out.suggestedType === "digital" ? "digital" : "physical";
-  // META7MEDIA only lists ready-stock products. Force "2020_2026"
-  // regardless of what Sonnet returns so the employee never copies the
-  // wrong value into Etsy.
-  const suggestedWhenMade = "2020_2026";
-
   const rationale = {
     keywordFocus: (out.rationale?.keywordFocus ?? "").toString(),
     titleStrategy: (out.rationale?.titleStrategy ?? "").toString(),
@@ -953,8 +939,6 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
     materials,
     attributes,
     altTexts,
-    suggestedType,
-    suggestedWhenMade,
     rationale,
   };
 }
