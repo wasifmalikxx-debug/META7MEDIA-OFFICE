@@ -10,30 +10,26 @@ export const dynamic = "force-dynamic";
 /**
  * SEO Autopilot — AI-powered Etsy listing generator.
  *
- * Two-tier visibility (deliberate — Wasif wants this in private beta):
+ * **EM-team-only test rollout (May 14 2026)**: scoped DOWN from the
+ * full-Etsy-team rollout so just Izaan + the EM team get the real tool.
+ * AE / ME / partners continue to see Coming Soon while we validate
+ * cost + Etsy quota + UX with one team first.
  *
- *   CEO (SUPER_ADMIN, Wasif) → the FULL SaaS tool. Live Etsy API +
- *                              Claude Sonnet/Haiku generation.
+ * Daily limit: 8 generations per Pakistan calendar day (CEO unlimited).
+ * The API route mirrors this check server-side, so even if a non-EM
+ * user reaches the real UI (e.g. via a stale page bundle) the backend
+ * refuses to generate.
  *
- *   Everyone else on the   → "Coming Soon" placeholder. They still see the
- *   Etsy team               sidebar entry (with a SOON pill) so they know
- *                            it's being built, but they don't get access
- *                            until Wasif rolls it out more broadly.
- *
- * The API route (`/api/seo-autopilot/generate`) enforces the same
- * SUPER_ADMIN-only check server-side, so even if a non-CEO somehow
- * reaches the real UI (e.g. via a stale page bundle) the backend won't
- * generate anything for them.
- *
- * Page-level access (who reaches this route at all — keeps the FB team
- * and EM-4L out entirely):
- *  - CEO / HR Admin                 → allowed (CEO sees real tool, HR sees Coming Soon)
- *  - Etsy PARTNERs (Awais, Mubeen)  → allowed → Coming Soon
- *  - Non-Etsy PARTNER (Zain / FB)   → BLOCKED
- *  - MANAGER (Izaan, EM-4)          → allowed → Coming Soon
- *  - Etsy-style employees           → allowed → Coming Soon
- *  - EM-4L (non-Etsy ecom)          → BLOCKED
- *  - SMM-* (Facebook team)          → BLOCKED
+ * Page-level access:
+ *  - CEO / SUPER_ADMIN                     → REAL tool · unlimited
+ *  - MANAGER (Izaan, EM-4)                 → REAL tool · 8/day
+ *  - EM employees (EM-* except EM-4 / 4L)  → REAL tool · 8/day
+ *  - HR Admin                              → Coming Soon
+ *  - AE / ME employees                     → Coming Soon (test phase)
+ *  - Etsy PARTNERs (Awais, Mubeen)         → Coming Soon (test phase)
+ *  - Non-Etsy PARTNER (Zain / FB)          → BLOCKED
+ *  - EM-4L (non-Etsy ecom)                 → BLOCKED
+ *  - SMM-* (Facebook team)                 → BLOCKED
  */
 export default async function SeoAutopilotPage() {
   const session = await auth();
@@ -75,21 +71,34 @@ export default async function SeoAutopilotPage() {
   }
 
   // ─── Split here ─────────────────────────────────────────────────────
-  // CEO gets the real tool. Everyone else (HR, partners, manager, Etsy
-  // employees) gets the same Coming Soon placeholder they've been seeing.
+  // EM-team-only test phase: only CEO + Izaan (EM-4) + EM employees see
+  // the real tool. Partners, AE/ME teams, HR all see Coming Soon. Once
+  // we've validated everything with the EM team, broaden by adding the
+  // other predicates back to `canUseRealTool` below.
 
-  if (isCeo) {
+  const isEmEmployee =
+    typeof empId === "string" &&
+    empId.startsWith("EM") &&
+    empId !== "EM-4" &&
+    empId !== "EM-4L";
+  const isEmTeam = isManager || isEmEmployee; // Izaan + EM employees
+
+  const canUseRealTool = isCeo || isEmTeam;
+
+  if (canUseRealTool) {
     return (
       <div className="space-y-6">
         <PageHeader
           title="SEO Autopilot"
           description="AI-powered Etsy listing generator — title, tags, description, and attributes from a single product brief."
         />
-        <SeoAutopilotView />
+        <SeoAutopilotView isCeo={isCeo} />
       </div>
     );
   }
 
+  // AE / ME employees, Awais, Mubeen, HR all land here during the test
+  // phase. They see Coming Soon until we broaden access.
   return (
     <div className="space-y-6">
       <PageHeader

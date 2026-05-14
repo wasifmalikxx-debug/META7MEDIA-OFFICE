@@ -22,6 +22,14 @@ import {
   type ImagePayload,
   type ComplianceVerdict,
 } from "@/lib/services/anthropic.service";
+import {
+  checkAndConsume,
+  logGeneration,
+  pktDateAsUtcMidnight,
+  QuotaExceededError,
+  SEO_AUTOPILOT_DAILY_LIMIT,
+} from "@/lib/services/seo-autopilot-quota.service";
+import { prisma } from "@/lib/prisma";
 
 /**
  * POST /api/seo-autopilot/generate
@@ -69,10 +77,31 @@ export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
-  if (session.user.role !== "SUPER_ADMIN") {
-    return error("Forbidden — SEO Autopilot is in private beta", 403);
+  // ─── Role gate (EM-team test phase) ─────────────────────────────
+  // Scoped to CEO + Izaan + EM employees while we validate the rollout
+  // with one team. Mirrors the page.tsx predicate exactly. To broaden
+  // later, add the partner / AE / ME predicates back here AND in
+  // page.tsx in lockstep.
+  const u = session.user;
+  const role = u.role;
+  const empId = u.employeeId;
+  const isCeo = role === "SUPER_ADMIN";
+  const isManager = empId === "EM-4"; // Izaan
+  const isEmEmployee =
+    typeof empId === "string" &&
+    empId.startsWith("EM") &&
+    empId !== "EM-4" &&
+    empId !== "EM-4L";
+
+  if (!isCeo && !isManager && !isEmEmployee) {
+    return error(
+      "Forbidden — SEO Autopilot is in private beta for the EM team",
+      403,
+    );
   }
 
+  // Payload first (cheap, no external work) — so bad input doesn't
+  // burn a quota slot.
   let payload: z.infer<typeof RequestSchema>;
   try {
     const body = await request.json();
@@ -80,6 +109,49 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     return error(err instanceof Error ? err.message : "Invalid payload", 400);
   }
+
+  // ─── Daily quota gate ───────────────────────────────────────────
+  // CEO bypasses the cap. Everyone else gets SEO_AUTOPILOT_DAILY_LIMIT
+  // generations per Pakistan calendar day. We reserve the slot BEFORE
+  // the expensive work. On failure of the downstream pipeline we refund
+  // the slot (see the `quotaConsumed` flag below) so transient API
+  // failures don't cost the user a generation.
+  try {
+    await checkAndConsume({ userId: u.id, isUnlimited: isCeo });
+  } catch (err) {
+    if (err instanceof QuotaExceededError) {
+      return new Response(
+        JSON.stringify({
+          error: `Daily limit reached (${SEO_AUTOPILOT_DAILY_LIMIT} generations/day). Resets at midnight Pakistan time.`,
+          quotaExceeded: true,
+          limit: err.limit,
+          resetAt: err.resetAt.toISOString(),
+        }),
+        {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    throw err;
+  }
+  // Tracks whether we still owe the user a refund (set false once the
+  // generation reaches a state we consider "billable" — i.e. the user
+  // got useful output back: listing or BLOCKED verdict).
+  let refundOnFailure = true;
+  const refundQuotaIfStillPending = async () => {
+    if (!refundOnFailure || isCeo) return;
+    refundOnFailure = false;
+    try {
+      await prisma.seoAutopilotUsage.update({
+        where: { userId_date: { userId: u.id, date: pktDateAsUtcMidnight() } },
+        data: { count: { decrement: 1 } },
+      });
+    } catch {
+      // Best-effort — if refund fails the user just sees one fewer slot
+      // today. Don't surface this as a user-facing error.
+    }
+  };
 
   const images: ImagePayload[] = payload.images;
 
@@ -89,6 +161,7 @@ export async function POST(request: NextRequest) {
   try {
     context = await extractSearchContext(payload.aliExpressTitle);
   } catch (err) {
+    await refundQuotaIfStillPending();
     return error(
       `Failed to read your title: ${err instanceof Error ? err.message : "unknown"}`,
       502,
@@ -96,6 +169,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!context.searchKeyword) {
+    await refundQuotaIfStillPending();
     return error(
       "Couldn't extract a search keyword from that title. Try a more descriptive one.",
       400,
@@ -123,6 +197,7 @@ export async function POST(request: NextRequest) {
       }).catch(() => [] as string[]),
     ]);
   } catch (err) {
+    await refundQuotaIfStillPending();
     return error(
       `Compliance check failed: ${err instanceof Error ? err.message : "unknown"}`,
       502,
@@ -130,8 +205,17 @@ export async function POST(request: NextRequest) {
   }
 
   // BLOCKED → return early. Don't waste tokens generating a listing the
-  // employee can't legally publish.
+  // employee can't legally publish. The quota slot stays consumed —
+  // compliance is a billable outcome (Haiku already did vision work).
   if (compliance.verdict === "BLOCKED") {
+    refundOnFailure = false;
+    await logGeneration({
+      userId: u.id,
+      sourceTitle: payload.aliExpressTitle,
+      generatedTitle: null,
+      verdict: "BLOCKED",
+      category: null,
+    });
     return json({
       compliance,
       // Echo what we read so the UI can still show "Autopilot's read"
@@ -219,12 +303,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (!category) {
+      await refundQuotaIfStillPending();
       return error(
         `Couldn't match this product to an Etsy category. Try a more descriptive source title (include words like "ring", "dress", "wallet", etc.).`,
         422,
       );
     }
   } catch (err) {
+    await refundQuotaIfStillPending();
     return error(
       `Etsy API error during research: ${err instanceof Error ? err.message : "unknown"}`,
       502,
@@ -248,11 +334,24 @@ export async function POST(request: NextRequest) {
       variants: payload.variants,
     });
   } catch (err) {
+    await refundQuotaIfStillPending();
     return error(
       `Claude generation error: ${err instanceof Error ? err.message : "unknown"}`,
       502,
     );
   }
+
+  // Listing successfully generated — the slot is now permanently
+  // consumed. Anything that fails AFTER this point (tag intelligence)
+  // is non-billable already (Etsy free + listing already returned).
+  refundOnFailure = false;
+  await logGeneration({
+    userId: u.id,
+    sourceTitle: payload.aliExpressTitle,
+    generatedTitle: listing.title,
+    verdict: compliance.verdict === "REVIEW" ? "REVIEW" : "ALLOWED",
+    category: category.path,
+  });
 
   // ─── Stage 5 — Tag intelligence ────────────────────────────────────
   //

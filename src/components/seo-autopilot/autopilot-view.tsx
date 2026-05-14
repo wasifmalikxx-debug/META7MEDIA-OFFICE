@@ -36,6 +36,9 @@ import {
   Zap,
   Target,
   Award,
+  Gauge,
+  Users,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SeoImageUploader, type UploadedImage } from "./image-uploader";
@@ -107,6 +110,55 @@ interface GenerateResponse {
   generatedAt: string;
 }
 
+// ─── Usage / quota types ────────────────────────────────────────────
+
+interface UsageSummary {
+  count: number;
+  limit: number;
+  remaining: number;
+  resetAt: string;
+  isUnlimited: boolean;
+  date: string;
+}
+
+interface TeamStatsEntry {
+  userId: string;
+  employeeId: string;
+  name: string;
+  role: string;
+  countToday: number;
+  countYesterday: number;
+  count7Day: number;
+  isOverLimit: boolean;
+  allowedCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  lastGeneratedAt: string | null;
+}
+
+interface RecentGeneration {
+  id: string;
+  userId: string;
+  employeeId: string;
+  userName: string;
+  userRole: string;
+  sourceTitle: string;
+  generatedTitle: string | null;
+  verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
+  category: string | null;
+  createdAt: string;
+}
+
+interface TeamStats {
+  today: string;
+  limit: number;
+  totalToday: number;
+  totalYesterday: number;
+  total7Day: number;
+  entries: TeamStatsEntry[];
+  recent: RecentGeneration[];
+}
+
 type Stage =
   | "idle"
   | "reading"
@@ -163,7 +215,7 @@ function formatCount(n: number): string {
  * Backend contract is untouched — same POST /api/seo-autopilot/generate
  * with { aliExpressTitle, images, sizes, variants }, same response shape.
  */
-export function SeoAutopilotView() {
+export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
   // ─── Form state ───────────────────────────────────────────────────
   const [aliTitle, setAliTitle] = useState("");
   const [images, setImages] = useState<UploadedImage[]>([]);
@@ -176,9 +228,43 @@ export function SeoAutopilotView() {
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // ─── Quota state ──────────────────────────────────────────────────
+  // Fetched on mount + refreshed after every generation / 429.
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [teamStats, setTeamStats] = useState<TeamStats | null>(null);
+
+  // Fetch usage on mount + when generation succeeds. CEO also gets
+  // team stats in the same request.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchUsage = async () => {
+      try {
+        const url = isCeo
+          ? "/api/seo-autopilot/usage?stats=true"
+          : "/api/seo-autopilot/usage";
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.usage) setUsage(data.usage);
+        if (data.stats) setTeamStats(data.stats);
+      } catch {
+        // Silent — UI just doesn't show the chip
+      }
+    };
+    fetchUsage();
+    return () => {
+      cancelled = true;
+    };
+    // Re-fetch when result.generatedAt changes (after a successful gen)
+    // so the chip stays accurate.
+  }, [isCeo, result?.generatedAt]);
+
+  const atLimit =
+    !!usage && !usage.isUnlimited && usage.remaining <= 0;
   const titleValid = aliTitle.trim().length >= 8;
   const imagesValid = images.length >= 1;
-  const canSubmit = titleValid && imagesValid && !generating;
+  const canSubmit = titleValid && imagesValid && !generating && !atLimit;
 
   async function handleGenerate() {
     if (!canSubmit) return;
@@ -209,6 +295,22 @@ export function SeoAutopilotView() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        // Quota gate — refresh local usage state and surface a clear
+        // message. The body includes { quotaExceeded, limit, resetAt }.
+        if (res.status === 429 && body?.quotaExceeded) {
+          setUsage({
+            count: body.limit ?? 8,
+            limit: body.limit ?? 8,
+            remaining: 0,
+            resetAt: body.resetAt ?? new Date().toISOString(),
+            isUnlimited: false,
+            date: new Date().toISOString().slice(0, 10),
+          });
+          throw new Error(
+            body?.error ??
+              "Daily limit reached. Resets at midnight Pakistan time.",
+          );
+        }
         throw new Error(body?.error ?? `Generation failed (${res.status})`);
       }
 
@@ -262,7 +364,11 @@ export function SeoAutopilotView() {
       <PageBackdrop />
 
       <div className="relative max-w-3xl mx-auto space-y-6 pb-16 pt-1">
-        <HeroBanner generating={generating} hasResult={!!result} />
+        <HeroBanner
+          generating={generating}
+          hasResult={!!result}
+          usage={usage}
+        />
 
         {/* ──────────────── INPUT ──────────────── */}
         {showInput && (
@@ -294,6 +400,8 @@ export function SeoAutopilotView() {
                 sizes.length > 0 ||
                 variants.length > 0
               }
+              usage={usage}
+              atLimit={atLimit}
               onGenerate={handleGenerate}
               onReset={handleReset}
             />
@@ -325,6 +433,9 @@ export function SeoAutopilotView() {
             <RestartButton onReset={handleReset} />
           </>
         )}
+
+        {/* ──────────────── CEO TEAM STATS ──────────────── */}
+        {isCeo && teamStats && <TeamStatsPanel stats={teamStats} />}
       </div>
     </div>
   );
@@ -354,9 +465,11 @@ function PageBackdrop() {
 function HeroBanner({
   generating,
   hasResult,
+  usage,
 }: {
   generating: boolean;
   hasResult: boolean;
+  usage: UsageSummary | null;
 }) {
   return (
     <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-orange-500/20 ap-stagger-in">
@@ -432,6 +545,7 @@ function HeroBanner({
               Generating
             </span>
           )}
+          {usage && <UsagePill usage={usage} />}
         </div>
 
         {/* Title + icon */}
@@ -477,6 +591,43 @@ function HeroBanner({
         </div>
       </div>
     </div>
+  );
+}
+
+function UsagePill({ usage }: { usage: UsageSummary }) {
+  if (usage.isUnlimited) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 text-[10px] font-bold text-violet-100 tracking-[0.16em] uppercase bg-violet-500/25 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-violet-300/30"
+        title="CEO — no daily cap"
+      >
+        <Crown className="size-3" />
+        Unlimited
+      </span>
+    );
+  }
+  const remaining = Math.max(0, usage.remaining);
+  const ratio = usage.count / Math.max(1, usage.limit);
+  // Color: emerald at low use, amber at 80%+, rose at limit
+  const tone =
+    remaining === 0
+      ? "rose"
+      : ratio >= 0.8
+        ? "amber"
+        : "emerald";
+  const cls = {
+    rose: "bg-rose-500/25 text-rose-100 ring-rose-300/30",
+    amber: "bg-amber-500/25 text-amber-100 ring-amber-300/30",
+    emerald: "bg-emerald-500/25 text-emerald-100 ring-emerald-300/30",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-[10px] font-bold tracking-[0.16em] uppercase backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ${cls}`}
+      title={`${usage.count} of ${usage.limit} generations today (resets at midnight PKT)`}
+    >
+      <Gauge className="size-3" />
+      {remaining === 0 ? "Daily limit reached" : `${usage.count} / ${usage.limit} today`}
+    </span>
   );
 }
 
@@ -562,18 +713,84 @@ function SourceCard({
           <SectionLabel icon={ImageIcon} required filled={imagesValid}>
             Product images
           </SectionLabel>
+
+          {/* CRITICAL compliance warning — raw AliExpress images get
+              auto-flagged by our vision compliance gate as copyrighted /
+              counterfeit (Etsy is strict on this, and the Haiku gate
+              catches stock-photo watermarks + brand logos). Make this
+              IMPOSSIBLE to miss — bright rose, all caps eyebrow, animated
+              icon glow. */}
+          <AliWarningBanner />
+
           <SeoImageUploader
             images={images}
             onChange={onImagesChange}
             disabled={disabled}
           />
           <p className="text-[11px] text-muted-foreground/75 leading-snug">
-            Upload your Nano Banana regenerated photos — never raw AliExpress
-            files. Sonnet sees them for the compliance check and alt text.
+            Sonnet sees these for the compliance check and alt text. Use
+            your Nano Banana / AI-regenerated photos only.
           </p>
         </div>
       </CardContent>
     </PremiumCard>
+  );
+}
+
+// ─── AliExpress image warning banner ────────────────────────────────
+
+/**
+ * A prominent banner above the image uploader telling the user NOT to
+ * upload raw AliExpress photos. Reads as a hard rule — bright rose
+ * surface, animated icon halo, all-caps headline. The compliance gate
+ * will block these anyway; this banner is what stops the upload before
+ * it costs the user a quota slot.
+ */
+function AliWarningBanner() {
+  return (
+    <div className="relative overflow-hidden rounded-xl border-2 border-rose-400/60 dark:border-rose-700/60 bg-gradient-to-br from-rose-50 via-rose-50/80 to-amber-50/40 dark:from-rose-950/40 dark:via-rose-950/30 dark:to-amber-950/15 shadow-md shadow-rose-500/15">
+      {/* Diagonal warning-tape stripes for "stop, read this" vibes */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.08] pointer-events-none"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(45deg, transparent 0, transparent 12px, rgba(244,63,94,0.6) 12px, rgba(244,63,94,0.6) 13px)",
+        }}
+      />
+      {/* Pulsing left edge accent */}
+      <div
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-rose-500 via-rose-600 to-amber-500"
+      />
+
+      <div className="relative flex items-start gap-3 px-4 py-3.5 sm:px-5">
+        {/* Icon chip with pulsing glow */}
+        <div className="relative shrink-0 mt-0.5">
+          <span
+            aria-hidden
+            className="absolute -inset-1 rounded-xl bg-rose-500/40 blur-md animate-pulse"
+          />
+          <div className="relative size-9 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 ring-1 ring-rose-800/30 flex items-center justify-center shadow-md shadow-rose-500/30">
+            <AlertTriangle className="size-4 text-white" strokeWidth={2.5} />
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-[0.22em]">
+            Critical · read before uploading
+          </p>
+          <p className="text-[13px] sm:text-[14px] font-bold text-rose-900 dark:text-rose-100 leading-tight mt-1 tracking-tight">
+            DO NOT upload AliExpress images.
+          </p>
+          <p className="text-[11px] sm:text-[12px] text-rose-800/90 dark:text-rose-200/90 mt-1.5 leading-relaxed">
+            Our AI <strong>auto-flags</strong> them as copyrighted content,
+            blocks the listing and burns one of your daily generations.
+            Upload your <strong>regenerated (Nano Banana / AI)</strong> images only.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -733,6 +950,8 @@ function GenerateCta({
   titleValid,
   imagesValid,
   hasAnyInput,
+  usage,
+  atLimit,
   onGenerate,
   onReset,
 }: {
@@ -741,9 +960,31 @@ function GenerateCta({
   titleValid: boolean;
   imagesValid: boolean;
   hasAnyInput: boolean;
+  usage: UsageSummary | null;
+  atLimit: boolean;
   onGenerate: () => void;
   onReset: () => void;
 }) {
+  // If the user is at their daily cap, render a clear limit card
+  // instead of the Generate button. No way to even try to submit.
+  if (atLimit && usage) {
+    return (
+      <div className="space-y-3 ap-stagger-in" style={{ animationDelay: "240ms" }}>
+        <DailyLimitCard usage={usage} />
+        {hasAnyInput && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center justify-center gap-1.5 py-1"
+          >
+            <RotateCw className="size-3" />
+            Clear inputs anyway
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 ap-stagger-in" style={{ animationDelay: "240ms" }}>
       <div className="relative group">
@@ -775,7 +1016,15 @@ function GenerateCta({
         </Button>
       </div>
 
-      {!generating && (aliTitleHasContent(titleValid, imagesValid)) && (
+      {/* Usage status line beneath the button — only shown to capped users */}
+      {!generating && usage && !usage.isUnlimited && (
+        <p className="text-center text-[11px] font-semibold text-muted-foreground tabular-nums flex items-center justify-center gap-1.5">
+          <Gauge className="size-3" />
+          {usage.remaining} of {usage.limit} generations left today · resets at midnight PKT
+        </p>
+      )}
+
+      {!generating && aliTitleHasContent(titleValid, imagesValid) && (
         <div className="space-y-1">
           {!titleValid && (
             <ValidationLine text="Paste at least 8 characters of title text." />
@@ -797,6 +1046,68 @@ function GenerateCta({
         </button>
       )}
     </div>
+  );
+}
+
+function DailyLimitCard({ usage }: { usage: UsageSummary }) {
+  // Absolute reset time, formatted in Pakistan TZ. We deliberately skip
+  // a live "X hours from now" countdown — React 19's purity rules make
+  // it noisy to maintain and the absolute time is easier to read anyway.
+  const resetDate = new Date(usage.resetAt);
+
+  return (
+    <Card className="relative overflow-hidden border-rose-300/50 dark:border-rose-900/40 shadow-xl shadow-rose-500/15">
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-br from-rose-50/60 via-card to-amber-50/40 dark:from-rose-950/30 dark:via-card dark:to-amber-950/15"
+      />
+      <CardContent className="relative p-6 sm:p-7 space-y-4">
+        <div className="flex items-center gap-3.5">
+          <div className="relative shrink-0">
+            <span
+              aria-hidden
+              className="absolute -inset-1 rounded-2xl bg-rose-500/25 blur-md"
+            />
+            <div className="relative size-12 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 ring-1 ring-rose-800/30 flex items-center justify-center shadow-lg shadow-rose-500/30">
+              <Gauge className="size-5 text-white" />
+            </div>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-[0.22em]">
+              Daily limit reached
+            </p>
+            <h3 className="text-lg font-bold leading-tight">
+              {usage.count} of {usage.limit} generations today
+            </h3>
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-card/60 ring-1 ring-rose-200/40 dark:ring-rose-900/40 px-4 py-3 flex items-center gap-3">
+          <Clock className="size-4 text-rose-600 dark:text-rose-400 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-rose-700/80 dark:text-rose-300/80">
+              Resets at midnight (PKT)
+            </p>
+            <p className="text-[13px] font-semibold mt-0.5">
+              {resetDate.toLocaleString("en-PK", {
+                timeZone: "Asia/Karachi",
+                weekday: "short",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })}{" "}
+              <span className="text-muted-foreground font-medium">PKT</span>
+            </p>
+          </div>
+        </div>
+
+        <p className="text-[12px] text-foreground/80 leading-relaxed">
+          Everyone gets {usage.limit} listing generations per day to keep
+          shared resources (Etsy API + Claude) fair. Your count resets at
+          Pakistan midnight automatically — no action needed.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2432,6 +2743,519 @@ function RestartButton({ onReset }: { onReset: () => void }) {
         Start a new listing
       </Button>
     </div>
+  );
+}
+
+// ─── CEO team usage panel ───────────────────────────────────────────
+
+function TeamStatsPanel({ stats }: { stats: TeamStats }) {
+  // Two sub-tabs inside the panel: "By person" (default) + "Recent events".
+  const [tab, setTab] = useState<"people" | "events">("people");
+
+  const roleLabel = (role: string): string => {
+    switch (role) {
+      case "SUPER_ADMIN":
+        return "CEO";
+      case "HR_ADMIN":
+        return "HR";
+      case "PARTNER":
+        return "Partner";
+      case "MANAGER":
+        return "Manager";
+      case "EMPLOYEE":
+        return "Employee";
+      default:
+        return role;
+    }
+  };
+  const roleColor = (role: string): string => {
+    switch (role) {
+      case "SUPER_ADMIN":
+        return "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-violet-500/30";
+      case "HR_ADMIN":
+        return "bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-sky-500/30";
+      case "PARTNER":
+        return "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30";
+      case "MANAGER":
+        return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30";
+      default:
+        return "bg-muted/60 text-foreground/70 ring-border";
+    }
+  };
+
+  return (
+    <PremiumCard>
+      {/* Header — always visible, no toggle */}
+      <div className="p-7 sm:p-8 border-b border-border/60">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative shrink-0">
+              <span
+                aria-hidden
+                className="absolute -inset-1 rounded-2xl bg-violet-400/25 blur-md"
+              />
+              <div className="relative size-11 rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 ring-1 ring-violet-700/30 flex items-center justify-center shadow-lg shadow-violet-500/25">
+                <Users className="size-5 text-white" />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-[0.22em]">
+                CEO admin
+              </p>
+              <h3 className="text-xl font-bold tracking-tight leading-tight mt-0.5">
+                Team usage dashboard
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Who&apos;s generating how many listings — every event logged.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI strip — always shown */}
+        <div className="grid grid-cols-3 gap-2 mt-5">
+          <KpiCell label="Today" value={stats.totalToday} tone="emerald" />
+          <KpiCell label="Yesterday" value={stats.totalYesterday} tone="sky" />
+          <KpiCell label="Last 7 days" value={stats.total7Day} tone="violet" />
+        </div>
+
+        {/* Tab switch */}
+        <div className="mt-5 inline-flex items-center bg-muted/40 rounded-lg p-1 ring-1 ring-border/60">
+          <TabButton
+            active={tab === "people"}
+            onClick={() => setTab("people")}
+            icon={Users}
+            label="By person"
+            count={stats.entries.length}
+          />
+          <TabButton
+            active={tab === "events"}
+            onClick={() => setTab("events")}
+            icon={Clock}
+            label="Recent events"
+            count={stats.recent.length}
+          />
+        </div>
+      </div>
+
+      <div className="px-7 sm:px-8 pb-8 pt-6">
+        {tab === "people" ? (
+          <PeopleBreakdown
+            stats={stats}
+            roleLabel={roleLabel}
+            roleColor={roleColor}
+          />
+        ) : (
+          <RecentEventsBreakdown
+            stats={stats}
+            roleLabel={roleLabel}
+            roleColor={roleColor}
+          />
+        )}
+
+        <p className="text-[10px] text-muted-foreground/70 leading-snug mt-5">
+          Daily limit is <strong>{stats.limit}</strong> generations per user
+          (CEO is unlimited). Counts reset at midnight Pakistan time. Use the
+          event log to spot suspicious titles or repeated BLOCKED attempts.
+        </p>
+      </div>
+    </PremiumCard>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  count: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+        active
+          ? "bg-card shadow-sm ring-1 ring-border text-foreground"
+          : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      <Icon className="size-3.5" />
+      {label}
+      <span
+        className={`text-[10px] tabular-nums px-1.5 py-0.5 rounded-full ${
+          active ? "bg-muted/60" : "bg-muted/40"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function PeopleBreakdown({
+  stats,
+  roleLabel,
+  roleColor,
+}: {
+  stats: TeamStats;
+  roleLabel: (role: string) => string;
+  roleColor: (role: string) => string;
+}) {
+  if (stats.entries.length === 0) {
+    return (
+      <div className="text-center py-10 space-y-2">
+        <div className="size-12 rounded-2xl bg-muted/40 ring-1 ring-border mx-auto flex items-center justify-center">
+          <Users className="size-5 text-muted-foreground/60" />
+        </div>
+        <p className="text-[13px] font-semibold text-foreground/80">
+          No team activity yet
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          No one has generated a listing in the last 7 days.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-border/60 overflow-hidden">
+      <table className="w-full text-[12px]">
+        <thead className="bg-muted/40 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+          <tr>
+            <th className="px-3 py-2.5 font-bold text-left">User</th>
+            <th className="px-3 py-2.5 font-bold text-left">Role</th>
+            <th className="px-3 py-2.5 font-bold text-right">Today</th>
+            <th className="px-3 py-2.5 font-bold text-right">Yesterday</th>
+            <th className="px-3 py-2.5 font-bold text-right">7-day</th>
+            <th className="px-3 py-2.5 font-bold text-left">Outcomes (7d)</th>
+            <th className="px-3 py-2.5 font-bold text-right">Last seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {stats.entries.map((e, i) => (
+            <tr
+              key={e.userId}
+              className="border-t border-border/40 hover:bg-muted/15 transition-colors ap-stagger-in"
+              style={{ animationDelay: `${i * 25}ms` }}
+            >
+              <td className="px-3 py-3">
+                <div className="flex items-center gap-2.5">
+                  <UserAvatar name={e.name} />
+                  <div className="min-w-0">
+                    <p className="font-bold leading-tight">{e.name}</p>
+                    <p className="text-[10px] tabular-nums text-muted-foreground/70 font-medium leading-tight">
+                      {e.employeeId}
+                    </p>
+                  </div>
+                </div>
+              </td>
+              <td className="px-3 py-3">
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${roleColor(e.role)}`}
+                >
+                  {roleLabel(e.role)}
+                </span>
+              </td>
+              <td className="px-3 py-3 text-right">
+                <UsageCountChip
+                  count={e.countToday}
+                  limit={stats.limit}
+                  isOver={e.isOverLimit}
+                  isUnlimited={e.role === "SUPER_ADMIN"}
+                />
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
+                {e.countYesterday}
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums font-bold">
+                {e.count7Day}
+              </td>
+              <td className="px-3 py-3">
+                <OutcomeBars
+                  allowed={e.allowedCount}
+                  review={e.reviewCount}
+                  blocked={e.blockedCount}
+                />
+              </td>
+              <td className="px-3 py-3 text-right text-[10px] text-muted-foreground tabular-nums">
+                {e.lastGeneratedAt ? relativeTime(e.lastGeneratedAt) : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RecentEventsBreakdown({
+  stats,
+  roleLabel,
+  roleColor,
+}: {
+  stats: TeamStats;
+  roleLabel: (role: string) => string;
+  roleColor: (role: string) => string;
+}) {
+  if (stats.recent.length === 0) {
+    return (
+      <div className="text-center py-10 space-y-2">
+        <div className="size-12 rounded-2xl bg-muted/40 ring-1 ring-border mx-auto flex items-center justify-center">
+          <Clock className="size-5 text-muted-foreground/60" />
+        </div>
+        <p className="text-[13px] font-semibold text-foreground/80">
+          No recent events
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          Generations from the last 7 days will appear here, newest first.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {stats.recent.map((evt, i) => (
+        <div
+          key={evt.id}
+          className="rounded-xl border border-border/60 bg-card hover:bg-muted/15 transition-colors px-4 py-3 ap-stagger-in"
+          style={{ animationDelay: `${i * 20}ms` }}
+        >
+          <div className="flex items-start gap-3">
+            <UserAvatar name={evt.userName} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[13px] font-bold leading-tight">
+                  {evt.userName}
+                </span>
+                <span className="text-[10px] tabular-nums text-muted-foreground/70 font-medium">
+                  {evt.employeeId}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ${roleColor(evt.userRole)}`}
+                >
+                  {roleLabel(evt.userRole)}
+                </span>
+                <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
+                  {relativeTime(evt.createdAt)}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1 truncate">
+                <span className="text-muted-foreground/60 font-semibold uppercase tracking-wider text-[9px] mr-1.5">
+                  From
+                </span>
+                {evt.sourceTitle}
+              </p>
+              {evt.generatedTitle && (
+                <p className="text-[12px] text-foreground/90 mt-1 truncate font-medium">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider text-[9px] mr-1.5">
+                    →
+                  </span>
+                  {evt.generatedTitle}
+                </p>
+              )}
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <VerdictPill verdict={evt.verdict} />
+                {evt.category && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/40 ring-1 ring-border/40 rounded-md px-2 py-0.5">
+                    <Target className="size-2.5" />
+                    {evt.category}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UserAvatar({ name }: { name: string }) {
+  const initials = name
+    .split(/\s+/)
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+  // Derive a stable color hue from the name so each user has a
+  // recognisable swatch.
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  return (
+    <div
+      className="size-8 rounded-full ring-1 ring-white/20 flex items-center justify-center shrink-0 text-[10px] font-bold text-white"
+      style={{
+        background: `linear-gradient(135deg, hsl(${hue} 65% 55%), hsl(${(hue + 40) % 360} 70% 45%))`,
+      }}
+    >
+      {initials || "?"}
+    </div>
+  );
+}
+
+function OutcomeBars({
+  allowed,
+  review,
+  blocked,
+}: {
+  allowed: number;
+  review: number;
+  blocked: number;
+}) {
+  const total = allowed + review + blocked;
+  if (total === 0) {
+    return <span className="text-[10px] text-muted-foreground/60">—</span>;
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      {allowed > 0 && (
+        <span
+          className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
+          title={`${allowed} allowed`}
+        >
+          <Check className="size-2.5" strokeWidth={3} />
+          {allowed}
+        </span>
+      )}
+      {review > 0 && (
+        <span
+          className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 ring-1 ring-amber-500/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
+          title={`${review} flagged for review`}
+        >
+          <AlertTriangle className="size-2.5" />
+          {review}
+        </span>
+      )}
+      {blocked > 0 && (
+        <span
+          className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/15 ring-1 ring-rose-500/30 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
+          title={`${blocked} blocked`}
+        >
+          <Ban className="size-2.5" />
+          {blocked}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function VerdictPill({
+  verdict,
+}: {
+  verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
+}) {
+  if (verdict === "ALLOWED") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+        <Check className="size-2.5" strokeWidth={3} />
+        Allowed
+      </span>
+    );
+  }
+  if (verdict === "REVIEW") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 ring-1 ring-amber-500/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+        <AlertTriangle className="size-2.5" />
+        Review
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 ring-1 ring-rose-500/30 text-rose-700 dark:text-rose-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+      <Ban className="size-2.5" />
+      Blocked
+    </span>
+  );
+}
+
+/**
+ * Render an ISO timestamp as a human-friendly relative time
+ * ("just now", "5m ago", "2h ago", "3d ago", "Jan 15"). Pure function —
+ * computes once at render, doesn't auto-update.
+ */
+function relativeTime(iso: string): string {
+  const then = new Date(iso);
+  // Server passes us the ISO; we just need a deterministic format. We
+  // pre-format using locale to avoid Date.now() in render (React 19 rule).
+  return new Intl.DateTimeFormat("en-PK", {
+    timeZone: "Asia/Karachi",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(then);
+}
+
+function KpiCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "emerald" | "sky" | "violet";
+}) {
+  const toneClass = {
+    emerald:
+      "bg-emerald-500/15 ring-emerald-500/30 text-emerald-700 dark:text-emerald-300",
+    sky: "bg-sky-500/15 ring-sky-500/30 text-sky-700 dark:text-sky-300",
+    violet:
+      "bg-violet-500/15 ring-violet-500/30 text-violet-700 dark:text-violet-300",
+  }[tone];
+  return (
+    <div className={`rounded-xl ring-1 ${toneClass} px-3 py-2.5`}>
+      <p className="text-[9px] font-bold uppercase tracking-[0.18em] opacity-75">
+        {label}
+      </p>
+      <p className="text-2xl font-bold tabular-nums leading-tight mt-1">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function UsageCountChip({
+  count,
+  limit,
+  isOver,
+  isUnlimited,
+}: {
+  count: number;
+  limit: number;
+  isOver: boolean;
+  isUnlimited: boolean;
+}) {
+  if (isUnlimited) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 ring-1 ring-violet-500/30 text-violet-700 dark:text-violet-300 px-2 py-0.5 text-[10px] font-bold tabular-nums">
+        <Crown className="size-2.5" />
+        {count}
+      </span>
+    );
+  }
+  const ratio = count / Math.max(1, limit);
+  const cls = isOver
+    ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 ring-rose-500/30"
+    : ratio >= 0.8
+      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30"
+      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${cls}`}
+    >
+      {count} / {limit}
+    </span>
   );
 }
 

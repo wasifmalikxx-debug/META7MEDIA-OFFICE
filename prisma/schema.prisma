@@ -217,6 +217,8 @@ model User {
   reviewBonusesSubmitted ReviewBonus[]      @relation("ReviewBonusSubmitter")
   reviewBonusesApproved  ReviewBonus[]      @relation("ReviewBonusApprover")
   dailyReports           DailyReport[]
+  seoAutopilotUsage      SeoAutopilotUsage[] @relation("SeoAutopilotUsageUser")
+  seoAutopilotLogs       SeoAutopilotLog[]   @relation("SeoAutopilotLogUser")
   complaintsSubmitted    Complaint[]        @relation("ComplaintSubmitter")
   complaintsResolved     Complaint[]        @relation("ComplaintResponder")
   complaintMessages      ComplaintMessage[] @relation("ComplaintMessageSender")
@@ -925,4 +927,64 @@ model DailyTeamSnapshot {
   @@unique([date, teamKey])
   @@index([date])
   @@index([teamKey, date])
+}
+
+// ─── SEO Autopilot daily-usage quota ─────────────────────────────────
+//
+// One row per (user, calendar day). `date` is anchored to Pakistan time
+// (UTC+5) — we compute YYYY-MM-DD in Asia/Karachi and store at midnight
+// UTC. Reset is at PKT midnight.
+//
+// Hard limit: 8 generations per day per user. SUPER_ADMIN bypasses the
+// cap entirely. The /api/seo-autopilot/generate route increments `count`
+// atomically (upsert) before doing the expensive Sonnet call; if the
+// pre-increment count is >= cap it returns 429 with no work done.
+//
+// Used by:
+//   - the autopilot UI to show "X / 8 today" badge
+//   - the CEO usage panel showing per-user counts today (catch misuse)
+model SeoAutopilotUsage {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation("SeoAutopilotUsageUser", fields: [userId], references: [id], onDelete: Cascade)
+  date   DateTime @db.Date
+  count  Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+// Per-generation audit log for the CEO dashboard. Every completed
+// generation (ALLOWED, REVIEW, or BLOCKED) writes one row here so the
+// CEO can see WHO generated WHAT and WHEN — which catches misuse
+// (spam titles, off-brand experiments, IP attempts) that the daily
+// counter alone can't surface.
+//
+// Failed generations (Sonnet errors, Etsy errors, etc.) are NOT logged
+// because the user didn't get a result and we refund their slot.
+//
+// Fields:
+//   sourceTitle    — the AliExpress / supplier title the user pasted
+//                    (truncated to 500 chars; that's plenty even for
+//                    keyword-stuffed AliExpress noise)
+//   generatedTitle — the Etsy title Sonnet produced, NULL on BLOCKED
+//   verdict        — "ALLOWED" | "REVIEW" | "BLOCKED"
+//   category       — the Etsy category path Autopilot picked, NULL on
+//                    BLOCKED (no research is done past compliance)
+model SeoAutopilotLog {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation("SeoAutopilotLogUser", fields: [userId], references: [id], onDelete: Cascade)
+  sourceTitle    String   @db.VarChar(500)
+  generatedTitle String?  @db.VarChar(160)
+  verdict        String   @db.VarChar(20)
+  category       String?  @db.VarChar(200)
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([verdict])
 }
