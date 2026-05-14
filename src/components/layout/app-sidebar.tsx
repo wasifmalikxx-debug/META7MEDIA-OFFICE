@@ -476,6 +476,23 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  {/* CEO-only: full-page Autopilot analytics dashboard.
+                      Nested under SEO Autopilot so it sits next to the
+                      tool itself. */}
+                  {isCeo && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        render={<Link href="/seo-autopilot/dashboard" />}
+                        isActive={isItemActive("/seo-autopilot/dashboard")}
+                      >
+                        <BarChart3 className="size-4" />
+                        <span>Autopilot Dashboard</span>
+                        <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
+                          Admin
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

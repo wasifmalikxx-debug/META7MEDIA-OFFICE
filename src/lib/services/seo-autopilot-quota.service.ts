@@ -162,6 +162,10 @@ export interface TeamUsageEntry {
   employeeId: string;
   name: string;
   role: string;
+  // Department this user belongs to (e.g. "Etsy - EM", "Etsy - AE").
+  // "Unassigned" if the user has no department row OR doesn't match
+  // an Etsy-prefixed employeeId.
+  department: string;
   countToday: number;
   countYesterday: number;
   count7Day: number;
@@ -173,6 +177,25 @@ export interface TeamUsageEntry {
   lastGeneratedAt: string | null;
   // Estimated USD spend over last 7 days (sum of per-event estimates)
   cost7DayUsd: number;
+  costTodayUsd: number;
+}
+
+export interface DepartmentBreakdown {
+  /** Display name e.g. "Etsy - EM" */
+  name: string;
+  /** Short tag e.g. "EM" (last segment of name, used for chips) */
+  shortTag: string;
+  /** Members of this department who have used Autopilot in last 7d */
+  memberCount: number;
+  /** Distinct active users today */
+  activeUsersToday: number;
+  countToday: number;
+  count7Day: number;
+  costTodayUsd: number;
+  cost7DayUsd: number;
+  allowedCount: number;
+  reviewCount: number;
+  blockedCount: number;
 }
 
 export interface RecentGeneration {
@@ -189,6 +212,25 @@ export interface RecentGeneration {
   estimatedCostUsd: number;
 }
 
+export interface DailyTrendPoint {
+  date: string; // PKT YYYY-MM-DD
+  label: string; // "Mon", "Tue", "Today", "Yesterday"
+  count: number;
+  costUsd: number;
+  allowedCount: number;
+  reviewCount: number;
+  blockedCount: number;
+}
+
+export interface CostByOutcome {
+  allowedUsd: number;
+  reviewUsd: number;
+  blockedUsd: number;
+  allowedCount: number;
+  reviewCount: number;
+  blockedCount: number;
+}
+
 export interface TeamStatsResponse {
   today: string; // PKT YYYY-MM-DD
   limit: number;
@@ -199,8 +241,45 @@ export interface TeamStatsResponse {
   costTodayUsd: number;
   costYesterdayUsd: number;
   cost7DayUsd: number;
+  // Engagement / safety metrics for the top-of-dashboard KPI row
+  activeUsersToday: number;
+  activeUsers7Day: number;
+  blockedToday: number;
+  blocked7Day: number;
+  avgCostPerGen7DayUsd: number;
+  // Time-series + breakdowns for charts
+  dailyTrend: DailyTrendPoint[]; // exactly 7 entries, oldest → newest
+  costByOutcome7d: CostByOutcome;
+  // Department-level breakdown (CEO dashboard only)
+  departments: DepartmentBreakdown[];
+  // Per-user + per-event detail (existing)
   entries: TeamUsageEntry[];
   recent: RecentGeneration[]; // newest first, capped at 50
+}
+
+/**
+ * Resolve a user's department label for dashboard grouping. Uses the
+ * actual Department.name when present; falls back to inferring from the
+ * employeeId prefix so partners + users without a departmentId still
+ * land in the right Etsy bucket.
+ */
+function resolveDepartmentLabel(
+  departmentName: string | null | undefined,
+  employeeId: string,
+): string {
+  if (departmentName && departmentName.trim().length > 0) {
+    return departmentName;
+  }
+  // employeeId pattern: e.g. "EM-3", "AE-7", "ME-2" → "Etsy - EM" etc.
+  const m = /^([A-Z]+)-/.exec(employeeId);
+  if (m) {
+    const prefix = m[1];
+    if (prefix === "EM" || prefix === "AE" || prefix === "ME") {
+      return `Etsy - ${prefix}`;
+    }
+    return prefix;
+  }
+  return "Unassigned";
 }
 
 // ─── Cost estimation ────────────────────────────────────────────────
@@ -240,36 +319,26 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
 
-  // Run usage + log queries in parallel.
+  // Run usage + log queries in parallel. We include department info on
+  // both so we can group by dept without an extra query.
+  const userSelect = {
+    id: true,
+    employeeId: true,
+    firstName: true,
+    lastName: true,
+    role: true,
+    department: { select: { name: true } },
+  } as const;
+
   const [usageRows, logRows] = await Promise.all([
     prisma.seoAutopilotUsage.findMany({
       where: { date: { gte: sevenDaysAgo } },
-      include: {
-        user: {
-          select: {
-            id: true,
-            employeeId: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-          },
-        },
-      },
+      include: { user: { select: userSelect } },
     }),
     prisma.seoAutopilotLog.findMany({
       where: { createdAt: { gte: sevenDaysAgo } },
       orderBy: { createdAt: "desc" },
-      include: {
-        user: {
-          select: {
-            id: true,
-            employeeId: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-          },
-        },
-      },
+      include: { user: { select: userSelect } },
     }),
   ]);
 
@@ -283,6 +352,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       employeeId: string;
       name: string;
       role: string;
+      department: string;
       countToday: number;
       countYesterday: number;
       count7Day: number;
@@ -291,6 +361,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       blockedCount: number;
       lastGeneratedAt: Date | null;
       cost7DayUsd: number;
+      costTodayUsd: number;
     }
   >();
 
@@ -303,6 +374,10 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         employeeId: r.user.employeeId,
         name: `${r.user.firstName} ${r.user.lastName}`.trim(),
         role: r.user.role,
+        department: resolveDepartmentLabel(
+          r.user.department?.name,
+          r.user.employeeId,
+        ),
         countToday: 0,
         countYesterday: 0,
         count7Day: 0,
@@ -311,6 +386,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         blockedCount: 0,
         lastGeneratedAt: null,
         cost7DayUsd: 0,
+        costTodayUsd: 0,
       };
     const t = r.date.getTime();
     if (t === todayTime) entry.countToday += r.count;
@@ -320,11 +396,51 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
   }
 
   // ─── Layer in log-derived verdict breakdown + cost + last-gen ───
-  // Track per-day total cost across all users (today / yesterday / 7d)
-  // by iterating logRows once — cheaper than another aggregate query.
+  // Track per-day cost + count + outcome buckets in one pass through
+  // logRows. Cheaper than separate aggregate queries.
+
+  // Build a fixed 7-day window (oldest → newest) so the trend chart
+  // always renders 7 bars even if there are zero gens on some days.
+  const dailyBuckets = new Map<
+    number,
+    {
+      date: Date;
+      count: number;
+      costUsd: number;
+      allowedCount: number;
+      reviewCount: number;
+      blockedCount: number;
+    }
+  >();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(todayTime - i * 24 * 60 * 60 * 1000);
+    dailyBuckets.set(d.getTime(), {
+      date: d,
+      count: 0,
+      costUsd: 0,
+      allowedCount: 0,
+      reviewCount: 0,
+      blockedCount: 0,
+    });
+  }
+
+  // Per-day cost totals
   let costTodayUsd = 0;
   let costYesterdayUsd = 0;
   let cost7DayUsd = 0;
+
+  // Per-outcome aggregates across the 7-day window
+  let totalAllowedCost = 0;
+  let totalReviewCost = 0;
+  let totalBlockedCost = 0;
+  let totalAllowedCount = 0;
+  let totalReviewCount = 0;
+  let totalBlockedCount = 0;
+  let totalBlockedToday = 0;
+
+  // Distinct active users per window
+  const activeUserIdsToday = new Set<string>();
+  const activeUserIds7Day = new Set<string>();
 
   for (const log of logRows) {
     if (!log.user) continue;
@@ -336,6 +452,33 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     if (logDayTime === todayTime) costTodayUsd += logCost;
     if (logDayTime === yesterdayTime) costYesterdayUsd += logCost;
 
+    // Per-day bucket
+    const bucket = dailyBuckets.get(logDayTime);
+    if (bucket) {
+      bucket.count += 1;
+      bucket.costUsd += logCost;
+      if (log.verdict === "ALLOWED") bucket.allowedCount += 1;
+      else if (log.verdict === "REVIEW") bucket.reviewCount += 1;
+      else if (log.verdict === "BLOCKED") bucket.blockedCount += 1;
+    }
+
+    // Outcome totals
+    if (log.verdict === "ALLOWED") {
+      totalAllowedCost += logCost;
+      totalAllowedCount += 1;
+    } else if (log.verdict === "REVIEW") {
+      totalReviewCost += logCost;
+      totalReviewCount += 1;
+    } else if (log.verdict === "BLOCKED") {
+      totalBlockedCost += logCost;
+      totalBlockedCount += 1;
+      if (logDayTime === todayTime) totalBlockedToday += 1;
+    }
+
+    // Engagement
+    activeUserIds7Day.add(log.userId);
+    if (logDayTime === todayTime) activeUserIdsToday.add(log.userId);
+
     const entry = byUser.get(log.userId);
     if (!entry) {
       // User has a log row but no usage row — possible if usage row got
@@ -344,6 +487,10 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         employeeId: log.user.employeeId,
         name: `${log.user.firstName} ${log.user.lastName}`.trim(),
         role: log.user.role,
+        department: resolveDepartmentLabel(
+          log.user.department?.name,
+          log.user.employeeId,
+        ),
         countToday: 0,
         countYesterday: 0,
         count7Day: 0,
@@ -352,6 +499,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         blockedCount: log.verdict === "BLOCKED" ? 1 : 0,
         lastGeneratedAt: log.createdAt,
         cost7DayUsd: logCost,
+        costTodayUsd: logDayTime === todayTime ? logCost : 0,
       });
       continue;
     }
@@ -359,6 +507,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     else if (log.verdict === "REVIEW") entry.reviewCount += 1;
     else if (log.verdict === "BLOCKED") entry.blockedCount += 1;
     entry.cost7DayUsd += logCost;
+    if (logDayTime === todayTime) entry.costTodayUsd += logCost;
     if (!entry.lastGeneratedAt || log.createdAt > entry.lastGeneratedAt) {
       entry.lastGeneratedAt = log.createdAt;
     }
@@ -370,6 +519,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       employeeId: v.employeeId,
       name: v.name,
       role: v.role,
+      department: v.department,
       countToday: v.countToday,
       countYesterday: v.countYesterday,
       count7Day: v.count7Day,
@@ -378,6 +528,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       blockedCount: v.blockedCount,
       lastGeneratedAt: v.lastGeneratedAt?.toISOString() ?? null,
       cost7DayUsd: v.cost7DayUsd,
+      costTodayUsd: v.costTodayUsd,
       isOverLimit:
         v.role !== "SUPER_ADMIN" && v.countToday >= SEO_AUTOPILOT_DAILY_LIMIT,
     }))
@@ -386,6 +537,70 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         b.countToday - a.countToday ||
         b.count7Day - a.count7Day ||
         a.name.localeCompare(b.name),
+    );
+
+  // ─── Aggregate per-department breakdown ─────────────────────────
+  const byDept = new Map<
+    string,
+    {
+      memberCount: number;
+      activeUserIdsToday: Set<string>;
+      countToday: number;
+      count7Day: number;
+      costTodayUsd: number;
+      cost7DayUsd: number;
+      allowedCount: number;
+      reviewCount: number;
+      blockedCount: number;
+    }
+  >();
+  for (const e of entries) {
+    const cur =
+      byDept.get(e.department) ??
+      {
+        memberCount: 0,
+        activeUserIdsToday: new Set<string>(),
+        countToday: 0,
+        count7Day: 0,
+        costTodayUsd: 0,
+        cost7DayUsd: 0,
+        allowedCount: 0,
+        reviewCount: 0,
+        blockedCount: 0,
+      };
+    cur.memberCount += 1;
+    if (e.countToday > 0) cur.activeUserIdsToday.add(e.userId);
+    cur.countToday += e.countToday;
+    cur.count7Day += e.count7Day;
+    cur.costTodayUsd += e.costTodayUsd;
+    cur.cost7DayUsd += e.cost7DayUsd;
+    cur.allowedCount += e.allowedCount;
+    cur.reviewCount += e.reviewCount;
+    cur.blockedCount += e.blockedCount;
+    byDept.set(e.department, cur);
+  }
+  const departments: DepartmentBreakdown[] = Array.from(byDept.entries())
+    .map(([name, d]) => {
+      // Short tag = last word after the dash, e.g. "Etsy - EM" → "EM"
+      const parts = name.split(" - ");
+      const shortTag = parts.length > 1 ? parts[parts.length - 1] : name;
+      return {
+        name,
+        shortTag,
+        memberCount: d.memberCount,
+        activeUsersToday: d.activeUserIdsToday.size,
+        countToday: d.countToday,
+        count7Day: d.count7Day,
+        costTodayUsd: d.costTodayUsd,
+        cost7DayUsd: d.cost7DayUsd,
+        allowedCount: d.allowedCount,
+        reviewCount: d.reviewCount,
+        blockedCount: d.blockedCount,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.count7Day - a.count7Day || a.name.localeCompare(b.name),
     );
 
   // ─── Cap recent events at 50 newest ─────────────────────────────
@@ -410,15 +625,59 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     estimatedCostUsd: estimateGenerationCostUsd(l.verdict),
   }));
 
+  // ─── Build daily-trend series (oldest → newest, 7 points) ──────
+  const sortedBuckets = Array.from(dailyBuckets.values()).sort(
+    (a, b) => a.date.getTime() - b.date.getTime(),
+  );
+  const dailyTrend: DailyTrendPoint[] = sortedBuckets.map((b) => {
+    const t = b.date.getTime();
+    let label: string;
+    if (t === todayTime) label = "Today";
+    else if (t === yesterdayTime) label = "Yest.";
+    else
+      label = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Karachi",
+        weekday: "short",
+      }).format(b.date);
+    return {
+      date: b.date.toISOString().slice(0, 10),
+      label,
+      count: b.count,
+      costUsd: b.costUsd,
+      allowedCount: b.allowedCount,
+      reviewCount: b.reviewCount,
+      blockedCount: b.blockedCount,
+    };
+  });
+
+  const total7DayCount = entries.reduce((s, e) => s + e.count7Day, 0);
+  const totalTodayCount = entries.reduce((s, e) => s + e.countToday, 0);
+
   return {
     today: today.toISOString().slice(0, 10),
     limit: SEO_AUTOPILOT_DAILY_LIMIT,
-    totalToday: entries.reduce((s, e) => s + e.countToday, 0),
+    totalToday: totalTodayCount,
     totalYesterday: entries.reduce((s, e) => s + e.countYesterday, 0),
-    total7Day: entries.reduce((s, e) => s + e.count7Day, 0),
+    total7Day: total7DayCount,
     costTodayUsd,
     costYesterdayUsd,
     cost7DayUsd,
+    activeUsersToday: activeUserIdsToday.size,
+    activeUsers7Day: activeUserIds7Day.size,
+    blockedToday: totalBlockedToday,
+    blocked7Day: totalBlockedCount,
+    avgCostPerGen7DayUsd:
+      total7DayCount > 0 ? cost7DayUsd / total7DayCount : 0,
+    dailyTrend,
+    costByOutcome7d: {
+      allowedUsd: totalAllowedCost,
+      reviewUsd: totalReviewCost,
+      blockedUsd: totalBlockedCost,
+      allowedCount: totalAllowedCount,
+      reviewCount: totalReviewCount,
+      blockedCount: totalBlockedCount,
+    },
+    departments,
     entries,
     recent,
   };

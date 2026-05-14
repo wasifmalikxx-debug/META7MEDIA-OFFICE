@@ -37,10 +37,10 @@ import {
   Target,
   Award,
   Gauge,
-  Users,
   Clock,
 } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 import { SeoImageUploader, type UploadedImage } from "./image-uploader";
 import { SizeSelector, VariantSelector } from "./option-selectors";
 
@@ -121,56 +121,6 @@ interface UsageSummary {
   date: string;
 }
 
-interface TeamStatsEntry {
-  userId: string;
-  employeeId: string;
-  name: string;
-  role: string;
-  countToday: number;
-  countYesterday: number;
-  count7Day: number;
-  isOverLimit: boolean;
-  allowedCount: number;
-  reviewCount: number;
-  blockedCount: number;
-  lastGeneratedAt: string | null;
-  cost7DayUsd: number;
-}
-
-interface RecentGeneration {
-  id: string;
-  userId: string;
-  employeeId: string;
-  userName: string;
-  userRole: string;
-  sourceTitle: string;
-  generatedTitle: string | null;
-  verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
-  category: string | null;
-  createdAt: string;
-  estimatedCostUsd: number;
-}
-
-interface TeamStats {
-  today: string;
-  limit: number;
-  totalToday: number;
-  totalYesterday: number;
-  total7Day: number;
-  costTodayUsd: number;
-  costYesterdayUsd: number;
-  cost7DayUsd: number;
-  entries: TeamStatsEntry[];
-  recent: RecentGeneration[];
-}
-
-// Format a USD amount. Under $0.10 we show 3 decimals so per-event
-// cost ($0.007 for BLOCKED) doesn't disappear into "$0.01".
-function formatUsd(n: number): string {
-  if (n === 0) return "$0";
-  if (n < 0.1) return `$${n.toFixed(3)}`;
-  return `$${n.toFixed(2)}`;
-}
 
 type Stage =
   | "idle"
@@ -242,25 +192,21 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // ─── Quota state ──────────────────────────────────────────────────
-  // Fetched on mount + refreshed after every generation / 429.
+  // Just the user-facing usage chip ("3 / 8 today"). The full team
+  // analytics dashboard lives at /seo-autopilot/dashboard (CEO-only).
   const [usage, setUsage] = useState<UsageSummary | null>(null);
-  const [teamStats, setTeamStats] = useState<TeamStats | null>(null);
 
-  // Fetch usage on mount + when generation succeeds. CEO also gets
-  // team stats in the same request.
   useEffect(() => {
     let cancelled = false;
     const fetchUsage = async () => {
       try {
-        const url = isCeo
-          ? "/api/seo-autopilot/usage?stats=true"
-          : "/api/seo-autopilot/usage";
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch("/api/seo-autopilot/usage", {
+          cache: "no-store",
+        });
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;
         if (data.usage) setUsage(data.usage);
-        if (data.stats) setTeamStats(data.stats);
       } catch {
         // Silent — UI just doesn't show the chip
       }
@@ -271,7 +217,7 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
     };
     // Re-fetch when result.generatedAt changes (after a successful gen)
     // so the chip stays accurate.
-  }, [isCeo, result?.generatedAt]);
+  }, [result?.generatedAt]);
 
   const atLimit =
     !!usage && !usage.isUnlimited && usage.remaining <= 0;
@@ -381,6 +327,7 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
           generating={generating}
           hasResult={!!result}
           usage={usage}
+          isCeo={isCeo}
         />
 
         {/* ──────────────── INPUT ──────────────── */}
@@ -447,8 +394,6 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
           </>
         )}
 
-        {/* ──────────────── CEO TEAM STATS ──────────────── */}
-        {isCeo && teamStats && <TeamStatsPanel stats={teamStats} />}
       </div>
     </div>
   );
@@ -479,10 +424,12 @@ function HeroBanner({
   generating,
   hasResult,
   usage,
+  isCeo,
 }: {
   generating: boolean;
   hasResult: boolean;
   usage: UsageSummary | null;
+  isCeo: boolean;
 }) {
   return (
     <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-orange-500/20 ap-stagger-in">
@@ -559,6 +506,15 @@ function HeroBanner({
             </span>
           )}
           {usage && <UsagePill usage={usage} />}
+          {isCeo && (
+            <Link
+              href="/seo-autopilot/dashboard"
+              className="ml-auto inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.16em] uppercase bg-white/10 hover:bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 transition-colors"
+            >
+              <TrendingUp className="size-3" />
+              Dashboard
+            </Link>
+          )}
         </div>
 
         {/* Title + icon */}
@@ -2759,556 +2715,6 @@ function RestartButton({ onReset }: { onReset: () => void }) {
   );
 }
 
-// ─── CEO team usage panel ───────────────────────────────────────────
-
-function TeamStatsPanel({ stats }: { stats: TeamStats }) {
-  // Two sub-tabs inside the panel: "By person" (default) + "Recent events".
-  const [tab, setTab] = useState<"people" | "events">("people");
-
-  const roleLabel = (role: string): string => {
-    switch (role) {
-      case "SUPER_ADMIN":
-        return "CEO";
-      case "HR_ADMIN":
-        return "HR";
-      case "PARTNER":
-        return "Partner";
-      case "MANAGER":
-        return "Manager";
-      case "EMPLOYEE":
-        return "Employee";
-      default:
-        return role;
-    }
-  };
-  const roleColor = (role: string): string => {
-    switch (role) {
-      case "SUPER_ADMIN":
-        return "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-violet-500/30";
-      case "HR_ADMIN":
-        return "bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-sky-500/30";
-      case "PARTNER":
-        return "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30";
-      case "MANAGER":
-        return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30";
-      default:
-        return "bg-muted/60 text-foreground/70 ring-border";
-    }
-  };
-
-  return (
-    <PremiumCard>
-      {/* Header — always visible, no toggle */}
-      <div className="p-7 sm:p-8 border-b border-border/60">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="relative shrink-0">
-              <span
-                aria-hidden
-                className="absolute -inset-1 rounded-2xl bg-violet-400/25 blur-md"
-              />
-              <div className="relative size-11 rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 ring-1 ring-violet-700/30 flex items-center justify-center shadow-lg shadow-violet-500/25">
-                <Users className="size-5 text-white" />
-              </div>
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-[0.22em]">
-                CEO admin
-              </p>
-              <h3 className="text-xl font-bold tracking-tight leading-tight mt-0.5">
-                Team usage dashboard
-              </h3>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Who&apos;s generating how many listings — every event logged.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* KPI strip — gens + estimated $ spend, side by side */}
-        <div className="grid grid-cols-3 gap-2 mt-5">
-          <KpiCell
-            label="Today"
-            value={stats.totalToday}
-            subtitle={`${formatUsd(stats.costTodayUsd)} spent`}
-            tone="emerald"
-          />
-          <KpiCell
-            label="Yesterday"
-            value={stats.totalYesterday}
-            subtitle={`${formatUsd(stats.costYesterdayUsd)} spent`}
-            tone="sky"
-          />
-          <KpiCell
-            label="Last 7 days"
-            value={stats.total7Day}
-            subtitle={`${formatUsd(stats.cost7DayUsd)} spent`}
-            tone="violet"
-          />
-        </div>
-
-        {/* Tab switch */}
-        <div className="mt-5 inline-flex items-center bg-muted/40 rounded-lg p-1 ring-1 ring-border/60">
-          <TabButton
-            active={tab === "people"}
-            onClick={() => setTab("people")}
-            icon={Users}
-            label="By person"
-            count={stats.entries.length}
-          />
-          <TabButton
-            active={tab === "events"}
-            onClick={() => setTab("events")}
-            icon={Clock}
-            label="Recent events"
-            count={stats.recent.length}
-          />
-        </div>
-      </div>
-
-      <div className="px-7 sm:px-8 pb-8 pt-6">
-        {tab === "people" ? (
-          <PeopleBreakdown
-            stats={stats}
-            roleLabel={roleLabel}
-            roleColor={roleColor}
-          />
-        ) : (
-          <RecentEventsBreakdown
-            stats={stats}
-            roleLabel={roleLabel}
-            roleColor={roleColor}
-          />
-        )}
-
-        <p className="text-[10px] text-muted-foreground/70 leading-snug mt-5">
-          Daily limit is <strong>{stats.limit}</strong> generations per user
-          (CEO is unlimited). Counts reset at midnight Pakistan time. Cost
-          numbers are <strong>estimates</strong> — ~$0.04 per ALLOWED/REVIEW
-          gen, ~$0.007 per BLOCKED. Real invoice numbers live in the
-          Anthropic console; these are within ~20% for budgeting.
-        </p>
-      </div>
-    </PremiumCard>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  icon: Icon,
-  label,
-  count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  count: number;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold transition-all ${
-        active
-          ? "bg-card shadow-sm ring-1 ring-border text-foreground"
-          : "text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      <Icon className="size-3.5" />
-      {label}
-      <span
-        className={`text-[10px] tabular-nums px-1.5 py-0.5 rounded-full ${
-          active ? "bg-muted/60" : "bg-muted/40"
-        }`}
-      >
-        {count}
-      </span>
-    </button>
-  );
-}
-
-function PeopleBreakdown({
-  stats,
-  roleLabel,
-  roleColor,
-}: {
-  stats: TeamStats;
-  roleLabel: (role: string) => string;
-  roleColor: (role: string) => string;
-}) {
-  if (stats.entries.length === 0) {
-    return (
-      <div className="text-center py-10 space-y-2">
-        <div className="size-12 rounded-2xl bg-muted/40 ring-1 ring-border mx-auto flex items-center justify-center">
-          <Users className="size-5 text-muted-foreground/60" />
-        </div>
-        <p className="text-[13px] font-semibold text-foreground/80">
-          No team activity yet
-        </p>
-        <p className="text-[11px] text-muted-foreground">
-          No one has generated a listing in the last 7 days.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-border/60 overflow-hidden">
-      <table className="w-full text-[12px]">
-        <thead className="bg-muted/40 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2.5 font-bold text-left">User</th>
-            <th className="px-3 py-2.5 font-bold text-left">Role</th>
-            <th className="px-3 py-2.5 font-bold text-right">Today</th>
-            <th className="px-3 py-2.5 font-bold text-right">Yesterday</th>
-            <th className="px-3 py-2.5 font-bold text-right">7-day</th>
-            <th className="px-3 py-2.5 font-bold text-left">Outcomes (7d)</th>
-            <th className="px-3 py-2.5 font-bold text-right">Spend (7d)</th>
-            <th className="px-3 py-2.5 font-bold text-right">Last seen</th>
-          </tr>
-        </thead>
-        <tbody>
-          {stats.entries.map((e, i) => (
-            <tr
-              key={e.userId}
-              className="border-t border-border/40 hover:bg-muted/15 transition-colors ap-stagger-in"
-              style={{ animationDelay: `${i * 25}ms` }}
-            >
-              <td className="px-3 py-3">
-                <div className="flex items-center gap-2.5">
-                  <UserAvatar name={e.name} />
-                  <div className="min-w-0">
-                    <p className="font-bold leading-tight">{e.name}</p>
-                    <p className="text-[10px] tabular-nums text-muted-foreground/70 font-medium leading-tight">
-                      {e.employeeId}
-                    </p>
-                  </div>
-                </div>
-              </td>
-              <td className="px-3 py-3">
-                <span
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${roleColor(e.role)}`}
-                >
-                  {roleLabel(e.role)}
-                </span>
-              </td>
-              <td className="px-3 py-3 text-right">
-                <UsageCountChip
-                  count={e.countToday}
-                  limit={stats.limit}
-                  isOver={e.isOverLimit}
-                  isUnlimited={e.role === "SUPER_ADMIN"}
-                />
-              </td>
-              <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                {e.countYesterday}
-              </td>
-              <td className="px-3 py-3 text-right tabular-nums font-bold">
-                {e.count7Day}
-              </td>
-              <td className="px-3 py-3">
-                <OutcomeBars
-                  allowed={e.allowedCount}
-                  review={e.reviewCount}
-                  blocked={e.blockedCount}
-                />
-              </td>
-              <td className="px-3 py-3 text-right tabular-nums font-bold text-[11px]">
-                {formatUsd(e.cost7DayUsd)}
-              </td>
-              <td className="px-3 py-3 text-right text-[10px] text-muted-foreground tabular-nums">
-                {e.lastGeneratedAt ? relativeTime(e.lastGeneratedAt) : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function RecentEventsBreakdown({
-  stats,
-  roleLabel,
-  roleColor,
-}: {
-  stats: TeamStats;
-  roleLabel: (role: string) => string;
-  roleColor: (role: string) => string;
-}) {
-  if (stats.recent.length === 0) {
-    return (
-      <div className="text-center py-10 space-y-2">
-        <div className="size-12 rounded-2xl bg-muted/40 ring-1 ring-border mx-auto flex items-center justify-center">
-          <Clock className="size-5 text-muted-foreground/60" />
-        </div>
-        <p className="text-[13px] font-semibold text-foreground/80">
-          No recent events
-        </p>
-        <p className="text-[11px] text-muted-foreground">
-          Generations from the last 7 days will appear here, newest first.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {stats.recent.map((evt, i) => (
-        <div
-          key={evt.id}
-          className="rounded-xl border border-border/60 bg-card hover:bg-muted/15 transition-colors px-4 py-3 ap-stagger-in"
-          style={{ animationDelay: `${i * 20}ms` }}
-        >
-          <div className="flex items-start gap-3">
-            <UserAvatar name={evt.userName} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[13px] font-bold leading-tight">
-                  {evt.userName}
-                </span>
-                <span className="text-[10px] tabular-nums text-muted-foreground/70 font-medium">
-                  {evt.employeeId}
-                </span>
-                <span
-                  className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 ${roleColor(evt.userRole)}`}
-                >
-                  {roleLabel(evt.userRole)}
-                </span>
-                <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
-                  {relativeTime(evt.createdAt)}
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-1 truncate">
-                <span className="text-muted-foreground/60 font-semibold uppercase tracking-wider text-[9px] mr-1.5">
-                  From
-                </span>
-                {evt.sourceTitle}
-              </p>
-              {evt.generatedTitle && (
-                <p className="text-[12px] text-foreground/90 mt-1 truncate font-medium">
-                  <span className="text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider text-[9px] mr-1.5">
-                    →
-                  </span>
-                  {evt.generatedTitle}
-                </p>
-              )}
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <VerdictPill verdict={evt.verdict} />
-                {evt.category && (
-                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/40 ring-1 ring-border/40 rounded-md px-2 py-0.5">
-                    <Target className="size-2.5" />
-                    {evt.category}
-                  </span>
-                )}
-                <span
-                  className="inline-flex items-center gap-1 text-[10px] font-bold tabular-nums bg-violet-500/10 ring-1 ring-violet-500/25 text-violet-700 dark:text-violet-300 rounded-md px-2 py-0.5"
-                  title="Estimated Anthropic cost for this generation"
-                >
-                  <Gauge className="size-2.5" />
-                  {formatUsd(evt.estimatedCostUsd)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function UserAvatar({ name }: { name: string }) {
-  const initials = name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  // Derive a stable color hue from the name so each user has a
-  // recognisable swatch.
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  const hue = hash % 360;
-  return (
-    <div
-      className="size-8 rounded-full ring-1 ring-white/20 flex items-center justify-center shrink-0 text-[10px] font-bold text-white"
-      style={{
-        background: `linear-gradient(135deg, hsl(${hue} 65% 55%), hsl(${(hue + 40) % 360} 70% 45%))`,
-      }}
-    >
-      {initials || "?"}
-    </div>
-  );
-}
-
-function OutcomeBars({
-  allowed,
-  review,
-  blocked,
-}: {
-  allowed: number;
-  review: number;
-  blocked: number;
-}) {
-  const total = allowed + review + blocked;
-  if (total === 0) {
-    return <span className="text-[10px] text-muted-foreground/60">—</span>;
-  }
-  return (
-    <div className="flex items-center gap-1.5">
-      {allowed > 0 && (
-        <span
-          className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
-          title={`${allowed} allowed`}
-        >
-          <Check className="size-2.5" strokeWidth={3} />
-          {allowed}
-        </span>
-      )}
-      {review > 0 && (
-        <span
-          className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 ring-1 ring-amber-500/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
-          title={`${review} flagged for review`}
-        >
-          <AlertTriangle className="size-2.5" />
-          {review}
-        </span>
-      )}
-      {blocked > 0 && (
-        <span
-          className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/15 ring-1 ring-rose-500/30 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
-          title={`${blocked} blocked`}
-        >
-          <Ban className="size-2.5" />
-          {blocked}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function VerdictPill({
-  verdict,
-}: {
-  verdict: "ALLOWED" | "REVIEW" | "BLOCKED";
-}) {
-  if (verdict === "ALLOWED") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-        <Check className="size-2.5" strokeWidth={3} />
-        Allowed
-      </span>
-    );
-  }
-  if (verdict === "REVIEW") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 ring-1 ring-amber-500/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-        <AlertTriangle className="size-2.5" />
-        Review
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 ring-1 ring-rose-500/30 text-rose-700 dark:text-rose-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-      <Ban className="size-2.5" />
-      Blocked
-    </span>
-  );
-}
-
-/**
- * Render an ISO timestamp as a human-friendly relative time
- * ("just now", "5m ago", "2h ago", "3d ago", "Jan 15"). Pure function —
- * computes once at render, doesn't auto-update.
- */
-function relativeTime(iso: string): string {
-  const then = new Date(iso);
-  // Server passes us the ISO; we just need a deterministic format. We
-  // pre-format using locale to avoid Date.now() in render (React 19 rule).
-  return new Intl.DateTimeFormat("en-PK", {
-    timeZone: "Asia/Karachi",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(then);
-}
-
-function KpiCell({
-  label,
-  value,
-  subtitle,
-  tone,
-}: {
-  label: string;
-  value: number;
-  subtitle?: string;
-  tone: "emerald" | "sky" | "violet";
-}) {
-  const toneClass = {
-    emerald:
-      "bg-emerald-500/15 ring-emerald-500/30 text-emerald-700 dark:text-emerald-300",
-    sky: "bg-sky-500/15 ring-sky-500/30 text-sky-700 dark:text-sky-300",
-    violet:
-      "bg-violet-500/15 ring-violet-500/30 text-violet-700 dark:text-violet-300",
-  }[tone];
-  return (
-    <div className={`rounded-xl ring-1 ${toneClass} px-3 py-2.5`}>
-      <p className="text-[9px] font-bold uppercase tracking-[0.18em] opacity-75">
-        {label}
-      </p>
-      <p className="text-2xl font-bold tabular-nums leading-tight mt-1">
-        {value}
-        <span className="text-[10px] font-bold opacity-60 ml-1 align-baseline">
-          gens
-        </span>
-      </p>
-      {subtitle && (
-        <p className="text-[10px] font-bold tabular-nums opacity-70 leading-tight mt-0.5">
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function UsageCountChip({
-  count,
-  limit,
-  isOver,
-  isUnlimited,
-}: {
-  count: number;
-  limit: number;
-  isOver: boolean;
-  isUnlimited: boolean;
-}) {
-  if (isUnlimited) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 ring-1 ring-violet-500/30 text-violet-700 dark:text-violet-300 px-2 py-0.5 text-[10px] font-bold tabular-nums">
-        <Crown className="size-2.5" />
-        {count}
-      </span>
-    );
-  }
-  const ratio = count / Math.max(1, limit);
-  const cls = isOver
-    ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 ring-rose-500/30"
-    : ratio >= 0.8
-      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30"
-      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${cls}`}
-    >
-      {count} / {limit}
-    </span>
-  );
-}
 
 // ─── Copy button (shared) ───────────────────────────────────────────
 
