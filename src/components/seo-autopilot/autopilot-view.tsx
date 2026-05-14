@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -22,15 +21,17 @@ import {
   Ban,
   Hash,
   RotateCw,
-  X,
-  Plus,
   Heart,
   TrendingUp,
   ImageIcon,
   Shuffle,
+  Ruler,
+  Palette,
+  Type,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SeoImageUploader, type UploadedImage } from "./image-uploader";
+import { SizeSelector, VariantSelector } from "./option-selectors";
 
 // ─── API response shape ─────────────────────────────────────────────
 
@@ -50,7 +51,6 @@ interface GeneratedListing {
   materials: string[];
   attributes: { name: string; value: string }[];
   altTexts: string[];
-  personalizationInstructions: string;
   suggestedType: "physical" | "digital";
   suggestedWhoMadeIt: "i_did" | "someone_else" | "collective";
   suggestedWhatIsIt: "finished_product" | "supply";
@@ -88,14 +88,7 @@ interface ResearchSummary {
 }
 interface UserInputsEcho {
   sizes: string[];
-  colors: string[];
-  hasPersonalization: boolean;
-  personalizationOptions: string;
-  price: number | null;
-  quantity: number | null;
-  sku: string;
-  processingDays: string;
-  returnsPolicy: string;
+  variants: string[];
 }
 interface KeywordFrequency {
   phrase: string;
@@ -201,27 +194,13 @@ function formatCount(n: number): string {
 export function SeoAutopilotView() {
   // ─── Form state ───────────────────────────────────────────────────
   const [aliTitle, setAliTitle] = useState("");
-  const [notes, setNotes] = useState("");
   const [images, setImages] = useState<UploadedImage[]>([]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Advanced
+  // Variations — always visible (every product has sizes / variants).
+  // Personalization, price, qty, SKU, who/what/when made, processing
+  // time, returns policy AND notes were all removed in earlier passes.
   const [sizes, setSizes] = useState<string[]>([]);
-  const [colors, setColors] = useState<string[]>([]);
-  const [hasPersonalization, setHasPersonalization] = useState(false);
-  const [personalizationOptions, setPersonalizationOptions] = useState("");
-  const [price, setPrice] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [sku, setSku] = useState("");
-  const [whoMadeIt, setWhoMadeIt] = useState<
-    "i_did" | "someone_else" | "collective" | ""
-  >("");
-  const [whatIsIt, setWhatIsIt] = useState<"finished_product" | "supply" | "">(
-    "",
-  );
-  const [whenMade, setWhenMade] = useState("");
-  const [processingDays, setProcessingDays] = useState("");
-  const [returnsPolicy, setReturnsPolicy] = useState("");
+  const [variants, setVariants] = useState<string[]>([]);
 
   // ─── Generation state ─────────────────────────────────────────────
   const [generating, setGenerating] = useState(false);
@@ -232,7 +211,8 @@ export function SeoAutopilotView() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const titleValid = aliTitle.trim().length >= 8;
-  const canSubmit = titleValid && !generating;
+  const imagesValid = images.length >= 1;
+  const canSubmit = titleValid && imagesValid && !generating;
 
   async function handleGenerate() {
     if (!canSubmit) return;
@@ -247,31 +227,17 @@ export function SeoAutopilotView() {
     const t4 = setTimeout(() => setStage("auditing"), 25000);
 
     try {
-      const priceNum = price.trim() ? parseFloat(price) : null;
-      const qtyNum = quantity.trim() ? parseInt(quantity, 10) : null;
-
       const res = await fetch("/api/seo-autopilot/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           aliExpressTitle: aliTitle.trim(),
-          notes: notes.trim() || null,
           images: images.map((i) => ({
             base64: i.base64,
             mediaType: i.mediaType,
           })),
           sizes,
-          colors,
-          hasPersonalization,
-          personalizationOptions: personalizationOptions.trim() || null,
-          price: Number.isFinite(priceNum) ? priceNum : null,
-          quantity: Number.isFinite(qtyNum) ? qtyNum : null,
-          sku: sku.trim() || null,
-          whoMadeIt: whoMadeIt || null,
-          whatIsIt: whatIsIt || null,
-          whenMade: whenMade.trim() || null,
-          processingDays: processingDays.trim() || null,
-          returnsPolicy: returnsPolicy.trim() || null,
+          variants,
         }),
       });
 
@@ -311,151 +277,128 @@ export function SeoAutopilotView() {
 
   function handleReset() {
     setAliTitle("");
-    setNotes("");
     setImages([]);
     setSizes([]);
-    setColors([]);
-    setHasPersonalization(false);
-    setPersonalizationOptions("");
-    setPrice("");
-    setQuantity("");
-    setSku("");
-    setWhoMadeIt("");
-    setWhatIsIt("");
-    setWhenMade("");
-    setProcessingDays("");
-    setReturnsPolicy("");
-    setShowAdvanced(false);
+    setVariants([]);
     setResult(null);
     setErrorMsg(null);
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <BrandHeader />
+    <div className="max-w-3xl mx-auto space-y-5 pb-12">
+      <HeroBanner />
 
-      {/* ──────────────── INPUT ──────────────── */}
+      {/* ──────────────── SOURCE CARD ──────────────── */}
       <Card className="border shadow-none">
-        <CardContent className="p-6 sm:p-7 space-y-7">
-          {/* Step 1 */}
-          <StepRow n={1} title="Paste your AliExpress title">
+        <CardContent className="p-6 sm:p-8 space-y-6">
+          <StepHeader
+            n={1}
+            label="Step 1"
+            title="Source material"
+            required
+          />
+
+          <div className="space-y-2">
+            <SectionLabel icon={Type} required>AliExpress title</SectionLabel>
             <Textarea
               value={aliTitle}
               onChange={(e) => setAliTitle(e.target.value)}
               placeholder="ROSES Pearl Gorgeous Prom Dress Sweetheart Off the Shoulder Hollow Prom Gown..."
-              className="min-h-[88px] resize-none text-sm"
+              className="min-h-[92px] resize-none text-sm leading-relaxed"
               disabled={generating}
             />
-            <Hint
-              left="Autopilot reads this to figure out the keyword, category & audience."
-              right={`${aliTitle.length} chars`}
-            />
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional · anything to highlight (sweetheart neckline, made-to-measure, etc.)"
-              className="min-h-[56px] resize-none text-sm bg-muted/20"
-              disabled={generating}
-            />
-          </StepRow>
+            <div className="flex items-start justify-between gap-3 text-[11px] text-muted-foreground/70">
+              <span className="leading-snug">
+                Autopilot reads this to extract the keyword, category, audience &amp; style.
+              </span>
+              <span className="tabular-nums shrink-0 font-medium">
+                {aliTitle.length} chars
+              </span>
+            </div>
+          </div>
 
-          {/* Step 2 */}
-          <StepRow n={2} title="Upload your 2 product images">
+          <div className="space-y-2">
+            <SectionLabel icon={ImageIcon} required>Product images</SectionLabel>
             <SeoImageUploader
               images={images}
               onChange={setImages}
               disabled={generating}
             />
-            <Hint left="Use your Nano Banana regenerated images — never raw AliExpress files (watermarks). The AI checks them for trademark / policy violations before writing." />
-          </StepRow>
+            <p className="text-[11px] text-muted-foreground/70 leading-snug">
+              Upload your Nano Banana regenerated photos — never raw AliExpress files. Sonnet sees them for the compliance check and alt text.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
-          {/* Step 3 (optional) */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowAdvanced((v) => !v)}
+      {/* ──────────────── VARIATIONS CARD (always visible) ──────────────── */}
+      <Card className="border shadow-none">
+        <CardContent className="p-6 sm:p-8 space-y-6">
+          <StepHeader n={2} label="Step 2" title="Variations" required />
+
+          <div className="space-y-2">
+            <SectionLabel icon={Ruler}>Available sizes</SectionLabel>
+            <SizeSelector
+              values={sizes}
+              onChange={setSizes}
               disabled={generating}
-              className="w-full flex items-center justify-between gap-3 group disabled:opacity-50"
-            >
-              <StepLabel n={3}>
-                Add details{" "}
-                <span className="text-[10px] text-muted-foreground font-normal normal-case tracking-normal ml-1">
-                  (optional — improves accuracy)
-                </span>
-              </StepLabel>
-              <ChevronDown
-                className={`size-4 text-muted-foreground transition-transform ${
-                  showAdvanced ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {showAdvanced && (
-              <AdvancedFields
-                sizes={sizes}
-                setSizes={setSizes}
-                colors={colors}
-                setColors={setColors}
-                hasPersonalization={hasPersonalization}
-                setHasPersonalization={setHasPersonalization}
-                personalizationOptions={personalizationOptions}
-                setPersonalizationOptions={setPersonalizationOptions}
-                price={price}
-                setPrice={setPrice}
-                quantity={quantity}
-                setQuantity={setQuantity}
-                sku={sku}
-                setSku={setSku}
-                whoMadeIt={whoMadeIt}
-                setWhoMadeIt={setWhoMadeIt}
-                whatIsIt={whatIsIt}
-                setWhatIsIt={setWhatIsIt}
-                whenMade={whenMade}
-                setWhenMade={setWhenMade}
-                processingDays={processingDays}
-                setProcessingDays={setProcessingDays}
-                returnsPolicy={returnsPolicy}
-                setReturnsPolicy={setReturnsPolicy}
-                disabled={generating}
-              />
-            )}
+            />
           </div>
 
-          {/* CTA */}
-          <div className="pt-2 border-t space-y-2">
-            <Button
-              type="button"
-              onClick={handleGenerate}
-              disabled={!canSubmit}
-              className="w-full h-12 gap-2 bg-gradient-to-r from-[#F1641E] to-orange-600 text-white font-semibold text-sm shadow-md shadow-orange-500/20 hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" /> Generating
-                </>
-              ) : (
-                <>
-                  <Wand2 className="size-4" /> Generate Etsy listing
-                </>
-              )}
-            </Button>
-            {(aliTitle || notes || images.length > 0) && !generating && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleReset}
-                className="w-full text-xs text-muted-foreground hover:text-foreground gap-1.5 h-8"
-              >
-                <RotateCw className="size-3" /> Reset
-              </Button>
-            )}
-            {!titleValid && aliTitle.length > 0 && (
+          <div className="space-y-2">
+            <SectionLabel icon={Palette}>Available variants</SectionLabel>
+            <VariantSelector
+              values={variants}
+              onChange={setVariants}
+              disabled={generating}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ──────────────── CTA ──────────────── */}
+      <div className="space-y-2">
+        <Button
+          type="button"
+          onClick={handleGenerate}
+          disabled={!canSubmit}
+          className="w-full h-14 gap-2.5 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 hover:from-[#F1641E] hover:via-orange-500 hover:to-violet-600 text-white font-semibold text-[15px] shadow-lg shadow-orange-500/25 ring-1 ring-orange-700/30 hover:opacity-95 hover:shadow-xl hover:shadow-orange-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+        >
+          {generating ? (
+            <>
+              <Loader2 className="size-4 animate-spin" /> Generating your listing…
+            </>
+          ) : (
+            <>
+              <Wand2 className="size-4" /> Generate Etsy listing
+            </>
+          )}
+        </Button>
+        {!generating && (aliTitle.length > 0 || images.length > 0) && (
+          <div className="space-y-0.5">
+            {!titleValid && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
                 Paste at least 8 characters of title text.
               </p>
             )}
+            {!imagesValid && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
+                Upload at least one product image.
+              </p>
+            )}
           </div>
-        </CardContent>
-      </Card>
+        )}
+        {(aliTitle || images.length > 0 || sizes.length > 0 || variants.length > 0) &&
+          !generating && (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center justify-center gap-1.5 py-1"
+            >
+              <RotateCw className="size-3" /> Reset everything
+            </button>
+          )}
+      </div>
 
       {/* ──────────────── OUTPUT ──────────────── */}
       {generating && <ProgressCard stage={stage} />}
@@ -480,412 +423,148 @@ export function SeoAutopilotView() {
   );
 }
 
-// ─── Brand header ───────────────────────────────────────────────────
+// ─── Hero banner (matches the price calculator's premium banner) ────
 
-function BrandHeader() {
+function HeroBanner() {
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="size-10 rounded-xl bg-gradient-to-br from-[#F1641E] to-orange-600 flex items-center justify-center shadow-md shadow-orange-500/20">
-          <Sparkles className="size-5 text-white" />
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#F1641E] via-orange-600 to-violet-700 shadow-xl shadow-orange-500/25 ring-1 ring-orange-700/40">
+      {/* Glow blobs for depth */}
+      <div
+        aria-hidden
+        className="absolute -top-20 -left-16 size-64 rounded-full bg-amber-300/30 blur-3xl pointer-events-none"
+      />
+      <div
+        aria-hidden
+        className="absolute -bottom-24 -right-16 size-72 rounded-full bg-violet-400/35 blur-3xl pointer-events-none"
+      />
+      {/* Diagonal stripe texture */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(45deg, transparent 0, transparent 20px, rgba(255,255,255,0.6) 20px, rgba(255,255,255,0.6) 21px)",
+        }}
+      />
+
+      <div className="relative flex flex-col sm:flex-row sm:items-center gap-5 px-6 sm:px-8 py-6 sm:py-7">
+        {/* Frosted-glass icon chip with pulsing halo */}
+        <div className="relative shrink-0">
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-2xl bg-white/40 animate-pulse blur-md"
+          />
+          <div className="relative size-14 rounded-2xl bg-white/15 ring-1 ring-white/40 flex items-center justify-center backdrop-blur-sm shadow-inner">
+            <Sparkles className="size-7 text-white" />
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight leading-tight">
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.18em] uppercase bg-white/15 backdrop-blur-sm px-2 py-0.5 rounded-full ring-1 ring-white/25">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-300" />
+              </span>
+              Private beta · CEO only
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-white/90 tracking-wider uppercase bg-black/15 backdrop-blur-sm px-2 py-0.5 rounded-full">
+              <ShieldCheck className="size-3" />
+              Strict compliance gate
+            </span>
+          </div>
+          <h2 className="text-2xl sm:text-[26px] font-bold text-white tracking-tight leading-tight">
             SEO Autopilot
-          </h1>
-          <p className="text-[12px] text-muted-foreground leading-tight mt-0.5">
-            Paste · Click · Copy into Etsy
+          </h2>
+          <p className="text-[13px] sm:text-sm text-white/85 mt-1.5 leading-snug max-w-xl">
+            Drop your AliExpress title + 2 product photos. Autopilot
+            researches live Etsy data, checks compliance, then writes the
+            complete listing for you to paste into Etsy.
           </p>
         </div>
       </div>
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 ring-1 ring-emerald-300/40 px-2.5 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 tracking-[0.15em] uppercase">
-        <span className="relative flex size-1.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-          <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
-        </span>
-        Beta · CEO only
-      </div>
     </div>
   );
 }
 
-// ─── Input building blocks ──────────────────────────────────────────
+// ─── Step header (used by Source + Variations cards) ────────────────
 
-function StepRow({
+function StepHeader({
   n,
+  label,
   title,
-  children,
+  hint,
+  required,
 }: {
   n: number;
+  label: string;
   title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2.5">
-      <StepLabel n={n}>{title}</StepLabel>
-      <div className="pl-9 space-y-2">{children}</div>
-    </div>
-  );
-}
-
-function StepLabel({
-  n,
-  children,
-}: {
-  n: number;
-  children: React.ReactNode;
+  hint?: string;
+  required?: boolean;
 }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="size-6 rounded-full bg-foreground text-background flex items-center justify-center text-[11px] font-bold tabular-nums shrink-0">
-        {n}
-      </div>
-      <p className="text-sm font-semibold tracking-tight">{children}</p>
-    </div>
-  );
-}
-
-function Hint({ left, right }: { left: string; right?: string }) {
-  return (
-    <div className="flex items-start justify-between gap-3 text-[11px] text-muted-foreground/80 leading-snug">
-      <span>{left}</span>
-      {right && <span className="tabular-nums shrink-0">{right}</span>}
-    </div>
-  );
-}
-
-interface AdvancedProps {
-  sizes: string[];
-  setSizes: (v: string[]) => void;
-  colors: string[];
-  setColors: (v: string[]) => void;
-  hasPersonalization: boolean;
-  setHasPersonalization: (v: boolean) => void;
-  personalizationOptions: string;
-  setPersonalizationOptions: (v: string) => void;
-  price: string;
-  setPrice: (v: string) => void;
-  quantity: string;
-  setQuantity: (v: string) => void;
-  sku: string;
-  setSku: (v: string) => void;
-  whoMadeIt: "i_did" | "someone_else" | "collective" | "";
-  setWhoMadeIt: (v: "i_did" | "someone_else" | "collective" | "") => void;
-  whatIsIt: "finished_product" | "supply" | "";
-  setWhatIsIt: (v: "finished_product" | "supply" | "") => void;
-  whenMade: string;
-  setWhenMade: (v: string) => void;
-  processingDays: string;
-  setProcessingDays: (v: string) => void;
-  returnsPolicy: string;
-  setReturnsPolicy: (v: string) => void;
-  disabled: boolean;
-}
-
-function AdvancedFields(props: AdvancedProps) {
-  return (
-    <div className="mt-4 pt-4 pl-9 border-t space-y-5">
-      <div className="grid sm:grid-cols-2 gap-4">
-        <ChipInput
-          label="Available sizes"
-          values={props.sizes}
-          onChange={props.setSizes}
-          placeholder="XS, S, M, L, XL"
-          suggestions={["XS", "S", "M", "L", "XL", "XXL", "One Size"]}
-          disabled={props.disabled}
-        />
-        <ChipInput
-          label="Available colors"
-          values={props.colors}
-          onChange={props.setColors}
-          placeholder="black, white, ivory"
-          disabled={props.disabled}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <FieldLabel>Personalization</FieldLabel>
-        <div className="grid grid-cols-2 gap-2">
-          <Toggle
-            active={!props.hasPersonalization}
-            onClick={() => props.setHasPersonalization(false)}
-            label="No"
-            sub="Standard listing"
-            disabled={props.disabled}
-          />
-          <Toggle
-            active={props.hasPersonalization}
-            onClick={() => props.setHasPersonalization(true)}
-            label="Yes"
-            sub="Buyer customizes"
-            disabled={props.disabled}
-          />
-        </div>
-        {props.hasPersonalization && (
-          <Textarea
-            value={props.personalizationOptions}
-            onChange={(e) => props.setPersonalizationOptions(e.target.value)}
-            placeholder="What can buyers customize? (e.g. 'name to engrave, max 12 chars')"
-            className="min-h-[56px] resize-none text-sm"
-            disabled={props.disabled}
-          />
-        )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div className="space-y-1.5">
-          <FieldLabel>Price (USD)</FieldLabel>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            inputMode="decimal"
-            value={props.price}
-            onChange={(e) => props.setPrice(e.target.value)}
-            placeholder="24.99"
-            className="text-sm"
-            disabled={props.disabled}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <FieldLabel>Quantity</FieldLabel>
-          <Input
-            type="number"
-            min="0"
-            inputMode="numeric"
-            value={props.quantity}
-            onChange={(e) => props.setQuantity(e.target.value)}
-            placeholder="100"
-            className="text-sm"
-            disabled={props.disabled}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <FieldLabel>SKU</FieldLabel>
-          <Input
-            value={props.sku}
-            onChange={(e) => props.setSku(e.target.value)}
-            placeholder="DRESS-001"
-            className="text-sm"
-            disabled={props.disabled}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <FieldLabel>Who made it / What is it</FieldLabel>
-        <div className="grid grid-cols-3 gap-2">
-          <Toggle
-            active={props.whoMadeIt === "i_did"}
-            onClick={() => props.setWhoMadeIt("i_did")}
-            label="I did"
-            disabled={props.disabled}
-          />
-          <Toggle
-            active={props.whoMadeIt === "collective"}
-            onClick={() => props.setWhoMadeIt("collective")}
-            label="Shop member"
-            disabled={props.disabled}
-          />
-          <Toggle
-            active={props.whoMadeIt === "someone_else"}
-            onClick={() => props.setWhoMadeIt("someone_else")}
-            label="Someone else"
-            disabled={props.disabled}
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Toggle
-            active={props.whatIsIt === "finished_product"}
-            onClick={() => props.setWhatIsIt("finished_product")}
-            label="Finished product"
-            disabled={props.disabled}
-          />
-          <Toggle
-            active={props.whatIsIt === "supply"}
-            onClick={() => props.setWhatIsIt("supply")}
-            label="Supply / tool"
-            disabled={props.disabled}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <FieldLabel>When was it made</FieldLabel>
-        <div className="grid grid-cols-2 gap-2">
-          <Toggle
-            active={props.whenMade === "made_to_order"}
-            onClick={() => props.setWhenMade("made_to_order")}
-            label="Made to order"
-            disabled={props.disabled}
-          />
-          <Toggle
-            active={props.whenMade === "2020_2026"}
-            onClick={() => props.setWhenMade("2020_2026")}
-            label="2020-2026"
-            disabled={props.disabled}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <FieldLabel>Processing time</FieldLabel>
-          <Input
-            value={props.processingDays}
-            onChange={(e) => props.setProcessingDays(e.target.value)}
-            placeholder="1-3 business days"
-            className="text-sm"
-            disabled={props.disabled}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <FieldLabel>Returns policy</FieldLabel>
-          <Input
-            value={props.returnsPolicy}
-            onChange={(e) => props.setReturnsPolicy(e.target.value)}
-            placeholder="30-day returns"
-            className="text-sm"
-            disabled={props.disabled}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[10px] font-semibold text-foreground/70 uppercase tracking-[0.14em]">
-      {children}
-    </p>
-  );
-}
-
-function Toggle({
-  active,
-  onClick,
-  label,
-  sub,
-  disabled,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  sub?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-        active
-          ? "border-foreground bg-foreground/5"
-          : "border-border bg-card hover:bg-muted/40"
-      }`}
-    >
-      <p className="text-xs font-semibold leading-tight">{label}</p>
-      {sub && (
-        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-          {sub}
-        </p>
-      )}
-    </button>
-  );
-}
-
-function ChipInput({
-  label,
-  values,
-  onChange,
-  placeholder,
-  suggestions,
-  disabled,
-}: {
-  label: string;
-  values: string[];
-  onChange: (next: string[]) => void;
-  placeholder?: string;
-  suggestions?: string[];
-  disabled?: boolean;
-}) {
-  const [draft, setDraft] = useState("");
-  function commit(raw: string) {
-    const tokens = raw.split(/[,\n]/).map((t) => t.trim()).filter(Boolean);
-    if (tokens.length === 0) return;
-    const set = new Set(values.map((v) => v.toLowerCase()));
-    const next = [...values];
-    for (const t of tokens) {
-      if (!set.has(t.toLowerCase()) && next.length < 30) {
-        next.push(t);
-        set.add(t.toLowerCase());
-      }
-    }
-    onChange(next);
-    setDraft("");
-  }
-  function removeAt(i: number) {
-    onChange(values.filter((_, idx) => idx !== i));
-  }
-  return (
-    <div className="space-y-1.5">
-      <FieldLabel>{label}</FieldLabel>
-      <div className="rounded-lg border bg-card px-2 py-2 min-h-[40px] flex flex-wrap gap-1.5 items-center">
-        {values.map((v, i) => (
-          <span
-            key={`${v}-${i}`}
-            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium"
-          >
-            {v}
-            <button
-              type="button"
-              onClick={() => removeAt(i)}
-              disabled={disabled}
-              className="hover:text-rose-500 disabled:opacity-50"
-            >
-              <X className="size-3" />
-            </button>
+      <div className="relative shrink-0">
+        <div className="size-9 rounded-xl bg-gradient-to-br from-orange-500/15 via-orange-500/10 to-violet-500/15 ring-1 ring-orange-500/25 flex items-center justify-center">
+          <span className="text-[13px] font-bold tabular-nums text-orange-600 dark:text-orange-400">
+            {n}
           </span>
-        ))}
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.key === "Enter" || e.key === ",") && draft.trim()) {
-              e.preventDefault();
-              commit(draft);
-            } else if (e.key === "Backspace" && !draft && values.length > 0) {
-              removeAt(values.length - 1);
-            }
-          }}
-          onBlur={() => draft.trim() && commit(draft)}
-          placeholder={values.length === 0 ? placeholder : ""}
-          disabled={disabled}
-          className="flex-1 min-w-[80px] bg-transparent outline-none text-sm placeholder:text-muted-foreground/60"
-        />
-      </div>
-      {suggestions && suggestions.length > 0 && values.length === 0 && (
-        <div className="flex flex-wrap gap-1">
-          {suggestions.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => commit(s)}
-              disabled={disabled}
-              className="inline-flex items-center gap-1 rounded-full bg-muted/40 hover:bg-muted px-2 py-0.5 text-[10px] text-muted-foreground transition-colors disabled:opacity-50"
-            >
-              <Plus className="size-2.5" />
-              {s}
-            </button>
-          ))}
         </div>
-      )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-[0.18em]">
+            {label}
+          </p>
+          {required && (
+            <span className="text-[9px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+              Required
+            </span>
+          )}
+          {hint && !required && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+              · {hint}
+            </span>
+          )}
+        </div>
+        <h3 className="text-base font-bold tracking-tight leading-tight mt-0.5">
+          {title}
+        </h3>
+      </div>
     </div>
   );
 }
+
+// ─── Section label (used inside step cards) ─────────────────────────
+
+function SectionLabel({
+  children,
+  icon: Icon,
+  required,
+}: {
+  children: React.ReactNode;
+  icon?: React.ComponentType<{ className?: string }>;
+  required?: boolean;
+}) {
+  return (
+    <label className="text-[11px] font-semibold text-foreground/80 uppercase tracking-[0.16em] flex items-center gap-1.5">
+      {Icon && <Icon className="size-3" />}
+      {children}
+      {required && (
+        <span
+          className="text-rose-500 dark:text-rose-400 normal-case tracking-normal font-bold leading-none"
+          aria-label="required"
+          title="Required"
+        >
+          *
+        </span>
+      )}
+    </label>
+  );
+}
+
+
+
 
 // ─── Progress / Error / Blocked ─────────────────────────────────────
 
@@ -904,18 +583,33 @@ function ProgressCard({
     auditing: "Final rule check",
   } as const;
   return (
-    <Card className="border shadow-none">
-      <CardContent className="p-6 sm:p-7 space-y-5">
-        <div className="flex items-center gap-3">
-          <Loader2 className="size-5 text-orange-500 animate-spin" />
-          <div>
-            <p className="text-sm font-semibold">Autopilot is working</p>
+    <Card className="border shadow-none overflow-hidden relative">
+      {/* Subtle gradient backdrop — calls out that something's happening */}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-br from-orange-50/60 via-card to-violet-50/40 dark:from-orange-950/15 dark:via-card dark:to-violet-950/15 pointer-events-none"
+      />
+      <CardContent className="relative p-6 sm:p-8 space-y-6">
+        <div className="flex items-center gap-4">
+          <div className="relative shrink-0">
+            <span
+              aria-hidden
+              className="absolute inset-0 rounded-xl bg-orange-500/30 animate-pulse blur-md"
+            />
+            <div className="relative size-12 rounded-xl bg-gradient-to-br from-orange-500 to-violet-600 ring-1 ring-orange-600/30 flex items-center justify-center shadow-lg shadow-orange-500/25">
+              <Loader2 className="size-6 text-white animate-spin" />
+            </div>
+          </div>
+          <div className="min-w-0">
+            <p className="text-base font-bold tracking-tight">
+              Autopilot is working
+            </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Usually 25-40 seconds with images.
+              Usually 25–40 seconds with images.
             </p>
           </div>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 pl-1">
           {order.map((s, i) => {
             const done = i < idx;
             const active = i === idx;
@@ -1041,10 +735,7 @@ function ResultCard({
   if (!listing) return null;
 
   const hasVariations =
-    (inputs?.sizes.length ?? 0) > 0 || (inputs?.colors.length ?? 0) > 0;
-  const hasPricing =
-    inputs?.price != null || inputs?.quantity != null || !!inputs?.sku;
-  const hasDelivery = !!inputs?.processingDays || !!inputs?.returnsPolicy;
+    (inputs?.sizes.length ?? 0) > 0 || (inputs?.variants.length ?? 0) > 0;
 
   function handleSwapTag(oldTag: string, newSuggestion: SwapSuggestion) {
     setTags((prev) => prev.map((t) => (t === oldTag ? newSuggestion.tag : t)));
@@ -1066,17 +757,22 @@ function ResultCard({
   }
 
   return (
-    <Card className="border shadow-none">
-      <CardContent className="p-6 sm:p-7">
-        {/* Header */}
-        <div className="flex flex-wrap items-start justify-between gap-3 pb-5 mb-1 border-b">
-          <div className="min-w-0">
-            <h3 className="text-lg font-bold tracking-tight">
-              Your Etsy listing
-            </h3>
-            <p className="text-[12px] text-muted-foreground mt-0.5">
-              Walk down this list, copying each field into Etsy.
-            </p>
+    <Card className="border shadow-none overflow-hidden">
+      <CardContent className="p-6 sm:p-8">
+        {/* Header — "listing ready" announcement */}
+        <div className="flex flex-wrap items-start justify-between gap-3 pb-5 mb-5 border-b">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="size-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 ring-1 ring-emerald-700/30 flex items-center justify-center shadow-sm shadow-emerald-500/20 shrink-0">
+              <ShieldCheck className="size-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
+                Generated listing
+              </p>
+              <h3 className="text-lg font-bold tracking-tight leading-tight">
+                Ready to paste into Etsy
+              </h3>
+            </div>
           </div>
           <ComplianceChip verdict={compliance} />
         </div>
@@ -1127,18 +823,10 @@ function ResultCard({
         <TitleRow title={listing.title} />
         <DescriptionRow description={listing.description} />
 
-        {(hasVariations || listing.personalizationInstructions) && <Divider />}
+        {hasVariations && <Divider />}
 
         {hasVariations && inputs && (
-          <VariationsRow sizes={inputs.sizes} colors={inputs.colors} />
-        )}
-        {listing.personalizationInstructions && (
-          <Row
-            label="Personalization instructions"
-            value={`"${listing.personalizationInstructions}"`}
-            copyValue={listing.personalizationInstructions}
-            valueClass="italic"
-          />
+          <VariationsRow sizes={inputs.sizes} variants={inputs.variants} />
         )}
 
         <Divider />
@@ -1162,31 +850,6 @@ function ResultCard({
 
         {listing.attributes.length > 0 && (
           <AttributesRow attributes={listing.attributes} />
-        )}
-
-        {(hasPricing || hasDelivery) && <Divider />}
-
-        {hasPricing && inputs && (
-          <div className="grid grid-cols-3 gap-3 py-4">
-            {inputs.price != null && (
-              <MiniRow label="Price" value={`$${inputs.price.toFixed(2)}`} />
-            )}
-            {inputs.quantity != null && (
-              <MiniRow label="Quantity" value={String(inputs.quantity)} />
-            )}
-            {inputs.sku && <MiniRow label="SKU" value={inputs.sku} />}
-          </div>
-        )}
-
-        {hasDelivery && inputs && (
-          <div className="grid grid-cols-2 gap-3 py-4">
-            {inputs.processingDays && (
-              <MiniRow label="Processing" value={inputs.processingDays} />
-            )}
-            {inputs.returnsPolicy && (
-              <MiniRow label="Returns" value={inputs.returnsPolicy} />
-            )}
-          </div>
         )}
 
         <Divider />
@@ -1308,9 +971,9 @@ function Row({
   valueClass?: string;
 }) {
   return (
-    <div className="py-3.5 flex items-start justify-between gap-4">
+    <div className="py-3 flex items-start justify-between gap-4">
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-1">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-1">
           {label}
         </p>
         <p
@@ -1350,34 +1013,53 @@ function TitleRow({ title }: { title: string }) {
           ? "amber"
           : "muted";
   return (
-    <div className="py-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Title
-        </p>
-        <CopyButton value={title} label="title" />
-      </div>
-      <p className="text-base font-semibold leading-snug break-words">
-        {title}
-      </p>
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
-          <div
-            className={`h-full transition-all ${
-              tone === "rose"
-                ? "bg-rose-500"
-                : tone === "emerald"
-                  ? "bg-emerald-500"
-                  : tone === "amber"
-                    ? "bg-amber-500"
-                    : "bg-muted-foreground/40"
-            }`}
-            style={{ width: `${Math.min(100, pct)}%` }}
-          />
+    <div className="py-4">
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-orange-50/60 via-card to-violet-50/40 dark:from-orange-950/15 dark:via-card dark:to-violet-950/15 ring-1 ring-orange-500/10">
+        <div className="p-5 sm:p-6 space-y-3.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="size-8 rounded-lg bg-gradient-to-br from-orange-500/15 to-violet-500/15 ring-1 ring-orange-500/25 flex items-center justify-center">
+                <Type className="size-4 text-orange-600 dark:text-orange-400" />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-700/80 dark:text-orange-300/80">
+                Title
+              </p>
+            </div>
+            <CopyButton value={title} label="title" />
+          </div>
+          <p className="text-base sm:text-lg font-semibold leading-snug break-words text-foreground">
+            {title}
+          </p>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-1.5 rounded-full bg-muted/70 overflow-hidden">
+              <div
+                className={`h-full transition-all ${
+                  tone === "rose"
+                    ? "bg-rose-500"
+                    : tone === "emerald"
+                      ? "bg-emerald-500"
+                      : tone === "amber"
+                        ? "bg-amber-500"
+                        : "bg-muted-foreground/40"
+                }`}
+                style={{ width: `${Math.min(100, pct)}%` }}
+              />
+            </div>
+            <p
+              className={`text-[11px] font-bold tabular-nums ${
+                tone === "rose"
+                  ? "text-rose-600 dark:text-rose-400"
+                  : tone === "emerald"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : tone === "amber"
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground"
+              }`}
+            >
+              {title.length} / {TITLE_MAX}
+            </p>
+          </div>
         </div>
-        <p className="text-[10px] font-semibold tabular-nums text-muted-foreground">
-          {title.length}/{TITLE_MAX}
-        </p>
       </div>
     </div>
   );
@@ -1389,22 +1071,24 @@ function DescriptionRow({ description }: { description: string }) {
   return (
     <div className="py-3.5 space-y-2.5">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Description{" "}
-          <span className="text-muted-foreground/60 font-normal normal-case tracking-normal">
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Description
+          </p>
+          <span className="text-[10px] tabular-nums font-medium text-muted-foreground/60">
             · {description.length} chars
           </span>
-        </p>
+        </div>
         <CopyButton value={description} label="description" />
       </div>
       <div
-        className={`rounded-md bg-muted/30 px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90 ${
-          expanded || !isLong ? "" : "max-h-[140px] overflow-hidden relative"
+        className={`rounded-xl border bg-muted/20 px-4 py-3.5 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/90 ${
+          expanded || !isLong ? "" : "max-h-[160px] overflow-hidden relative"
         }`}
       >
         {description}
         {!expanded && isLong && (
-          <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-muted/80 to-transparent pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-muted/40 via-muted/20 to-transparent pointer-events-none" />
         )}
       </div>
       {isLong && (
@@ -1425,10 +1109,10 @@ function DescriptionRow({ description }: { description: string }) {
 
 function VariationsRow({
   sizes,
-  colors,
+  variants,
 }: {
   sizes: string[];
-  colors: string[];
+  variants: string[];
 }) {
   return (
     <div className="py-3.5 space-y-2">
@@ -1438,8 +1122,8 @@ function VariationsRow({
       {sizes.length > 0 && (
         <ChipDisplay label="Sizes" values={sizes} copyAll />
       )}
-      {colors.length > 0 && (
-        <ChipDisplay label="Colors" values={colors} copyAll />
+      {variants.length > 0 && (
+        <ChipDisplay label="Variants" values={variants} copyAll />
       )}
     </div>
   );
@@ -1876,43 +1560,52 @@ function InsightsCard({ data }: { data: GenerateResponse }) {
   if (!hasInsights) return null;
 
   return (
-    <Card className="border shadow-none">
-      <CardContent className="p-5 sm:p-6">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="w-full flex items-center justify-between gap-3"
-        >
-          <div className="flex items-center gap-2.5">
-            <TrendingUp className="size-4 text-muted-foreground" />
-            <p className="text-sm font-semibold">More insights</p>
-            <p className="text-[11px] text-muted-foreground">
-              Buyer searches · anchors · tag demand · competitors
-            </p>
+    <Card className="border shadow-none overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left transition-colors hover:bg-muted/30"
+      >
+        <div className="p-6 sm:p-7 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="size-9 rounded-xl bg-gradient-to-br from-emerald-500/15 via-emerald-500/10 to-sky-500/15 ring-1 ring-emerald-500/25 flex items-center justify-center shrink-0">
+              <TrendingUp className="size-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
+                Deep dive
+              </p>
+              <h3 className="text-base font-bold tracking-tight leading-tight mt-0.5">
+                More insights
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Buyer searches · anchor keywords · tag demand · competitors · strategy
+              </p>
+            </div>
           </div>
           <ChevronDown
-            className={`size-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+            className={`size-5 text-muted-foreground transition-transform shrink-0 ${open ? "rotate-180" : ""}`}
           />
-        </button>
+        </div>
+      </button>
 
-        {open && (
-          <div className="mt-5 space-y-6">
-            {hasBuyerKeywords && (
-              <BuyerKeywordsSection buyerKeywords={buyerKeywords} />
-            )}
-            {hasAnchors && anchors && <AnchorKeywordsSection anchors={anchors} />}
-            {tagIntel.length > 0 && <TagIntelligenceTable intel={tagIntel} />}
-            {data.listing?.rationale.keywordFocus && (
-              <RationaleSection rationale={data.listing.rationale} />
-            )}
-            {data.research.topCompetitors.length > 0 && (
-              <CompetitorsSection
-                competitors={data.research.topCompetitors}
-              />
-            )}
-          </div>
-        )}
-      </CardContent>
+      {open && (
+        <div className="px-6 sm:px-7 pb-6 sm:pb-7 space-y-7 border-t pt-6">
+          {hasBuyerKeywords && (
+            <BuyerKeywordsSection buyerKeywords={buyerKeywords} />
+          )}
+          {hasAnchors && anchors && <AnchorKeywordsSection anchors={anchors} />}
+          {tagIntel.length > 0 && <TagIntelligenceTable intel={tagIntel} />}
+          {data.listing?.rationale.keywordFocus && (
+            <RationaleSection rationale={data.listing.rationale} />
+          )}
+          {data.research.topCompetitors.length > 0 && (
+            <CompetitorsSection
+              competitors={data.research.topCompetitors}
+            />
+          )}
+        </div>
+      )}
     </Card>
   );
 }

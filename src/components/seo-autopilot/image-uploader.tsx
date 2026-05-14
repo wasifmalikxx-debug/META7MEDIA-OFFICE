@@ -174,15 +174,17 @@ function UploadSlot({
 
   if (image) {
     return (
-      <div className="relative aspect-square rounded-lg overflow-hidden border bg-card group">
+      <div className="relative aspect-square rounded-xl overflow-hidden ring-1 ring-border bg-card group shadow-sm">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={image.previewUrl}
           alt={image.filename}
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
-          <p className="text-[10px] text-white/90 truncate font-medium">
+        {/* Subtle ring on hover */}
+        <div className="absolute inset-0 ring-1 ring-inset ring-orange-500/0 group-hover:ring-orange-500/30 transition-all pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-2.5 py-2">
+          <p className="text-[10px] text-white/95 truncate font-medium">
             {image.filename}
           </p>
         </div>
@@ -190,7 +192,7 @@ function UploadSlot({
           type="button"
           onClick={onRemove}
           disabled={disabled}
-          className="absolute top-1.5 right-1.5 size-6 rounded-full bg-black/70 hover:bg-black/90 backdrop-blur-sm text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute top-2 right-2 size-7 rounded-full bg-black/70 hover:bg-rose-600 backdrop-blur-sm text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-md"
           title="Remove image"
         >
           <X className="size-3.5" />
@@ -207,12 +209,12 @@ function UploadSlot({
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
-      className={`relative aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+      className={`relative aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${
         dragging
-          ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30"
+          ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30 scale-[1.01]"
           : error
             ? "border-rose-400 bg-rose-50/40 dark:bg-rose-950/20"
-            : "border-border bg-muted/20 hover:bg-muted/40 hover:border-muted-foreground/40"
+            : "border-border/60 bg-muted/15 hover:bg-muted/30 hover:border-orange-500/40"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       <input
@@ -225,33 +227,35 @@ function UploadSlot({
       />
       {busy ? (
         <>
-          <div className="size-7 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
-          <p className="text-[10px] text-muted-foreground">Processing…</p>
+          <div className="size-8 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
+          <p className="text-[10px] text-muted-foreground font-medium">Processing…</p>
         </>
       ) : error ? (
         <>
-          <X className="size-5 text-rose-500" />
-          <p className="text-[10px] text-rose-600 dark:text-rose-400 text-center px-2 leading-tight">
+          <div className="size-10 rounded-xl bg-rose-100 dark:bg-rose-950/40 flex items-center justify-center">
+            <X className="size-5 text-rose-500" />
+          </div>
+          <p className="text-[10px] text-rose-600 dark:text-rose-400 text-center px-3 leading-tight font-medium">
             {error}
           </p>
-          <p className="text-[9px] text-muted-foreground/70 mt-0.5">
+          <p className="text-[9px] text-muted-foreground/70">
             Click to try another
           </p>
         </>
       ) : (
         <>
-          <div className="size-9 rounded-lg bg-muted/60 flex items-center justify-center">
+          <div className="size-11 rounded-xl bg-gradient-to-br from-orange-500/10 to-violet-500/10 ring-1 ring-orange-500/20 flex items-center justify-center">
             {index === 0 ? (
-              <ImageIcon className="size-4 text-muted-foreground" />
+              <ImageIcon className="size-5 text-orange-600 dark:text-orange-400" />
             ) : (
-              <Upload className="size-4 text-muted-foreground" />
+              <Upload className="size-5 text-orange-600 dark:text-orange-400" />
             )}
           </div>
-          <p className="text-[11px] font-semibold text-foreground/80">
+          <p className="text-[12px] font-semibold text-foreground/85">
             {index === 0 ? "Primary image" : "Detail / angle"}
           </p>
-          <p className="text-[9px] text-muted-foreground/70 text-center px-2 leading-tight">
-            Click or drag · JPG/PNG/WebP
+          <p className="text-[10px] text-muted-foreground/70 text-center px-3 leading-tight">
+            Click or drag<br />JPG · PNG · WebP
           </p>
         </>
       )}

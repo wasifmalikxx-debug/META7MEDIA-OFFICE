@@ -61,7 +61,6 @@ export const ETSY_LIMITS = {
   DESCRIPTION_MAX: 5000,
   MATERIALS_MAX: 13,
   ALT_TEXT_MAX: 250,
-  PERSONALIZATION_MAX: 256,
 } as const;
 
 // ─── Image payload (shared between compliance + generation) ──────────
@@ -116,12 +115,8 @@ Rules:
 
 export async function extractSearchContext(
   rawTitle: string,
-  notes?: string,
 ): Promise<ExtractedContext> {
-  const userPrompt =
-    notes && notes.trim()
-      ? `AliExpress / source title:\n${rawTitle}\n\nExtra notes from the seller:\n${notes}`
-      : `AliExpress / source title:\n${rawTitle}`;
+  const userPrompt = `AliExpress / source title:\n${rawTitle}`;
 
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR,
@@ -456,10 +451,9 @@ If verdict is ALLOWED, "concerns" may be an empty array. If BLOCKED, every block
 
 export async function checkProductCompliance(opts: {
   title: string;
-  notes?: string;
   images: ImagePayload[];
 }): Promise<ComplianceVerdict> {
-  const { title, notes, images } = opts;
+  const { title, images } = opts;
 
   // Build a multimodal content array: images first, then the text prompt.
   const userContent: ContentBlock[] = [];
@@ -473,7 +467,7 @@ export async function checkProductCompliance(opts: {
     text: `Product title (from AliExpress / source):
 ${title}
 
-${notes && notes.trim() ? `Seller notes:\n${notes}\n\n` : ""}Review the product image(s) above and the title. Decide whether this product is allowed on Etsy. Be strict — if you can see ANY trademark, IP, or prohibited element, BLOCK it.`,
+Review the product image(s) above and the title. Decide whether this product is allowed on Etsy. Be strict — if you can see ANY trademark, IP, or prohibited element, BLOCK it.`,
   });
 
   const msg = await client().messages.create({
@@ -528,8 +522,6 @@ ${notes && notes.trim() ? `Seller notes:\n${notes}\n\n` : ""}Review the product 
 export interface GenerationInput {
   /** The AliExpress title (or any product description). Used as the primary cue. */
   productBrief: string;
-  /** Free-text notes the seller wants emphasized. */
-  notes?: string;
   /** Up to 2 regenerated product images. */
   images: ImagePayload[];
   /** Confirmed Etsy taxonomy node we're targeting. */
@@ -552,10 +544,8 @@ export interface GenerationInput {
   style?: string;
   /** Optional employee-provided variations. */
   sizes?: string[];
-  colors?: string[];
-  /** Personalization spec. */
-  hasPersonalization?: boolean;
-  personalizationOptions?: string;
+  /** "Variants" — covers colors, phone models, designs, anything. */
+  variants?: string[];
 }
 
 export interface GeneratedListing {
@@ -565,7 +555,6 @@ export interface GeneratedListing {
   materials: string[]; // up to 13
   attributes: { name: string; value: string }[]; // category-driven
   altTexts: string[]; // one per image (matches images.length, or 1 if no images)
-  personalizationInstructions: string; // empty string if not applicable
   suggestedType: "physical" | "digital";
   suggestedWhoMadeIt: "i_did" | "someone_else" | "collective";
   suggestedWhatIsIt: "finished_product" | "supply";
@@ -625,15 +614,12 @@ CORE RULES
    Fill from the supplied possibleValues list. Cover BOTH required AND optional attributes when confident — more attributes = better Etsy ranking. Skip any slot you can't pick a confident value for.
 
 7. VARIATIONS:
-   If sizes/colors were supplied, mention them ONCE in the description ("Available in XS-XXL and 5 colors"). Do NOT put them in title or tags — Etsy handles them as separate variation fields.
+   If sizes and/or variants were supplied, mention them ONCE in the description in a natural way that fits the actual axis ("Available in XS-XXL and 5 colors", "Available in 3 phone models and 4 designs", "Comes in gold, silver, and rose gold"). Do NOT put them in title or tags — Etsy handles them as separate variation fields.
 
-8. PERSONALIZATION:
-   If hasPersonalization is true, write the personalizationInstructions field — the prompt buyers see when ordering. Example: "Please leave the name to be engraved on the inside band. Max 12 characters, any letter, number or standard symbol."
-
-9. IMAGE ALT TEXTS:
+8. IMAGE ALT TEXTS:
    ONE per image you see (matching the image count). ≤ 250 chars each. Describe color, material, style, key features. Front-load the primary keyword (good for image SEO).
 
-10. ETSY METADATA SUGGESTIONS:
+9. ETSY METADATA SUGGESTIONS:
     • suggestedType: "physical" for tangible goods, "digital" for downloadables
     • suggestedWhoMadeIt: "i_did" if handmade/personal, "someone_else" if mass-produced, "collective" if small team
     • suggestedWhatIsIt: "finished_product" for ready-to-buy, "supply" for materials/tools
@@ -669,7 +655,6 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
   "materials": ["...", "..."],
   "attributes": [{"name": "Style", "value": "Vintage"}, ...],
   "altTexts": ["...", "..."],
-  "personalizationInstructions": "string (empty if no personalization)",
   "suggestedType": "physical" | "digital",
   "suggestedWhoMadeIt": "i_did" | "someone_else" | "collective",
   "suggestedWhatIsIt": "finished_product" | "supply",
@@ -760,31 +745,24 @@ ${input.buyerKeywords
   if (input.sizes && input.sizes.length > 0) {
     variationsBlock.push(`Available sizes: ${input.sizes.join(", ")}`);
   }
-  if (input.colors && input.colors.length > 0) {
-    variationsBlock.push(`Available colors: ${input.colors.join(", ")}`);
-  }
-  if (input.hasPersonalization) {
-    variationsBlock.push(
-      `Personalization: YES${input.personalizationOptions ? ` — ${input.personalizationOptions}` : ""}`,
-    );
-  } else {
-    variationsBlock.push("Personalization: NO");
+  if (input.variants && input.variants.length > 0) {
+    // "Variants" is a generic axis — could be colors, phone models,
+    // designs, materials, etc. Sonnet weaves them into the description
+    // naturally ("Available in 3 designs", "Comes in 5 colors").
+    variationsBlock.push(`Available variants: ${input.variants.join(", ")}`);
   }
 
   return `# Source title
 ${input.productBrief}
 
-${input.notes && input.notes.trim() ? `# Seller notes\n${input.notes}\n\n` : ""}# Target Etsy category
+# Target Etsy category
 ${input.category.path}  (taxonomy_id: ${input.category.id})
 
 # Audience / style hints
 ${input.audience ? `Audience: ${input.audience}` : "Audience: (infer from images + title)"}
 ${input.style ? `Style: ${input.style}` : "Style: (infer from images)"}
 
-# Variations & options
-${variationsBlock.join("\n")}
-
-${anchorBlock}${buyerKeywordsBlock}# Live Etsy ranking data — full top 20 for this keyword space
+${variationsBlock.length > 0 ? `# Variations & options\n${variationsBlock.join("\n")}\n\n` : ""}${anchorBlock}${buyerKeywordsBlock}# Live Etsy ranking data — full top 20 for this keyword space
 
 Reference only — DON'T copy phrasing. Identify recurring keywords and write something ORIGINAL that targets the same buyer better.
 
@@ -962,11 +940,6 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
     altTexts.push(raw.toString().trim().slice(0, ETSY_LIMITS.ALT_TEXT_MAX));
   }
 
-  const personalizationInstructions = (out.personalizationInstructions ?? "")
-    .toString()
-    .trim()
-    .slice(0, ETSY_LIMITS.PERSONALIZATION_MAX);
-
   // Clamp Etsy enum suggestions to known values.
   const suggestedType: GeneratedListing["suggestedType"] =
     out.suggestedType === "digital" ? "digital" : "physical";
@@ -995,7 +968,6 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
     materials,
     attributes,
     altTexts,
-    personalizationInstructions,
     suggestedType,
     suggestedWhoMadeIt,
     suggestedWhatIsIt,

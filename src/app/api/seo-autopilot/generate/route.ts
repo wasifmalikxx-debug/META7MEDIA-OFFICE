@@ -55,25 +55,18 @@ const ImageSchema = z.object({
 const RequestSchema = z.object({
   // Required source
   aliExpressTitle: z.string().min(8, "Need at least 8 characters").max(2000),
-  notes: z.string().max(1000).optional().nullable(),
-  // Up to 2 product images
-  images: z.array(ImageSchema).max(2).default([]),
-  // Optional variations
+  // 1–2 product images (at least one is required — vision compliance
+  // gate needs to see the product, and we generate alt text per image).
+  images: z
+    .array(ImageSchema)
+    .min(1, "At least one product image is required.")
+    .max(2),
+  // Variations — every product has them, so these are required-ish (zero
+  // length is allowed but the UI nudges the seller to fill at least one).
+  // `variants` was renamed from `colors` — it covers any choice the buyer
+  // makes (color, phone model, design, material, scent).
   sizes: z.array(z.string().min(1).max(50)).max(30).default([]),
-  colors: z.array(z.string().min(1).max(50)).max(30).default([]),
-  hasPersonalization: z.boolean().default(false),
-  personalizationOptions: z.string().max(500).optional().nullable(),
-  // Optional pricing & inventory (employee fills directly on Etsy, but
-  // we accept them for future use / display)
-  price: z.number().nonnegative().optional().nullable(),
-  quantity: z.number().int().nonnegative().optional().nullable(),
-  sku: z.string().max(60).optional().nullable(),
-  // Optional production / delivery
-  whoMadeIt: z.enum(["i_did", "someone_else", "collective"]).optional().nullable(),
-  whatIsIt: z.enum(["finished_product", "supply"]).optional().nullable(),
-  whenMade: z.string().max(60).optional().nullable(),
-  processingDays: z.string().max(60).optional().nullable(),
-  returnsPolicy: z.string().max(120).optional().nullable(),
+  variants: z.array(z.string().min(1).max(50)).max(30).default([]),
 });
 
 export async function POST(request: NextRequest) {
@@ -98,10 +91,7 @@ export async function POST(request: NextRequest) {
 
   let context;
   try {
-    context = await extractSearchContext(
-      payload.aliExpressTitle,
-      payload.notes ?? undefined,
-    );
+    context = await extractSearchContext(payload.aliExpressTitle);
   } catch (err) {
     return error(
       `Failed to read your title: ${err instanceof Error ? err.message : "unknown"}`,
@@ -125,7 +115,6 @@ export async function POST(request: NextRequest) {
     [compliance, buyerVariants] = await Promise.all([
       checkProductCompliance({
         title: payload.aliExpressTitle,
-        notes: payload.notes ?? undefined,
         images,
       }),
       // Best-effort — if the brainstorm fails we still proceed with just
@@ -273,7 +262,6 @@ export async function POST(request: NextRequest) {
   try {
     listing = await generateListing({
       productBrief: payload.aliExpressTitle,
-      notes: payload.notes ?? undefined,
       images,
       category: { id: category.id, name: category.name, path: category.path },
       competitors,
@@ -283,22 +271,13 @@ export async function POST(request: NextRequest) {
       audience: context.audienceHint || undefined,
       style: context.styleHint || undefined,
       sizes: payload.sizes,
-      colors: payload.colors,
-      hasPersonalization: payload.hasPersonalization,
-      personalizationOptions: payload.personalizationOptions ?? undefined,
+      variants: payload.variants,
     });
   } catch (err) {
     return error(
       `Claude generation error: ${err instanceof Error ? err.message : "unknown"}`,
       502,
     );
-  }
-
-  // Honour employee-provided suggestions when they came in.
-  if (payload.whoMadeIt) listing.suggestedWhoMadeIt = payload.whoMadeIt;
-  if (payload.whatIsIt) listing.suggestedWhatIsIt = payload.whatIsIt;
-  if (payload.whenMade && payload.whenMade.trim().length > 0) {
-    listing.suggestedWhenMade = payload.whenMade.trim();
   }
 
   // ─── Stage 5 — Tag intelligence + text audit (parallel) ────────────
@@ -359,18 +338,11 @@ export async function POST(request: NextRequest) {
     buyerKeywords,
     textCompliance,
     tagIntelligence,
-    // Echo back what the employee provided so the UI can show "your inputs"
-    // alongside the AI output.
+    // Echo back the SEO-relevant inputs so the UI can show the
+    // variations / personalization sections in the result.
     inputs: {
       sizes: payload.sizes,
-      colors: payload.colors,
-      hasPersonalization: payload.hasPersonalization,
-      personalizationOptions: payload.personalizationOptions ?? "",
-      price: payload.price ?? null,
-      quantity: payload.quantity ?? null,
-      sku: payload.sku ?? "",
-      processingDays: payload.processingDays ?? "",
-      returnsPolicy: payload.returnsPolicy ?? "",
+      variants: payload.variants,
     },
     generatedAt: new Date().toISOString(),
   });
