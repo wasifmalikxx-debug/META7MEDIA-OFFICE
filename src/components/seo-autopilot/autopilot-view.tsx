@@ -54,8 +54,6 @@ interface GeneratedListing {
   attributes: { name: string; value: string }[];
   altTexts: string[];
   suggestedType: "physical" | "digital";
-  suggestedWhoMadeIt: "i_did" | "someone_else" | "collective";
-  suggestedWhatIsIt: "finished_product" | "supply";
   suggestedWhenMade: string;
   rationale: {
     keywordFocus: string;
@@ -122,15 +120,6 @@ interface GenerateResponse {
 const TITLE_MAX = 140;
 const TAG_MAX = 20;
 
-const WHO_MADE_LABEL = {
-  i_did: "I did",
-  someone_else: "Another company or person",
-  collective: "A member of my Etsy shop",
-} as const;
-const WHAT_IS_IT_LABEL = {
-  finished_product: "A finished product",
-  supply: "A supply or tool to make things",
-} as const;
 const TYPE_LABEL = {
   physical: "Physical item",
   digital: "Digital files",
@@ -864,20 +853,6 @@ function ResultCard({
         <Divider />
 
         <AltTextRow altTexts={listing.altTexts} images={userImages} />
-
-        <Divider />
-
-        <div className="grid sm:grid-cols-2 gap-x-6">
-          <MiniRow
-            label="Who made it"
-            value={WHO_MADE_LABEL[listing.suggestedWhoMadeIt]}
-          />
-          <MiniRow
-            label="What is it"
-            value={WHAT_IS_IT_LABEL[listing.suggestedWhatIsIt]}
-          />
-        </div>
-        <MiniRow label="Renewal" value="Automatic" />
       </CardContent>
     </Card>
   );
@@ -998,18 +973,6 @@ function Row({
   );
 }
 
-function MiniRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="py-2 flex items-center justify-between gap-3">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </span>
-      <span className="text-[12px] font-medium text-foreground text-right">
-        {value}
-      </span>
-    </div>
-  );
-}
 
 function TitleRow({ title }: { title: string }) {
   const pct = (title.length / TITLE_MAX) * 100;

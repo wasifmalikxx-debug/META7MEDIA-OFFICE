@@ -556,9 +556,7 @@ export interface GeneratedListing {
   attributes: { name: string; value: string }[]; // category-driven
   altTexts: string[]; // one per image (matches images.length, or 1 if no images)
   suggestedType: "physical" | "digital";
-  suggestedWhoMadeIt: "i_did" | "someone_else" | "collective";
-  suggestedWhatIsIt: "finished_product" | "supply";
-  suggestedWhenMade: string; // "made_to_order" | "2020_2026" | year string
+  suggestedWhenMade: string; // forced to "2020_2026" — see normalize()
   rationale: {
     keywordFocus: string;
     titleStrategy: string;
@@ -619,11 +617,8 @@ CORE RULES
 8. IMAGE ALT TEXTS:
    ONE per image you see (matching the image count). ≤ 250 chars each. Describe color, material, style, key features. Front-load the primary keyword (good for image SEO).
 
-9. ETSY METADATA SUGGESTIONS:
-    • suggestedType: "physical" for tangible goods, "digital" for downloadables
-    • suggestedWhoMadeIt: "i_did" if handmade/personal, "someone_else" if mass-produced, "collective" if small team
-    • suggestedWhatIsIt: "finished_product" for ready-to-buy, "supply" for materials/tools
-    • suggestedWhenMade: ALWAYS use "2020_2026" — our listings are ready-stock dropshipped products. Never suggest "made_to_order" unless the title explicitly describes a custom/personalized item that is made on demand.
+9. ETSY METADATA SUGGESTION:
+    • suggestedType: "physical" for tangible goods, "digital" for downloadables.
 
 ============================================================
 GOOD vs BAD TITLE EXAMPLES
@@ -656,9 +651,6 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
   "attributes": [{"name": "Style", "value": "Vintage"}, ...],
   "altTexts": ["...", "..."],
   "suggestedType": "physical" | "digital",
-  "suggestedWhoMadeIt": "i_did" | "someone_else" | "collective",
-  "suggestedWhatIsIt": "finished_product" | "supply",
-  "suggestedWhenMade": "made_to_order" | "2020_2026" | "2010_2019" | "2000_2009",
   "rationale": {
     "keywordFocus": "1 line — which anchor keyword(s) you anchored on and why",
     "titleStrategy": "1 line — what your title does for ranking (front-load, hook, length)",
@@ -943,22 +935,10 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
   // Clamp Etsy enum suggestions to known values.
   const suggestedType: GeneratedListing["suggestedType"] =
     out.suggestedType === "digital" ? "digital" : "physical";
-  const suggestedWhoMadeIt: GeneratedListing["suggestedWhoMadeIt"] =
-    out.suggestedWhoMadeIt === "someone_else"
-      ? "someone_else"
-      : out.suggestedWhoMadeIt === "collective"
-        ? "collective"
-        : "i_did";
-  const suggestedWhatIsIt: GeneratedListing["suggestedWhatIsIt"] =
-    out.suggestedWhatIsIt === "supply" ? "supply" : "finished_product";
-  // META7MEDIA only lists ready-stock products. If Sonnet returns
-  // "made_to_order" or anything empty, force "2020_2026" so the
-  // employee never copies the wrong value into Etsy.
-  const rawWhenMade = (out.suggestedWhenMade ?? "").toString().trim();
-  const suggestedWhenMade =
-    rawWhenMade === "" || rawWhenMade === "made_to_order"
-      ? "2020_2026"
-      : rawWhenMade;
+  // META7MEDIA only lists ready-stock products. Force "2020_2026"
+  // regardless of what Sonnet returns so the employee never copies the
+  // wrong value into Etsy.
+  const suggestedWhenMade = "2020_2026";
 
   const rationale = {
     keywordFocus: (out.rationale?.keywordFocus ?? "").toString(),
@@ -974,8 +954,6 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
     attributes,
     altTexts,
     suggestedType,
-    suggestedWhoMadeIt,
-    suggestedWhatIsIt,
     suggestedWhenMade,
     rationale,
   };
