@@ -623,7 +623,7 @@ CORE RULES
     • suggestedType: "physical" for tangible goods, "digital" for downloadables
     • suggestedWhoMadeIt: "i_did" if handmade/personal, "someone_else" if mass-produced, "collective" if small team
     • suggestedWhatIsIt: "finished_product" for ready-to-buy, "supply" for materials/tools
-    • suggestedWhenMade: "made_to_order" for personalized/custom, "2020_2026" for current inventory
+    • suggestedWhenMade: ALWAYS use "2020_2026" — our listings are ready-stock dropshipped products. Never suggest "made_to_order" unless the title explicitly describes a custom/personalized item that is made on demand.
 
 ============================================================
 GOOD vs BAD TITLE EXAMPLES
@@ -951,9 +951,14 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
         : "i_did";
   const suggestedWhatIsIt: GeneratedListing["suggestedWhatIsIt"] =
     out.suggestedWhatIsIt === "supply" ? "supply" : "finished_product";
-  const suggestedWhenMade = (out.suggestedWhenMade ?? "made_to_order")
-    .toString()
-    .trim();
+  // META7MEDIA only lists ready-stock products. If Sonnet returns
+  // "made_to_order" or anything empty, force "2020_2026" so the
+  // employee never copies the wrong value into Etsy.
+  const rawWhenMade = (out.suggestedWhenMade ?? "").toString().trim();
+  const suggestedWhenMade =
+    rawWhenMade === "" || rawWhenMade === "made_to_order"
+      ? "2020_2026"
+      : rawWhenMade;
 
   const rationale = {
     keywordFocus: (out.rationale?.keywordFocus ?? "").toString(),

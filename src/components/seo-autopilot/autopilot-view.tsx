@@ -28,6 +28,8 @@ import {
   Ruler,
   Palette,
   Type,
+  Lightbulb,
+  Crown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SeoImageUploader, type UploadedImage } from "./image-uploader";
@@ -162,8 +164,12 @@ const TIER_DESCRIPTION: Record<TagTier, string> = {
 };
 
 function whenMadeLabel(v: string): string {
-  if (v === "made_to_order") return "Made to order";
-  if (v === "2020_2026") return "2020-2026";
+  // All META7MEDIA products are ready-stock (regenerated AliExpress
+  // dropship), so we surface the "2020_2026" Etsy code as "Ready to
+  // ship". Sonnet should never suggest "made_to_order" anymore — but
+  // if it slips through, we render it as Ready to ship too so the
+  // employee never copies the wrong value into Etsy.
+  if (v === "made_to_order" || v === "2020_2026") return "Ready to ship";
   if (v === "2010_2019") return "2010-2019";
   if (v === "2000_2009") return "2000-2009";
   return v;
@@ -357,48 +363,53 @@ export function SeoAutopilotView() {
       </Card>
 
       {/* ──────────────── CTA ──────────────── */}
-      <div className="space-y-2">
-        <Button
-          type="button"
-          onClick={handleGenerate}
-          disabled={!canSubmit}
-          className="w-full h-14 gap-2.5 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 hover:from-[#F1641E] hover:via-orange-500 hover:to-violet-600 text-white font-semibold text-[15px] shadow-lg shadow-orange-500/25 ring-1 ring-orange-700/30 hover:opacity-95 hover:shadow-xl hover:shadow-orange-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-        >
-          {generating ? (
-            <>
-              <Loader2 className="size-4 animate-spin" /> Generating your listing…
-            </>
-          ) : (
-            <>
-              <Wand2 className="size-4" /> Generate Etsy listing
-            </>
-          )}
-        </Button>
-        {!generating && (aliTitle.length > 0 || images.length > 0) && (
-          <div className="space-y-0.5">
-            {!titleValid && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
-                Paste at least 8 characters of title text.
-              </p>
+      {/* The CTA + validation messages disappear once a listing has
+          been generated. The "Start a new listing" link inside the
+          result panel handles the restart path from then on. */}
+      {!result && (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            onClick={handleGenerate}
+            disabled={!canSubmit}
+            className="w-full h-14 gap-2.5 bg-gradient-to-r from-[#F1641E] via-orange-500 to-violet-600 hover:from-[#F1641E] hover:via-orange-500 hover:to-violet-600 text-white font-semibold text-[15px] shadow-lg shadow-orange-500/25 ring-1 ring-orange-700/30 hover:opacity-95 hover:shadow-xl hover:shadow-orange-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+          >
+            {generating ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> Generating your listing…
+              </>
+            ) : (
+              <>
+                <Wand2 className="size-4" /> Generate Etsy listing
+              </>
             )}
-            {!imagesValid && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
-                Upload at least one product image.
-              </p>
-            )}
-          </div>
-        )}
-        {(aliTitle || images.length > 0 || sizes.length > 0 || variants.length > 0) &&
-          !generating && (
-            <button
-              type="button"
-              onClick={handleReset}
-              className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center justify-center gap-1.5 py-1"
-            >
-              <RotateCw className="size-3" /> Reset everything
-            </button>
+          </Button>
+          {!generating && (aliTitle.length > 0 || images.length > 0) && (
+            <div className="space-y-0.5">
+              {!titleValid && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
+                  Paste at least 8 characters of title text.
+                </p>
+              )}
+              {!imagesValid && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
+                  Upload at least one product image.
+                </p>
+              )}
+            </div>
           )}
-      </div>
+          {(aliTitle || images.length > 0 || sizes.length > 0 || variants.length > 0) &&
+            !generating && (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center justify-center gap-1.5 py-1"
+              >
+                <RotateCw className="size-3" /> Reset everything
+              </button>
+            )}
+        </div>
+      )}
 
       {/* ──────────────── OUTPUT ──────────────── */}
       {generating && <ProgressCard stage={stage} />}
@@ -419,6 +430,23 @@ export function SeoAutopilotView() {
             <InsightsCard data={result} />
           </>
         )}
+
+      {/* Restart path — only visible after a generation. The CTA above
+          is hidden once `result` is set, so this is how the user
+          starts a fresh listing. */}
+      {result && !generating && (
+        <div className="pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleReset}
+            className="w-full h-11 gap-2 text-sm font-semibold border-dashed hover:border-solid hover:bg-muted/40"
+          >
+            <RotateCw className="size-4" />
+            Start a new listing
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1927,30 +1955,72 @@ function RationaleSection({
   rationale: GeneratedListing["rationale"];
 }) {
   const rows = [
-    { label: "Keyword focus", value: rationale.keywordFocus },
-    { label: "Title strategy", value: rationale.titleStrategy },
-    { label: "Audience hook", value: rationale.audienceHook },
+    {
+      label: "Keyword focus",
+      value: rationale.keywordFocus,
+      icon: Hash,
+      tone: "orange" as const,
+    },
+    {
+      label: "Title strategy",
+      value: rationale.titleStrategy,
+      icon: Type,
+      tone: "amber" as const,
+    },
+    {
+      label: "Audience hook",
+      value: rationale.audienceHook,
+      icon: Heart,
+      tone: "violet" as const,
+    },
   ].filter((r) => r.value);
   if (rows.length === 0) return null;
+
+  const toneStyles = {
+    amber:
+      "bg-amber-50/60 dark:bg-amber-950/20 ring-amber-500/20 text-amber-700 dark:text-amber-400",
+    orange:
+      "bg-orange-50/60 dark:bg-orange-950/20 ring-orange-500/20 text-orange-700 dark:text-orange-400",
+    violet:
+      "bg-violet-50/60 dark:bg-violet-950/20 ring-violet-500/20 text-violet-700 dark:text-violet-400",
+  } as const;
+
   return (
-    <div className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        Why this works
-      </p>
-      <div className="space-y-1.5">
-        {rows.map((r) => (
-          <div
-            key={r.label}
-            className="rounded-md bg-muted/30 px-3 py-2"
-          >
-            <p className="text-[9px] font-semibold text-muted-foreground/80 uppercase tracking-wider mb-0.5">
-              {r.label}
-            </p>
-            <p className="text-[12px] text-foreground/85 leading-relaxed">
-              {r.value}
-            </p>
-          </div>
-        ))}
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="size-7 rounded-lg bg-gradient-to-br from-amber-500/15 to-orange-500/15 ring-1 ring-amber-500/25 flex items-center justify-center shrink-0">
+          <Lightbulb className="size-3.5 text-amber-600 dark:text-amber-400" />
+        </div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          Why this works
+        </p>
+      </div>
+      <div className="grid gap-2">
+        {rows.map((r) => {
+          const Icon = r.icon;
+          return (
+            <div
+              key={r.label}
+              className={`rounded-xl ring-1 px-4 py-3 flex items-start gap-3 ${toneStyles[r.tone]}`}
+            >
+              <div
+                className={`size-8 rounded-lg bg-card/80 ring-1 ${toneStyles[r.tone]} flex items-center justify-center shrink-0`}
+              >
+                <Icon className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`text-[10px] font-bold uppercase tracking-[0.16em] ${toneStyles[r.tone].split(" ").pop()}`}
+                >
+                  {r.label}
+                </p>
+                <p className="text-[12px] text-foreground/85 leading-relaxed mt-0.5">
+                  {r.value}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1961,36 +2031,88 @@ function CompetitorsSection({
 }: {
   competitors: { rank: number; title: string; favorites: number }[];
 }) {
+  // Pick a tone for each rank — the #1 listing gets a gold "Crown" chip,
+  // the others get a clean neutral chip with the rank number.
+  const rankTone = (rank: number) => {
+    if (rank === 1)
+      return {
+        bg: "bg-gradient-to-br from-amber-300 to-amber-500",
+        ring: "ring-amber-600/30",
+        text: "text-white",
+        showCrown: true,
+      };
+    if (rank === 2)
+      return {
+        bg: "bg-gradient-to-br from-zinc-300 to-zinc-500",
+        ring: "ring-zinc-600/30",
+        text: "text-white",
+        showCrown: false,
+      };
+    if (rank === 3)
+      return {
+        bg: "bg-gradient-to-br from-orange-300 to-orange-500",
+        ring: "ring-orange-600/30",
+        text: "text-white",
+        showCrown: false,
+      };
+    return {
+      bg: "bg-muted/60",
+      ring: "ring-border",
+      text: "text-foreground/70",
+      showCrown: false,
+    };
+  };
+
   return (
-    <div className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        Top 5 competitors Autopilot read
-      </p>
-      <ul className="space-y-1.5">
-        {competitors.map((c) => (
-          <li
-            key={c.rank}
-            className="rounded-md bg-muted/30 px-3 py-2 flex items-start gap-3"
-          >
-            <div className="size-6 rounded-md bg-foreground/10 flex items-center justify-center shrink-0">
-              <span className="text-[10px] font-bold text-foreground/70 tabular-nums">
-                #{c.rank}
-              </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[12px] text-foreground/90 leading-snug line-clamp-2">
-                {c.title}
-              </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5 inline-flex items-center gap-1">
-                <Heart className="size-2.5" />
-                <span className="tabular-nums">
-                  {c.favorites.toLocaleString()}
-                </span>{" "}
-                favorites
-              </p>
-            </div>
-          </li>
-        ))}
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="size-7 rounded-lg bg-gradient-to-br from-amber-400/15 to-orange-500/15 ring-1 ring-amber-500/25 flex items-center justify-center shrink-0">
+          <Crown className="size-3.5 text-amber-600 dark:text-amber-400" />
+        </div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          Top 5 competitors Autopilot read
+        </p>
+      </div>
+      <ul className="space-y-2">
+        {competitors.map((c) => {
+          const t = rankTone(c.rank);
+          return (
+            <li
+              key={c.rank}
+              className="rounded-xl border bg-card hover:bg-muted/30 transition-colors px-3.5 py-3 flex items-start gap-3"
+            >
+              {/* Rank chip — gold for #1, silver #2, bronze #3 */}
+              <div
+                className={`size-9 rounded-xl ring-1 flex items-center justify-center shrink-0 shadow-sm ${t.bg} ${t.ring}`}
+              >
+                {t.showCrown ? (
+                  <Crown className={`size-4 ${t.text}`} />
+                ) : (
+                  <span
+                    className={`text-[12px] font-bold tabular-nums ${t.text}`}
+                  >
+                    #{c.rank}
+                  </span>
+                )}
+              </div>
+              {/* Title + favorites */}
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-medium text-foreground/90 leading-snug line-clamp-2">
+                  {c.title}
+                </p>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
+                    <Heart className="size-2.5 text-rose-500" fill="currentColor" />
+                    <span className="tabular-nums">
+                      {c.favorites.toLocaleString()}
+                    </span>
+                    <span className="font-normal">favorites</span>
+                  </span>
+                </div>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
