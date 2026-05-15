@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,6 @@ import {
   Loader2,
   Sparkles,
   Target,
-  ExternalLink,
   Plus,
   X,
   Package,
@@ -20,20 +19,33 @@ import {
   Heart,
   Users,
   Star,
+  ArrowDownNarrowWide,
+  ChevronDown,
+  Flame,
 } from "lucide-react";
 import { toast } from "sonner";
 
 /**
- * Manual Hunting v2.2 — May 16 2026 redesign (third revision).
+ * Manual Hunting v3.0 — May 16 2026 single-page heatmap redesign.
  *
- * Layout: category tabs at top (horizontally scrollable), inside the
- * active category we show keyword cards. Each keyword card has:
- *   - Keyword + verdict pill + score
- *   - Etsy stats strip
- *   - "Hunt on AliExpress" + "See on Etsy" quick-search buttons
- *   - Product grid (top 5 quality-filtered AE products)
+ * The earlier tab-based layout only let you see one category at a
+ * time. The team wanted a zoom-out view across the whole niche, so
+ * this version drops tabs entirely:
  *
- * No more accordions. One tab visible at a time. Cleaner mental model.
+ *   - Sticky heatmap nav at top: each category as a cell with
+ *     verdict-mix dots (●● = how many keywords were GREAT/GOOD/etc.).
+ *     Click a cell → smooth-scrolls to that category.
+ *   - All categories stacked vertically below, each as its own
+ *     section with a 2-3 column grid of keyword cards.
+ *   - Each keyword card now has a BIG product preview (4:3 aspect)
+ *     instead of the old 64px thumbnail.
+ *   - Verdict + score badges overlay on the image (top-left).
+ *   - Price/rating/sold counts overlay at image bottom.
+ *   - Filter pills (All / GREAT only / GOOD+) + sort dropdown live
+ *     in the heatmap nav and apply globally.
+ *
+ * The hunt logic + API contract are unchanged — only the React
+ * component changed. Same data, much denser visual scan.
  */
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -137,6 +149,39 @@ function formatCount(n: number): string {
   return n.toLocaleString();
 }
 
+// ─── Filter + sort ──────────────────────────────────────────────────
+
+type VerdictFilter = "all" | "great" | "goodPlus";
+type SortKey = "score" | "listings" | "favorites";
+
+const VERDICT_DOT: Record<Verdict, string> = {
+  GREAT: "bg-emerald-500",
+  GOOD: "bg-sky-500",
+  MAYBE: "bg-amber-500",
+  SKIP: "bg-rose-400/80",
+};
+
+function applyVerdictFilter(
+  kws: NicheKeywordResult[],
+  filter: VerdictFilter,
+): NicheKeywordResult[] {
+  if (filter === "all") return kws;
+  if (filter === "great") return kws.filter((k) => k.verdict === "GREAT");
+  return kws.filter((k) => k.verdict === "GREAT" || k.verdict === "GOOD");
+}
+
+function applySort(
+  kws: NicheKeywordResult[],
+  sortKey: SortKey,
+): NicheKeywordResult[] {
+  const arr = [...kws];
+  if (sortKey === "score") arr.sort((a, b) => b.score - a.score);
+  else if (sortKey === "listings")
+    arr.sort((a, b) => b.totalListings - a.totalListings);
+  else arr.sort((a, b) => b.avgTopFavorites - a.avgTopFavorites);
+  return arr;
+}
+
 // ─── Main section ───────────────────────────────────────────────────
 
 export function ManualHuntingSection() {
@@ -148,12 +193,64 @@ export function ManualHuntingSection() {
   const [hunting, setHunting] = useState(false);
   const [result, setResult] = useState<NicheHuntResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [activeCategoryIdx, setActiveCategoryIdx] = useState(0);
 
-  // Reset active category when a new result lands
+  // Global filter + sort that apply across every category section.
+  // Reset when a new niche result lands so the user starts fresh.
+  const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("score");
+
+  // Active category tracking — used to highlight the heatmap cell that
+  // matches whichever category is currently in the viewport. Updated by
+  // an IntersectionObserver on the section refs below.
+  const [activeIdx, setActiveIdx] = useState(0);
+  const sectionRefs = useRef<Array<HTMLElement | null>>([]);
+
   useEffect(() => {
-    if (result) setActiveCategoryIdx(0);
+    if (result) {
+      setActiveIdx(0);
+      setVerdictFilter("all");
+      setSortKey("score");
+      // Truncate refs array to match new category count.
+      sectionRefs.current = sectionRefs.current.slice(
+        0,
+        result.categories.length,
+      );
+    }
   }, [result]);
+
+  // Highlight the heatmap cell for whichever category is currently
+  // dominant in the viewport. The rootMargin shifts the "active" zone
+  // upward so headings about to disappear off the top still count as
+  // active, which feels more natural than waiting until the next
+  // section is centered.
+  useEffect(() => {
+    if (!result || result.categories.length === 0) return;
+    const sections = sectionRefs.current.filter(
+      (s): s is HTMLElement => s !== null,
+    );
+    if (sections.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible[0]) {
+          const idx = Number(
+            visible[0].target.getAttribute("data-cat-idx") ?? "0",
+          );
+          if (!Number.isNaN(idx)) setActiveIdx(idx);
+        }
+      },
+      { threshold: [0.1, 0.3, 0.5], rootMargin: "-140px 0px -45% 0px" },
+    );
+    sections.forEach((s) => observer.observe(s));
+    return () => observer.disconnect();
+  }, [result]);
+
+  const scrollToCategory = useCallback((idx: number) => {
+    const el = sectionRefs.current[idx];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   async function runHunt(extras: string[] = extraCategories) {
     if (niche.trim().length < 2 || hunting) return;
@@ -257,14 +354,29 @@ export function ManualHuntingSection() {
             <EmptyResultCard niche={result.niche} />
           ) : (
             <>
-              <CategoryTabBar
+              <HeatmapNav
                 categories={result.categories}
-                activeIdx={activeCategoryIdx}
-                onSelect={setActiveCategoryIdx}
+                activeIdx={activeIdx}
+                onScrollToCategory={scrollToCategory}
+                verdictFilter={verdictFilter}
+                onVerdictFilterChange={setVerdictFilter}
+                sortKey={sortKey}
+                onSortKeyChange={setSortKey}
               />
-              <CategoryPanel
-                category={result.categories[activeCategoryIdx]}
-              />
+
+              {result.categories.map((cat, idx) => (
+                <CategorySection
+                  key={cat.category}
+                  category={cat}
+                  idx={idx}
+                  verdictFilter={verdictFilter}
+                  sortKey={sortKey}
+                  registerRef={(el) => {
+                    sectionRefs.current[idx] = el;
+                  }}
+                />
+              ))}
+
               <AddCategoryButton
                 disabled={hunting}
                 onAdd={addExtraCategory}
@@ -604,79 +716,237 @@ function EmptyResultCard({ niche }: { niche: string }) {
   );
 }
 
-// ─── Category tab bar ──────────────────────────────────────────────
+// ─── Heatmap nav (sticky) ──────────────────────────────────────────
+//
+// The replacement for the old single-row tab bar. Each cell is a
+// mini-dashboard for one category: name, total keyword count, a row
+// of verdict-colored dots (one dot per keyword), and a footer with
+// "hot" count + Etsy listing volume. Click → smooth scrolls to that
+// section. Active section gets a brighter ring (driven by the
+// IntersectionObserver in the parent component).
+//
+// The nav also hosts the global filter + sort controls so the user
+// has access to them no matter how far they've scrolled.
 
-function CategoryTabBar({
+function HeatmapNav({
   categories,
   activeIdx,
-  onSelect,
+  onScrollToCategory,
+  verdictFilter,
+  onVerdictFilterChange,
+  sortKey,
+  onSortKeyChange,
 }: {
   categories: NicheCategoryResult[];
   activeIdx: number;
-  onSelect: (idx: number) => void;
+  onScrollToCategory: (idx: number) => void;
+  verdictFilter: VerdictFilter;
+  onVerdictFilterChange: (v: VerdictFilter) => void;
+  sortKey: SortKey;
+  onSortKeyChange: (v: SortKey) => void;
 }) {
   return (
-    <div className="relative ap-stagger-in">
-      <div className="flex gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1 snap-x scrollbar-thin">
-        {categories.map((cat, idx) => {
-          const active = idx === activeIdx;
-          return (
-            <button
+    <div className="sticky top-3 z-20 ap-stagger-in">
+      <div className="rounded-2xl bg-card/85 backdrop-blur-xl ring-1 ring-border/60 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_28px_-8px_rgba(0,0,0,0.6)] p-3 sm:p-4 space-y-3">
+        {/* Header row — title + filter/sort */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground inline-flex items-center gap-1.5">
+            <Target className="size-3 text-violet-500" />
+            Categories
+            <span className="text-foreground/60 font-bold tabular-nums">
+              · {categories.length}
+            </span>
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <FilterPills value={verdictFilter} onChange={onVerdictFilterChange} />
+            <SortDropdown value={sortKey} onChange={onSortKeyChange} />
+          </div>
+        </div>
+
+        {/* Heatmap cells grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+          {categories.map((cat, idx) => (
+            <HeatmapCell
               key={cat.category}
-              type="button"
-              onClick={() => onSelect(idx)}
-              className={`relative flex-shrink-0 snap-start rounded-xl ring-1 transition-all overflow-hidden ${
-                active
-                  ? "ring-foreground/30 bg-card shadow-md"
-                  : "ring-border/50 bg-card/60 hover:ring-border hover:bg-card"
-              }`}
-            >
-              {active && (
-                <span
-                  aria-hidden
-                  className="absolute inset-0 bg-gradient-to-br from-sky-500/[0.08] to-violet-500/[0.08]"
-                />
-              )}
-              <div className="relative flex items-center gap-2.5 px-3.5 py-2.5">
-                <span
-                  className={`text-[12px] font-bold tracking-tight ${active ? "text-foreground" : "text-foreground/80"}`}
-                >
-                  {cat.category}
-                </span>
-                <span
-                  className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-md text-[10px] font-bold tabular-nums ring-1 ${
-                    active
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30"
-                      : "bg-muted/40 text-muted-foreground ring-border/40"
-                  }`}
-                >
-                  {cat.totalProducts}
-                </span>
-              </div>
-            </button>
-          );
-        })}
+              cat={cat}
+              active={idx === activeIdx}
+              onClick={() => onScrollToCategory(idx)}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Category panel (renders keywords + their products) ────────────
-
-function CategoryPanel({ category }: { category: NicheCategoryResult }) {
+function HeatmapCell({
+  cat,
+  active,
+  onClick,
+}: {
+  cat: NicheCategoryResult;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="space-y-3 ap-stagger-in">
-      {/* Category header strip */}
-      <div className="flex items-center gap-3 px-1">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-xl font-bold tracking-tight leading-tight">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative rounded-xl text-left p-2.5 transition-all ring-1 overflow-hidden ${
+        active
+          ? "ring-violet-500/50 bg-gradient-to-br from-sky-500/[0.10] to-violet-500/[0.10] shadow-md"
+          : "ring-border/40 bg-muted/15 hover:ring-border hover:bg-muted/30"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-1.5">
+        <p
+          className={`text-[11px] font-bold tracking-tight leading-tight truncate ${
+            active ? "text-foreground" : "text-foreground/85"
+          }`}
+        >
+          {cat.category}
+        </p>
+        <span className="shrink-0 text-[9px] font-bold tabular-nums text-muted-foreground bg-foreground/5 rounded px-1 py-0.5">
+          {cat.totalProducts}
+        </span>
+      </div>
+
+      {/* Verdict-mix dots — one dot per keyword, color = verdict */}
+      <div className="flex items-center gap-0.5 mt-1.5 flex-wrap">
+        {cat.keywords.map((kw, i) => (
+          <span
+            key={i}
+            className={`block size-1.5 rounded-full ${VERDICT_DOT[kw.verdict]}`}
+            title={`${kw.keyword} · ${kw.verdict}`}
+          />
+        ))}
+      </div>
+
+      {/* Footer — hot count + Etsy volume */}
+      <p className="text-[9px] tabular-nums text-muted-foreground mt-1.5 truncate">
+        {cat.etsyHotKeywords > 0 && (
+          <span className="text-emerald-700 dark:text-emerald-400 font-bold inline-flex items-center gap-0.5">
+            <Flame className="size-2.5" />
+            {cat.etsyHotKeywords} hot ·{" "}
+          </span>
+        )}
+        {formatCount(cat.etsyTotalListings)} listings
+      </p>
+    </button>
+  );
+}
+
+function FilterPills({
+  value,
+  onChange,
+}: {
+  value: VerdictFilter;
+  onChange: (v: VerdictFilter) => void;
+}) {
+  const options: { label: string; value: VerdictFilter }[] = [
+    { label: "All", value: "all" },
+    { label: "GREAT", value: "great" },
+    { label: "GOOD+", value: "goodPlus" },
+  ];
+  return (
+    <div className="inline-flex items-center bg-muted/30 ring-1 ring-border/40 rounded-full p-0.5 text-[10px] font-bold">
+      {options.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`h-6 px-2.5 rounded-full transition-all tracking-wide ${
+              active
+                ? "bg-card text-foreground shadow ring-1 ring-border/50"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SortDropdown({
+  value,
+  onChange,
+}: {
+  value: SortKey;
+  onChange: (v: SortKey) => void;
+}) {
+  return (
+    <div className="relative inline-block">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as SortKey)}
+        className="appearance-none h-7 pl-7 pr-7 rounded-full bg-muted/30 ring-1 ring-border/40 text-[10px] font-bold tracking-wide cursor-pointer hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/40 transition-colors"
+        aria-label="Sort keywords"
+      >
+        <option value="score">Sort: Score</option>
+        <option value="listings">Sort: Listings</option>
+        <option value="favorites">Sort: Favorites</option>
+      </select>
+      <ArrowDownNarrowWide className="size-3 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+      <ChevronDown className="size-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+    </div>
+  );
+}
+
+// ─── Category section (anchor-scrolled) ────────────────────────────
+//
+// Each category gets its own section with a stable data-cat-idx so
+// the IntersectionObserver in ManualHuntingSection can highlight the
+// matching heatmap cell as it scrolls into view. `scroll-mt-32`
+// offsets the heading below the sticky nav when a cell is clicked.
+
+function CategorySection({
+  category,
+  idx,
+  verdictFilter,
+  sortKey,
+  registerRef,
+}: {
+  category: NicheCategoryResult;
+  idx: number;
+  verdictFilter: VerdictFilter;
+  sortKey: SortKey;
+  registerRef: (el: HTMLElement | null) => void;
+}) {
+  const visible = useMemo(() => {
+    const filtered = applyVerdictFilter(category.keywords, verdictFilter);
+    return applySort(filtered, sortKey);
+  }, [category.keywords, verdictFilter, sortKey]);
+
+  return (
+    <section
+      ref={registerRef}
+      data-cat-idx={idx}
+      id={`hunt-cat-${idx}`}
+      className="space-y-3 ap-stagger-in scroll-mt-32"
+    >
+      {/* Header strip */}
+      <div className="flex items-end justify-between gap-3 px-1 pt-1">
+        <div className="min-w-0">
+          <h3 className="text-xl sm:text-2xl font-bold tracking-tight leading-tight">
             {category.category}
           </h3>
           <p className="text-[12px] text-muted-foreground tabular-nums mt-0.5">
-            {category.keywords.length} keyword{category.keywords.length === 1 ? "" : "s"} ·{" "}
-            {category.totalProducts} product{category.totalProducts === 1 ? "" : "s"}
+            {visible.length === category.keywords.length ? (
+              <>
+                {category.keywords.length} keyword
+                {category.keywords.length === 1 ? "" : "s"}
+              </>
+            ) : (
+              <>
+                {visible.length} of {category.keywords.length} shown
+              </>
+            )}
             {category.etsyHotKeywords > 0 && (
-              <span className="text-emerald-700 dark:text-emerald-400">
+              <span className="text-emerald-700 dark:text-emerald-400 font-medium">
                 {" · "}
                 {category.etsyHotKeywords} hot
               </span>
@@ -691,155 +961,149 @@ function CategoryPanel({ category }: { category: NicheCategoryResult }) {
         </div>
       </div>
 
-      {/* Keyword cards */}
-      {category.keywords.map((kw) => (
-        <KeywordCard key={kw.keyword} keyword={kw} />
-      ))}
-    </div>
+      {/* Keyword grid */}
+      {visible.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border/60 bg-muted/15 py-6 px-4 text-center">
+          <p className="text-[12px] text-muted-foreground">
+            No keywords match the current filter.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
+          {visible.map((kw) => (
+            <KeywordCard key={kw.keyword} keyword={kw} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
-// ─── Keyword card (header + 5-product grid) ────────────────────────
+// ─── Keyword card (vertical grid card) ─────────────────────────────
+//
+// New v3 design — Pinterest-style card with a big 4:3 product preview
+// on top, verdict + score overlay badges, price/rating/sold ribbon at
+// the bottom of the image, then keyword + Etsy stats + action buttons
+// below. Built for the 2-3 column grid layout so several cards live
+// side-by-side instead of stacking vertically.
 
 function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
   const verdictStyle = VERDICT_STYLE[keyword.verdict];
 
   const aliExpressUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(keyword.keyword)}`;
   const etsyUrl = `https://www.etsy.com/search?q=${encodeURIComponent(keyword.keyword)}`;
+  // Clicking the image jumps to the actual product when we have one,
+  // otherwise to a keyword search on AliExpress (still useful).
+  const imageHref = keyword.preview?.productUrl ?? aliExpressUrl;
 
   return (
-    <Card className="border border-border/60 shadow-none overflow-hidden ap-stagger-in">
-      {/* Header */}
-      <div className="p-4 sm:p-5 flex items-center gap-3 flex-wrap">
-        {/* Verdict badge */}
-        <span
-          className={`inline-flex items-center rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] ${verdictStyle.chip} ring-1 ${verdictStyle.ringBorder}`}
-        >
-          {verdictStyle.label}
-        </span>
+    <Card className="border border-border/60 shadow-none overflow-hidden ap-stagger-in group transition-shadow hover:shadow-lg flex flex-col">
+      {/* Product preview — big 4:3 image with overlays */}
+      <a
+        href={imageHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="relative block aspect-[4/3] bg-muted/40 overflow-hidden"
+        title={keyword.preview?.title ?? keyword.keyword}
+      >
+        {keyword.preview?.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={keyword.preview.imageUrl}
+            alt=""
+            className="size-full object-cover group-hover:scale-[1.035] transition-transform duration-300"
+            loading="lazy"
+          />
+        ) : (
+          <div className="size-full flex flex-col items-center justify-center gap-1.5 text-muted-foreground/45">
+            <Package className="size-7" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">
+              No preview
+            </span>
+          </div>
+        )}
 
-        {/* Score */}
-        <span className="inline-flex items-center text-[11px] font-bold tabular-nums text-muted-foreground bg-muted/40 ring-1 ring-border/40 px-1.5 py-0.5 rounded-md">
-          {keyword.score}/100
-        </span>
+        {/* Verdict + score overlay (top-left) */}
+        <div className="absolute top-2 left-2 flex items-center gap-1">
+          <span
+            className={`inline-flex items-center rounded-md px-1.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] ${verdictStyle.chip} ring-1 ${verdictStyle.ringBorder} shadow-sm`}
+          >
+            {verdictStyle.label}
+          </span>
+          <span className="inline-flex items-center text-[10px] font-bold tabular-nums text-foreground bg-white/95 dark:bg-black/70 backdrop-blur-md px-1.5 py-1 rounded-md ring-1 ring-border/40">
+            {keyword.score}
+          </span>
+        </div>
 
-        {/* Keyword */}
-        <h4 className="text-[15px] sm:text-base font-bold tracking-tight leading-tight flex-1 min-w-0 truncate">
+        {/* Price / rating / sold ribbon (bottom of image) */}
+        {keyword.preview && (
+          <div className="absolute bottom-0 inset-x-0 px-2.5 py-1.5 bg-gradient-to-t from-black/85 via-black/45 to-transparent flex items-center gap-2.5 text-[10px] text-white tabular-nums">
+            <span className="text-[12px] font-bold text-emerald-300">
+              ${keyword.preview.priceUsd.toFixed(2)}
+            </span>
+            {keyword.preview.rating !== undefined && (
+              <span className="inline-flex items-center gap-0.5">
+                <Star
+                  className="size-2.5 text-amber-300"
+                  fill="currentColor"
+                  strokeWidth={0}
+                />
+                {keyword.preview.rating.toFixed(1)}
+              </span>
+            )}
+            {keyword.preview.orderCount !== undefined &&
+              keyword.preview.orderCount > 0 && (
+                <span>{keyword.preview.orderCount.toLocaleString()} sold</span>
+              )}
+          </div>
+        )}
+      </a>
+
+      {/* Card body — keyword + stats + actions */}
+      <div className="p-3.5 sm:p-4 flex flex-col gap-2.5 flex-1">
+        <h4 className="text-[14px] font-bold tracking-tight leading-snug line-clamp-2">
           {keyword.keyword}
         </h4>
 
-        {/* Quick search buttons */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground tabular-nums">
+          <span className="inline-flex items-center gap-1" title="Etsy listings">
+            <TrendingUp className="size-2.5" />
+            {formatCount(keyword.totalListings)}
+          </span>
+          <span className="inline-flex items-center gap-1" title="Avg top favorites">
+            <Heart className="size-2.5" />
+            {formatCount(keyword.avgTopFavorites)}
+          </span>
+          <span className="inline-flex items-center gap-1" title="Unique shops">
+            <Users className="size-2.5" />
+            {keyword.uniqueShops}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 pt-1 mt-auto">
           <a
             href={aliExpressUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow shadow-orange-500/30 hover:opacity-90 transition-opacity"
-            title={`Search "${keyword.keyword}" on AliExpress`}
+            className="flex-1 inline-flex items-center justify-center gap-1 h-8 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow shadow-orange-500/20 hover:opacity-90 transition-opacity"
+            title={`Hunt "${keyword.keyword}" on AliExpress`}
           >
-            <ExternalLink className="size-2.5" />
-            Hunt on AliExpress
+            <ShoppingBag className="size-3" />
+            AliExpress
           </a>
           <a
             href={etsyUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
-            title={`Search "${keyword.keyword}" on Etsy`}
+            className="flex-1 inline-flex items-center justify-center gap-1 h-8 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
+            title={`See "${keyword.keyword}" on Etsy`}
           >
-            <Search className="size-2.5" />
-            See on Etsy
+            <Search className="size-3" />
+            Etsy
           </a>
         </div>
       </div>
-
-      {/* Stats strip */}
-      <div className="px-4 sm:px-5 pb-3 flex items-center gap-3 text-[10px] text-muted-foreground tabular-nums border-b border-border/40">
-        <span className="inline-flex items-center gap-1">
-          <TrendingUp className="size-2.5" />
-          {formatCount(keyword.totalListings)} listings
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Heart className="size-2.5" />
-          {formatCount(keyword.avgTopFavorites)} avg favs
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Users className="size-2.5" />
-          {keyword.uniqueShops} shops
-        </span>
-      </div>
-
-      {/* Preview strip — ONE strictly-matched AE product so the user
-          immediately sees what kind of product this keyword represents.
-          Only renders when we found a real match (strict relevance
-          filter passed). */}
-      {keyword.preview && <PreviewStrip preview={keyword.preview} />}
     </Card>
-  );
-}
-
-function PreviewStrip({ preview }: { preview: KeywordPreview }) {
-  const href =
-    preview.productUrl ??
-    "#";
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group flex items-center gap-3 p-3 sm:p-4 hover:bg-muted/30 transition-colors"
-    >
-      {/* Product image */}
-      <div className="size-14 sm:size-16 rounded-lg bg-muted/40 overflow-hidden shrink-0 ring-1 ring-border/40">
-        {preview.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={preview.imageUrl}
-            alt=""
-            className="size-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
-        ) : (
-          <div className="size-full flex items-center justify-center">
-            <Package className="size-5 text-muted-foreground/40" />
-          </div>
-        )}
-      </div>
-
-      {/* Title + tag + stats */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.16em] text-orange-600 dark:text-orange-400 bg-orange-500/10 ring-1 ring-orange-500/30 px-1.5 py-0.5 rounded">
-            <ShoppingBag className="size-2.5" />
-            Product like this
-          </span>
-        </div>
-        <p className="text-[12px] leading-snug line-clamp-2 font-medium">
-          {preview.title}
-        </p>
-        <div className="flex items-center gap-2.5 mt-1 text-[10px] text-muted-foreground tabular-nums">
-          <span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-400">
-            ${preview.priceUsd.toFixed(2)}
-          </span>
-          {preview.rating !== undefined && (
-            <span className="inline-flex items-center gap-0.5">
-              <Star
-                className="size-2.5 text-amber-500"
-                fill="currentColor"
-                strokeWidth={0}
-              />
-              {preview.rating.toFixed(1)}
-            </span>
-          )}
-          {preview.orderCount !== undefined && preview.orderCount > 0 && (
-            <span>{preview.orderCount.toLocaleString()} sold</span>
-          )}
-        </div>
-      </div>
-
-      {/* Chevron arrow */}
-      <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
-    </a>
   );
 }
 
