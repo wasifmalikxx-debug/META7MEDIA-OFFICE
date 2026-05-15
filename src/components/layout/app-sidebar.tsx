@@ -30,6 +30,7 @@ import {
   FileText,
   Calculator,
   Sparkles,
+  Link2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -487,6 +488,21 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
+                  {/* Reverse Hunt — Play 2. Paste an AliExpress URL,
+                      get an Etsy demand verdict + projected margin.
+                      Same access tier as SEO Autopilot. */}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      render={<Link href="/reverse-hunt" />}
+                      isActive={isItemActive("/reverse-hunt")}
+                    >
+                      <Link2 className="size-4" />
+                      <span>Reverse Hunt</span>
+                      <span className="ml-auto inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
+                        New
+                      </span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/price-calculator" />}

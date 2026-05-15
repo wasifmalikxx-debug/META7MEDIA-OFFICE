@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,10 @@ import {
   Zap,
   Heart,
   ArrowRight,
+  Plug,
+  Package,
+  Star,
+  ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -152,6 +156,7 @@ export function ProductHunterView() {
   return (
     <div className="relative max-w-5xl mx-auto space-y-6 pb-12">
       <HeroBanner scanning={scanning} hasResult={!!result} />
+      <AliExpressConnectionBanner />
 
       {!result && !scanning && (
         <InputCard
@@ -818,6 +823,14 @@ function HuntResultRow({
                 See on Etsy
               </a>
             </div>
+
+            {/* Play 1 — Full-loop hunting. Click to fetch top AliExpress
+                products matching this keyword. CEO only; the API gate
+                returns 409 if AliExpress isn't connected. */}
+            <AliExpressProductsExpander
+              keyword={result.keyword}
+              verdict={result.verdict}
+            />
           </div>
         </div>
       </div>
@@ -846,6 +859,311 @@ function StatTile({
         {value}
       </p>
     </div>
+  );
+}
+
+// ─── AliExpress connection banner ───────────────────────────────────
+
+interface AliConnectionStatus {
+  connected: boolean;
+  expired?: boolean;
+  aliUserNick?: string | null;
+  aliUserId?: string | null;
+  expiresAt?: string;
+  connectedAt?: string;
+}
+
+function AliExpressConnectionBanner() {
+  const [status, setStatus] = useState<AliConnectionStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Read ?aliConnect=success / denied / state_mismatch from URL on
+    // first mount and show a toast — then strip the query param so
+    // refreshes don't re-fire it.
+    const url = new URL(window.location.href);
+    const flag = url.searchParams.get("aliConnect");
+    if (flag) {
+      const reason = url.searchParams.get("reason");
+      if (flag === "success") {
+        toast.success("AliExpress connected", {
+          description: "Full-loop product hunting is now active.",
+        });
+      } else if (flag === "denied") {
+        toast.error("AliExpress authorization cancelled");
+      } else {
+        toast.error("AliExpress connection failed", {
+          description: reason ?? flag,
+        });
+      }
+      url.searchParams.delete("aliConnect");
+      url.searchParams.delete("reason");
+      window.history.replaceState({}, "", url.toString());
+    }
+
+    async function load() {
+      try {
+        const res = await fetch("/api/aliexpress/status");
+        if (!res.ok) return;
+        const data = (await res.json()) as AliConnectionStatus;
+        if (!cancelled) setStatus(data);
+      } catch {
+        // ignore — banner just won't render
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) return null;
+
+  if (!status || !status.connected) {
+    return (
+      <Card className="border border-orange-300/50 dark:border-orange-700/40 bg-orange-50/40 dark:bg-orange-950/15 shadow-none">
+        <CardContent className="p-4 flex items-center gap-3 flex-wrap">
+          <div className="size-9 rounded-xl bg-orange-500/15 ring-1 ring-orange-500/30 flex items-center justify-center shrink-0">
+            <Plug className="size-4 text-orange-600 dark:text-orange-400" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-bold leading-tight">
+              Connect AliExpress to unlock full-loop hunting
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+              One-time authorization. Once connected, every keyword expands to a
+              ranked AliExpress product list — no more browsing aliexpress.com manually.
+            </p>
+          </div>
+          <a
+            href="/api/aliexpress/auth-start"
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12px] font-bold tracking-wide bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-md shadow-orange-500/30 hover:opacity-90 transition-opacity"
+          >
+            <Plug className="size-3.5" />
+            Connect AliExpress
+          </a>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Connected — compact green strip
+  return (
+    <Card className="border border-emerald-300/40 dark:border-emerald-700/30 bg-emerald-50/30 dark:bg-emerald-950/10 shadow-none">
+      <CardContent className="p-3 flex items-center gap-2.5">
+        <div className="size-7 rounded-lg bg-emerald-500/15 ring-1 ring-emerald-500/30 flex items-center justify-center shrink-0">
+          <Check
+            className="size-3.5 text-emerald-600 dark:text-emerald-400"
+            strokeWidth={3}
+          />
+        </div>
+        <div className="min-w-0 flex-1 text-[11px] leading-tight">
+          <span className="font-bold text-emerald-700 dark:text-emerald-300">
+            AliExpress connected
+          </span>
+          {status.aliUserNick && (
+            <span className="text-muted-foreground">
+              {" "}
+              · {status.aliUserNick}
+            </span>
+          )}
+          <span className="text-muted-foreground">
+            {" "}
+            · full-loop hunting active
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!confirm("Disconnect AliExpress? You'll need to re-authorize."))
+              return;
+            await fetch("/api/aliexpress/disconnect", { method: "POST" });
+            setStatus({ connected: false });
+            toast.success("Disconnected from AliExpress");
+          }}
+          className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground"
+        >
+          Disconnect
+        </button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── AliExpress products inline expander ────────────────────────────
+
+interface AliExpressProductLite {
+  productId: number;
+  title: string;
+  imageUrl?: string;
+  productUrl?: string;
+  priceMin: number;
+  priceMax: number;
+  currency: string;
+  rating?: number;
+  orderCount?: number;
+  shopName?: string;
+}
+
+export function AliExpressProductsExpander({
+  keyword,
+  verdict,
+}: {
+  keyword: string;
+  verdict: Verdict;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState<AliExpressProductLite[] | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  // Don't auto-show for SKIP — no point sourcing low-quality keywords
+  if (verdict === "SKIP") return null;
+
+  async function loadProducts() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/aliexpress/products-for-keyword", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword, limit: 10 }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          throw new Error(
+            "AliExpress not connected — use the Connect button above.",
+          );
+        }
+        throw new Error(body?.error ?? `Failed (${res.status})`);
+      }
+      const data = (await res.json()) as {
+        products: AliExpressProductLite[];
+        totalResults: number;
+      };
+      setProducts(data.products);
+      if (data.products.length === 0) {
+        toast.message("No AliExpress matches for that keyword");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Lookup failed";
+      setError(msg);
+      toast.error("AliExpress lookup failed", { description: msg });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleToggle() {
+    if (!open && !products && !loading) loadProducts();
+    setOpen((v) => !v);
+  }
+
+  return (
+    <div className="mt-3 border-t border-border/40 pt-3">
+      <button
+        type="button"
+        onClick={handleToggle}
+        className="w-full inline-flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground transition-colors group"
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <ShoppingBag className="size-3" />
+          {loading
+            ? "Loading AliExpress matches…"
+            : products
+              ? `${products.length} AliExpress matches`
+              : "Find on AliExpress"}
+        </span>
+        {loading ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : (
+          <ArrowRight
+            className={`size-3 transition-transform ${open ? "rotate-90" : ""}`}
+          />
+        )}
+      </button>
+
+      {open && error && !loading && (
+        <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50/40 dark:bg-rose-950/20 ring-1 ring-rose-500/20 rounded-md px-3 py-2">
+          {error}
+        </p>
+      )}
+
+      {open && products && products.length > 0 && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {products.map((p) => (
+            <AliExpressProductCard key={p.productId} product={p} />
+          ))}
+        </div>
+      )}
+
+      {open && products && products.length === 0 && !error && (
+        <p className="mt-2 text-[11px] text-muted-foreground italic px-1">
+          No matching AliExpress products. Try a broader related keyword.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AliExpressProductCard({ product }: { product: AliExpressProductLite }) {
+  const price =
+    product.priceMin && product.priceMax && product.priceMin !== product.priceMax
+      ? `${product.currency} ${product.priceMin.toFixed(2)} - ${product.priceMax.toFixed(2)}`
+      : `${product.currency} ${product.priceMin.toFixed(2)}`;
+
+  return (
+    <a
+      href={product.productUrl ?? "#"}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex gap-2.5 rounded-lg ring-1 ring-border/50 bg-card hover:bg-muted/30 transition-colors p-2"
+    >
+      <div className="size-16 rounded-md bg-muted/40 overflow-hidden shrink-0 flex items-center justify-center">
+        {product.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={product.imageUrl}
+            alt=""
+            className="size-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <Package className="size-5 text-muted-foreground/40" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] leading-snug line-clamp-2 font-medium">
+          {product.title}
+        </p>
+        <p className="text-[12px] font-bold tabular-nums mt-1 text-emerald-700 dark:text-emerald-400">
+          {price}
+        </p>
+        <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground tabular-nums">
+          {product.rating !== undefined && (
+            <span className="inline-flex items-center gap-0.5">
+              <Star
+                className="size-2.5 text-amber-500"
+                fill="currentColor"
+                strokeWidth={0}
+              />
+              {product.rating.toFixed(1)}
+            </span>
+          )}
+          {product.orderCount !== undefined && product.orderCount > 0 && (
+            <span>{product.orderCount.toLocaleString()} orders</span>
+          )}
+        </div>
+      </div>
+    </a>
   );
 }
 

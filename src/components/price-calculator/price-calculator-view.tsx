@@ -12,6 +12,10 @@ import {
   Store,
   Sprout,
   Tag,
+  Link2,
+  Loader2,
+  Wand2,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -36,9 +40,59 @@ import {
  *   • Markup table reference (same reason)
  *   • The 2/3 proportional regime above $150 (employees just see prices)
  */
+interface FetchedProduct {
+  productId: number;
+  title: string;
+  imageUrl?: string;
+  productUrl?: string;
+  priceMin: number;
+  priceMax: number;
+  currency: string;
+  rating?: number;
+  orderCount?: number;
+}
+
 export function PriceCalculatorView() {
   const [aliInput, setAliInput] = useState("");
+  const [urlInput, setUrlInput] = useState("");
+  const [urlMode, setUrlMode] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [fetchedProduct, setFetchedProduct] = useState<FetchedProduct | null>(
+    null,
+  );
   const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFetchFromUrl() {
+    if (urlInput.trim().length < 8 || fetching) return;
+    setFetching(true);
+    setFetchedProduct(null);
+    try {
+      const res = await fetch("/api/aliexpress/fetch-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          throw new Error(
+            "AliExpress not connected. Wasif needs to connect it on Product Hunter first.",
+          );
+        }
+        throw new Error(body?.error ?? `Failed (${res.status})`);
+      }
+      const data = (await res.json()) as FetchedProduct;
+      setFetchedProduct(data);
+      setAliInput(data.priceMin.toFixed(2));
+      toast.success(`Fetched: $${data.priceMin.toFixed(2)}`);
+    } catch (err) {
+      toast.error("Couldn't fetch from AliExpress", {
+        description: err instanceof Error ? err.message : "unknown",
+      });
+    } finally {
+      setFetching(false);
+    }
+  }
 
   // ⌘K / Ctrl+K from anywhere refocuses + selects the input.
   useEffect(() => {
@@ -80,6 +134,107 @@ export function PriceCalculatorView() {
   return (
     <div className="space-y-6">
       <ReminderBanner />
+
+      {/* Mode toggle — manual cost entry vs. auto-fetch from AliExpress URL.
+          The URL mode is Play 5 (Live Margin Calculator). */}
+      <div className="flex items-center gap-2 px-1">
+        <button
+          type="button"
+          onClick={() => setUrlMode(false)}
+          className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[11px] font-bold tracking-wide transition-colors ${
+            !urlMode
+              ? "bg-card ring-1 ring-border/60 shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Tag className="size-3" />
+          Enter cost
+        </button>
+        <button
+          type="button"
+          onClick={() => setUrlMode(true)}
+          className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[11px] font-bold tracking-wide transition-colors ${
+            urlMode
+              ? "bg-card ring-1 ring-border/60 shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Link2 className="size-3" />
+          Auto from AliExpress URL
+        </button>
+      </div>
+
+      {/* AliExpress URL fetch card — only when urlMode */}
+      {urlMode && (
+        <Card className="border border-emerald-300/50 dark:border-emerald-700/40 bg-emerald-50/30 dark:bg-emerald-950/15 shadow-none">
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-gradient-to-br from-emerald-500 to-orange-500 ring-1 ring-orange-500/30 flex items-center justify-center">
+                <Wand2 className="size-4 text-white" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                  Live AliExpress price
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Paste any AliExpress product URL · we&apos;ll grab the live cost
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleFetchFromUrl();
+                }}
+                placeholder="https://www.aliexpress.com/item/..."
+                disabled={fetching}
+                className="h-10 text-sm bg-card border-border/70"
+              />
+              <Button
+                type="button"
+                onClick={handleFetchFromUrl}
+                disabled={urlInput.trim().length < 8 || fetching}
+                className="h-10 bg-emerald-600 hover:bg-emerald-700 text-white font-bold whitespace-nowrap disabled:opacity-40"
+              >
+                {fetching ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Fetch price"
+                )}
+              </Button>
+            </div>
+            {fetchedProduct && (
+              <div className="flex gap-3 pt-3 border-t border-emerald-300/40 dark:border-emerald-700/30">
+                <div className="size-14 rounded-lg bg-muted/40 overflow-hidden shrink-0">
+                  {fetchedProduct.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={fetchedProduct.imageUrl}
+                      alt=""
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    <Package className="size-5 m-auto text-muted-foreground/40" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] line-clamp-2 font-medium leading-snug">
+                    {fetchedProduct.title}
+                  </p>
+                  <p className="text-[11px] tabular-nums text-muted-foreground mt-0.5">
+                    Live cost: <strong>${fetchedProduct.priceMin.toFixed(2)}</strong>
+                    {fetchedProduct.orderCount !== undefined &&
+                      ` · ${fetchedProduct.orderCount.toLocaleString()} sold`}
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Input card — separate from the output below so the two zones
           feel distinct (per Wasif's preference for the older layout). */}

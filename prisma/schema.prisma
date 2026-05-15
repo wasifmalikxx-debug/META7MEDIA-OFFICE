@@ -220,6 +220,7 @@ model User {
   seoAutopilotUsage      SeoAutopilotUsage[] @relation("SeoAutopilotUsageUser")
   seoAutopilotLogs       SeoAutopilotLog[]   @relation("SeoAutopilotLogUser")
   seoAutopilotTagSwaps   SeoAutopilotTagSwapLog[] @relation("SeoAutopilotTagSwapUser")
+  aliExpressTokens       AliExpressToken[]   @relation("AliExpressTokenUser")
   complaintsSubmitted    Complaint[]        @relation("ComplaintSubmitter")
   complaintsResolved     Complaint[]        @relation("ComplaintResponder")
   complaintMessages      ComplaintMessage[] @relation("ComplaintMessageSender")
@@ -1046,3 +1047,41 @@ model SeoAutopilotLog {
   @@index([createdAt])
   @@index([verdict])
 }
+
+// AliExpress OAuth access token. One row per user-platform pair —
+// most installs will only ever have ONE row (Wasif's CEO connection),
+// but the schema supports multiple just in case partners want their
+// own auth later.
+//
+// Tokens expire (AliExpress default: ~30 days for access, ~90 days
+// for refresh). The refresh cron checks `expiresAt` and renews via
+// the stored refreshToken before each daily auto-hunt run.
+model AliExpressToken {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation("AliExpressTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  // The access token AliExpress returns. Used as the `session` query
+  // param on every /sync call. Treated as a secret — never logged.
+  accessToken  String   @db.Text
+
+  // Refresh token — exchanged for a new access token before expiry.
+  refreshToken String   @db.Text
+
+  // The seller account these tokens are bound to. Useful for the
+  // "Connected as X" indicator + audit.
+  aliUserId    String?  @db.VarChar(64)
+  aliUserNick  String?  @db.VarChar(120)
+
+  // Expiry timestamps. We refresh ~7 days BEFORE access expires to
+  // avoid mid-request failures.
+  expiresAt        DateTime
+  refreshExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, aliUserId])
+  @@index([expiresAt])
+}
+
