@@ -459,6 +459,24 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
+                  {/* CEO-only: Opportunity Scanner — find underserved Etsy
+                      niches before sending the team to AliExpress. */}
+                  {isCeo && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        render={<Link href="/seo-autopilot/opportunities" />}
+                        isActive={isItemActive(
+                          "/seo-autopilot/opportunities",
+                        )}
+                      >
+                        <Target className="size-4" />
+                        <span>Opportunity Scanner</span>
+                        <span className="ml-auto inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-950/50 px-1.5 py-0.5 text-[9px] font-bold text-sky-700 dark:text-sky-300 tracking-wider uppercase">
+                          New
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/price-calculator" />}

@@ -145,6 +145,10 @@ export interface EtsyListing {
   views?: number;
   num_favorers?: number;
   taxonomy_id?: number;
+  // Shop ownership — used by the opportunity scanner to measure top-10
+  // diversity (how many unique shops dominate a search). Not every
+  // search response includes it; treat as optional.
+  shop_id?: number;
 }
 
 export interface EtsyTaxonomyNode {
@@ -207,6 +211,30 @@ export async function searchActiveListings(
     sort_order: "desc",
   });
   return data.results ?? [];
+}
+
+/**
+ * Same search, but ALSO returns the total `count` from Etsy's response —
+ * the universe of active listings matching the keyword. Used by the
+ * opportunity scanner where saturation (count) is the headline signal,
+ * not just the top 20 sample.
+ */
+export async function searchActiveListingsWithCount(
+  keywords: string,
+  limit = 10,
+  sortOn: "score" | "created" | "price" = "score",
+): Promise<{ totalListings: number; results: EtsyListing[] }> {
+  const safeLimit = Math.min(100, Math.max(1, limit));
+  const data = await etsyFetch<ListingsResponse>("/listings/active", {
+    keywords: keywords.trim(),
+    limit: safeLimit,
+    sort_on: sortOn,
+    sort_order: "desc",
+  });
+  return {
+    totalListings: data.count ?? 0,
+    results: data.results ?? [],
+  };
 }
 
 /**
