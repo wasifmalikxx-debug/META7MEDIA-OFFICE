@@ -8,12 +8,10 @@ import {
   Loader2,
   Sparkles,
   Target,
-  Crown,
   ExternalLink,
   Plus,
   X,
   Package,
-  Star,
   AlertTriangle,
   Wand2,
   Search,
@@ -559,7 +557,7 @@ function ResultHero({
                 <Package className="size-3.5 text-emerald-500" />
                 <span className="tabular-nums">{productCount}</span>
                 <span className="text-muted-foreground font-normal">
-                  vetted products
+                  scored keywords
                 </span>
               </span>
               {style && (
@@ -774,132 +772,7 @@ function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
         </span>
       </div>
 
-      {/* Product grid */}
-      <div className="p-4 sm:p-5">
-        {keyword.products.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground italic text-center py-4">
-            No quality products matched this keyword.
-          </p>
-        ) : (
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-            {keyword.products.map((p, i) => (
-              <ProductCard key={p.productId} product={p} rank={i + 1} />
-            ))}
-          </div>
-        )}
-      </div>
     </Card>
-  );
-}
-
-// ─── Product card ──────────────────────────────────────────────────
-
-function ProductCard({
-  product,
-  rank,
-}: {
-  product: CuratedProduct;
-  rank: number;
-}) {
-  const aliExpressUrl =
-    product.productUrl ??
-    `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(product.matchedKeyword)}`;
-
-  return (
-    <a
-      href={aliExpressUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group rounded-xl ring-1 ring-border/60 bg-card hover:ring-border hover:shadow-md transition-all overflow-hidden flex flex-col cursor-pointer"
-    >
-      {/* Image */}
-      <div className="relative aspect-square bg-muted/40 overflow-hidden">
-        {product.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={product.imageUrl}
-            alt=""
-            className="size-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
-        ) : (
-          <div className="size-full flex items-center justify-center">
-            <Package className="size-7 text-muted-foreground/40" />
-          </div>
-        )}
-
-        {/* Rank chip top-left */}
-        <div className="absolute top-1.5 left-1.5">
-          <span
-            className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded text-[9px] font-bold tabular-nums backdrop-blur-md ring-1 ${
-              rank === 1
-                ? "bg-amber-500/90 text-white ring-amber-500/40"
-                : "bg-black/50 text-white ring-white/20"
-            }`}
-          >
-            {rank === 1 ? <Crown className="size-2.5" /> : `#${rank}`}
-          </span>
-        </div>
-
-        {/* Quality score top-right */}
-        <div className="absolute top-1.5 right-1.5">
-          <span className="inline-flex items-center h-5 px-1.5 rounded text-[9px] font-bold bg-emerald-500/90 text-white backdrop-blur-md ring-1 ring-emerald-500/40 tabular-nums">
-            {product.qualityScore}
-          </span>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="p-2.5 flex flex-col gap-1.5 flex-1">
-        <p className="text-[11px] leading-snug line-clamp-2 font-medium min-h-[2.4em]">
-          {product.title}
-        </p>
-
-        {/* Stats row */}
-        <div className="flex items-center gap-2 text-[9px] text-muted-foreground tabular-nums">
-          {product.rating !== undefined && (
-            <span className="inline-flex items-center gap-0.5">
-              <Star
-                className="size-2.5 text-amber-500"
-                fill="currentColor"
-                strokeWidth={0}
-              />
-              {product.rating.toFixed(1)}
-            </span>
-          )}
-          {product.orderCount !== undefined && product.orderCount > 0 && (
-            <span>{product.orderCount.toLocaleString()} sold</span>
-          )}
-        </div>
-
-        {/* Price + margin */}
-        <div className="flex items-end justify-between pt-1.5 border-t border-border/40 mt-auto">
-          <div>
-            <p className="text-[8px] uppercase tracking-wider text-muted-foreground font-bold">
-              Cost
-            </p>
-            <p className="text-[13px] font-bold tabular-nums leading-none">
-              ${product.priceUsd.toFixed(2)}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[8px] uppercase tracking-wider text-muted-foreground font-bold">
-              Margin
-            </p>
-            <p className="text-[13px] font-bold tabular-nums leading-none text-emerald-700 dark:text-emerald-400">
-              +${product.marginUsd.toFixed(2)}
-            </p>
-          </div>
-        </div>
-
-        <p className="text-[9px] text-muted-foreground italic tabular-nums">
-          Etsy:{" "}
-          <strong className="text-foreground not-italic font-bold">
-            ${product.recommendedEtsyPrice.toFixed(2)}
-          </strong>
-        </p>
-      </div>
-    </a>
   );
 }
 

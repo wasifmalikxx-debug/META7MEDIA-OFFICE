@@ -23,10 +23,7 @@ import {
   createCostAccumulator,
   type CostAccumulator,
 } from "./anthropic.service";
-import {
-  searchProductsByKeyword,
-  type AliExpressProduct,
-} from "./aliexpress-api.service";
+import { type AliExpressProduct } from "./aliexpress-api.service";
 import { calculateEtsyPrice } from "@/lib/etsy-price-calculator";
 
 export type ProductHuntVerdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
@@ -543,92 +540,39 @@ export async function huntByNiche(opts: {
     }),
   );
 
-  // Step 4: AliExpress search — ONLY for keywords with Etsy traction.
+  // Step 4: REMOVED — AliExpress product fetching skipped entirely.
   //
-  // We previously fetched AE for every keyword (40-50 calls per scan),
-  // which pushed wall time over the 60s cap and timed out. Now we
-  // skip MAYBE/SKIP keywords entirely — they're noise anyway, since
-  // keywords with weak Etsy demand rarely produce listable products
-  // for our team. Halves the AE call budget; cuts wall time ~30%.
-  const winningPairs = allPairs.filter((pair) => {
-    const evalEntry = etsyEvaluated.find(
-      (e) => e.category === pair.category && e.keyword === pair.keyword,
-    );
-    return (
-      evalEntry?.etsyResult &&
-      (evalEntry.etsyResult.verdict === "GREAT" ||
-        evalEntry.etsyResult.verdict === "GOOD")
-    );
-  });
+  // Per user feedback (May 16 v2.4): the OG manual hunting workflow
+  // was keywords + external "Hunt on AliExpress" / "See on Etsy"
+  // buttons for the team to research manually. Auto-fetching AE
+  // products per keyword:
+  //   - Slows the hunt by 10-15s (40+ extra AE calls at our rate limit)
+  //   - Adds noise (irrelevant matches even with the relevance filter)
+  //   - Adds visual clutter (5-8 product cards per keyword)
+  //   - Costs nothing in AE quota but burns wall time
+  //
+  // Reverted to lean keyword research mode. The team clicks "Hunt on
+  // AliExpress" on any promising keyword to do the real product hunt
+  // themselves — same as it was in the OG Product Hunter v1.
 
-  const aeProductsByKeyword = new Map<string, AliExpressProduct[]>();
-  if (opts.accessToken && winningPairs.length > 0) {
-    const aeResults = await Promise.all(
-      winningPairs.map(async (pair) => {
-        try {
-          const res = await searchProductsByKeyword(pair.keyword, {
-            accessToken: opts.accessToken!,
-            pageSize: 30, // wider net so quality filter still leaves us 6-8 after
-            sortBy: "orders_desc",
-          });
-          return { keyword: pair.keyword, products: res.products };
-        } catch {
-          return { keyword: pair.keyword, products: [] };
-        }
-      }),
-    );
-    for (const { keyword, products } of aeResults) {
-      aeProductsByKeyword.set(keyword, products);
-    }
-  }
-
-  // Step 5: Build category → keyword → products tree.
-  //
-  // Per keyword: dedup-within-keyword + quality filter → top 5 products.
-  // Drop keywords with zero quality products.
-  // Drop categories with zero keywords.
-  //
-  // Dedup is per-keyword (not global) on purpose — the same product can
-  // legitimately surface for multiple keywords (e.g. a "boho hoop earring"
-  // can match both the "boho hoop" and "tassel earring" keyword), and
-  // we want each keyword's card to show its top 5 standalone.
+  // Step 5: Build category → keyword tree (no products this round).
   const categoryResults: NicheCategoryResult[] = [];
   for (const category of categories) {
     const categoryKeywords = etsyEvaluated.filter(
       (e) => e.category === category,
     );
 
-    const anchors = anchorsByCategory.get(category) ?? [];
-
     const keywordResults: NicheKeywordResult[] = [];
     for (const ck of categoryKeywords) {
-      const aeProducts = aeProductsByKeyword.get(ck.keyword) ?? [];
-      const seenIds = new Set<number>();
-      const quality: CuratedProduct[] = [];
-      for (const p of aeProducts) {
-        if (!p.productId || seenIds.has(p.productId)) continue;
-        // Relevance gate FIRST — drop products whose titles don't
-        // contain any of the category's product anchors. Stops
-        // "hand-stitched jacket gift for mom" from returning
-        // generic mom-gift mugs.
-        if (!passesRelevanceFilter(p, anchors)) continue;
-        const pricing = calculateEtsyPrice(p.priceMin);
-        if (!passesQualityFilter(p, pricing.markup)) continue;
-        seenIds.add(p.productId);
-        quality.push(toCuratedProduct(p, ck.keyword));
-      }
-      quality.sort((a, b) => b.qualityScore - a.qualityScore);
-      const top = quality.slice(0, 8); // was 5; bumped per user feedback
-      if (top.length === 0) continue;
-
+      if (!ck.etsyResult) continue;
       keywordResults.push({
         keyword: ck.keyword,
-        totalListings: ck.etsyResult?.totalListings ?? 0,
-        avgTopFavorites: ck.etsyResult?.avgTopFavorites ?? 0,
-        uniqueShops: ck.etsyResult?.uniqueShops ?? 0,
-        score: ck.etsyResult?.score ?? 0,
-        verdict: ck.etsyResult?.verdict ?? "SKIP",
-        products: top,
+        totalListings: ck.etsyResult.totalListings,
+        avgTopFavorites: ck.etsyResult.avgTopFavorites,
+        uniqueShops: ck.etsyResult.uniqueShops,
+        score: ck.etsyResult.score,
+        verdict: ck.etsyResult.verdict,
+        products: [], // no AE fetch — team uses the buttons to research
       });
     }
 
@@ -644,15 +588,14 @@ export async function huntByNiche(opts: {
       (sum, k) => sum + k.totalListings,
       0,
     );
-    const totalProducts = keywordResults.reduce(
-      (sum, k) => sum + k.products.length,
-      0,
-    );
 
     categoryResults.push({
       category,
       keywords: keywordResults,
-      totalProducts,
+      // v2.4: products dropped — `totalProducts` now means keyword count
+      // (the UI uses it for the tab badge + summary). Renaming the field
+      // would break the wire format, so we just repurpose it.
+      totalProducts: keywordResults.length,
       etsyHotKeywords,
       etsyTotalListings,
     });
