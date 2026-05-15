@@ -666,80 +666,161 @@ export function extractProductId(url: string): string | null {
 // missing fields gracefully.
 
 interface RawProduct {
+  // Various ID field names across DS / Affiliate / Solution responses
   product_id?: number | string;
   productId?: number | string;
+  item_id?: number | string;
+  itemId?: number | string;
+  // Titles
   title?: string;
   product_title?: string;
   subject?: string;
+  // Images
   product_main_image_url?: string;
   product_image_url?: string;
   image_url?: string;
+  itemMainPic?: string;
+  // URLs
   product_detail_url?: string;
   promotion_link?: string;
+  itemUrl?: string;
+  // Prices — many naming conventions
   target_sale_price?: string | number;
   target_app_sale_price?: string | number;
   app_sale_price?: string | number;
   sale_price?: string | number;
   original_price?: string | number;
   target_original_price?: string | number;
+  targetSalePrice?: string | number;
+  targetOriginalPrice?: string | number;
+  salePrice?: string | number;
+  originalPrice?: string | number;
+  // Currency
   target_sale_price_currency?: string;
+  targetSalePriceCurrency?: string;
+  targetOriginalPriceCurrency?: string;
+  salePriceCurrency?: string;
+  // Rating / engagement
   evaluate_rate?: string | number;
+  evaluateRate?: string | number;
   product_rating?: string | number;
   lastest_volume?: number;
   trade_count?: number;
+  orders?: string | number;
+  // Shop
   shop_id?: number;
+  shopId?: number;
   shop_name?: string;
+  shopName?: string;
   ship_from_country?: string;
 }
 
 function normalizeProduct(raw: RawProduct): AliExpressProduct {
-  const productId = Number(raw.product_id ?? raw.productId ?? 0);
+  const productId = Number(
+    raw.product_id ?? raw.productId ?? raw.item_id ?? raw.itemId ?? 0,
+  );
+  // Always prefer target_* prices — those are localized to our target
+  // currency (USD). Without "target_" the price is in seller's home
+  // currency (often CNY).
   const priceMin = Number(
     raw.target_app_sale_price ??
+      raw.targetSalePrice ??
       raw.target_sale_price ??
       raw.app_sale_price ??
+      raw.salePrice ??
       raw.sale_price ??
       0,
   );
   const priceMax = Number(
-    raw.target_original_price ?? raw.original_price ?? priceMin,
+    raw.targetOriginalPrice ??
+      raw.target_original_price ??
+      raw.originalPrice ??
+      raw.original_price ??
+      priceMin,
   );
+
+  // AliExpress itemUrl often comes as protocol-relative ("//www.aliexpress.com/...")
+  // Normalize to https://
+  let productUrl =
+    raw.product_detail_url ?? raw.promotion_link ?? raw.itemUrl;
+  if (productUrl?.startsWith("//")) productUrl = `https:${productUrl}`;
+
   return {
     productId,
     title: raw.title ?? raw.product_title ?? raw.subject ?? "",
     imageUrl:
       raw.product_main_image_url ??
       raw.product_image_url ??
-      raw.image_url,
-    productUrl: raw.product_detail_url ?? raw.promotion_link,
+      raw.image_url ??
+      raw.itemMainPic,
+    productUrl,
     priceMin,
     priceMax,
-    currency: raw.target_sale_price_currency ?? "USD",
-    rating: raw.evaluate_rate
-      ? Number(String(raw.evaluate_rate).replace("%", ""))
-      : raw.product_rating
-        ? Number(raw.product_rating)
-        : undefined,
-    orderCount: raw.lastest_volume ?? raw.trade_count,
-    shopId: raw.shop_id,
-    shopName: raw.shop_name,
+    // Currency: if target* fields are set we know it's been converted to
+    // our target (USD via the search params). Otherwise fall back to
+    // whatever currency the seller listed in.
+    currency:
+      raw.targetOriginalPriceCurrency === "USD" ||
+      raw.targetSalePrice !== undefined ||
+      raw.target_sale_price !== undefined
+        ? "USD"
+        : raw.target_sale_price_currency ??
+          raw.salePriceCurrency ??
+          "USD",
+    rating: raw.evaluateRate
+      ? Number(String(raw.evaluateRate).replace("%", ""))
+      : raw.evaluate_rate
+        ? Number(String(raw.evaluate_rate).replace("%", ""))
+        : raw.product_rating
+          ? Number(raw.product_rating)
+          : undefined,
+    orderCount:
+      raw.lastest_volume ??
+      raw.trade_count ??
+      (typeof raw.orders === "string" && raw.orders
+        ? Number(raw.orders.replace(/[^\d]/g, "")) || undefined
+        : typeof raw.orders === "number"
+          ? raw.orders
+          : undefined),
+    shopId: raw.shop_id ?? raw.shopId,
+    shopName: raw.shop_name ?? raw.shopName,
     shipsFrom: raw.ship_from_country,
   };
 }
 
 function parseProductSearch(raw: unknown): ProductSearchResponse {
-  // The wrapper key changes per method — drill until we find a
-  // resp_result.result or similar.
+  // The wrapper key changes per method — drill until we find the data.
   const root = raw as Record<string, unknown>;
   const wrapper = findFirst(root, (k) => k.endsWith("_response"));
+  const data = findFirst(wrapper ?? root, (k) => k === "data");
   const resp = findFirst(wrapper ?? root, (k) => k === "resp_result") ?? wrapper;
   const result = findFirst(resp ?? root, (k) => k === "result") ?? resp;
 
-  // Strict path — try the most common shape first
   let list: unknown[] = [];
   let total = 0;
 
-  if (result && typeof result === "object") {
+  // Path 1 — aliexpress.ds.text.search shape:
+  //   { aliexpress_ds_text_search_response: { code, data: {
+  //       totalCount, products: { selection_search_product: [...] } } } }
+  if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    total = Number(d.totalCount ?? d.total ?? d.total_record_count ?? 0);
+    const productsContainer = d.products as Record<string, unknown> | undefined;
+    if (productsContainer && typeof productsContainer === "object") {
+      list =
+        extractArray(productsContainer.selection_search_product) ??
+        extractArray(productsContainer.product) ??
+        extractArray(productsContainer.item) ??
+        extractArray(productsContainer.items) ??
+        [];
+    }
+    if (list.length === 0) {
+      list = extractArray(d.items) ?? extractArray(d.itemList) ?? [];
+    }
+  }
+
+  // Path 2 — older "resp_result.result" shape (Affiliate-style)
+  if (list.length === 0 && result && typeof result === "object") {
     const r = result as Record<string, unknown>;
     total = Number(
       r.total_record_count ??
@@ -747,7 +828,7 @@ function parseProductSearch(raw: unknown): ProductSearchResponse {
         r.total_result_count ??
         r.totalCount ??
         r.total ??
-        0,
+        total,
     );
     list =
       extractArray(r.products) ??
@@ -755,15 +836,10 @@ function parseProductSearch(raw: unknown): ProductSearchResponse {
       extractArray(r.product) ??
       extractArray(r.items) ??
       extractArray(r.itemList) ??
-      extractArray((r.data as Record<string, unknown>)?.products) ??
-      extractArray((r.data as Record<string, unknown>)?.items) ??
       [];
   }
 
-  // Fallback — recursively scan the entire response tree for any
-  // array whose first item looks like a product. AliExpress's response
-  // shapes vary between methods/versions, so the recursive walk is a
-  // safety net.
+  // Path 3 — recursive walk as last-resort safety net
   if (list.length === 0) {
     const found = findProductArrayDeep(raw, 0);
     if (found) {
@@ -793,15 +869,19 @@ function findProductArrayDeep(
     const first = obj[0];
     if (first && typeof first === "object") {
       const f = first as Record<string, unknown>;
-      // Anything with a product-shaped identifier is a product list
+      // Anything with a product-shaped identifier is a product list.
+      // Cover every naming variant AliExpress has shipped (DS, Affiliate,
+      // Solution, plus snake_case + camelCase + selection_search shapes).
       if (
         f.product_id !== undefined ||
         f.productId !== undefined ||
         f.item_id !== undefined ||
+        f.itemId !== undefined ||
         (typeof f.title === "string" &&
           (f.product_main_image_url !== undefined ||
             f.image_url !== undefined ||
-            f.product_image_url !== undefined)) ||
+            f.product_image_url !== undefined ||
+            f.itemMainPic !== undefined)) ||
         (typeof f.subject === "string" &&
           f.product_main_image_url !== undefined)
       ) {
