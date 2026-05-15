@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,36 +12,29 @@ import {
   ExternalLink,
   Plus,
   X,
-  ChevronDown,
-  ChevronRight,
   Package,
   Star,
   AlertTriangle,
   Wand2,
-  Lightbulb,
   Search,
   ShoppingBag,
+  TrendingUp,
+  Heart,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
 /**
- * Manual Hunting v2 (May 16 2026, redesigned for product-first UX).
+ * Manual Hunting v2.2 — May 16 2026 redesign (third revision).
  *
- * Niche → Categories → PRODUCTS (not keywords).
+ * Layout: category tabs at top (horizontally scrollable), inside the
+ * active category we show keyword cards. Each keyword card has:
+ *   - Keyword + verdict pill + score
+ *   - Etsy stats strip
+ *   - "Hunt on AliExpress" + "See on Etsy" quick-search buttons
+ *   - Product grid (top 5 quality-filtered AE products)
  *
- * Flow:
- *   1. Employee types a niche ("boho jewelry")
- *   2. Optional style + audience pills bias the brainstorm
- *   3. Backend discovers 6-10 proven-selling categories, generates
- *      buyer-intent keywords per category, queries Etsy to validate
- *      demand, queries AliExpress for products, then DEDUPES + QUALITY-
- *      FILTERS to surface only the top 8-12 products per category
- *   4. UI: clean product grid inside each expandable category card —
- *      no keyword cruft, just images + prices + margins + actions
- *
- * Goal: minutes-not-hours from "I want to sell jewelry" to "here are
- * 60+ AE products vetted by quality + Etsy demand, organized by my
- * shop sections."
+ * No more accordions. One tab visible at a time. Cleaner mental model.
  */
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -61,9 +54,22 @@ interface CuratedProduct {
   qualityScore: number;
 }
 
+type Verdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
+
+interface NicheKeywordResult {
+  keyword: string;
+  totalListings: number;
+  avgTopFavorites: number;
+  uniqueShops: number;
+  score: number;
+  verdict: Verdict;
+  products: CuratedProduct[];
+}
+
 interface NicheCategoryResult {
   category: string;
-  products: CuratedProduct[];
+  keywords: NicheKeywordResult[];
+  totalProducts: number;
   etsyHotKeywords: number;
   etsyTotalListings: number;
 }
@@ -103,6 +109,39 @@ const AUDIENCE_OPTIONS = [
   "Self-gift",
 ];
 
+const VERDICT_STYLE: Record<
+  Verdict,
+  { chip: string; ringBorder: string; label: string }
+> = {
+  GREAT: {
+    chip: "bg-emerald-500 text-white",
+    ringBorder: "ring-emerald-500/30",
+    label: "GREAT",
+  },
+  GOOD: {
+    chip: "bg-sky-500 text-white",
+    ringBorder: "ring-sky-500/30",
+    label: "GOOD",
+  },
+  MAYBE: {
+    chip: "bg-amber-500 text-white",
+    ringBorder: "ring-amber-500/30",
+    label: "MAYBE",
+  },
+  SKIP: {
+    chip: "bg-rose-500 text-white",
+    ringBorder: "ring-rose-500/30",
+    label: "SKIP",
+  },
+};
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${(n / 1_000).toFixed(0)}k`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toLocaleString();
+}
+
 // ─── Main section ───────────────────────────────────────────────────
 
 export function ManualHuntingSection() {
@@ -114,6 +153,12 @@ export function ManualHuntingSection() {
   const [hunting, setHunting] = useState(false);
   const [result, setResult] = useState<NicheHuntResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [activeCategoryIdx, setActiveCategoryIdx] = useState(0);
+
+  // Reset active category when a new result lands
+  useEffect(() => {
+    if (result) setActiveCategoryIdx(0);
+  }, [result]);
 
   async function runHunt(extras: string[] = extraCategories) {
     if (niche.trim().length < 2 || hunting) return;
@@ -136,9 +181,8 @@ export function ManualHuntingSection() {
       }
       const data = (await res.json()) as NicheHuntResponse;
       setResult(data);
-      const totalProducts = data.productCount ?? 0;
       toast.success(
-        `${data.categories.length} categories · ${totalProducts} vetted products`,
+        `${data.categories.length} categories · ${data.productCount} vetted products`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Hunt failed";
@@ -217,19 +261,20 @@ export function ManualHuntingSection() {
           {result.categories.length === 0 ? (
             <EmptyResultCard niche={result.niche} />
           ) : (
-            <div className="space-y-4">
-              {result.categories.map((cat, idx) => (
-                <CategoryProductBlock
-                  key={cat.category}
-                  category={cat}
-                  defaultOpen={idx < 3}
-                />
-              ))}
+            <>
+              <CategoryTabBar
+                categories={result.categories}
+                activeIdx={activeCategoryIdx}
+                onSelect={setActiveCategoryIdx}
+              />
+              <CategoryPanel
+                category={result.categories[activeCategoryIdx]}
+              />
               <AddCategoryButton
                 disabled={hunting}
                 onAdd={addExtraCategory}
               />
-            </div>
+            </>
           )}
         </>
       )}
@@ -281,8 +326,9 @@ function NicheInputCard({
               What&apos;s your shop&apos;s niche?
             </h3>
             <p className="text-[12px] text-muted-foreground/80 mt-1 leading-relaxed">
-              We&apos;ll find the proven-selling categories and curate quality
-              products from AliExpress for each one.
+              We&apos;ll find the proven-selling categories, the keywords
+              that buyers actually search, and curated AliExpress products
+              for each one.
             </p>
           </div>
         </div>
@@ -307,18 +353,15 @@ function NicheInputCard({
           </p>
         </div>
 
-        {/* Style pills (optional) */}
-        <details className="group" open>
-          <summary className="cursor-pointer list-none flex items-center gap-2">
-            <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Style{" "}
-              <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">
-                (optional)
-              </span>
+        {/* Style + audience pills, always open */}
+        <div className="space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Style{" "}
+            <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">
+              (optional)
             </span>
-          </summary>
-          <div className="flex flex-wrap gap-1.5 mt-3 pl-5">
+          </p>
+          <div className="flex flex-wrap gap-1.5">
             {STYLE_OPTIONS.map((opt) => (
               <OptionPill
                 key={opt}
@@ -330,20 +373,16 @@ function NicheInputCard({
               />
             ))}
           </div>
-        </details>
+        </div>
 
-        {/* Audience pills (optional) */}
-        <details className="group" open>
-          <summary className="cursor-pointer list-none flex items-center gap-2">
-            <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Audience{" "}
-              <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">
-                (optional)
-              </span>
+        <div className="space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Audience{" "}
+            <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">
+              (optional)
             </span>
-          </summary>
-          <div className="flex flex-wrap gap-1.5 mt-3 pl-5">
+          </p>
+          <div className="flex flex-wrap gap-1.5">
             {AUDIENCE_OPTIONS.map((opt) => (
               <OptionPill
                 key={opt}
@@ -355,7 +394,7 @@ function NicheInputCard({
               />
             ))}
           </div>
-        </details>
+        </div>
 
         {/* Hunt button */}
         <div className="relative group">
@@ -457,9 +496,9 @@ function HuntProgress({ niche }: { niche: string }) {
             &ldquo;{niche}&rdquo;
           </h3>
           <p className="text-[13px] text-muted-foreground mt-2 max-w-md leading-relaxed">
-            Discovering proven-selling categories · checking Etsy demand
-            for each · pulling top AliExpress products · quality-filtering
-            · scoring by margin × orders × rating.
+            Discovering proven categories · brainstorming buyer keywords ·
+            checking Etsy demand · pulling AliExpress products ·
+            quality-filtering.
           </p>
 
           <div className="mt-6 inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80 tabular-nums">
@@ -510,14 +549,18 @@ function ResultHero({
             </h2>
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               <span className="inline-flex items-center gap-1.5 text-[12px] font-bold">
-                <Lightbulb className="size-3.5 text-violet-500" />
+                <Target className="size-3.5 text-violet-500" />
                 <span className="tabular-nums">{categoryCount}</span>
-                <span className="text-muted-foreground font-normal">categories</span>
+                <span className="text-muted-foreground font-normal">
+                  categories
+                </span>
               </span>
               <span className="inline-flex items-center gap-1.5 text-[12px] font-bold">
                 <Package className="size-3.5 text-emerald-500" />
                 <span className="tabular-nums">{productCount}</span>
-                <span className="text-muted-foreground font-normal">curated products</span>
+                <span className="text-muted-foreground font-normal">
+                  vetted products
+                </span>
               </span>
               {style && (
                 <span className="inline-flex items-center text-[10px] font-bold bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 px-2 py-0.5 rounded-full">
@@ -558,75 +601,193 @@ function EmptyResultCard({ niche }: { niche: string }) {
         <p className="text-sm font-bold">No vetted products found</p>
         <p className="text-[12px] text-muted-foreground mt-1 max-w-md mx-auto leading-relaxed">
           We couldn&apos;t surface high-quality products for &ldquo;{niche}
-          &rdquo;. Try a more specific niche (e.g. &ldquo;boho jewelry&rdquo;
-          instead of &ldquo;jewelry&rdquo;) or check that AliExpress is
-          connected.
+          &rdquo;. Try a more specific niche, or check that AliExpress is
+          connected at the top of this page.
         </p>
       </CardContent>
     </Card>
   );
 }
 
-// ─── Category block (header + product grid) ────────────────────────
+// ─── Category tab bar ──────────────────────────────────────────────
 
-function CategoryProductBlock({
-  category,
-  defaultOpen,
+function CategoryTabBar({
+  categories,
+  activeIdx,
+  onSelect,
 }: {
-  category: NicheCategoryResult;
-  defaultOpen: boolean;
+  categories: NicheCategoryResult[];
+  activeIdx: number;
+  onSelect: (idx: number) => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="relative ap-stagger-in">
+      <div className="flex gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1 snap-x scrollbar-thin">
+        {categories.map((cat, idx) => {
+          const active = idx === activeIdx;
+          return (
+            <button
+              key={cat.category}
+              type="button"
+              onClick={() => onSelect(idx)}
+              className={`relative flex-shrink-0 snap-start rounded-xl ring-1 transition-all overflow-hidden ${
+                active
+                  ? "ring-foreground/30 bg-card shadow-md"
+                  : "ring-border/50 bg-card/60 hover:ring-border hover:bg-card"
+              }`}
+            >
+              {active && (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 bg-gradient-to-br from-sky-500/[0.08] to-violet-500/[0.08]"
+                />
+              )}
+              <div className="relative flex items-center gap-2.5 px-3.5 py-2.5">
+                <span
+                  className={`text-[12px] font-bold tracking-tight ${active ? "text-foreground" : "text-foreground/80"}`}
+                >
+                  {cat.category}
+                </span>
+                <span
+                  className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-md text-[10px] font-bold tabular-nums ring-1 ${
+                    active
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30"
+                      : "bg-muted/40 text-muted-foreground ring-border/40"
+                  }`}
+                >
+                  {cat.totalProducts}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Category panel (renders keywords + their products) ────────────
+
+function CategoryPanel({ category }: { category: NicheCategoryResult }) {
+  return (
+    <div className="space-y-3 ap-stagger-in">
+      {/* Category header strip */}
+      <div className="flex items-center gap-3 px-1">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-xl font-bold tracking-tight leading-tight">
+            {category.category}
+          </h3>
+          <p className="text-[12px] text-muted-foreground tabular-nums mt-0.5">
+            {category.keywords.length} keyword{category.keywords.length === 1 ? "" : "s"} ·{" "}
+            {category.totalProducts} product{category.totalProducts === 1 ? "" : "s"}
+            {category.etsyHotKeywords > 0 && (
+              <span className="text-emerald-700 dark:text-emerald-400">
+                {" · "}
+                {category.etsyHotKeywords} hot
+              </span>
+            )}
+            {category.etsyTotalListings > 0 && (
+              <span>
+                {" · "}
+                {formatCount(category.etsyTotalListings)} Etsy listings
+              </span>
+            )}
+          </p>
+        </div>
+      </div>
+
+      {/* Keyword cards */}
+      {category.keywords.map((kw) => (
+        <KeywordCard key={kw.keyword} keyword={kw} />
+      ))}
+    </div>
+  );
+}
+
+// ─── Keyword card (header + 5-product grid) ────────────────────────
+
+function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
+  const verdictStyle = VERDICT_STYLE[keyword.verdict];
+
+  const aliExpressUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(keyword.keyword)}`;
+  const etsyUrl = `https://www.etsy.com/search?q=${encodeURIComponent(keyword.keyword)}`;
 
   return (
     <Card className="border border-border/60 shadow-none overflow-hidden ap-stagger-in">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full text-left"
-      >
-        <CardContent className="p-4 sm:p-5 flex items-center gap-3.5 hover:bg-muted/30 transition-colors">
-          <div className="size-11 rounded-xl bg-gradient-to-br from-sky-500/20 to-violet-500/20 ring-1 ring-violet-500/30 flex items-center justify-center shrink-0">
-            <Lightbulb className="size-5 text-violet-600 dark:text-violet-400" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[16px] font-bold tracking-tight leading-tight">
-              {category.category}
-            </p>
-            <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
-              {category.products.length} curated products
-              {category.etsyHotKeywords > 0 && (
-                <span className="text-emerald-700 dark:text-emerald-400">
-                  {" "}
-                  · {category.etsyHotKeywords} hot Etsy keyword
-                  {category.etsyHotKeywords === 1 ? "" : "s"}
-                </span>
-              )}
-              {category.etsyTotalListings > 0 && (
-                <span className="text-muted-foreground/70">
-                  {" "}
-                  · {category.etsyTotalListings.toLocaleString()} Etsy listings
-                </span>
-              )}
-            </p>
-          </div>
-          {open ? (
-            <ChevronDown className="size-5 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-5 text-muted-foreground" />
-          )}
-        </CardContent>
-      </button>
+      {/* Header */}
+      <div className="p-4 sm:p-5 flex items-center gap-3 flex-wrap">
+        {/* Verdict badge */}
+        <span
+          className={`inline-flex items-center rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-[0.18em] ${verdictStyle.chip} ring-1 ${verdictStyle.ringBorder}`}
+        >
+          {verdictStyle.label}
+        </span>
 
-      {open && category.products.length > 0 && (
-        <div className="border-t border-border/40 p-4 sm:p-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {category.products.map((p, i) => (
+        {/* Score */}
+        <span className="inline-flex items-center text-[11px] font-bold tabular-nums text-muted-foreground bg-muted/40 ring-1 ring-border/40 px-1.5 py-0.5 rounded-md">
+          {keyword.score}/100
+        </span>
+
+        {/* Keyword */}
+        <h4 className="text-[15px] sm:text-base font-bold tracking-tight leading-tight flex-1 min-w-0 truncate">
+          {keyword.keyword}
+        </h4>
+
+        {/* Quick search buttons */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <a
+            href={aliExpressUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow shadow-orange-500/30 hover:opacity-90 transition-opacity"
+            title={`Search "${keyword.keyword}" on AliExpress`}
+          >
+            <ExternalLink className="size-2.5" />
+            Hunt on AliExpress
+          </a>
+          <a
+            href={etsyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
+            title={`Search "${keyword.keyword}" on Etsy`}
+          >
+            <Search className="size-2.5" />
+            See on Etsy
+          </a>
+        </div>
+      </div>
+
+      {/* Stats strip */}
+      <div className="px-4 sm:px-5 pb-3 flex items-center gap-3 text-[10px] text-muted-foreground tabular-nums border-b border-border/40">
+        <span className="inline-flex items-center gap-1">
+          <TrendingUp className="size-2.5" />
+          {formatCount(keyword.totalListings)} listings
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Heart className="size-2.5" />
+          {formatCount(keyword.avgTopFavorites)} avg favs
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Users className="size-2.5" />
+          {keyword.uniqueShops} shops
+        </span>
+      </div>
+
+      {/* Product grid */}
+      <div className="p-4 sm:p-5">
+        {keyword.products.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground italic text-center py-4">
+            No quality products matched this keyword.
+          </p>
+        ) : (
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            {keyword.products.map((p, i) => (
               <ProductCard key={p.productId} product={p} rank={i + 1} />
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </Card>
   );
 }
@@ -643,10 +804,14 @@ function ProductCard({
   const aliExpressUrl =
     product.productUrl ??
     `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(product.matchedKeyword)}`;
-  const etsyUrl = `https://www.etsy.com/search?q=${encodeURIComponent(product.matchedKeyword)}`;
 
   return (
-    <div className="group rounded-xl ring-1 ring-border/60 bg-card hover:ring-border hover:shadow-md transition-all overflow-hidden flex flex-col">
+    <a
+      href={aliExpressUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group rounded-xl ring-1 ring-border/60 bg-card hover:ring-border hover:shadow-md transition-all overflow-hidden flex flex-col cursor-pointer"
+    >
       {/* Image */}
       <div className="relative aspect-square bg-muted/40 overflow-hidden">
         {product.imageUrl ? (
@@ -659,39 +824,39 @@ function ProductCard({
           />
         ) : (
           <div className="size-full flex items-center justify-center">
-            <Package className="size-8 text-muted-foreground/40" />
+            <Package className="size-7 text-muted-foreground/40" />
           </div>
         )}
 
         {/* Rank chip top-left */}
-        <div className="absolute top-2 left-2">
+        <div className="absolute top-1.5 left-1.5">
           <span
-            className={`inline-flex items-center justify-center min-w-[26px] h-6 px-1.5 rounded-md text-[10px] font-bold tabular-nums backdrop-blur-md ring-1 ${
+            className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded text-[9px] font-bold tabular-nums backdrop-blur-md ring-1 ${
               rank === 1
                 ? "bg-amber-500/90 text-white ring-amber-500/40"
                 : "bg-black/50 text-white ring-white/20"
             }`}
           >
-            {rank === 1 ? <Crown className="size-3" /> : `#${rank}`}
+            {rank === 1 ? <Crown className="size-2.5" /> : `#${rank}`}
           </span>
         </div>
 
         {/* Quality score top-right */}
-        <div className="absolute top-2 right-2">
-          <span className="inline-flex items-center h-6 px-1.5 rounded-md text-[10px] font-bold bg-emerald-500/90 text-white backdrop-blur-md ring-1 ring-emerald-500/40">
+        <div className="absolute top-1.5 right-1.5">
+          <span className="inline-flex items-center h-5 px-1.5 rounded text-[9px] font-bold bg-emerald-500/90 text-white backdrop-blur-md ring-1 ring-emerald-500/40 tabular-nums">
             {product.qualityScore}
           </span>
         </div>
       </div>
 
       {/* Body */}
-      <div className="p-3 flex flex-col gap-2 flex-1">
-        <p className="text-[12px] leading-snug line-clamp-2 font-medium min-h-[2.4em]">
+      <div className="p-2.5 flex flex-col gap-1.5 flex-1">
+        <p className="text-[11px] leading-snug line-clamp-2 font-medium min-h-[2.4em]">
           {product.title}
         </p>
 
         {/* Stats row */}
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground tabular-nums">
+        <div className="flex items-center gap-2 text-[9px] text-muted-foreground tabular-nums">
           {product.rating !== undefined && (
             <span className="inline-flex items-center gap-0.5">
               <Star
@@ -708,54 +873,33 @@ function ProductCard({
         </div>
 
         {/* Price + margin */}
-        <div className="flex items-end justify-between pt-1.5 border-t border-border/40">
+        <div className="flex items-end justify-between pt-1.5 border-t border-border/40 mt-auto">
           <div>
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold">
-              AE cost
+            <p className="text-[8px] uppercase tracking-wider text-muted-foreground font-bold">
+              Cost
             </p>
-            <p className="text-[15px] font-bold tabular-nums leading-none">
+            <p className="text-[13px] font-bold tabular-nums leading-none">
               ${product.priceUsd.toFixed(2)}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold">
+            <p className="text-[8px] uppercase tracking-wider text-muted-foreground font-bold">
               Margin
             </p>
-            <p className="text-[15px] font-bold tabular-nums leading-none text-emerald-700 dark:text-emerald-400">
+            <p className="text-[13px] font-bold tabular-nums leading-none text-emerald-700 dark:text-emerald-400">
               +${product.marginUsd.toFixed(2)}
             </p>
           </div>
         </div>
 
-        {/* Recommended Etsy price */}
-        <p className="text-[10px] text-muted-foreground italic tabular-nums">
-          List at <strong className="text-foreground not-italic font-bold">${product.recommendedEtsyPrice.toFixed(2)}</strong> on Etsy
+        <p className="text-[9px] text-muted-foreground italic tabular-nums">
+          Etsy:{" "}
+          <strong className="text-foreground not-italic font-bold">
+            ${product.recommendedEtsyPrice.toFixed(2)}
+          </strong>
         </p>
-
-        {/* Actions */}
-        <div className="flex items-center gap-1.5 pt-2 mt-auto">
-          <a
-            href={aliExpressUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 inline-flex items-center justify-center gap-1 h-8 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow shadow-orange-500/30 hover:opacity-90 transition-opacity"
-          >
-            <ExternalLink className="size-2.5" />
-            AliExpress
-          </a>
-          <a
-            href={etsyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-1 h-8 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
-            title="See on Etsy"
-          >
-            <Search className="size-2.5" />
-            Etsy
-          </a>
-        </div>
       </div>
-    </div>
+    </a>
   );
 }
 
@@ -785,7 +929,7 @@ function AddCategoryButton({
         type="button"
         disabled={disabled}
         onClick={() => setEditing(true)}
-        className="w-full h-14 rounded-xl border border-dashed border-border/70 hover:border-border hover:bg-muted/30 transition-colors flex items-center justify-center gap-2 text-[12px] font-bold tracking-wide text-muted-foreground hover:text-foreground disabled:opacity-50"
+        className="w-full h-12 rounded-xl border border-dashed border-border/70 hover:border-border hover:bg-muted/30 transition-colors flex items-center justify-center gap-2 text-[12px] font-bold tracking-wide text-muted-foreground hover:text-foreground disabled:opacity-50"
       >
         <Plus className="size-4" />
         Add a category the AI missed

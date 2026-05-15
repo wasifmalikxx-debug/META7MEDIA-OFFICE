@@ -283,9 +283,28 @@ export interface CuratedProduct {
   qualityScore: number;
 }
 
+/**
+ * A keyword inside a category — has its own scored Etsy stats AND its
+ * own list of quality-filtered AliExpress products. The UI renders one
+ * card per keyword (no longer aggregates products to the category level
+ * because the team wanted keyword visibility back, May 16 2026 update).
+ */
+export interface NicheKeywordResult {
+  keyword: string;
+  totalListings: number;
+  avgTopFavorites: number;
+  uniqueShops: number;
+  score: number;
+  verdict: ProductHuntVerdict;
+  /** Top 5 quality-filtered AliExpress products that matched this keyword. */
+  products: CuratedProduct[];
+}
+
 export interface NicheCategoryResult {
   category: string;
-  products: CuratedProduct[];
+  keywords: NicheKeywordResult[];
+  /** Total products across all keywords in this category (post-dedup, post-filter). */
+  totalProducts: number;
   /** How many of this category's keywords scored GREAT or GOOD on Etsy. */
   etsyHotKeywords: number;
   /** Total Etsy listing count summed across the category's keywords. */
@@ -507,53 +526,70 @@ export async function huntByNiche(opts: {
     }
   }
 
-  // Step 5: Aggregate to category level.
-  // For each category, gather all products from its keywords, dedup
-  // by aliProductId, filter for quality, sort by composite score,
-  // take the top 12.
+  // Step 5: Build category → keyword → products tree.
+  //
+  // Per keyword: dedup-within-keyword + quality filter → top 5 products.
+  // Drop keywords with zero quality products.
+  // Drop categories with zero keywords.
+  //
+  // Dedup is per-keyword (not global) on purpose — the same product can
+  // legitimately surface for multiple keywords (e.g. a "boho hoop earring"
+  // can match both the "boho hoop" and "tassel earring" keyword), and
+  // we want each keyword's card to show its top 5 standalone.
   const categoryResults: NicheCategoryResult[] = [];
   for (const category of categories) {
     const categoryKeywords = etsyEvaluated.filter(
       (e) => e.category === category,
     );
 
-    // Etsy stats for the category
-    const etsyHotKeywords = categoryKeywords.filter(
-      (k) =>
-        k.etsyResult &&
-        (k.etsyResult.verdict === "GREAT" || k.etsyResult.verdict === "GOOD"),
+    const keywordResults: NicheKeywordResult[] = [];
+    for (const ck of categoryKeywords) {
+      const aeProducts = aeProductsByKeyword.get(ck.keyword) ?? [];
+      const seenIds = new Set<number>();
+      const quality: CuratedProduct[] = [];
+      for (const p of aeProducts) {
+        if (!p.productId || seenIds.has(p.productId)) continue;
+        const pricing = calculateEtsyPrice(p.priceMin);
+        if (!passesQualityFilter(p, pricing.markup)) continue;
+        seenIds.add(p.productId);
+        quality.push(toCuratedProduct(p, ck.keyword));
+      }
+      quality.sort((a, b) => b.qualityScore - a.qualityScore);
+      const top = quality.slice(0, 5);
+      if (top.length === 0) continue;
+
+      keywordResults.push({
+        keyword: ck.keyword,
+        totalListings: ck.etsyResult?.totalListings ?? 0,
+        avgTopFavorites: ck.etsyResult?.avgTopFavorites ?? 0,
+        uniqueShops: ck.etsyResult?.uniqueShops ?? 0,
+        score: ck.etsyResult?.score ?? 0,
+        verdict: ck.etsyResult?.verdict ?? "SKIP",
+        products: top,
+      });
+    }
+
+    if (keywordResults.length === 0) continue;
+
+    // Sort keywords within the category by score desc
+    keywordResults.sort((a, b) => b.score - a.score);
+
+    const etsyHotKeywords = keywordResults.filter(
+      (k) => k.verdict === "GREAT" || k.verdict === "GOOD",
     ).length;
-    const etsyTotalListings = categoryKeywords.reduce(
-      (sum, k) => sum + (k.etsyResult?.totalListings ?? 0),
+    const etsyTotalListings = keywordResults.reduce(
+      (sum, k) => sum + k.totalListings,
+      0,
+    );
+    const totalProducts = keywordResults.reduce(
+      (sum, k) => sum + k.products.length,
       0,
     );
 
-    // Aggregate AE products from every keyword in this category
-    const seenProductIds = new Set<number>();
-    const candidatePool: CuratedProduct[] = [];
-    for (const ck of categoryKeywords) {
-      const aeProducts = aeProductsByKeyword.get(ck.keyword) ?? [];
-      for (const p of aeProducts) {
-        if (!p.productId || seenProductIds.has(p.productId)) continue;
-        const pricing = calculateEtsyPrice(p.priceMin);
-        if (!passesQualityFilter(p, pricing.markup)) continue;
-        seenProductIds.add(p.productId);
-        candidatePool.push(toCuratedProduct(p, ck.keyword));
-      }
-    }
-
-    // Sort by composite quality score, take top 12 per category
-    candidatePool.sort((a, b) => b.qualityScore - a.qualityScore);
-    const topProducts = candidatePool.slice(0, 12);
-
-    // Only surface categories that have at least 1 quality product
-    // AND at least 1 keyword with Etsy traction — otherwise drop them
-    // so the user sees a curated list, not noise.
-    if (topProducts.length === 0) continue;
-
     categoryResults.push({
       category,
-      products: topProducts,
+      keywords: keywordResults,
+      totalProducts,
       etsyHotKeywords,
       etsyTotalListings,
     });
@@ -565,11 +601,11 @@ export async function huntByNiche(opts: {
     if (a.etsyHotKeywords !== b.etsyHotKeywords) {
       return b.etsyHotKeywords - a.etsyHotKeywords;
     }
-    return b.products.length - a.products.length;
+    return b.totalProducts - a.totalProducts;
   });
 
   const totalProductCount = categoryResults.reduce(
-    (sum, c) => sum + c.products.length,
+    (sum, c) => sum + c.totalProducts,
     0,
   );
 
