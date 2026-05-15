@@ -211,9 +211,17 @@ export async function aliExpressCall<T = unknown>(
   // 4-attempt × 800ms-base backoff could waste up to 12s per failing
   // call. With many parallel calls (~40 AE during a Manual Hunting
   // hunt), retry storms compounded into 60s+ wall times.
+  //
+  // IMPORTANT: acquireSlot lives OUTSIDE the retry loop. Each logical
+  // call consumes exactly ONE token, so retries don't re-queue
+  // through the rate limiter. When acquireSlot was inside the loop,
+  // a few % of calls hitting 429 would compound — 40 calls + a
+  // dozen retries pushed effective queue depth to 50+ tokens, which
+  // is what was making the last categories' previews time out
+  // before they ever fetched.
+  await acquireSlot();
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    await acquireSlot();
     try {
       const res = await fetch(url, { method: "POST" });
       if (!res.ok) {

@@ -698,10 +698,12 @@ export async function huntByNiche(opts: {
   // drag the whole hunt past the user's patience threshold.
   //
   // Sizing math: with AE rate-limited at 5 QPS, 40 calls drain the
-  // queue in ~8s. The last call needs queue-wait (~8s) + HTTP (~1s)
-  // + one retry budget (~1.5s) = ~10.5s. 12s gives the last few
-  // keywords (which were silently timing out before) safe margin.
-  const PREVIEW_TIMEOUT_MS = 12000;
+  // queue in ~8s. After the retry-bucket fix (one token per logical
+  // call, retries no longer re-queue), the last call needs
+  // ~8s queue + 1.5s HTTP + ~1.5s retry = ~11s. 15s gives 4s of
+  // hard margin so even pathological AE latency spikes don't kill
+  // the preview for the last categories.
+  const PREVIEW_TIMEOUT_MS = 15000;
   // Diagnostic counters for Vercel logs — helps us see why specific
   // keywords don't get previews.
   let zeroProductCount = 0;
