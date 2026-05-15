@@ -30,6 +30,7 @@ import {
   QuotaExceededError,
   SEO_AUTOPILOT_DAILY_LIMIT,
 } from "@/lib/services/seo-autopilot-quota.service";
+import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -78,25 +79,20 @@ export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
-  // ─── Role gate (EM-team test phase) ─────────────────────────────
-  // Scoped to CEO + Izaan + EM employees while we validate the rollout
-  // with one team. Mirrors the page.tsx predicate exactly. To broaden
-  // later, add the partner / AE / ME predicates back here AND in
-  // page.tsx in lockstep.
+  // ─── Role gate ──────────────────────────────────────────────────
+  // CEO + Izaan + EM employees + Etsy partners (Awais, Mubeen).
+  // Shared helper keeps this in lockstep with page.tsx and swap-tag.
   const u = session.user;
-  const role = u.role;
-  const empId = u.employeeId;
-  const isCeo = role === "SUPER_ADMIN";
-  const isManager = empId === "EM-4"; // Izaan
-  const isEmEmployee =
-    typeof empId === "string" &&
-    empId.startsWith("EM") &&
-    empId !== "EM-4" &&
-    empId !== "EM-4L";
+  const access = await getSeoAutopilotAccess({
+    id: u.id,
+    role: u.role,
+    employeeId: u.employeeId ?? null,
+  });
+  const isCeo = access.isCeo;
 
-  if (!isCeo && !isManager && !isEmEmployee) {
+  if (!access.canUseRealTool) {
     return error(
-      "Forbidden — SEO Autopilot is in private beta for the EM team",
+      "Forbidden — SEO Autopilot is not enabled for your account",
       403,
     );
   }

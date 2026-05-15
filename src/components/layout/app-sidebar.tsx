@@ -425,14 +425,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
               user.employeeId?.startsWith("AE") ||
               user.employeeId?.startsWith("ME")) &&
             user.employeeId !== "EM-4L";
-          // EM-team-only test phase for SEO Autopilot. Mirrors page.tsx
-          // and the API route's role gate.
+          // SEO Autopilot live roster (May 15 2026) — CEO + Izaan + EM
+          // employees + Etsy partners (Awais, Mubeen). AE/ME teams + HR
+          // still see "Soon". Mirrors page.tsx + API route gate.
           const isEmEmployee =
             user.employeeId?.startsWith("EM") &&
             user.employeeId !== "EM-4" &&
             user.employeeId !== "EM-4L";
           const isEmTeam = isIzaan || isEmEmployee;
-          const hasAutopilotBeta = isCeo || isEmTeam;
+          const hasAutopilotBeta = isCeo || isEmTeam || isEtsyPartner;
           const showTools =
             isCeo || isHrAdmin || isIzaan || isEtsyPartner || isEtsyEmployee;
           if (!showTools) return null;
@@ -493,10 +494,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     >
                       <Sparkles className="size-4" />
                       <span>SEO Autopilot</span>
-                      {/* EM-team test phase: CEO + Izaan + EM employees get
-                          the live tool → green "BETA" pill with a pulsing
-                          dot. Everyone else (AE/ME/Partners/HR) still sees
-                          the Coming Soon page → violet "SOON" pill. */}
+                      {/* Live for: CEO + Izaan + EM employees + Etsy
+                          partners (Awais, Mubeen) → green "BETA" pill with
+                          a pulsing dot. AE/ME/HR still see Coming Soon →
+                          violet "SOON" pill. */}
                       {hasAutopilotBeta ? (
                         <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
                           <span className="relative flex size-1">
