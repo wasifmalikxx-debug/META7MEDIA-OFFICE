@@ -812,8 +812,8 @@ function SourceCard({
             <Textarea
               value={aliTitle}
               onChange={(e) => onAliTitleChange(e.target.value)}
-              placeholder="ROSES Pearl Gorgeous Prom Dress Sweetheart Off the Shoulder Hollow Prom Gown..."
-              className="min-h-[110px] resize-none text-sm leading-relaxed bg-muted/20 border-border/70 focus-visible:border-orange-500/60 focus-visible:ring-orange-500/15 transition-colors"
+              placeholder="Paste the full AliExpress product title here — keyword-stuffed is fine. Autopilot extracts the search keyword, category, audience and style automatically."
+              className="min-h-[110px] resize-none text-sm leading-relaxed bg-muted/20 border-border/70 focus-visible:border-orange-500/60 focus-visible:ring-orange-500/15 transition-colors placeholder:text-muted-foreground/55"
               disabled={disabled}
             />
             {/* Char counter floating in bottom-right */}
