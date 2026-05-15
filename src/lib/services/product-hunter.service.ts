@@ -1,5 +1,5 @@
 /**
- * Opportunity Scanner — find underserved Etsy keywords for product
+ * Product Hunter — find underserved Etsy keywords for product
  * hunting on AliExpress.
  *
  * Given a seed category/product type, this:
@@ -7,10 +7,10 @@
  *   2. Queries Etsy for each variant in parallel (top 10 + total count
  *      + unique shop count)
  *   3. Scores each on demand · engagement · diversity · long-tail
- *   4. Returns the top opportunities sorted by score
+ *   4. Returns the top hunt candidates sorted by score
  *
- * The output drives the CEO Opportunity Scanner page — employees
- * should hunt AliExpress for the GREAT / GOOD keywords first.
+ * The output drives the CEO Product Hunter page — employees should
+ * hunt AliExpress for the GREAT / GOOD keywords first.
  */
 
 import {
@@ -23,16 +23,16 @@ import {
   type CostAccumulator,
 } from "./anthropic.service";
 
-export type OpportunityVerdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
+export type ProductHuntVerdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
 
-export interface OpportunityResult {
+export interface ProductHuntResult {
   keyword: string;
   totalListings: number; // saturation
   avgTopFavorites: number; // engagement signal
   uniqueShops: number; // top-10 diversity
   wordCount: number;
   score: number; // 0-100 composite
-  verdict: OpportunityVerdict;
+  verdict: ProductHuntVerdict;
   reasons: string[];
   topListings: Array<{
     title: string;
@@ -42,13 +42,13 @@ export interface OpportunityResult {
   }>;
 }
 
-export interface OpportunityScanResponse {
+export interface ProductHuntResponse {
   seedKeyword: string;
   scanCount: number; // variants Haiku produced
   evaluated: number; // variants successfully scored (some may fail Etsy queries)
   totalCostUsd: number; // Anthropic only — Etsy is free
   durationMs: number;
-  results: OpportunityResult[]; // sorted desc by score
+  results: ProductHuntResult[]; // sorted desc by score
 }
 
 /**
@@ -71,12 +71,12 @@ export interface OpportunityScanResponse {
  *   Long-tail bonus (20 pts max)
  *     — 4+ word keywords rank way easier than 2-word ones for new shops.
  */
-export function scoreOpportunity(stats: {
+export function scoreCandidate(stats: {
   keyword: string;
   totalListings: number;
   avgTopFavorites: number;
   uniqueShops: number;
-}): { score: number; verdict: OpportunityVerdict; reasons: string[] } {
+}): { score: number; verdict: ProductHuntVerdict; reasons: string[] } {
   const wordCount = stats.keyword.trim().split(/\s+/).length;
 
   let demandPoints = 0;
@@ -108,7 +108,7 @@ export function scoreOpportunity(stats: {
 
   const score = demandPoints + favPoints + diversityPoints + longTailPoints;
 
-  const verdict: OpportunityVerdict =
+  const verdict: ProductHuntVerdict =
     score >= 75
       ? "GREAT"
       : score >= 55
@@ -149,12 +149,12 @@ export function scoreOpportunity(stats: {
 
 /**
  * Evaluate a single keyword candidate against live Etsy data. Returns
- * the scored OpportunityResult or null if Etsy errored (we just drop
+ * the scored ProductHuntResult or null if Etsy errored (we just drop
  * those silently — the scan moves on with whatever succeeded).
  */
 async function evaluateKeyword(
   keyword: string,
-): Promise<OpportunityResult | null> {
+): Promise<ProductHuntResult | null> {
   try {
     const { totalListings, results } = await searchActiveListingsWithCount(
       keyword,
@@ -179,7 +179,7 @@ async function evaluateKeyword(
     }
     const uniqueShops = shopIdsWithId.size + withoutShopId;
 
-    const { score, verdict, reasons } = scoreOpportunity({
+    const { score, verdict, reasons } = scoreCandidate({
       keyword,
       totalListings,
       avgTopFavorites,
@@ -214,9 +214,9 @@ async function evaluateKeyword(
  * Cost: 1 Haiku call (~$0.005) + 25 Etsy calls (free, ~7 quota slots
  * each at our 3.3 QPS bucket).
  */
-export async function scanOpportunities(
+export async function huntProducts(
   seedKeyword: string,
-): Promise<OpportunityScanResponse> {
+): Promise<ProductHuntResponse> {
   const startedAt = Date.now();
   const costAccum: CostAccumulator = createCostAccumulator();
 
@@ -240,7 +240,7 @@ export async function scanOpportunities(
   // Step 2: query Etsy for each candidate in parallel
   const settled = await Promise.all(candidates.map(evaluateKeyword));
   const evaluated = settled.filter(
-    (s): s is OpportunityResult => s !== null,
+    (s): s is ProductHuntResult => s !== null,
   );
 
   // Step 3: sort by score desc, then by demand for tiebreak

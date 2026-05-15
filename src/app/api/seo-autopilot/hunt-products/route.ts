@@ -1,16 +1,16 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { json, error, requireAuth } from "@/lib/api-helpers";
-import { scanOpportunities } from "@/lib/services/opportunity-scanner.service";
+import { huntProducts } from "@/lib/services/product-hunter.service";
 
 /**
- * POST /api/seo-autopilot/scan-opportunities
+ * POST /api/seo-autopilot/hunt-products
  *
  * CEO-only (SUPER_ADMIN). Takes a seed keyword and returns 25-30
- * scored Etsy-niche opportunities — ranked by composite score
+ * scored Etsy-niche hunt candidates — ranked by composite score
  * (demand + engagement + shop diversity + long-tail bonus).
  *
- * Used by /seo-autopilot/opportunities so Wasif can find underserved
+ * Used by /seo-autopilot/product-hunter so Wasif can find underserved
  * niches before sending the team to hunt AliExpress for matching
  * products.
  *
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   if (!session) return error("Unauthorized", 401);
   if (session.user.role !== "SUPER_ADMIN") {
     return error(
-      "Forbidden — Opportunity Scanner is CEO-only during testing",
+      "Forbidden — Product Hunter is CEO-only during testing",
       403,
     );
   }
@@ -44,11 +44,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await scanOpportunities(payload.seedKeyword);
+    const result = await huntProducts(payload.seedKeyword);
     return json(result);
   } catch (err) {
     return error(
-      `Scan failed: ${err instanceof Error ? err.message : "unknown"}`,
+      `Hunt failed: ${err instanceof Error ? err.message : "unknown"}`,
       502,
     );
   }

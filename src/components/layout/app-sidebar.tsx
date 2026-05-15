@@ -460,21 +460,30 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
-                  {/* CEO-only: Opportunity Scanner — find underserved Etsy
-                      niches before sending the team to AliExpress. */}
-                  {isCeo && (
+                  {/* Product Hunter — finds underserved Etsy niches before
+                      sending the team to AliExpress. CEO sees the live tool
+                      (sky "New" pill); SEO Autopilot users (Izaan, EM, Etsy
+                      partners) see a Coming Soon page (violet "Soon" pill)
+                      so they know it's on the roadmap. */}
+                  {(isCeo || isEmTeam || isEtsyPartner) && (
                     <SidebarMenuItem>
                       <SidebarMenuButton
-                        render={<Link href="/seo-autopilot/opportunities" />}
+                        render={<Link href="/seo-autopilot/product-hunter" />}
                         isActive={isItemActive(
-                          "/seo-autopilot/opportunities",
+                          "/seo-autopilot/product-hunter",
                         )}
                       >
                         <Target className="size-4" />
-                        <span>Opportunity Scanner</span>
-                        <span className="ml-auto inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-950/50 px-1.5 py-0.5 text-[9px] font-bold text-sky-700 dark:text-sky-300 tracking-wider uppercase">
-                          New
-                        </span>
+                        <span>Product Hunter</span>
+                        {isCeo ? (
+                          <span className="ml-auto inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-950/50 px-1.5 py-0.5 text-[9px] font-bold text-sky-700 dark:text-sky-300 tracking-wider uppercase">
+                            New
+                          </span>
+                        ) : (
+                          <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
+                            Soon
+                          </span>
+                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}

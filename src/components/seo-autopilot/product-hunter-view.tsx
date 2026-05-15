@@ -27,7 +27,7 @@ import { toast } from "sonner";
 
 type Verdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
 
-interface OpportunityResult {
+interface ProductHuntResult {
   keyword: string;
   totalListings: number;
   avgTopFavorites: number;
@@ -50,7 +50,7 @@ interface ScanResponse {
   evaluated: number;
   totalCostUsd: number;
   durationMs: number;
-  results: OpportunityResult[];
+  results: ProductHuntResult[];
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ const VERDICT_STYLE: Record<
 
 type VerdictFilter = "all" | "great" | "good" | "maybe" | "skip";
 
-export function OpportunityScannerView() {
+export function ProductHunterView() {
   const [seed, setSeed] = useState("");
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<ScanResponse | null>(null);
@@ -113,7 +113,7 @@ export function OpportunityScannerView() {
     setErrorMsg(null);
     setResult(null);
     try {
-      const res = await fetch("/api/seo-autopilot/scan-opportunities", {
+      const res = await fetch("/api/seo-autopilot/hunt-products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seedKeyword: seed.trim() }),
@@ -187,7 +187,7 @@ export function OpportunityScannerView() {
           ) : (
             <div className="space-y-2">
               {filtered.map((r, i) => (
-                <OpportunityRow
+                <HuntResultRow
                   key={r.keyword}
                   result={r}
                   rank={i + 1}
@@ -279,7 +279,7 @@ function HeroBanner({
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-[1.05]">
-              Opportunity Scanner
+              Product Hunter
             </h1>
             <p className="text-[13px] sm:text-sm text-white/75 mt-2 leading-relaxed max-w-2xl">
               Find underserved Etsy niches before the team hunts AliExpress.
@@ -397,7 +397,7 @@ function InputCard({
             className="relative w-full h-14 gap-3 bg-gradient-to-r from-sky-500 via-violet-500 to-violet-600 hover:from-sky-500 hover:via-violet-500 hover:to-violet-600 text-white font-bold text-[15px] tracking-wide rounded-2xl shadow-xl shadow-violet-500/30 ring-1 ring-violet-700/30 hover:shadow-2xl hover:shadow-violet-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
           >
             <Search className="size-5" />
-            <span>Scan opportunities</span>
+            <span>Hunt products</span>
             <span className="ml-1 text-xs font-semibold opacity-80 hidden sm:inline">
               · ~10s
             </span>
@@ -625,14 +625,14 @@ function FilterPill({
   );
 }
 
-// ─── Single opportunity row ─────────────────────────────────────────
+// ─── Single hunt-result row ─────────────────────────────────────────
 
-function OpportunityRow({
+function HuntResultRow({
   result,
   rank,
   animationDelay,
 }: {
-  result: OpportunityResult;
+  result: ProductHuntResult;
   rank: number;
   animationDelay: number;
 }) {
