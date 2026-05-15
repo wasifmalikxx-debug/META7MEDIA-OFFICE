@@ -20,9 +20,14 @@ import { prisma } from "@/lib/prisma";
  */
 
 const API_BASE = "https://api-sg.aliexpress.com/sync";
+// AliExpress OAuth authorize page. After approval, AliExpress redirects
+// to our registered callback URL with `?code=XXX&state=YYY`.
 const OAUTH_AUTHORIZE_URL = "https://api-sg.aliexpress.com/oauth/authorize";
-const OAUTH_TOKEN_URL = "https://api-sg.aliexpress.com/rest/auth/token/create";
-const OAUTH_REFRESH_URL = "https://api-sg.aliexpress.com/rest/auth/token/refresh";
+// Token exchange + refresh both go through the SAME `/sync` endpoint
+// as regular API calls. The "endpoint" is just a different `method` param
+// with /auth/token/security/create or /auth/token/security/refresh.
+const OAUTH_TOKEN_METHOD = "/auth/token/security/create";
+const OAUTH_REFRESH_METHOD = "/auth/token/security/refresh";
 
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY ?? "";
 const APP_SECRET = process.env.ALIEXPRESS_APP_SECRET ?? "";
@@ -62,11 +67,50 @@ export interface ProductSearchResponse {
 export interface OAuthTokenResponse {
   access_token: string;
   refresh_token: string;
-  expires_in: number; // seconds
-  refresh_token_valid_time?: number; // ms epoch in some responses
+  // AliExpress returns either seconds (`expires_in`) OR an absolute
+  // ms epoch (`expire_time`). The callback handles both.
+  expires_in?: number;
+  expire_time?: number;
+  refresh_expires_in?: number;
+  refresh_token_valid_time?: number;
   user_id?: string;
   user_nick?: string;
   account_platform?: string;
+}
+
+/**
+ * Resolve the absolute access-token expiry from the variable shapes
+ * AliExpress uses (`expires_in` seconds vs `expire_time` ms epoch).
+ * Falls back to a 30-day window if AliExpress sends neither.
+ */
+export function resolveAccessExpiry(token: OAuthTokenResponse): Date {
+  if (typeof token.expire_time === "number" && token.expire_time > Date.now()) {
+    return new Date(token.expire_time);
+  }
+  if (typeof token.expires_in === "number" && token.expires_in > 0) {
+    return new Date(Date.now() + token.expires_in * 1000);
+  }
+  // Conservative fallback — AliExpress access tokens last ~1 year by default
+  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Same logic for refresh-token expiry.
+ */
+export function resolveRefreshExpiry(token: OAuthTokenResponse): Date | null {
+  if (
+    typeof token.refresh_token_valid_time === "number" &&
+    token.refresh_token_valid_time > Date.now()
+  ) {
+    return new Date(token.refresh_token_valid_time);
+  }
+  if (
+    typeof token.refresh_expires_in === "number" &&
+    token.refresh_expires_in > 0
+  ) {
+    return new Date(Date.now() + token.refresh_expires_in * 1000);
+  }
+  return null;
 }
 
 // ─── Signing ────────────────────────────────────────────────────────
@@ -209,15 +253,58 @@ export function buildAuthorizeUrl(state: string): string {
 }
 
 /**
+ * Pull the access_token bundle out of an AliExpress sync response.
+ *
+ * AliExpress wraps token responses in either:
+ *   { auth_token_security_create_response: { access_token, ... } }
+ *   { auth_token_security_refresh_response: { access_token, ... } }
+ *   { access_token: ..., refresh_token: ... }   (unwrapped, rare)
+ *
+ * Returns the inner object or throws if not present.
+ */
+function unwrapTokenResponse(raw: unknown): OAuthTokenResponse {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Empty token response");
+  }
+  const root = raw as Record<string, unknown>;
+
+  // Already unwrapped
+  if (typeof root.access_token === "string") {
+    return root as unknown as OAuthTokenResponse;
+  }
+
+  // Find any *_response wrapper
+  for (const key of Object.keys(root)) {
+    if (key.endsWith("_response") && root[key] && typeof root[key] === "object") {
+      const inner = root[key] as Record<string, unknown>;
+      if (typeof inner.access_token === "string") {
+        return inner as unknown as OAuthTokenResponse;
+      }
+    }
+  }
+
+  throw new Error(
+    `Token response missing access_token: ${JSON.stringify(raw).slice(0, 300)}`,
+  );
+}
+
+/**
  * Exchange the `code` from the OAuth callback for an access token +
- * refresh token. Stores nothing — the caller persists the result.
+ * refresh token. Goes through the SAME `/sync` endpoint as every other
+ * AliExpress API call — the only difference is the `method` param
+ * (and no `session` since we're creating the session).
+ *
+ * Verified shape: signed HMAC-SHA256, POST to /sync, params as query string.
  */
 export async function exchangeCodeForToken(
   code: string,
 ): Promise<OAuthTokenResponse> {
-  // The /rest/auth/token/create endpoint accepts POST with body params.
-  // Sign with the standard algorithm.
+  if (!APP_KEY || !APP_SECRET) {
+    throw new Error("AliExpress credentials not configured");
+  }
+
   const params: Record<string, string> = {
+    method: OAUTH_TOKEN_METHOD,
     app_key: APP_KEY,
     code,
     sign_method: "sha256",
@@ -225,28 +312,43 @@ export async function exchangeCodeForToken(
   };
   params.sign = signRequest(params);
 
-  const body = new URLSearchParams(params);
-  const res = await fetch(OAUTH_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  const json = await res.json();
-  if (!res.ok || json?.error_response || !json?.access_token) {
+  const url = `${API_BASE}?${new URLSearchParams(params).toString()}`;
+  const res = await fetch(url, { method: "POST" });
+  const text = await res.text();
+
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
     throw new Error(
-      `Token exchange failed: ${JSON.stringify(json).slice(0, 400)}`,
+      `Token exchange returned non-JSON (status ${res.status}): ${text.slice(0, 200)}`,
     );
   }
-  return json as OAuthTokenResponse;
+
+  // AliExpress wraps errors in error_response
+  const root = json as Record<string, unknown>;
+  if (root.error_response) {
+    const err = root.error_response as Record<string, unknown>;
+    throw new Error(
+      `AliExpress token error ${err.code ?? "?"}: ${err.sub_msg ?? err.msg ?? JSON.stringify(err)}`,
+    );
+  }
+
+  return unwrapTokenResponse(json);
 }
 
 /**
- * Refresh a near-expiry access token. Returns the new token bundle.
+ * Refresh a near-expiry access token. Same /sync endpoint, different method.
  */
 export async function refreshAccessToken(
   refreshToken: string,
 ): Promise<OAuthTokenResponse> {
+  if (!APP_KEY || !APP_SECRET) {
+    throw new Error("AliExpress credentials not configured");
+  }
+
   const params: Record<string, string> = {
+    method: OAUTH_REFRESH_METHOD,
     app_key: APP_KEY,
     refresh_token: refreshToken,
     sign_method: "sha256",
@@ -254,19 +356,28 @@ export async function refreshAccessToken(
   };
   params.sign = signRequest(params);
 
-  const body = new URLSearchParams(params);
-  const res = await fetch(OAUTH_REFRESH_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  const json = await res.json();
-  if (!res.ok || json?.error_response || !json?.access_token) {
+  const url = `${API_BASE}?${new URLSearchParams(params).toString()}`;
+  const res = await fetch(url, { method: "POST" });
+  const text = await res.text();
+
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
     throw new Error(
-      `Token refresh failed: ${JSON.stringify(json).slice(0, 400)}`,
+      `Token refresh returned non-JSON (status ${res.status}): ${text.slice(0, 200)}`,
     );
   }
-  return json as OAuthTokenResponse;
+
+  const root = json as Record<string, unknown>;
+  if (root.error_response) {
+    const err = root.error_response as Record<string, unknown>;
+    throw new Error(
+      `AliExpress refresh error ${err.code ?? "?"}: ${err.sub_msg ?? err.msg ?? JSON.stringify(err)}`,
+    );
+  }
+
+  return unwrapTokenResponse(json);
 }
 
 /**
@@ -296,13 +407,15 @@ export async function getActiveTokenForUser(
   // Within 24h of expiry — refresh
   try {
     const fresh = await refreshAccessToken(token.refreshToken);
-    const newExpiresAt = new Date(Date.now() + fresh.expires_in * 1000);
+    const newExpiresAt = resolveAccessExpiry(fresh);
+    const newRefreshExpiresAt = resolveRefreshExpiry(fresh);
     await prisma.aliExpressToken.update({
       where: { id: token.id },
       data: {
         accessToken: fresh.access_token,
         refreshToken: fresh.refresh_token,
         expiresAt: newExpiresAt,
+        refreshExpiresAt: newRefreshExpiresAt,
       },
     });
     return fresh.access_token;

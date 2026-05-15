@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
-import { exchangeCodeForToken } from "@/lib/services/aliexpress-api.service";
+import {
+  exchangeCodeForToken,
+  resolveAccessExpiry,
+  resolveRefreshExpiry,
+} from "@/lib/services/aliexpress-api.service";
 
 /**
  * GET /api/aliexpress/callback
@@ -63,11 +67,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    console.log(
+      `[aliexpress] callback: exchanging code (len=${code.length}) for user ${session.user.id}`,
+    );
     const token = await exchangeCodeForToken(code);
-    const expiresAt = new Date(Date.now() + token.expires_in * 1000);
-    const refreshExpiresAt = token.refresh_token_valid_time
-      ? new Date(token.refresh_token_valid_time)
-      : null;
+    console.log(
+      `[aliexpress] callback: got token (user_id=${token.user_id}, user_nick=${token.user_nick}, expires_in=${token.expires_in}, expire_time=${token.expire_time})`,
+    );
+
+    const expiresAt = resolveAccessExpiry(token);
+    const refreshExpiresAt = resolveRefreshExpiry(token);
 
     await prisma.aliExpressToken.upsert({
       where: {
@@ -94,6 +103,8 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    console.log(`[aliexpress] callback: token persisted, redirecting to success`);
+
     const res = NextResponse.redirect(
       new URL(
         "/seo-autopilot/product-hunter?aliConnect=success",
@@ -103,11 +114,15 @@ export async function GET(request: NextRequest) {
     res.cookies.delete("ali_oauth_state");
     return res;
   } catch (err) {
-    console.error("[aliexpress] callback exchange failed:", err);
-    const reason = err instanceof Error ? err.message : "unknown";
+    const reason = err instanceof Error ? err.message : String(err);
+    // Full error to Vercel logs for diagnosis
+    console.error(
+      `[aliexpress] callback exchange FAILED for user ${session.user.id}:`,
+      reason,
+    );
     return NextResponse.redirect(
       new URL(
-        `/seo-autopilot/product-hunter?aliConnect=exchange_failed&reason=${encodeURIComponent(reason.slice(0, 120))}`,
+        `/seo-autopilot/product-hunter?aliConnect=exchange_failed&reason=${encodeURIComponent(reason.slice(0, 200))}`,
         request.url,
       ),
     );
