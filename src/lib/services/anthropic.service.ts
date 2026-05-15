@@ -644,6 +644,62 @@ const CATEGORY_NAME_STOP_WORDS = new Set([
 ]);
 
 /**
+ * Gender-qualifier mapping: if the niche contains any of the trigger
+ * words, ALL generated keywords MUST contain at least one of the
+ * matching enforcement tokens. Hard-coded post-filter backstop in
+ * case Haiku drifts.
+ */
+const GENDER_ENFORCEMENT: Array<{
+  triggers: string[];
+  requiresAny: string[];
+}> = [
+  {
+    triggers: ["mens", "men's", "men", "male", "boys", "boyfriend"],
+    requiresAny: ["men", "male", "boy", "his", "groom", "husband", "boyfriend", "dad", "father"],
+  },
+  {
+    triggers: ["womens", "women's", "women", "female", "girls", "girlfriend"],
+    requiresAny: ["women", "female", "girl", "her", "bride", "wife", "girlfriend", "mom", "mother", "lady", "ladies"],
+  },
+  {
+    triggers: ["kids", "children", "child", "toddler", "baby", "infant"],
+    requiresAny: ["kid", "children", "child", "toddler", "baby", "infant"],
+  },
+];
+
+/**
+ * Find any gender-qualifier rules that apply to this niche.
+ * Returns the list of "requires" tokens that keywords must contain at
+ * least one of, OR empty array if niche has no gender constraint.
+ */
+function getNicheGenderRequirements(niche: string): string[] {
+  const nicheLower = " " + niche.toLowerCase() + " ";
+  for (const rule of GENDER_ENFORCEMENT) {
+    for (const trigger of rule.triggers) {
+      // Check for trigger as a whole word (padded with spaces)
+      if (
+        nicheLower.includes(` ${trigger} `) ||
+        nicheLower.includes(` ${trigger}'`) ||
+        nicheLower.startsWith(`${trigger} `) ||
+        nicheLower.endsWith(` ${trigger}`)
+      ) {
+        return rule.requiresAny;
+      }
+    }
+  }
+  return [];
+}
+
+function keywordMatchesGenderRequirement(
+  keyword: string,
+  requiresAny: string[],
+): boolean {
+  if (requiresAny.length === 0) return true;
+  const kwLower = keyword.toLowerCase();
+  return requiresAny.some((tok) => kwLower.includes(tok));
+}
+
+/**
  * Extract product-anchor stems from a category name. Splits on any
  * non-alphanumeric chars + filters stop words + trims plural/derived
  * suffixes to short stems so AE title `includes()` substring matching
@@ -704,6 +760,24 @@ CATEGORIES — rules:
   • "Home Decor" → Wall Art, Throw Pillows, Candles, Vases, Mirrors, Plant Pots, Rugs, Doormats, Curtains (9)
 - Each category 1-3 words, Title Case
 - NO duplicates, NO niche-name repeats
+
+🚫 NICHE FIDELITY — ABSOLUTE RULE:
+If the niche contains a GENDER or AUDIENCE qualifier, EVERY single keyword across ALL categories MUST contain that qualifier. NO exceptions. The user is searching for ONE specific market segment.
+
+  • Niche "mens linen clothing"  → EVERY keyword must include "men" or "mens" or "male" or "for him". Drop keywords without.
+  • Niche "womens jewelry"       → EVERY keyword must include "women" or "womens" or "female" or "for her".
+  • Niche "kids clothing"        → EVERY keyword must include "kids" or "children" or "boys" or "girls" or "toddler".
+  • Niche "boho jewelry"         → no gender constraint (niche has no gender)
+
+Examples for niche "mens linen clothing":
+  ✅ "mens linen button down shirt"
+  ✅ "linen pants for men summer"
+  ✅ "casual linen shirt mens beach"
+  ❌ "linen long sleeve shirt"  (gender ambiguous — sounds womens-default)
+  ❌ "women linen blouse"       (WRONG GENDER)
+  ❌ "linen pants summer"       (no gender at all)
+
+Same rule applies to OTHER strict niche qualifiers (material like "linen", style like "y2k", aesthetic like "cottagecore") — keep them threaded through keywords so AliExpress doesn't drift the search.
 
 PRODUCT ANCHORS — rules (per category):
 3-5 single-word product noun stems that MUST appear in a real product title in this category. These let us filter out off-topic AliExpress matches.
@@ -780,6 +854,12 @@ Return 6-8 proven-selling categories, each with exactly 5 long-tail buyer-intent
     const seenCats = new Set<string>();
     const result: NicheBreakdownCategory[] = [];
 
+    // Gender / audience enforcement — if niche specifies a market segment
+    // (mens / womens / kids), every keyword must contain a matching token.
+    // Hard backstop in case Haiku drifts.
+    const genderRequirements = getNicheGenderRequirements(opts.niche);
+    let droppedForGender = 0;
+
     for (const c of cats) {
       const name = (c?.name ?? "").toString().trim();
       if (!name || name.length < 2 || name.length > 40) continue;
@@ -801,6 +881,12 @@ Return 6-8 proven-selling categories, each with exactly 5 long-tail buyer-intent
           if (words.length === 2) {
             const cat = name.toLowerCase();
             if (cat.includes(words[0]) || cat.includes(words[1])) return false;
+          }
+          // Gender / audience enforcement — drop keywords missing the
+          // niche's required market-segment tokens.
+          if (!keywordMatchesGenderRequirement(k, genderRequirements)) {
+            droppedForGender++;
+            return false;
           }
           return true;
         })
@@ -836,6 +922,12 @@ Return 6-8 proven-selling categories, each with exactly 5 long-tail buyer-intent
         });
         seenCats.add(lower);
       }
+    }
+
+    if (genderRequirements.length > 0 && droppedForGender > 0) {
+      console.log(
+        `[generateNicheBreakdown] gender filter dropped ${droppedForGender} keywords (niche: "${opts.niche}", required-any: [${genderRequirements.join(", ")}])`,
+      );
     }
 
     return result.slice(0, 12);

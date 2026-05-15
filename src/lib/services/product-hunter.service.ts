@@ -656,11 +656,17 @@ export async function huntByNiche(opts: {
   // running in parallel = ~20s total instead of 30s sequential.
   const previewByKeyword = new Map<string, KeywordPreview | null>();
   // Per-call timeout so a single slow / 429-retrying AE call can't
-  // drag the whole hunt past the user's patience threshold. The AE
-  // service has 4 retries with exponential backoff (up to 12s per
-  // call). Most calls finish in <3s; the few that don't get killed
-  // at 6s and that keyword just renders without a preview.
-  const PREVIEW_TIMEOUT_MS = 6000;
+  // drag the whole hunt past the user's patience threshold.
+  // 10s budget is enough for AE network + one retry, while still
+  // capping worst-case hunt time at ~15-20s.
+  const PREVIEW_TIMEOUT_MS = 10000;
+  // Diagnostic counters for Vercel logs — helps us see why specific
+  // keywords don't get previews.
+  let zeroProductCount = 0;
+  let noAnchorMatchCount = 0;
+  let timeoutCount = 0;
+  let errorCount = 0;
+
   const fetchPreview = async (pair: { category: string; keyword: string }) => {
     if (!opts.accessToken) return null;
     const anchors = perCategory.find((c) => c.category === pair.category)
@@ -668,19 +674,40 @@ export async function huntByNiche(opts: {
 
     const fetchPromise = (async (): Promise<KeywordPreview | null> => {
       try {
+        // 15 candidates gives the relevance filter a wider net so we
+        // almost always find at least one anchor-matching product.
         const res = await searchProductsByKeyword(pair.keyword, {
           accessToken: opts.accessToken!,
-          pageSize: 8,
+          pageSize: 15,
           sortBy: "orders_desc",
         });
-        return pickBestPreview(res.products, pair.keyword, anchors);
-      } catch {
+        if (res.products.length === 0) {
+          zeroProductCount++;
+          return null;
+        }
+        const preview = pickBestPreview(res.products, pair.keyword, anchors);
+        if (!preview) {
+          noAnchorMatchCount++;
+          console.log(
+            `[hunt-preview] no anchor match for "${pair.keyword}" (anchors: [${anchors.join(", ")}], titles: ${res.products.slice(0, 3).map((p) => `"${p.title?.slice(0, 50)}"`).join(", ")})`,
+          );
+        }
+        return preview;
+      } catch (err) {
+        errorCount++;
+        console.warn(
+          `[hunt-preview] error for "${pair.keyword}":`,
+          err instanceof Error ? err.message : String(err),
+        );
         return null;
       }
     })();
 
     const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), PREVIEW_TIMEOUT_MS),
+      setTimeout(() => {
+        timeoutCount++;
+        resolve(null);
+      }, PREVIEW_TIMEOUT_MS),
     );
 
     return Promise.race([fetchPromise, timeoutPromise]);
@@ -712,7 +739,7 @@ export async function huntByNiche(opts: {
     ).then((r) => {
       tAeEnd = Date.now();
       console.log(
-        `[hunt-by-niche] AE previews done in ${tAeEnd - tAeStart}ms (${aePreviewsResolved}/${r.length} found)`,
+        `[hunt-by-niche] AE previews done in ${tAeEnd - tAeStart}ms (${aePreviewsResolved}/${r.length} found · ${zeroProductCount} returned-zero · ${noAnchorMatchCount} no-anchor-match · ${timeoutCount} timeout · ${errorCount} error)`,
       );
       return r;
     }),
