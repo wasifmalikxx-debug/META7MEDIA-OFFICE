@@ -20,6 +20,7 @@ import {
   Calendar,
   DollarSign,
   TrendingDown,
+  Shuffle,
 } from "lucide-react";
 
 // ─── API response types (mirror seo-autopilot-quota.service.ts) ─────
@@ -98,6 +99,10 @@ interface TeamStats {
   costTodayUsd: number;
   costYesterdayUsd: number;
   cost7DayUsd: number;
+  tagSwapsToday: number;
+  tagSwaps7Day: number;
+  tagSwapCostTodayUsd: number;
+  tagSwapCost7DayUsd: number;
   activeUsersToday: number;
   activeUsers7Day: number;
   blockedToday: number;
@@ -389,7 +394,7 @@ function KpiHeroRow({ stats }: { stats: TeamStats }) {
   const costDelta = stats.costTodayUsd - stats.costYesterdayUsd;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
       <BigKpiCard
         label="Gens today"
         value={stats.totalToday}
@@ -446,8 +451,22 @@ function KpiHeroRow({ stats }: { stats: TeamStats }) {
         value={formatUsd(stats.avgCostPerGen7DayUsd)}
         tone="amber"
         icon={Gauge}
-        subtitle="rolling 7d"
+        subtitle="rolling 7d (gens only)"
         animationDelay={300}
+      />
+      <BigKpiCard
+        label="Tag swaps today"
+        value={stats.tagSwapsToday}
+        tone="rose"
+        icon={Shuffle}
+        subtitle={
+          stats.tagSwapCostTodayUsd > 0
+            ? `${formatUsd(stats.tagSwapCostTodayUsd)} spent`
+            : stats.tagSwaps7Day > 0
+              ? `${stats.tagSwaps7Day} this week`
+              : "no swaps today"
+        }
+        animationDelay={360}
       />
     </div>
   );
@@ -1475,11 +1494,13 @@ function FooterNote({ limit }: { limit: number }) {
         <Heart className="size-3.5 text-muted-foreground mt-0.5 shrink-0" />
         <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
           Daily limit is <strong>{limit}</strong> generations per user (CEO
-          unlimited). Resets at midnight Pakistan time. Cost numbers are{" "}
-          <strong>actual</strong> — derived from Anthropic&apos;s{" "}
+          unlimited). Tag swaps don&apos;t count toward the limit but their
+          Anthropic cost is rolled into the &quot;Spend&quot; totals here.
+          Cost numbers are <strong>actual</strong> — derived from
+          Anthropic&apos;s{" "}
           <code className="bg-muted/40 rounded px-1">usage</code> response on
-          every API call (input + output + cached tokens × current pricing).
-          Should match the Anthropic console to within a fraction of a cent.
+          every API call (gens + swaps). Should match the Anthropic console
+          to within a fraction of a cent.
         </p>
       </CardContent>
     </Card>

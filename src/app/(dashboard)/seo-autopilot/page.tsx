@@ -87,7 +87,7 @@ export default async function SeoAutopilotPage() {
   if (canUseRealTool) {
     // No PageHeader — the hero banner inside the view already provides
     // the title + tagline. PageHeader was a duplicate.
-    return <SeoAutopilotView isCeo={isCeo} />;
+    return <SeoAutopilotView />;
   }
 
   // AE / ME employees, Awais, Mubeen, HR all land here during the test

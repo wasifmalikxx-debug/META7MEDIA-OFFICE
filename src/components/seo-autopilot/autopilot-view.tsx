@@ -22,7 +22,6 @@ import {
   Hash,
   RotateCw,
   Heart,
-  TrendingUp,
   ImageIcon,
   Shuffle,
   Ruler,
@@ -38,9 +37,13 @@ import {
   Award,
   Gauge,
   Clock,
+  BarChart3,
+  Activity,
+  Trophy,
+  Sparkle,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
-import Link from "next/link";
 import { SeoImageUploader, type UploadedImage } from "./image-uploader";
 import { SizeSelector, VariantSelector } from "./option-selectors";
 
@@ -211,7 +214,7 @@ function formatCount(n: number): string {
  * Backend contract is untouched — same POST /api/seo-autopilot/generate
  * with { aliExpressTitle, images, sizes, variants }, same response shape.
  */
-export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
+export function SeoAutopilotView() {
   // ─── Form state ───────────────────────────────────────────────────
   const [aliTitle, setAliTitle] = useState("");
   const [images, setImages] = useState<UploadedImage[]>([]);
@@ -437,17 +440,25 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
       {/* Page background — radial gradient + dot mesh that's barely there */}
       <PageBackdrop />
 
-      <div className="relative max-w-3xl mx-auto space-y-6 pb-16 pt-1">
-        <HeroBanner
-          generating={generating}
-          hasResult={!!result}
-          usage={usage}
-          isCeo={isCeo}
-        />
+      {/* Page width adapts based on state — narrow for input/cinema
+          (focused single-column flow), wider once a result lands so the
+          insights sidebar has room on desktop without crowding. */}
+      <div
+        className={`relative mx-auto space-y-6 pb-16 pt-1 transition-[max-width] ${
+          showResult ? "max-w-6xl" : "max-w-3xl"
+        }`}
+      >
+        <div className={showResult ? "max-w-3xl mx-auto" : ""}>
+          <HeroBanner
+            generating={generating}
+            hasResult={!!result}
+            usage={usage}
+          />
+        </div>
 
         {/* ──────────────── INPUT ──────────────── */}
         {showInput && (
-          <div className="space-y-5 ap-stagger-in" style={{ animationDelay: "120ms" }}>
+          <div className="max-w-3xl mx-auto space-y-5 ap-stagger-in" style={{ animationDelay: "120ms" }}>
             <SourceCard
               aliTitle={aliTitle}
               onAliTitleChange={setAliTitle}
@@ -487,36 +498,59 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
         {/* Shown only when no generation is in-flight and no result is
             currently displayed — keeps the input flow focused. */}
         {showInput && !historyLoading && history.length > 0 && (
-          <MyHistorySection
-            entries={history}
-            windowLabel={historyWindowLabel}
-            onRestore={handleRestoreHistory}
-          />
+          <div className="max-w-3xl mx-auto">
+            <MyHistorySection
+              entries={history}
+              windowLabel={historyWindowLabel}
+              onRestore={handleRestoreHistory}
+            />
+          </div>
         )}
 
         {/* ──────────────── GENERATING ──────────────── */}
-        {generating && <GenerationCinema stage={stage} />}
+        {generating && (
+          <div className="max-w-3xl mx-auto">
+            <GenerationCinema stage={stage} />
+          </div>
+        )}
 
         {/* ──────────────── ERROR ──────────────── */}
-        {errorMsg && !generating && <ErrorPanel message={errorMsg} />}
+        {errorMsg && !generating && (
+          <div className="max-w-3xl mx-auto">
+            <ErrorPanel message={errorMsg} />
+          </div>
+        )}
 
         {/* ──────────────── BLOCKED ──────────────── */}
         {result &&
           !generating &&
           result.compliance.verdict === "BLOCKED" && (
-            <BlockedPanel verdict={result.compliance} onReset={handleReset} />
+            <div className="max-w-3xl mx-auto">
+              <BlockedPanel verdict={result.compliance} onReset={handleReset} />
+            </div>
           )}
 
-        {/* ──────────────── RESULT ──────────────── */}
+        {/* ──────────────── RESULT (with sidebar) ──────────────── */}
+        {/* On desktop (lg+) the listing sits on the left and the
+            Insights panel docks on the right as a sticky sidebar — like
+            eRank's keyword analyzer. On smaller screens the insights
+            stack below the result. */}
         {showResult && result && (
           <>
-            <ResultPanel
+            <div
               key={result.generatedAt}
-              data={result}
-              userImages={images}
-            />
-            <InsightsDrawer data={result} />
-            <RestartButton onReset={handleReset} />
+              className="grid grid-cols-1 lg:grid-cols-5 gap-5"
+            >
+              <div className="lg:col-span-3 min-w-0">
+                <ResultPanel data={result} userImages={images} />
+              </div>
+              <aside className="lg:col-span-2 lg:sticky lg:top-4 lg:self-start min-w-0">
+                <InsightsDrawer data={result} />
+              </aside>
+            </div>
+            <div className="max-w-3xl mx-auto w-full">
+              <RestartButton onReset={handleReset} />
+            </div>
           </>
         )}
 
@@ -550,12 +584,10 @@ function HeroBanner({
   generating,
   hasResult,
   usage,
-  isCeo,
 }: {
   generating: boolean;
   hasResult: boolean;
   usage: UsageSummary | null;
-  isCeo: boolean;
 }) {
   return (
     <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-orange-500/20 ap-stagger-in">
@@ -632,15 +664,6 @@ function HeroBanner({
             </span>
           )}
           {usage && <UsagePill usage={usage} />}
-          {isCeo && (
-            <Link
-              href="/seo-autopilot/dashboard"
-              className="ml-auto inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.16em] uppercase bg-white/10 hover:bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 transition-colors"
-            >
-              <TrendingUp className="size-3" />
-              Dashboard
-            </Link>
-          )}
         </div>
 
         {/* Title + icon */}
@@ -2279,18 +2302,26 @@ function AltTextRow({
   );
 }
 
-// ─── Insights drawer ────────────────────────────────────────────────
+// ─── Insights panel (tabbed, sidebar-style) ────────────────────────
+//
+// Redesigned as a 4-tab analytics panel — Health · Keywords · Tags ·
+// Competition — modeled on tools like eRank's keyword analyzer. Tabs
+// are always visible (no collapse) so employees can scan results +
+// scroll insights at the same time on desktop (where it docks as a
+// sticky right sidebar).
+
+type InsightsTab = "health" | "keywords" | "tags" | "competition";
 
 function InsightsDrawer({ data }: { data: GenerateResponse }) {
-  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<InsightsTab>("health");
   const tagIntel = data.tagIntelligence ?? [];
   const anchors = data.anchorKeywords;
   const hasAnchors =
-    !!anchors &&
-    (anchors.topPhrases.length > 0 || anchors.topTags.length > 0);
+    !!anchors && (anchors.topPhrases.length > 0 || anchors.topTags.length > 0);
+  const hasCompetitors = data.research.topCompetitors.length > 0;
   const hasInsights =
     tagIntel.length > 0 ||
-    data.research.topCompetitors.length > 0 ||
+    hasCompetitors ||
     data.listing?.rationale.keywordFocus ||
     hasAnchors;
 
@@ -2298,65 +2329,866 @@ function InsightsDrawer({ data }: { data: GenerateResponse }) {
 
   return (
     <PremiumCard>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full text-left transition-colors hover:bg-muted/20"
-      >
-        <div className="p-6 sm:p-7 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3.5 min-w-0">
+      {/* HEADER */}
+      <div className="relative overflow-hidden">
+        <div
+          aria-hidden
+          className="absolute -top-16 -right-10 size-[280px] rounded-full blur-3xl opacity-40 ap-aurora-3"
+          style={{
+            background:
+              "radial-gradient(closest-side, rgba(16,185,129,0.4), transparent 70%)",
+          }}
+        />
+        <div className="relative p-5 sm:p-6">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
               <span
                 aria-hidden
-                className="absolute -inset-1 rounded-2xl bg-emerald-400/20 blur-md"
+                className="absolute -inset-1 rounded-2xl bg-emerald-400/30 blur-md"
               />
-              <div className="relative size-10 rounded-2xl bg-gradient-to-br from-emerald-400/20 via-emerald-500/15 to-sky-500/20 ring-1 ring-emerald-500/30 flex items-center justify-center">
-                <TrendingUp className="size-4 text-emerald-600 dark:text-emerald-400" />
+              <div className="relative size-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-sky-600 ring-1 ring-emerald-700/30 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                <Activity className="size-5 text-white" />
               </div>
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.22em]">
-                Deep dive
+                Insights
               </p>
-              <h3 className="text-[17px] font-bold tracking-tight leading-tight mt-0.5">
-                More insights
+              <h3 className="text-base font-bold tracking-tight leading-tight">
+                Why this listing should rank
               </h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Anchor keywords · tag demand · competitors · strategy
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* TAB BAR */}
+      <div className="px-3 border-y border-border/60 bg-muted/15">
+        <div className="flex items-center gap-0.5 overflow-x-auto -mx-1 px-1 scrollbar-thin">
+          <InsightsTabPill
+            active={tab === "health"}
+            onClick={() => setTab("health")}
+            icon={Activity}
+            label="Health"
+          />
+          <InsightsTabPill
+            active={tab === "keywords"}
+            onClick={() => setTab("keywords")}
+            icon={Hash}
+            label="Keywords"
+            disabled={!hasAnchors}
+          />
+          <InsightsTabPill
+            active={tab === "tags"}
+            onClick={() => setTab("tags")}
+            icon={BarChart3}
+            label="Tags"
+            disabled={tagIntel.length === 0}
+            badge={tagIntel.length || undefined}
+          />
+          <InsightsTabPill
+            active={tab === "competition"}
+            onClick={() => setTab("competition")}
+            icon={Trophy}
+            label="Competition"
+            disabled={!hasCompetitors}
+            badge={data.research.topCompetitors.length || undefined}
+          />
+        </div>
+      </div>
+
+      {/* TAB CONTENT */}
+      <div className="p-5 sm:p-6 min-h-[300px]">
+        {tab === "health" && <HealthTab data={data} onChangeTab={setTab} />}
+        {tab === "keywords" && hasAnchors && anchors && (
+          <KeywordsTab anchors={anchors} listing={data.listing} />
+        )}
+        {tab === "tags" && tagIntel.length > 0 && (
+          <TagsTab intel={tagIntel} />
+        )}
+        {tab === "competition" && hasCompetitors && (
+          <CompetitionTab
+            competitors={data.research.topCompetitors}
+            competitorsAnalyzed={data.research.competitorsAnalyzed}
+            searchKeyword={data.research.searchKeyword}
+          />
+        )}
+      </div>
+    </PremiumCard>
+  );
+}
+
+// ─── Tab bar pill ──────────────────────────────────────────────────
+
+function InsightsTabPill({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  badge,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  badge?: number;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`relative inline-flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+        active
+          ? "text-emerald-700 dark:text-emerald-300"
+          : "text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      <Icon className="size-3" />
+      {label}
+      {typeof badge === "number" && (
+        <span
+          className={`inline-flex items-center justify-center rounded-full text-[9px] font-bold tabular-nums size-4 ${
+            active
+              ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+      {active && (
+        <span
+          aria-hidden
+          className="absolute inset-x-2 bottom-0 h-0.5 rounded-t-full bg-gradient-to-r from-emerald-500 to-sky-500"
+        />
+      )}
+    </button>
+  );
+}
+
+// ─── Health score calculation ──────────────────────────────────────
+
+interface HealthScore {
+  total: number; // 0-100
+  grade: "A" | "B" | "C" | "D";
+  subs: Array<{
+    label: string;
+    score: number; // 0-100
+    detail: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }>;
+  issues: Array<{
+    severity: "warn" | "info";
+    text: string;
+    action?: { label: string; targetTab: InsightsTab };
+  }>;
+}
+
+function calcHealthScore(data: GenerateResponse): HealthScore {
+  const listing = data.listing;
+  const tagIntel = data.tagIntelligence ?? [];
+  const anchors = data.anchorKeywords;
+  const issues: HealthScore["issues"] = [];
+
+  // ─── Title score (out of 100) ────────────────────────────────────
+  let titleScore = 0;
+  if (listing) {
+    const titleLen = listing.title.length;
+    // Length utilization (up to 50 pts)
+    if (titleLen >= 100 && titleLen <= 140) titleScore += 50;
+    else if (titleLen >= 80) titleScore += 35;
+    else if (titleLen >= 60) titleScore += 20;
+    else titleScore += 10;
+    // Pipe separators (up to 25 pts) — pros use 2+
+    const pipeCount = (listing.title.match(/\|/g) || []).length;
+    if (pipeCount >= 2) titleScore += 25;
+    else if (pipeCount === 1) titleScore += 15;
+    // No commas (good practice — Etsy splits at commas) — 25 pts
+    if (!listing.title.includes(",")) titleScore += 25;
+
+    if (titleLen < 100) {
+      issues.push({
+        severity: "info",
+        text: `Title is ${titleLen}/140 chars — adding more keyword surface usually helps rank.`,
+      });
+    }
+    if (listing.title.includes(",")) {
+      issues.push({
+        severity: "warn",
+        text: "Title uses commas — Etsy treats commas as keyword separators. Use ` | ` instead.",
+      });
+    }
+  }
+
+  // ─── Tags score (out of 100) ────────────────────────────────────
+  let tagsScore = 0;
+  if (listing) {
+    // Tag count (must be 13) — 20 pts
+    if (listing.tags.length === 13) tagsScore += 20;
+    // No duplicates — 20 pts
+    const lower = listing.tags.map((t) => t.toLowerCase());
+    if (new Set(lower).size === lower.length) tagsScore += 20;
+    // Tier distribution — 60 pts: need niche presence for new shops
+    if (tagIntel.length > 0) {
+      const tiers = tagIntel.reduce(
+        (acc, t) => {
+          acc[t.tier] = (acc[t.tier] ?? 0) + 1;
+          return acc;
+        },
+        {} as Record<TagTier, number>,
+      );
+      const niche = tiers.niche ?? 0;
+      const moderate = tiers.moderate ?? 0;
+      const hot = tiers.hot ?? 0;
+      const saturated = tiers.saturated ?? 0;
+      // Reward 2+ niche tags, 4+ moderate, 4-6 hot, 0-2 saturated
+      if (niche >= 2) tagsScore += 25;
+      else if (niche === 1) tagsScore += 12;
+      else
+        issues.push({
+          severity: "warn",
+          text: "No niche tags (under 1k listings) — a new shop won't rank against the established sellers without easier wins. Swap 1-2 hot tags for niche alternatives.",
+          action: { label: "View tags", targetTab: "tags" },
+        });
+
+      if (moderate >= 3) tagsScore += 20;
+      else if (moderate >= 1) tagsScore += 10;
+
+      if (hot >= 3 && hot <= 7) tagsScore += 10;
+      if (saturated === 0) tagsScore += 5;
+      else if (saturated >= 3)
+        issues.push({
+          severity: "warn",
+          text: `${saturated} tags are saturated (>50k listings) — these almost never rank for new shops. Consider swapping at least one.`,
+          action: { label: "View tags", targetTab: "tags" },
+        });
+    } else {
+      // No intel — give partial credit
+      tagsScore += 30;
+    }
+  }
+
+  // ─── Description score (out of 100) ─────────────────────────────
+  let descScore = 0;
+  if (listing) {
+    const len = listing.description.length;
+    // Length (up to 50 pts) — target 600-1500 chars
+    if (len >= 600 && len <= 1500) descScore += 50;
+    else if (len >= 400) descScore += 35;
+    else if (len >= 200) descScore += 20;
+    else descScore += 5;
+    // Has bullets (up to 30 pts)
+    const bulletCount = (listing.description.match(/•/g) || []).length;
+    if (bulletCount >= 4) descScore += 30;
+    else if (bulletCount >= 2) descScore += 15;
+    // Sections (blank lines = 20 pts)
+    const sectionCount = listing.description.split(/\n\s*\n/).length;
+    if (sectionCount >= 3) descScore += 20;
+    else if (sectionCount === 2) descScore += 10;
+  }
+
+  // ─── Keyword anchor coverage (out of 100) ───────────────────────
+  let kwScore = 0;
+  if (listing && anchors) {
+    const titleLower = listing.title.toLowerCase();
+    const tagsLower = new Set(listing.tags.map((t) => t.toLowerCase()));
+    const totalPhrases = anchors.topPhrases.length;
+    let hit = 0;
+    for (const p of anchors.topPhrases) {
+      if (
+        titleLower.includes(p.phrase.toLowerCase()) ||
+        tagsLower.has(p.phrase.toLowerCase())
+      ) {
+        hit += 1;
+      }
+    }
+    if (totalPhrases === 0) kwScore = 70;
+    else kwScore = Math.round((hit / totalPhrases) * 100);
+    if (totalPhrases > 0 && hit / totalPhrases < 0.4) {
+      issues.push({
+        severity: "warn",
+        text: `Only ${hit}/${totalPhrases} top anchor phrases appear in your title or tags. Anchor keywords are the proven buyer-search terms from the top 20 ranking listings — front-load them.`,
+        action: { label: "View keywords", targetTab: "keywords" },
+      });
+    }
+  } else {
+    kwScore = 70;
+  }
+
+  const total = Math.round((titleScore + tagsScore + descScore + kwScore) / 4);
+  const grade: HealthScore["grade"] =
+    total >= 90 ? "A" : total >= 75 ? "B" : total >= 60 ? "C" : "D";
+
+  return {
+    total,
+    grade,
+    subs: [
+      {
+        label: "Title",
+        score: titleScore,
+        detail: listing
+          ? `${listing.title.length}/140 chars · ${
+              (listing.title.match(/\|/g) || []).length
+            } separators`
+          : "—",
+        icon: Type,
+      },
+      {
+        label: "Tags",
+        score: tagsScore,
+        detail: listing
+          ? `${listing.tags.length}/13 · ${tagIntel.length} scored`
+          : "—",
+        icon: Hash,
+      },
+      {
+        label: "Description",
+        score: descScore,
+        detail: listing ? `${listing.description.length} chars` : "—",
+        icon: Type,
+      },
+      {
+        label: "Anchor coverage",
+        score: kwScore,
+        detail:
+          anchors && anchors.topPhrases.length > 0
+            ? `${anchors.topPhrases.length} anchors analyzed`
+            : "limited data",
+        icon: Target,
+      },
+    ],
+    issues,
+  };
+}
+
+// ─── Health tab ────────────────────────────────────────────────────
+
+function HealthTab({
+  data,
+  onChangeTab,
+}: {
+  data: GenerateResponse;
+  onChangeTab: (t: InsightsTab) => void;
+}) {
+  const health = calcHealthScore(data);
+  const ringTone =
+    health.total >= 90
+      ? "emerald"
+      : health.total >= 75
+        ? "sky"
+        : health.total >= 60
+          ? "amber"
+          : "rose";
+  const ringClass = {
+    emerald: "from-emerald-500 to-emerald-600 shadow-emerald-500/40",
+    sky: "from-sky-500 to-sky-600 shadow-sky-500/40",
+    amber: "from-amber-500 to-orange-500 shadow-amber-500/40",
+    rose: "from-rose-500 to-rose-600 shadow-rose-500/40",
+  }[ringTone];
+
+  return (
+    <div className="space-y-5">
+      {/* Score + grade */}
+      <div className="flex items-center gap-5">
+        <div className="relative shrink-0">
+          <span
+            aria-hidden
+            className={`absolute -inset-1 rounded-full bg-gradient-to-br ${ringClass} blur-md opacity-50`}
+          />
+          <div
+            className={`relative size-20 rounded-full bg-gradient-to-br ${ringClass} ring-2 ring-white/30 flex flex-col items-center justify-center shadow-xl text-white`}
+          >
+            <span className="text-2xl font-bold tabular-nums leading-none">
+              {health.total}
+            </span>
+            <span className="text-[9px] font-bold uppercase tracking-wider opacity-80">
+              /100
+            </span>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Listing health
+          </p>
+          <p className="text-xl font-bold leading-tight">
+            Grade {health.grade}
+            <span className="text-muted-foreground/60 font-medium ml-1.5 text-sm">
+              ·{" "}
+              {health.total >= 90
+                ? "Excellent"
+                : health.total >= 75
+                  ? "Strong"
+                  : health.total >= 60
+                    ? "Decent"
+                    : "Needs work"}
+            </span>
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+            Composite of title quality, tag mix, description, and how well
+            you front-load proven anchor keywords from winning listings.
+          </p>
+        </div>
+      </div>
+
+      {/* Sub-scores */}
+      <div className="grid grid-cols-2 gap-2">
+        {health.subs.map((s) => (
+          <HealthSubCell key={s.label} sub={s} />
+        ))}
+      </div>
+
+      {/* Issues / suggestions */}
+      {health.issues.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground flex items-center gap-1.5">
+            <Lightbulb className="size-3" />
+            {health.issues.length} suggestion
+            {health.issues.length > 1 ? "s" : ""} to improve
+          </p>
+          <div className="space-y-1.5">
+            {health.issues.map((issue, i) => (
+              <div
+                key={i}
+                className={`rounded-lg px-3 py-2.5 text-[11px] leading-relaxed ring-1 ${
+                  issue.severity === "warn"
+                    ? "bg-amber-50/60 dark:bg-amber-950/20 ring-amber-500/25"
+                    : "bg-sky-50/60 dark:bg-sky-950/20 ring-sky-500/25"
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  {issue.severity === "warn" ? (
+                    <AlertTriangle className="size-3 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                  ) : (
+                    <Info className="size-3 text-sky-600 dark:text-sky-400 mt-0.5 shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p>{issue.text}</p>
+                    {issue.action && (
+                      <button
+                        type="button"
+                        onClick={() => onChangeTab(issue.action!.targetTab)}
+                        className="mt-1 text-[10px] font-bold uppercase tracking-wider underline opacity-80 hover:opacity-100"
+                      >
+                        {issue.action.label} →
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Why this works — collapsed rationale */}
+      {data.listing?.rationale.keywordFocus && (
+        <div className="border-t border-border/40 pt-4 space-y-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground flex items-center gap-1.5">
+            <Sparkle className="size-3" />
+            Autopilot&apos;s strategy
+          </p>
+          <RationaleCompactBlock rationale={data.listing.rationale} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HealthSubCell({
+  sub,
+}: {
+  sub: HealthScore["subs"][number];
+}) {
+  const Icon = sub.icon;
+  const tone =
+    sub.score >= 80
+      ? "emerald"
+      : sub.score >= 60
+        ? "sky"
+        : sub.score >= 40
+          ? "amber"
+          : "rose";
+  const toneClass = {
+    emerald: "bg-emerald-500",
+    sky: "bg-sky-500",
+    amber: "bg-amber-500",
+    rose: "bg-rose-500",
+  }[tone];
+  const textTone = {
+    emerald: "text-emerald-700 dark:text-emerald-400",
+    sky: "text-sky-700 dark:text-sky-400",
+    amber: "text-amber-700 dark:text-amber-400",
+    rose: "text-rose-700 dark:text-rose-400",
+  }[tone];
+  return (
+    <div className="rounded-lg bg-muted/20 ring-1 ring-border/50 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Icon className="size-3 text-muted-foreground/70 shrink-0" />
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+            {sub.label}
+          </p>
+        </div>
+        <span className={`text-xs font-bold tabular-nums ${textTone}`}>
+          {sub.score}
+        </span>
+      </div>
+      <div className="h-1 rounded-full bg-muted/60 overflow-hidden">
+        <div
+          className={`h-full ap-bar-fill ${toneClass}`}
+          style={{ ["--bar-w" as string]: `${sub.score}%` }}
+        />
+      </div>
+      <p className="text-[9px] text-muted-foreground/70 mt-1 truncate">
+        {sub.detail}
+      </p>
+    </div>
+  );
+}
+
+function RationaleCompactBlock({
+  rationale,
+}: {
+  rationale: GeneratedListing["rationale"];
+}) {
+  const rows = [
+    { label: "Keyword focus", value: rationale.keywordFocus, icon: Hash },
+    { label: "Title strategy", value: rationale.titleStrategy, icon: Type },
+    { label: "Audience hook", value: rationale.audienceHook, icon: Heart },
+  ].filter((r) => r.value);
+  return (
+    <div className="space-y-1.5">
+      {rows.map((r, i) => {
+        const Icon = r.icon;
+        return (
+          <div
+            key={r.label}
+            className="rounded-md bg-muted/20 ring-1 ring-border/40 px-3 py-2 flex items-start gap-2.5 ap-stagger-in"
+            style={{ animationDelay: `${i * 60}ms` }}
+          >
+            <Icon className="size-3 text-muted-foreground/60 mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/80">
+                {r.label}
+              </p>
+              <p className="text-[11px] text-foreground/85 leading-relaxed mt-0.5">
+                {r.value}
               </p>
             </div>
           </div>
-          <ChevronDown
-            className={`size-5 text-muted-foreground transition-transform shrink-0 ${open ? "rotate-180" : ""}`}
-          />
-        </div>
-      </button>
+        );
+      })}
+    </div>
+  );
+}
 
-      {open && (
-        <div className="px-6 sm:px-7 pb-7 space-y-8 border-t border-border/60 pt-7">
-          {hasAnchors && anchors && (
-            <div className="ap-stagger-in" style={{ animationDelay: "0ms" }}>
-              <AnchorKeywordsBlock anchors={anchors} />
-            </div>
-          )}
-          {tagIntel.length > 0 && (
-            <div className="ap-stagger-in" style={{ animationDelay: "100ms" }}>
-              <TagIntelligenceBlock intel={tagIntel} />
-            </div>
-          )}
-          {data.listing?.rationale.keywordFocus && (
-            <div className="ap-stagger-in" style={{ animationDelay: "200ms" }}>
-              <RationaleBlock rationale={data.listing.rationale} />
-            </div>
-          )}
-          {data.research.topCompetitors.length > 0 && (
-            <div className="ap-stagger-in" style={{ animationDelay: "300ms" }}>
-              <CompetitorsBlock competitors={data.research.topCompetitors} />
-            </div>
-          )}
+// ─── Keywords tab ──────────────────────────────────────────────────
+
+function KeywordsTab({
+  anchors,
+  listing,
+}: {
+  anchors: AnchorKeywords;
+  listing: GeneratedListing | null;
+}) {
+  const titleLower = (listing?.title ?? "").toLowerCase();
+  const tagsLower = new Set(
+    (listing?.tags ?? []).map((t) => t.toLowerCase()),
+  );
+
+  const annotatePhrase = (phrase: string) => {
+    const lower = phrase.toLowerCase();
+    return {
+      inTitle: titleLower.includes(lower),
+      inTags: tagsLower.has(lower),
+    };
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Explainer */}
+      <div className="rounded-lg bg-emerald-50/40 dark:bg-emerald-950/20 ring-1 ring-emerald-500/20 px-3 py-2.5 flex items-start gap-2.5">
+        <Info className="size-3.5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+        <p className="text-[11px] leading-relaxed text-foreground/85">
+          <strong>Anchor keywords</strong> are the phrases that appear most
+          often in the top-{anchors.totalListings} ranking listings for your
+          search. They&apos;re proven buyer-search terms — Autopilot
+          front-loads them in your title to mirror what&apos;s already winning.
+        </p>
+      </div>
+
+      {/* Top phrases */}
+      {anchors.topPhrases.length > 0 && (
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Top phrases (from titles)
+            </p>
+            <p className="text-[10px] text-muted-foreground tabular-nums">
+              ✓ = appears in your listing
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            {anchors.topPhrases.map((p) => {
+              const { inTitle, inTags } = annotatePhrase(p.phrase);
+              const used = inTitle || inTags;
+              return (
+                <div
+                  key={p.phrase}
+                  className={`rounded-lg ring-1 px-3 py-2 flex items-center gap-2 ${
+                    used
+                      ? "bg-emerald-50/40 dark:bg-emerald-950/15 ring-emerald-500/25"
+                      : "bg-muted/15 ring-border/50"
+                  }`}
+                >
+                  {used ? (
+                    <Check
+                      className="size-3 text-emerald-600 dark:text-emerald-400 shrink-0"
+                      strokeWidth={3}
+                    />
+                  ) : (
+                    <span className="size-3 rounded-full bg-muted-foreground/20 shrink-0" />
+                  )}
+                  <span className="text-[12px] font-medium flex-1 min-w-0 truncate">
+                    {p.phrase}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {inTitle && (
+                      <span className="text-[9px] font-bold uppercase tracking-wider bg-orange-500/15 ring-1 ring-orange-500/30 text-orange-700 dark:text-orange-300 rounded px-1.5 py-0.5">
+                        Title
+                      </span>
+                    )}
+                    {inTags && (
+                      <span className="text-[9px] font-bold uppercase tracking-wider bg-violet-500/15 ring-1 ring-violet-500/30 text-violet-700 dark:text-violet-300 rounded px-1.5 py-0.5">
+                        Tag
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold tabular-nums text-muted-foreground w-9 text-right">
+                      {p.percentage}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
-    </PremiumCard>
+
+      {/* Top tags from competitors */}
+      {anchors.topTags.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Top tags used by competitors
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {anchors.topTags.map((t) => {
+              const { inTags } = annotatePhrase(t.phrase);
+              return (
+                <span
+                  key={t.phrase}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] ring-1 ${
+                    inTags
+                      ? "bg-emerald-500/15 ring-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                      : "bg-muted/40 ring-border"
+                  }`}
+                  title={`Used by ${t.count} of ${anchors.totalListings} top listings`}
+                >
+                  {inTags && (
+                    <Check
+                      className="size-2.5 text-emerald-600 dark:text-emerald-400"
+                      strokeWidth={3}
+                    />
+                  )}
+                  <span className="font-medium">{t.phrase}</span>
+                  <span className="text-[9px] font-bold tabular-nums opacity-70">
+                    {t.percentage}%
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Education box */}
+      <div className="border-t border-border/40 pt-4 space-y-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground flex items-center gap-1.5">
+          <Lightbulb className="size-3" />
+          Why this matters
+        </p>
+        <ul className="space-y-1.5 text-[11px] leading-relaxed text-foreground/80">
+          <li className="flex gap-2">
+            <span className="mt-1 size-1 rounded-full bg-emerald-500 shrink-0" />
+            <span>
+              Etsy&apos;s algorithm weighs the <strong>first 40 chars</strong>{" "}
+              of your title heaviest — anchor phrases there beat the same
+              phrase buried at the end.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1 size-1 rounded-full bg-sky-500 shrink-0" />
+            <span>
+              <strong>Long-tail beats short-tail</strong> for new shops — 3-5
+              word phrases rank way easier than &ldquo;dress&rdquo; alone.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1 size-1 rounded-full bg-violet-500 shrink-0" />
+            <span>
+              If a phrase shows up in 80%+ of top listings, skipping it is
+              leaving free ranking signal on the floor.
+            </span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tags tab ──────────────────────────────────────────────────────
+
+function TagsTab({ intel }: { intel: TagDemand[] }) {
+  const counts = intel.reduce(
+    (acc, t) => {
+      acc[t.tier] = (acc[t.tier] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<TagTier, number>,
+  );
+  const total = intel.length;
+
+  return (
+    <div className="space-y-5">
+      {/* Tier explainer */}
+      <div className="space-y-2.5">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          Tag mix by competition tier
+        </p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {(["niche", "moderate", "hot", "saturated"] as TagTier[]).map((t) => {
+            const count = counts[t] ?? 0;
+            return (
+              <div
+                key={t}
+                className={`rounded-lg ring-1 px-2.5 py-2 ${TIER_STYLE[t]}`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                    <span>{TIER_GLYPH[t]}</span>
+                    {t}
+                  </span>
+                  <span className="text-sm font-bold tabular-nums">
+                    {count}
+                  </span>
+                </div>
+                <p className="text-[9px] opacity-75 leading-tight">
+                  {TIER_DESCRIPTION[t]}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+        {(counts.niche ?? 0) === 0 && total >= 5 && (
+          <div className="rounded-lg bg-amber-50/60 dark:bg-amber-950/20 ring-1 ring-amber-500/25 px-3 py-2 text-[11px] flex items-start gap-2">
+            <AlertTriangle className="size-3 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <span className="leading-relaxed">
+              <strong>No niche tags.</strong> New shops need at least 1-2 tags
+              under 1k listings to rank in week one. Click ↻ on a hot tag in
+              the result and Autopilot will suggest niche alternatives.
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Per-tag table */}
+      <TagIntelligenceBlock intel={intel} />
+    </div>
+  );
+}
+
+// ─── Competition tab ───────────────────────────────────────────────
+
+function CompetitionTab({
+  competitors,
+  competitorsAnalyzed,
+  searchKeyword,
+}: {
+  competitors: { rank: number; title: string; favorites: number }[];
+  competitorsAnalyzed: number;
+  searchKeyword: string;
+}) {
+  const avgFavs =
+    competitors.length > 0
+      ? Math.round(
+          competitors.reduce((s, c) => s + c.favorites, 0) / competitors.length,
+        )
+      : 0;
+  const maxFavs = competitors.length > 0
+    ? Math.max(...competitors.map((c) => c.favorites))
+    : 0;
+
+  return (
+    <div className="space-y-5">
+      {/* Niche overview */}
+      <div className="grid grid-cols-3 gap-2">
+        <CompetitionStat
+          label="Analyzed"
+          value={competitorsAnalyzed.toString()}
+          subtitle="top listings"
+        />
+        <CompetitionStat
+          label="Avg favs"
+          value={formatCount(avgFavs)}
+          subtitle="benchmark"
+        />
+        <CompetitionStat
+          label="Top spot"
+          value={formatCount(maxFavs)}
+          subtitle="#1 favs"
+        />
+      </div>
+
+      <div className="rounded-lg bg-sky-50/40 dark:bg-sky-950/20 ring-1 ring-sky-500/20 px-3 py-2.5 flex items-start gap-2.5">
+        <Info className="size-3.5 text-sky-600 dark:text-sky-400 mt-0.5 shrink-0" />
+        <p className="text-[11px] leading-relaxed text-foreground/85">
+          These are the <strong>top {competitors.length} listings</strong>{" "}
+          ranking for{" "}
+          <span className="font-bold text-foreground">
+            &ldquo;{searchKeyword}&rdquo;
+          </span>{" "}
+          today. To beat them, you need to match their keyword coverage AND
+          earn enough favorites to climb. Autopilot front-loaded the proven
+          keywords; favorites grow from listing photos + reviews.
+        </p>
+      </div>
+
+      <CompetitorsBlock competitors={competitors} />
+    </div>
+  );
+}
+
+function CompetitionStat({
+  label,
+  value,
+  subtitle,
+}: {
+  label: string;
+  value: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="rounded-lg bg-muted/20 ring-1 ring-border/50 px-2.5 py-2">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <p className="text-base font-bold tabular-nums leading-tight mt-0.5">
+        {value}
+      </p>
+      <p className="text-[9px] text-muted-foreground/70 mt-0.5">{subtitle}</p>
+    </div>
   );
 }
 
@@ -2395,65 +3227,6 @@ function InsightsSectionHeader({
           {description}
         </p>
       </div>
-    </div>
-  );
-}
-
-function AnchorKeywordsBlock({ anchors }: { anchors: AnchorKeywords }) {
-  return (
-    <div className="space-y-3.5">
-      <InsightsSectionHeader
-        icon={Target}
-        label="Anchor keywords"
-        description={`High-frequency phrases + tags from the top ${anchors.totalListings} ranking listings — Autopilot front-loads these.`}
-        tone="emerald"
-      />
-
-      {anchors.topPhrases.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
-            Phrases (title signal)
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {anchors.topPhrases.map((p, i) => (
-              <span
-                key={p.phrase}
-                className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 ring-1 ring-border px-2.5 py-1 text-[11px] ap-tag-pop"
-                style={{ animationDelay: `${i * 25}ms` }}
-                title={`${p.count} of ${anchors.totalListings} listings`}
-              >
-                <span className="font-medium">{p.phrase}</span>
-                <span className="text-[9px] font-bold text-muted-foreground tabular-nums">
-                  {p.percentage}%
-                </span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {anchors.topTags.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
-            Tags (seller-curated signal)
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {anchors.topTags.map((t, i) => (
-              <span
-                key={t.phrase}
-                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300/40 px-2.5 py-1 text-[11px] text-emerald-700 dark:text-emerald-300 ap-tag-pop"
-                style={{ animationDelay: `${i * 25}ms` }}
-                title={`${t.count} of ${anchors.totalListings} listings`}
-              >
-                <span className="font-medium">{t.phrase}</span>
-                <span className="text-[9px] font-bold tabular-nums">
-                  {t.percentage}%
-                </span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2653,82 +3426,6 @@ function DemandBar({ score }: { score: number }) {
       <span className="text-[11px] tabular-nums font-bold w-7 text-right">
         {score}
       </span>
-    </div>
-  );
-}
-
-function RationaleBlock({
-  rationale,
-}: {
-  rationale: GeneratedListing["rationale"];
-}) {
-  const rows = [
-    {
-      label: "Keyword focus",
-      value: rationale.keywordFocus,
-      icon: Hash,
-      tone: "orange" as const,
-    },
-    {
-      label: "Title strategy",
-      value: rationale.titleStrategy,
-      icon: Type,
-      tone: "amber" as const,
-    },
-    {
-      label: "Audience hook",
-      value: rationale.audienceHook,
-      icon: Heart,
-      tone: "violet" as const,
-    },
-  ].filter((r) => r.value);
-  if (rows.length === 0) return null;
-
-  const toneStyles = {
-    amber:
-      "bg-amber-50/60 dark:bg-amber-950/20 ring-amber-500/20 text-amber-700 dark:text-amber-400",
-    orange:
-      "bg-orange-50/60 dark:bg-orange-950/20 ring-orange-500/20 text-orange-700 dark:text-orange-400",
-    violet:
-      "bg-violet-50/60 dark:bg-violet-950/20 ring-violet-500/20 text-violet-700 dark:text-violet-400",
-  } as const;
-
-  return (
-    <div className="space-y-3">
-      <InsightsSectionHeader
-        icon={Lightbulb}
-        label="Why this works"
-        description="Autopilot's strategic reasoning behind the title, keywords and hook."
-        tone="violet"
-      />
-      <div className="grid gap-2">
-        {rows.map((r, i) => {
-          const Icon = r.icon;
-          return (
-            <div
-              key={r.label}
-              className={`rounded-xl ring-1 px-4 py-3.5 flex items-start gap-3 ap-stagger-in ${toneStyles[r.tone]}`}
-              style={{ animationDelay: `${i * 80}ms` }}
-            >
-              <div
-                className={`size-9 rounded-lg bg-card/80 ring-1 ${toneStyles[r.tone]} flex items-center justify-center shrink-0`}
-              >
-                <Icon className="size-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`text-[10px] font-bold uppercase tracking-[0.22em] ${toneStyles[r.tone].split(" ").pop()}`}
-                >
-                  {r.label}
-                </p>
-                <p className="text-[12px] text-foreground/90 leading-relaxed mt-1">
-                  {r.value}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

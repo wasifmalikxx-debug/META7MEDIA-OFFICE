@@ -219,6 +219,7 @@ model User {
   dailyReports           DailyReport[]
   seoAutopilotUsage      SeoAutopilotUsage[] @relation("SeoAutopilotUsageUser")
   seoAutopilotLogs       SeoAutopilotLog[]   @relation("SeoAutopilotLogUser")
+  seoAutopilotTagSwaps   SeoAutopilotTagSwapLog[] @relation("SeoAutopilotTagSwapUser")
   complaintsSubmitted    Complaint[]        @relation("ComplaintSubmitter")
   complaintsResolved     Complaint[]        @relation("ComplaintResponder")
   complaintMessages      ComplaintMessage[] @relation("ComplaintMessageSender")
@@ -974,6 +975,32 @@ model SeoAutopilotUsage {
 //   verdict        — "ALLOWED" | "REVIEW" | "BLOCKED"
 //   category       — the Etsy category path Autopilot picked, NULL on
 //                    BLOCKED (no research is done past compliance)
+// Per-tag-swap audit log. Each row = one Haiku replacement-suggestion
+// request (3 alternative tags generated). User may pick one or none —
+// either way the suggestion call already cost ~$0.0014 in Haiku tokens
+// and we log it here so the CEO dashboard's "total Anthropic spend"
+// includes swap costs, not just main generation costs.
+model SeoAutopilotTagSwapLog {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation("SeoAutopilotTagSwapUser", fields: [userId], references: [id], onDelete: Cascade)
+  currentTag    String   @db.VarChar(50)
+  suggestedTags String[] // 0-3 entries, the tags Haiku proposed
+  reason        String?  @db.VarChar(160)
+
+  // Actual Anthropic cost — same accumulator pattern as the main gen
+  actualCostUsd Float? @db.Real
+  inputTokens      Int?
+  outputTokens     Int?
+  cacheReadTokens  Int?
+  cacheWriteTokens Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
 model SeoAutopilotLog {
   id             String   @id @default(cuid())
   userId         String

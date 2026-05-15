@@ -270,10 +270,16 @@ export function AdminDashboard({
   const [officeFilter, setOfficeFilter] = useState<string>("all");
 
   // ─── Money-visibility toggle ───────────────────────────────────────
-  // Hides every USD figure on the page (replaces with bullet dots) so
-  // the CEO can show the dashboard to others without revealing actual
-  // revenue. Off by default — Wasif sees the numbers when he opens it.
-  const [showMoney, setShowMoney] = useState<boolean>(true);
+  // Hides every USD figure on the page (sale / profit / refunds — masked
+  // with bullet dots) so the dashboard can be opened in public without
+  // leaking real numbers. Pakistani-rupee tiles (Pending payroll, Fines
+  // this month) intentionally stay visible — those are operational
+  // figures Wasif always wants at-a-glance.
+  //
+  // Default OFF (hidden) on every fresh page load so a casual refresh
+  // doesn't expose revenue if the screen is being shared. Click the eye
+  // toggle in the financial KPI strip to reveal for the session.
+  const [showMoney, setShowMoney] = useState<boolean>(false);
 
   // Filter teamGroups + financials by office. Reused in the existing
   // "Teams" headcount section AND the new financials sections so they

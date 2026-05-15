@@ -286,10 +286,17 @@ export interface TeamStatsResponse {
   totalToday: number;
   totalYesterday: number;
   total7Day: number;
-  // Estimated USD spend across all users in each window
+  // Estimated USD spend across all users in each window — INCLUDES
+  // both generation costs AND tag-swap suggestion costs (they're
+  // separate API calls but the same Anthropic line item)
   costTodayUsd: number;
   costYesterdayUsd: number;
   cost7DayUsd: number;
+  // Tag-swap specific metrics (subset of the cost totals above)
+  tagSwapsToday: number;
+  tagSwaps7Day: number;
+  tagSwapCostTodayUsd: number;
+  tagSwapCost7DayUsd: number;
   // Engagement / safety metrics for the top-of-dashboard KPI row
   activeUsersToday: number;
   activeUsers7Day: number;
@@ -379,7 +386,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     department: { select: { name: true } },
   } as const;
 
-  const [usageRows, logRows] = await Promise.all([
+  const [usageRows, logRows, swapRows] = await Promise.all([
     prisma.seoAutopilotUsage.findMany({
       where: { date: { gte: sevenDaysAgo } },
       include: { user: { select: userSelect } },
@@ -387,6 +394,13 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     prisma.seoAutopilotLog.findMany({
       where: { createdAt: { gte: sevenDaysAgo } },
       orderBy: { createdAt: "desc" },
+      include: { user: { select: userSelect } },
+    }),
+    // Tag-swap suggestion calls — separate Anthropic spend that's
+    // attributed to the same users; we roll their cost into the main
+    // totals so the dashboard reflects the full invoice.
+    prisma.seoAutopilotTagSwapLog.findMany({
+      where: { createdAt: { gte: sevenDaysAgo } },
       include: { user: { select: userSelect } },
     }),
   ]);
@@ -568,6 +582,70 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     }
   }
 
+  // ─── Roll tag-swap costs into the same totals ───────────────────
+  // Swap logs don't have a verdict / outcome — they only contribute to
+  // the cost numbers and the swap-specific counters. We bucket their
+  // cost into dailyTrend + per-user totals + global totals so the
+  // dashboard reflects every Anthropic dollar, not just generations.
+  let tagSwapsToday = 0;
+  let tagSwaps7Day = 0;
+  let tagSwapCostTodayUsd = 0;
+  let tagSwapCost7DayUsd = 0;
+
+  for (const swap of swapRows) {
+    if (!swap.user) continue;
+    const swapCost =
+      typeof swap.actualCostUsd === "number" && swap.actualCostUsd > 0
+        ? swap.actualCostUsd
+        : 0; // never estimate — swaps without tracked cost just don't count
+    const swapDayUtcMidnight = pktDateAsUtcMidnight(swap.createdAt);
+    const swapDayTime = swapDayUtcMidnight.getTime();
+
+    tagSwaps7Day += 1;
+    tagSwapCost7DayUsd += swapCost;
+    if (swapDayTime === todayTime) {
+      tagSwapsToday += 1;
+      tagSwapCostTodayUsd += swapCost;
+    }
+
+    // Roll into global cost totals
+    cost7DayUsd += swapCost;
+    if (swapDayTime === todayTime) costTodayUsd += swapCost;
+    if (swapDayTime === yesterdayTime) costYesterdayUsd += swapCost;
+
+    // Roll into per-day bucket (chart still shows generation count
+    // separately; cost rolls in so trend chart cost is total cost)
+    const bucket = dailyBuckets.get(swapDayTime);
+    if (bucket) bucket.costUsd += swapCost;
+
+    // Roll into per-user totals — swap costs attribute to the user
+    // who triggered the swap, even if they have no main gen row yet
+    const entry = byUser.get(swap.userId);
+    if (entry) {
+      entry.cost7DayUsd += swapCost;
+      if (swapDayTime === todayTime) entry.costTodayUsd += swapCost;
+    } else {
+      byUser.set(swap.userId, {
+        employeeId: swap.user.employeeId,
+        name: `${swap.user.firstName} ${swap.user.lastName}`.trim(),
+        role: swap.user.role,
+        department: resolveDepartmentLabel(
+          swap.user.department?.name,
+          swap.user.employeeId,
+        ),
+        countToday: 0,
+        countYesterday: 0,
+        count7Day: 0,
+        allowedCount: 0,
+        reviewCount: 0,
+        blockedCount: 0,
+        lastGeneratedAt: null,
+        cost7DayUsd: swapCost,
+        costTodayUsd: swapDayTime === todayTime ? swapCost : 0,
+      });
+    }
+  }
+
   const entries: TeamUsageEntry[] = Array.from(byUser.entries())
     .map(([userId, v]) => ({
       userId,
@@ -721,12 +799,19 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     costTodayUsd,
     costYesterdayUsd,
     cost7DayUsd,
+    tagSwapsToday,
+    tagSwaps7Day,
+    tagSwapCostTodayUsd,
+    tagSwapCost7DayUsd,
     activeUsersToday: activeUserIdsToday.size,
     activeUsers7Day: activeUserIds7Day.size,
     blockedToday: totalBlockedToday,
     blocked7Day: totalBlockedCount,
     avgCostPerGen7DayUsd:
-      total7DayCount > 0 ? cost7DayUsd / total7DayCount : 0,
+      total7DayCount > 0
+        ? (cost7DayUsd - tagSwapCost7DayUsd) /
+          Math.max(1, total7DayCount)
+        : 0,
     dailyTrend,
     costByOutcome7d: {
       allowedUsd: totalAllowedCost,
@@ -815,6 +900,43 @@ export async function logGeneration(opts: {
     });
   } catch {
     // Silent — never fail a generation because audit logging failed.
+  }
+}
+
+/**
+ * Insert a tag-swap-suggestion log row. Each row represents one Haiku
+ * call that produced 3 alternative tags — the user may pick one or
+ * none, either way the call cost real tokens that we need to attribute.
+ *
+ * Best-effort: never break the swap-tag response if logging fails.
+ */
+export async function logTagSwap(opts: {
+  userId: string;
+  currentTag: string;
+  suggestedTags: string[];
+  reason?: string | null;
+  actualCostUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+}): Promise<void> {
+  try {
+    await prisma.seoAutopilotTagSwapLog.create({
+      data: {
+        userId: opts.userId,
+        currentTag: opts.currentTag.slice(0, 50),
+        suggestedTags: opts.suggestedTags.slice(0, 5),
+        reason: opts.reason?.slice(0, 160) ?? null,
+        actualCostUsd: opts.actualCostUsd ?? null,
+        inputTokens: opts.inputTokens ?? null,
+        outputTokens: opts.outputTokens ?? null,
+        cacheReadTokens: opts.cacheReadTokens ?? null,
+        cacheWriteTokens: opts.cacheWriteTokens ?? null,
+      },
+    });
+  } catch {
+    // Silent — never fail the swap response over logging.
   }
 }
 

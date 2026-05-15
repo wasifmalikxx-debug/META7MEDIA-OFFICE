@@ -227,14 +227,17 @@ export interface TagReplacement {
   reason: string;
 }
 
-export async function suggestTagReplacements(opts: {
-  currentTag: string;
-  productTitle: string;
-  productType: string;
-  category: string;
-  existingTags: string[];
-  reason?: string;
-}): Promise<TagReplacement[]> {
+export async function suggestTagReplacements(
+  opts: {
+    currentTag: string;
+    productTitle: string;
+    productType: string;
+    category: string;
+    existingTags: string[];
+    reason?: string;
+  },
+  accum?: CostAccumulator,
+): Promise<TagReplacement[]> {
   const reasonLine = opts.reason
     ? `Reason for swapping: ${opts.reason}`
     : "Reason for swapping: the seller wants a fresh take on this tag (often because it's too saturated to rank for).";
@@ -277,6 +280,7 @@ Suggest 3 replacement tags.`,
       { role: "assistant", content: "{" },
     ],
   });
+  trackUsage(accum, msg, modelKindFromId(MODEL_VALIDATOR));
 
   const raw = "{" + extractText(msg);
   try {
@@ -699,7 +703,33 @@ CORE RULES
    If sizes and/or variants were supplied, mention them ONCE in the description in a natural way that fits the actual axis ("Available in XS-XXL and 5 colors", "Available in 3 phone models and 4 designs", "Comes in gold, silver, and rose gold"). Do NOT put them in title or tags — Etsy handles them as separate variation fields.
 
 7. IMAGE ALT TEXTS:
-   ONE per image you see (matching the image count). ≤ 250 chars each. Describe color, material, style, key features. Front-load the primary keyword (good for image SEO).
+   ONE per image you see (matching the image count). ≤ 250 chars each.
+
+   CRITICAL — the seller reuses the SAME alt text across every colour
+   and variation of this listing on Etsy. So your alt text must work
+   equally well for the blue version AND the white version AND the
+   black version AND every future variant.
+
+   NEVER include:
+   • Specific colour words: blue, white, black, red, pink, gold, rose
+     gold, ivory, navy, sage, emerald, beige, etc.
+   • Colour qualifiers: pastel, soft, deep, creamy, dusty, light, dark
+   • Variant-specific pattern words: polka dot, floral print, striped,
+     paisley, tartan (skip these even if visible — same alt has to fit
+     the plain version)
+
+   DO include (these stay constant across variants):
+   • Material: lace, satin, linen, cotton, leather, ceramic, etc.
+   • Silhouette: fitted bodice, A-line, mermaid, oversized, slim fit
+   • Construction: strapless, sweetheart neckline, high slit, V-neck
+   • Length / size class: floor length, midi, knee length, ankle
+   • Texture / surface: sheer mesh overlay, embroidered, pleated,
+     embossed, distressed, hammered
+   • Function / use: evening, formal, prom, gala, wedding guest
+
+   Front-load the primary product noun (good for image SEO). Example:
+     ✓ "Lace evening gown strapless sweetheart bodice high slit floor length formal prom dress sheer mesh overlay floral appliqués"
+     ✗ "Blue lace evening gown ..." (the word "blue" makes it wrong for every non-blue variant of this same listing)
 
 ============================================================
 GOOD vs BAD TITLE EXAMPLES

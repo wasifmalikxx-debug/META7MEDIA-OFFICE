@@ -1,23 +1,31 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { json, error, requireAuth } from "@/lib/api-helpers";
-import { suggestTagReplacements } from "@/lib/services/anthropic.service";
+import {
+  suggestTagReplacements,
+  createCostAccumulator,
+} from "@/lib/services/anthropic.service";
 import { getTagDemandStats } from "@/lib/services/etsy-api.service";
+import { logTagSwap } from "@/lib/services/seo-autopilot-quota.service";
 
 /**
  * POST /api/seo-autopilot/swap-tag
  *
- * SUPER_ADMIN only.
- *
- * Take a tag the seller wants to replace + the surrounding product
- * context, and return 3 alternative tags with Etsy demand stats so the
- * seller can pick the best swap.
+ * Whoever can use the main SEO Autopilot tool (CEO + Izaan + EM team
+ * during the test phase) can also call this endpoint to get 3 tag
+ * replacement suggestions for an existing tag.
  *
  * Pipeline:
- *   1. Haiku writes 3 replacement candidates (~$0.001)
+ *   1. Haiku writes 3 replacement candidates (~$0.0014, tracked via
+ *      the cost accumulator and logged to SeoAutopilotTagSwapLog so
+ *      it shows up in the CEO dashboard totals)
  *   2. Fetch live Etsy demand for each candidate in parallel (free)
  *   3. Return suggestions sorted by tier (niche first — that's the
  *      whole point of swapping, usually)
+ *
+ * No quota cap applied — tag swaps are cheap ($0.0014/call vs ~$0.04
+ * for a full gen) and rate-limiting them adds friction without
+ * meaningful cost protection.
  */
 
 export const dynamic = "force-dynamic";
@@ -35,8 +43,24 @@ const RequestSchema = z.object({
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
-  if (session.user.role !== "SUPER_ADMIN") {
-    return error("Forbidden", 403);
+
+  // ─── Role gate — mirrors /api/seo-autopilot/generate ──────────────
+  const u = session.user;
+  const role = u.role;
+  const empId = u.employeeId;
+  const isCeo = role === "SUPER_ADMIN";
+  const isManager = empId === "EM-4"; // Izaan
+  const isEmEmployee =
+    typeof empId === "string" &&
+    empId.startsWith("EM") &&
+    empId !== "EM-4" &&
+    empId !== "EM-4L";
+
+  if (!isCeo && !isManager && !isEmEmployee) {
+    return error(
+      "Forbidden — SEO Autopilot is in private beta for the EM team",
+      403,
+    );
   }
 
   let payload: z.infer<typeof RequestSchema>;
@@ -47,23 +71,45 @@ export async function POST(request: NextRequest) {
     return error(err instanceof Error ? err.message : "Invalid payload", 400);
   }
 
+  // Track Anthropic cost on this swap call so the CEO dashboard's
+  // total Anthropic spend reflects swap cost in addition to gen cost.
+  const costAccum = createCostAccumulator();
+
   // Stage 1 — Haiku brainstorms replacements
   let candidates;
   try {
-    candidates = await suggestTagReplacements({
-      currentTag: payload.currentTag,
-      productTitle: payload.productTitle,
-      productType: payload.productType,
-      category: payload.category,
-      existingTags: payload.existingTags,
-      reason: payload.reason ?? undefined,
-    });
+    candidates = await suggestTagReplacements(
+      {
+        currentTag: payload.currentTag,
+        productTitle: payload.productTitle,
+        productType: payload.productType,
+        category: payload.category,
+        existingTags: payload.existingTags,
+        reason: payload.reason ?? undefined,
+      },
+      costAccum,
+    );
   } catch (err) {
     return error(
       `Couldn't generate alternatives: ${err instanceof Error ? err.message : "unknown"}`,
       502,
     );
   }
+
+  // Log the swap-suggestion call with the actual Haiku cost. Even if
+  // the user picks zero of the candidates, we still paid Anthropic for
+  // this call — so it gets attributed to them in the audit.
+  await logTagSwap({
+    userId: u.id,
+    currentTag: payload.currentTag,
+    suggestedTags: candidates.map((c) => c.tag),
+    reason: payload.reason ?? null,
+    actualCostUsd: costAccum.totalCostUsd,
+    inputTokens: costAccum.totalInputTokens,
+    outputTokens: costAccum.totalOutputTokens,
+    cacheReadTokens: costAccum.totalCacheReadTokens,
+    cacheWriteTokens: costAccum.totalCacheWriteTokens,
+  });
 
   if (candidates.length === 0) {
     return json({ suggestions: [] });
