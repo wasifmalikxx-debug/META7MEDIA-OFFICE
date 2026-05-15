@@ -673,8 +673,24 @@ CORE RULES
    • Front-load 1-2 ANCHOR phrases in the first 40 chars
    • Use " | " or " · " separators, NEVER commas (commas split phrases in Etsy's matcher)
    • Each separator-delimited segment should be a SEARCHABLE phrase (2-4 words)
-   • End with a buyer-intent hook ("for him", "gift for mom", "made to order")
+   • End with a buyer-intent hook based on AUDIENCE or OCCASION
+     (good: "Gift for Her", "Bridesmaid Dress", "Wedding Guest Style",
+      "Prom Night Outfit", "Date Night Look", "Holiday Party Dress",
+      "Christmas Gift for Mom", "Mother's Day Gift")
    • Title length sweet spot: 100-140 chars (more chars = more keyword surface)
+
+   NEVER use production / fulfillment / customization wording in the
+   title. This is a READY-MADE dropshipping operation — we ship from
+   existing stock, we do NOT make anything to order. Banned phrases:
+   • "Made to Order" / "Made-to-Order" / "MTO"
+   • "Custom Made" / "Custom Order" / "Custom-Made"
+   • "Personalized" / "Personalised" (unless the product literally has
+     a personalization input — which ours doesn't)
+   • "Handmade" / "Hand-Crafted" / "Bespoke"
+   • "Hand Sewn" / "Made by Hand" / "Hand-Made to Order"
+   • "Custom Sized" / "Custom Fit" / "Sized to Order"
+   These imply custom craft on demand and put us in TOS conflict when
+   Etsy notices we're actually drop-shipping ready stock.
 
 3. TAGS:
    • Exactly 13. Each ≤ 20 characters.
@@ -735,20 +751,23 @@ CORE RULES
 GOOD vs BAD TITLE EXAMPLES
 ============================================================
 
-❌ BAD (commas, generic, no anchors front-loaded):
-   "Pretty Dress, Off Shoulder, for Women, Custom"
+❌ BAD (commas, generic, made-to-order wording):
+   "Pretty Dress, Off Shoulder, for Women, Custom Made to Order"
 
-✅ GOOD (anchor "off shoulder prom dress" front-loaded, "|" separators, intent hook):
-   "Off Shoulder Prom Dress | Pearl Sweetheart Neckline Formal Gown | Made to Order Wedding Guest Dress"
+✅ GOOD (anchor "off shoulder prom dress" front-loaded, "|" separators,
+        audience/occasion intent hook, NO production wording):
+   "Off Shoulder Prom Dress | Pearl Sweetheart Neckline Formal Gown | Wedding Guest Style Bridesmaid Dress"
 
-❌ BAD tags (duplicates wasting slots):
-   ["dress", "dresses", "prom dress", "prom dresses", ...]
+❌ BAD tags (duplicates wasting slots, made-to-order wording):
+   ["dress", "dresses", "prom dress", "prom dresses",
+    "made to order dress", "custom prom dress", ...]
 
-✅ GOOD tags (mix of volumes, no dupes, anchor keywords prioritized):
+✅ GOOD tags (mix of volumes, no dupes, anchor keywords prioritized,
+        NO custom/MTO/handmade tags):
    ["off shoulder dress", "prom dress", "sweetheart gown", "pearl bodice",
     "wedding guest dress", "satin prom gown", "formal evening dress",
-    "made to order dress", "custom prom dress", "elegant prom gown",
-    "ball gown dress", "bridesmaid dress", "long formal dress"]
+    "bridesmaid dress", "elegant prom gown", "ball gown dress",
+    "long formal dress", "gala dress", "homecoming dress"]
 
 ============================================================
 OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
@@ -983,10 +1002,46 @@ function safeParseJson<T>(raw: string): T {
   }
 }
 
+// Phrases that imply custom-craft-on-demand production. META7MEDIA is a
+// READY-MADE dropshipping operation — these are TOS-conflicting + always
+// wrong on our listings. Stripped from titles + dropped from tags as a
+// safety net even if Sonnet ignores the rule in the system prompt.
+const MTO_PATTERNS = [
+  /\b(made[\s-]to[\s-]order)\b/gi,
+  /\bMTO\b/g,
+  /\b(custom[\s-]?made|custom[\s-]?order|custom[\s-]?sized|custom[\s-]?fit|made[\s-]custom|sized[\s-]to[\s-]order)\b/gi,
+  /\b(personali[sz]ed)\b/gi,
+  /\b(hand[\s-]?made|hand[\s-]?crafted|hand[\s-]?sewn|hand[\s-]?made[\s-]to[\s-]order|made[\s-]by[\s-]hand)\b/gi,
+  /\b(bespoke)\b/gi,
+];
+
+function stripMtoFromTitle(title: string): string {
+  let cleaned = title;
+  for (const re of MTO_PATTERNS) cleaned = cleaned.replace(re, "");
+  // Collapse separator+whitespace artefacts left behind (e.g. "| | ")
+  cleaned = cleaned
+    .replace(/\s*\|\s*\|+\s*/g, " | ")
+    .replace(/^\s*\|\s*/g, "")
+    .replace(/\s*\|\s*$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned;
+}
+
+function tagLooksLikeMto(tag: string): boolean {
+  return MTO_PATTERNS.some((re) => {
+    re.lastIndex = 0; // reset stateful flag /g
+    return re.test(tag);
+  });
+}
+
 function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListing {
-  const title = (out.title ?? "").trim().slice(0, ETSY_LIMITS.TITLE_MAX);
+  const rawTitle = (out.title ?? "").trim();
+  const title = stripMtoFromTitle(rawTitle).slice(0, ETSY_LIMITS.TITLE_MAX);
 
   // Tags: lowercase, trim, dedupe, clamp length, slice to 13.
+  // Also drop any tag containing made-to-order / custom / handmade
+  // wording — we sell ready-stock, those tags would mislead buyers.
   const seen = new Set<string>();
   const tags: string[] = [];
   for (const raw of out.tags ?? []) {
@@ -996,6 +1051,7 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
       .toLowerCase()
       .slice(0, ETSY_LIMITS.TAG_MAX_CHARS);
     if (!t || seen.has(t)) continue;
+    if (tagLooksLikeMto(t)) continue; // safety net for MTO wording
     seen.add(t);
     tags.push(t);
     if (tags.length === ETSY_LIMITS.TAG_COUNT) break;
