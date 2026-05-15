@@ -740,36 +740,65 @@ export async function huntByNiche(opts: {
   let timeoutCount = 0;
   let errorCount = 0;
 
+  // Diagnostic: how many keywords needed the category-name fallback?
+  let categoryFallbackCount = 0;
+
   const fetchPreview = async (pair: { category: string; keyword: string }) => {
     if (!opts.accessToken) return null;
     const anchors = perCategory.find((c) => c.category === pair.category)
       ?.productAnchors ?? [];
+    const tStart = Date.now();
 
     const fetchPromise = (async (): Promise<KeywordPreview | null> => {
       try {
+        // Primary: search AE with the actual keyword.
         // 15 candidates gives the relevance filter a wider net so we
         // almost always find at least one anchor-matching product.
-        const res = await searchProductsByKeyword(pair.keyword, {
+        let res = await searchProductsByKeyword(pair.keyword, {
           accessToken: opts.accessToken!,
           pageSize: 15,
           sortBy: "orders_desc",
         });
+
+        // CATEGORY-NAME FALLBACK — when keyword returns 0 products,
+        // AE genuinely has nothing for the specific phrasing Haiku
+        // generated (e.g. "minimalist hammered gold drop earrings").
+        // Retry with just the category name, which is broad enough
+        // to always return popular sellers in that category. The
+        // PASS 3 picker will rank them by orders so we surface the
+        // top-selling product as a visual reference.
+        if (res.products.length === 0) {
+          categoryFallbackCount++;
+          console.log(
+            `[hunt-preview] "${pair.keyword}" returned 0 — falling back to category "${pair.category}"`,
+          );
+          res = await searchProductsByKeyword(pair.category, {
+            accessToken: opts.accessToken!,
+            pageSize: 15,
+            sortBy: "orders_desc",
+          });
+        }
+
         if (res.products.length === 0) {
           zeroProductCount++;
+          console.log(
+            `[hunt-preview] FAIL "${pair.keyword}" — both keyword and category "${pair.category}" returned 0 products (${Date.now() - tStart}ms)`,
+          );
           return null;
         }
+
         const preview = pickBestPreview(res.products, pair.keyword, anchors);
         if (!preview) {
           noAnchorMatchCount++;
           console.log(
-            `[hunt-preview] no anchor match for "${pair.keyword}" (anchors: [${anchors.join(", ")}], titles: ${res.products.slice(0, 3).map((p) => `"${p.title?.slice(0, 50)}"`).join(", ")})`,
+            `[hunt-preview] FAIL "${pair.keyword}" — ${res.products.length} AE products but none had valid title/image/price (${Date.now() - tStart}ms)`,
           );
         }
         return preview;
       } catch (err) {
         errorCount++;
         console.warn(
-          `[hunt-preview] error for "${pair.keyword}":`,
+          `[hunt-preview] EXCEPTION "${pair.keyword}" (${Date.now() - tStart}ms):`,
           err instanceof Error ? err.message : String(err),
         );
         return null;
@@ -812,7 +841,7 @@ export async function huntByNiche(opts: {
     ).then((r) => {
       tAeEnd = Date.now();
       console.log(
-        `[hunt-by-niche] AE previews done in ${tAeEnd - tAeStart}ms (${aePreviewsResolved}/${r.length} found · ${zeroProductCount} returned-zero · ${noAnchorMatchCount} no-anchor-match · ${timeoutCount} timeout · ${errorCount} error)`,
+        `[hunt-by-niche] AE previews done in ${tAeEnd - tAeStart}ms (${aePreviewsResolved}/${r.length} found · ${categoryFallbackCount} used-cat-fallback · ${zeroProductCount} returned-zero · ${noAnchorMatchCount} invalid-products · ${timeoutCount} timeout · ${errorCount} error)`,
       );
       return r;
     }),

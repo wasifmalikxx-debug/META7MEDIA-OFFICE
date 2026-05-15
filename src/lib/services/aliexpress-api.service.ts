@@ -134,28 +134,26 @@ function signRequest(params: Record<string, string>): string {
     .toUpperCase();
 }
 
-// ─── Token bucket (10 QPS with burst of 4) ──────────────────────────
+// ─── Token bucket (10 QPS with burst of 10) ─────────────────────────
 //
-// AliExpress Personal Access tier docs say 5 QPS / 5K QPD. In practice
-// short bursts above 5 QPS get through fine — 429s are rare and our
-// retry path handles them without burning queue tokens (acquireSlot
-// lives outside the retry loop now). The CEO explicitly said "use
-// more AE calls, doesn't have to narrow it down for optimisation" —
-// so we run at 10 QPS sustained with a 4-call burst.
+// AliExpress Personal Access tier docs say 5 QPS / 5K QPD. The CEO
+// explicitly approved aggressive concurrency over conservatism, so
+// we sustain 10 QPS with a 10-call initial burst.
 //
-// Math for a 48-keyword niche hunt:
-//   - Burst: first 4 calls instant (at t=0)
-//   - Sustained: remaining 44 calls at 1 per 100ms = 4.4s
+// Math for a 48-keyword niche hunt (worst case where every keyword
+// also needs the secondary text.search fallback = 96 tokens):
+//   - First 10 calls: instant at t=0
+//   - Remaining 86 at 1 per 100ms = 8.6s
 //   - Plus HTTP per-call: ~1.5s
-//   - Last call completes at ~5.9s, well under the 20s timeout
+//   - Plus optional category-name fallback for zero-result keywords
+//   - Last call completes at ~10-12s, well under the 20s timeout
 //
-// Daily usage: even at 200 hunts/day × 48 calls = 9600 calls. That
-// hits the 5K QPD soft cap, but we're nowhere near 200 hunts/day in
-// practice (~10-30/day). Plenty of headroom.
+// 429s from AE bursts are tolerated by our retry path (acquireSlot
+// lives OUTSIDE the retry loop, so retries don't re-queue).
 
-let bucketTokens = 4;
+let bucketTokens = 10;
 let lastRefillAt = Date.now();
-const BUCKET_CAP = 4;
+const BUCKET_CAP = 10;
 const REFILL_MS = 100;
 
 async function acquireSlot(): Promise<void> {
@@ -566,17 +564,17 @@ export async function searchProductsByKeyword(
   }
 
   // Drop Shipping app type only has access to the `aliexpress.ds.*`
-  // namespace. We confirmed via API Access Log that
-  // `aliexpress.solution.product.list.get` returns InsufficientPermission
-  // (Solution APIs need a different app type entirely).
-  //
-  // `aliexpress.affiliate.product.query` is from the Affiliate program
-  // (also separate) — we leave it in as a fallback since some DS apps
-  // are dual-enrolled, but expect it to fail too for ours.
+  // namespace. `aliexpress.affiliate.product.query` was historically in
+  // this list as a "long shot" fallback — it has ALWAYS returned 403
+  // InsufficientPermission for our app, so every call to it was a
+  // wasted token + HTTP roundtrip. With ~30% of niche-hunt keywords
+  // falling through to the third method (because earlier methods
+  // return 0 products for niche-tail queries), this was burning ~14
+  // wasted tokens per hunt and pushing the last keywords' fetches
+  // past their 20s timeout. Removed.
   const methodsToTry = [
     "aliexpress.ds.text.search", // Primary — DS keyword search
-    "aliexpress.ds.recommend.feed.get", // Fallback — feed-based, supports keywords
-    "aliexpress.affiliate.product.query", // Long-shot — affiliate program
+    "aliexpress.ds.recommend.feed.get", // Secondary — feed-based, sometimes helps
   ];
 
   let lastResponse: Record<string, unknown> | null = null;
