@@ -264,9 +264,12 @@ export async function aliExpressCall<T = unknown>(
         );
       }
 
-      // Success — log summary
+      // Success — log full response (truncated) so we can debug parser
+      // mismatches without trial-and-error. This is verbose but cheap
+      // and 90% of debugging time comes from missing response shapes.
+      const bodyPreview = JSON.stringify(json).slice(0, 2000);
       console.log(
-        `[aliexpress] ${method} ok — top-level keys: ${Object.keys(json).join(", ")}`,
+        `[aliexpress] ${method} ok — keys: [${Object.keys(json).join(", ")}] — body: ${bodyPreview}`,
       );
       return json as T;
     } catch (err) {
