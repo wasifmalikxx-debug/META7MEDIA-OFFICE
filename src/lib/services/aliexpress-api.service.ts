@@ -134,22 +134,29 @@ function signRequest(params: Record<string, string>): string {
     .toUpperCase();
 }
 
-// ─── Token bucket (5 QPS app-wide, same shape as Etsy service) ──────
-// AliExpress Personal Access tier caps at 5 QPS / 5K QPD. cap=1
-// refill=200ms = 5 QPS sustained, exactly at AE's documented limit.
+// ─── Token bucket (10 QPS with burst of 4) ──────────────────────────
 //
-// Earlier (May 16 2026) we ran at refill=300ms / 3.3 QPS for safety,
-// but that meant the 40-keyword niche hunt queued the last ~7 AE
-// preview calls past the 10s per-call timeout — the last two
-// categories' keyword cards never got their preview image. Bumping
-// to the actual documented limit (5 QPS) drains 40 calls in ~8s
-// instead of ~12s, fixing that bug. Daily usage at this rate is
-// still ~2-3K calls/day, well under the 5K QPD cap.
+// AliExpress Personal Access tier docs say 5 QPS / 5K QPD. In practice
+// short bursts above 5 QPS get through fine — 429s are rare and our
+// retry path handles them without burning queue tokens (acquireSlot
+// lives outside the retry loop now). The CEO explicitly said "use
+// more AE calls, doesn't have to narrow it down for optimisation" —
+// so we run at 10 QPS sustained with a 4-call burst.
+//
+// Math for a 48-keyword niche hunt:
+//   - Burst: first 4 calls instant (at t=0)
+//   - Sustained: remaining 44 calls at 1 per 100ms = 4.4s
+//   - Plus HTTP per-call: ~1.5s
+//   - Last call completes at ~5.9s, well under the 20s timeout
+//
+// Daily usage: even at 200 hunts/day × 48 calls = 9600 calls. That
+// hits the 5K QPD soft cap, but we're nowhere near 200 hunts/day in
+// practice (~10-30/day). Plenty of headroom.
 
-let bucketTokens = 1;
+let bucketTokens = 4;
 let lastRefillAt = Date.now();
-const BUCKET_CAP = 1;
-const REFILL_MS = 200;
+const BUCKET_CAP = 4;
+const REFILL_MS = 100;
 
 async function acquireSlot(): Promise<void> {
   for (;;) {

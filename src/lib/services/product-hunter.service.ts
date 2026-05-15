@@ -451,17 +451,25 @@ function extractKeywordAnchors(keyword: string): string[] {
 }
 
 /**
- * Pick the BEST one product preview for a keyword. Two-pass matching:
+ * Pick the BEST one product preview for a keyword. Three-pass matching:
  *
  *   PASS 1 (strict):   anchor from Haiku/category-name must appear in
- *                      product title.
+ *                      product title. Highest-quality previews.
  *   PASS 2 (fallback): if pass 1 found nothing, retry with keyword
  *                      words ALSO treated as anchors. Stays niche-
- *                      relevant because we still filter by keyword
- *                      word overlap in the ranker.
+ *                      relevant because the keyword word-overlap
+ *                      ranker still does the picking.
+ *   PASS 3 (last-resort): if both anchor passes fail, take the
+ *                         highest-quality valid AE product anyway —
+ *                         ranked by order count. The user explicitly
+ *                         wanted previews to show even when our
+ *                         anchors don't perfectly intersect with AE
+ *                         titles. AE returned products for this
+ *                         keyword, so something topical exists; show
+ *                         it rather than leaving a blank card.
  *
- * Returns null only if BOTH passes fail (AE genuinely had no relevant
- * products for this keyword).
+ * Returns null only when AE returned zero products (which is
+ * different from "no anchor match" — caller logs them separately).
  */
 function pickBestPreview(
   products: AliExpressProduct[],
@@ -483,6 +491,25 @@ function pickBestPreview(
       new Set([...anchors, ...keywordAnchors]),
     );
     best = findBestByAnchor(validProducts, keyword, expandedAnchors);
+  }
+
+  // PASS 3 — last-resort: take the top-quality product anyway.
+  // Ranked by (order count, then rating, then price-in-range) so
+  // the preview at least surfaces a proven seller in the category.
+  if (!best) {
+    let topRanked: AliExpressProduct | null = null;
+    let topScore = -Infinity;
+    for (const p of validProducts) {
+      // Simple quality score: log(orders) * 10 + rating * 5
+      const orders = p.orderCount ?? 0;
+      const rating = p.rating ?? 0;
+      const score = Math.log10(orders + 1) * 10 + rating * 5;
+      if (score > topScore) {
+        topScore = score;
+        topRanked = p;
+      }
+    }
+    best = topRanked;
   }
 
   if (!best) return null;
@@ -697,13 +724,15 @@ export async function huntByNiche(opts: {
   // Per-call timeout so a single slow / 429-retrying AE call can't
   // drag the whole hunt past the user's patience threshold.
   //
-  // Sizing math: with AE rate-limited at 5 QPS, 40 calls drain the
-  // queue in ~8s. After the retry-bucket fix (one token per logical
-  // call, retries no longer re-queue), the last call needs
-  // ~8s queue + 1.5s HTTP + ~1.5s retry = ~11s. 15s gives 4s of
-  // hard margin so even pathological AE latency spikes don't kill
-  // the preview for the last categories.
-  const PREVIEW_TIMEOUT_MS = 15000;
+  // Sizing math: AE bucket is now 10 QPS with a 4-call burst, so 48
+  // calls drain the queue in ~4.4s. Last call's wall time = 4.4s
+  // queue + 1.5s HTTP + 1.5s retry budget = ~7.5s. 20s timeout gives
+  // ~12s of hard margin so even pathological AE latency spikes can't
+  // kill the preview for the last categories.
+  //
+  // The CEO told us not to optimize for speed/quota — previews
+  // ALWAYS showing matters more than shaving 5s off the wall time.
+  const PREVIEW_TIMEOUT_MS = 20000;
   // Diagnostic counters for Vercel logs — helps us see why specific
   // keywords don't get previews.
   let zeroProductCount = 0;
