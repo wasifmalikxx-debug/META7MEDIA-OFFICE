@@ -19,6 +19,7 @@ import {
   TrendingUp,
   Heart,
   Users,
+  Star,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,19 +38,14 @@ import { toast } from "sonner";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-interface CuratedProduct {
+interface KeywordPreview {
   productId: number;
   title: string;
   imageUrl?: string;
   productUrl?: string;
   priceUsd: number;
-  recommendedEtsyPrice: number;
-  marginUsd: number;
-  marginPct: number;
   rating?: number;
   orderCount?: number;
-  matchedKeyword: string;
-  qualityScore: number;
 }
 
 type Verdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
@@ -61,7 +57,8 @@ interface NicheKeywordResult {
   uniqueShops: number;
   score: number;
   verdict: Verdict;
-  products: CuratedProduct[];
+  /** Slim representative product preview (1 per keyword). Optional. */
+  preview?: KeywordPreview;
 }
 
 interface NicheCategoryResult {
@@ -772,7 +769,77 @@ function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
         </span>
       </div>
 
+      {/* Preview strip — ONE strictly-matched AE product so the user
+          immediately sees what kind of product this keyword represents.
+          Only renders when we found a real match (strict relevance
+          filter passed). */}
+      {keyword.preview && <PreviewStrip preview={keyword.preview} />}
     </Card>
+  );
+}
+
+function PreviewStrip({ preview }: { preview: KeywordPreview }) {
+  const href =
+    preview.productUrl ??
+    "#";
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex items-center gap-3 p-3 sm:p-4 hover:bg-muted/30 transition-colors"
+    >
+      {/* Product image */}
+      <div className="size-14 sm:size-16 rounded-lg bg-muted/40 overflow-hidden shrink-0 ring-1 ring-border/40">
+        {preview.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={preview.imageUrl}
+            alt=""
+            className="size-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+          />
+        ) : (
+          <div className="size-full flex items-center justify-center">
+            <Package className="size-5 text-muted-foreground/40" />
+          </div>
+        )}
+      </div>
+
+      {/* Title + tag + stats */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.16em] text-orange-600 dark:text-orange-400 bg-orange-500/10 ring-1 ring-orange-500/30 px-1.5 py-0.5 rounded">
+            <ShoppingBag className="size-2.5" />
+            Product like this
+          </span>
+        </div>
+        <p className="text-[12px] leading-snug line-clamp-2 font-medium">
+          {preview.title}
+        </p>
+        <div className="flex items-center gap-2.5 mt-1 text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-400">
+            ${preview.priceUsd.toFixed(2)}
+          </span>
+          {preview.rating !== undefined && (
+            <span className="inline-flex items-center gap-0.5">
+              <Star
+                className="size-2.5 text-amber-500"
+                fill="currentColor"
+                strokeWidth={0}
+              />
+              {preview.rating.toFixed(1)}
+            </span>
+          )}
+          {preview.orderCount !== undefined && preview.orderCount > 0 && (
+            <span>{preview.orderCount.toLocaleString()} sold</span>
+          )}
+        </div>
+      </div>
+
+      {/* Chevron arrow */}
+      <ExternalLink className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
+    </a>
   );
 }
 

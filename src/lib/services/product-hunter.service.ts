@@ -23,7 +23,10 @@ import {
   createCostAccumulator,
   type CostAccumulator,
 } from "./anthropic.service";
-import { type AliExpressProduct } from "./aliexpress-api.service";
+import {
+  searchProductsByKeyword,
+  type AliExpressProduct,
+} from "./aliexpress-api.service";
 import { calculateEtsyPrice } from "@/lib/etsy-price-calculator";
 
 export type ProductHuntVerdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
@@ -285,6 +288,23 @@ export interface CuratedProduct {
  * card per keyword (no longer aggregates products to the category level
  * because the team wanted keyword visibility back, May 16 2026 update).
  */
+/**
+ * Lightweight one-product preview shown next to each keyword card —
+ * lets the team SEE what kind of product a keyword refers to without
+ * clicking through. Strict-matched so the preview always actually
+ * represents the keyword (no off-topic mom-gifts when the keyword
+ * is about jackets).
+ */
+export interface KeywordPreview {
+  productId: number;
+  title: string;
+  imageUrl?: string;
+  productUrl?: string;
+  priceUsd: number;
+  rating?: number;
+  orderCount?: number;
+}
+
 export interface NicheKeywordResult {
   keyword: string;
   totalListings: number;
@@ -292,8 +312,10 @@ export interface NicheKeywordResult {
   uniqueShops: number;
   score: number;
   verdict: ProductHuntVerdict;
-  /** Top 5 quality-filtered AliExpress products that matched this keyword. */
+  /** Kept for backward-compat (always [] in v2.5). Real preview is `preview`. */
   products: CuratedProduct[];
+  /** Single representative AE product for visual context. Null if no AE match. */
+  preview?: KeywordPreview;
 }
 
 export interface NicheCategoryResult {
@@ -366,6 +388,104 @@ function passesRelevanceFilter(
   if (!p.title) return false;
   const title = p.title.toLowerCase();
   return productAnchors.some((anchor) => title.includes(anchor));
+}
+
+// Words that contribute nothing to relevance (skip them when scoring)
+const STOP_WORDS = new Set([
+  "the", "and", "for", "with", "from", "your", "you", "this", "that",
+  "are", "ours", "his", "her", "its", "their", "all", "any", "some",
+  "set", "of", "in", "on", "to", "by", "a", "an", "is",
+]);
+
+/**
+ * Strict keyword→title match score.
+ *
+ * Counts how many meaningful words from the keyword appear in the
+ * product title. Higher = better match. We require both:
+ *   1. At least one product anchor in the title
+ *   2. At least half of the keyword's meaningful words in the title
+ *
+ * For keyword "y2k butterfly drop earrings" with title
+ * "Y2K Butterfly Drop Earrings Korean Style" → all 4 words match → score 4.
+ * For keyword "y2k butterfly drop earrings" with title
+ * "Boho Hoop Earrings Gold Plated" → only "earrings" matches → fails.
+ */
+function strictMatchScore(title: string, keyword: string): number {
+  const titleLower = title.toLowerCase();
+  const keywordWords = keyword
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9]/g, ""))
+    .filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
+  let count = 0;
+  for (const word of keywordWords) {
+    if (titleLower.includes(word)) {
+      count += 1;
+      continue;
+    }
+    // Singular/plural variants
+    if (word.endsWith("s") && titleLower.includes(word.slice(0, -1))) {
+      count += 1;
+      continue;
+    }
+    if (!word.endsWith("s") && titleLower.includes(word + "s")) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Pick the BEST one product preview for a keyword. Returns null if no
+ * AE product strictly matches.
+ *
+ * Strictness rules:
+ *   1. Title must contain at least one product anchor (jacket / earring
+ *      / mug / etc.)
+ *   2. Title must contain at least half of the keyword's meaningful
+ *      words (excluding stop words and 1-letter tokens)
+ *
+ * Among candidates that pass, pick the highest strictMatchScore. Tied
+ * scores break by order count (popularity).
+ */
+function pickBestPreview(
+  products: AliExpressProduct[],
+  keyword: string,
+  anchors: string[],
+): KeywordPreview | null {
+  const keywordWords = keyword
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9]/g, ""))
+    .filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
+  const minMatch = Math.max(2, Math.ceil(keywordWords.length * 0.5));
+
+  let best: { p: AliExpressProduct; score: number } | null = null;
+  for (const p of products) {
+    if (!p.imageUrl || !p.title || p.priceMin <= 0) continue;
+    if (!passesRelevanceFilter(p, anchors)) continue;
+    const score = strictMatchScore(p.title, keyword);
+    if (score < minMatch) continue;
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score &&
+        (p.orderCount ?? 0) > (best.p.orderCount ?? 0))
+    ) {
+      best = { p, score };
+    }
+  }
+  if (!best) return null;
+  const p = best.p;
+  return {
+    productId: p.productId,
+    title: p.title,
+    imageUrl: p.imageUrl,
+    productUrl: p.productUrl,
+    priceUsd: p.priceMin,
+    rating: p.rating,
+    orderCount: p.orderCount,
+  };
 }
 
 /**
@@ -530,30 +650,48 @@ export async function huntByNiche(opts: {
     }
   }
 
-  // Step 3: Etsy demand check on every keyword (parallel).
-  // We use the result to score each category's Etsy traction, but
-  // we surface PRODUCTS to the user, not keywords.
-  const etsyEvaluated = await Promise.all(
-    allPairs.map(async (pair) => {
-      const result = await evaluateKeyword(pair.keyword);
-      return { ...pair, etsyResult: result };
-    }),
-  );
+  // Step 3+4: Etsy demand check + AliExpress preview fetch — in PARALLEL.
+  //
+  // v2.5: one strict-match AE preview per keyword for visual context
+  // (was removed in v2.4, brought back per user feedback). Both APIs
+  // run concurrently so wall time = max(Etsy time, AE time), not sum.
+  // At our 3.3 QPS bucket: ~64 keywords × 1 call each ≈ 20s per API,
+  // running in parallel = ~20s total instead of 30s sequential.
+  const previewByKeyword = new Map<string, KeywordPreview | null>();
+  const fetchPreview = async (pair: { category: string; keyword: string }) => {
+    if (!opts.accessToken) return null;
+    try {
+      const res = await searchProductsByKeyword(pair.keyword, {
+        accessToken: opts.accessToken,
+        pageSize: 10,
+        sortBy: "orders_desc",
+      });
+      const anchors = perCategory.find((c) => c.category === pair.category)
+        ?.productAnchors ?? [];
+      return pickBestPreview(res.products, pair.keyword, anchors);
+    } catch {
+      return null;
+    }
+  };
 
-  // Step 4: REMOVED — AliExpress product fetching skipped entirely.
-  //
-  // Per user feedback (May 16 v2.4): the OG manual hunting workflow
-  // was keywords + external "Hunt on AliExpress" / "See on Etsy"
-  // buttons for the team to research manually. Auto-fetching AE
-  // products per keyword:
-  //   - Slows the hunt by 10-15s (40+ extra AE calls at our rate limit)
-  //   - Adds noise (irrelevant matches even with the relevance filter)
-  //   - Adds visual clutter (5-8 product cards per keyword)
-  //   - Costs nothing in AE quota but burns wall time
-  //
-  // Reverted to lean keyword research mode. The team clicks "Hunt on
-  // AliExpress" on any promising keyword to do the real product hunt
-  // themselves — same as it was in the OG Product Hunter v1.
+  const [etsyEvaluated, previewResults] = await Promise.all([
+    Promise.all(
+      allPairs.map(async (pair) => {
+        const result = await evaluateKeyword(pair.keyword);
+        return { ...pair, etsyResult: result };
+      }),
+    ),
+    Promise.all(
+      allPairs.map(async (pair) => ({
+        keyword: pair.keyword,
+        preview: await fetchPreview(pair),
+      })),
+    ),
+  ]);
+
+  for (const { keyword, preview } of previewResults) {
+    previewByKeyword.set(keyword, preview);
+  }
 
   // Step 5: Build category → keyword tree (no products this round).
   const categoryResults: NicheCategoryResult[] = [];
@@ -572,7 +710,8 @@ export async function huntByNiche(opts: {
         uniqueShops: ck.etsyResult.uniqueShops,
         score: ck.etsyResult.score,
         verdict: ck.etsyResult.verdict,
-        products: [], // no AE fetch — team uses the buttons to research
+        products: [], // legacy field; real preview is `preview` below
+        preview: previewByKeyword.get(ck.keyword) ?? undefined,
       });
     }
 
