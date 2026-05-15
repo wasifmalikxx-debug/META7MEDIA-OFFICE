@@ -498,10 +498,14 @@ export async function searchProductsByKeyword(
     targetLanguage?: string;
   },
 ): Promise<ProductSearchResponse> {
+  // Send every plausible param-name variant — different methods use
+  // different naming conventions, but AliExpress ignores unknown params
+  // so the shotgun approach is safe.
   const baseParams: Record<string, string | number> = {
     keywords: keyword,
     keyWord: keyword,
     keyword: keyword,
+    q: keyword,
     local: "en_US",
     locale: "en_US",
     country: "US",
@@ -509,10 +513,14 @@ export async function searchProductsByKeyword(
     target_currency: options.targetCurrency ?? "USD",
     target_language: "en",
     currency: options.targetCurrency ?? "USD",
+    ship_to_country: "US",
     page_size: options.pageSize ?? 20,
     pageSize: options.pageSize ?? 20,
     page_no: options.pageNo ?? 1,
     pageNo: options.pageNo ?? 1,
+    // Recommend-feed wants a feed_name — "DS_TextSearch" is the
+    // documented one for keyword-based recommendations
+    feed_name: "DS_TextSearch",
   };
   if (options.sortBy) {
     baseParams.sortBy = options.sortBy;
@@ -527,10 +535,18 @@ export async function searchProductsByKeyword(
     baseParams.max_sale_price = options.maxPrice;
   }
 
+  // Drop Shipping app type only has access to the `aliexpress.ds.*`
+  // namespace. We confirmed via API Access Log that
+  // `aliexpress.solution.product.list.get` returns InsufficientPermission
+  // (Solution APIs need a different app type entirely).
+  //
+  // `aliexpress.affiliate.product.query` is from the Affiliate program
+  // (also separate) — we leave it in as a fallback since some DS apps
+  // are dual-enrolled, but expect it to fail too for ours.
   const methodsToTry = [
-    "aliexpress.ds.text.search",
-    "aliexpress.affiliate.product.query",
-    "aliexpress.solution.product.list.get",
+    "aliexpress.ds.text.search", // Primary — DS keyword search
+    "aliexpress.ds.recommend.feed.get", // Fallback — feed-based, supports keywords
+    "aliexpress.affiliate.product.query", // Long-shot — affiliate program
   ];
 
   let lastResponse: Record<string, unknown> | null = null;
