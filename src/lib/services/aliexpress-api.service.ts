@@ -215,22 +215,56 @@ export async function aliExpressCall<T = unknown>(
         );
       }
       const json = await res.json();
-      // AliExpress wraps errors INSIDE 200 responses sometimes:
-      //   { error_response: { code, msg, sub_msg } }
+      // AliExpress wraps errors in multiple inconsistent shapes.
+      // We catch all of them so failures bubble up as clear toasts
+      // instead of silently returning "0 results".
+
+      // Shape 1: { error_response: { code, msg, sub_msg } }
       if (json?.error_response) {
         const err = json.error_response;
-        // Log full error to Vercel logs so the user can see exactly
-        // what AliExpress complained about (code + msg + which method)
         console.error(
-          `[aliexpress] ${method} returned error_response:`,
+          `[aliexpress] ${method} error_response:`,
           JSON.stringify(err).slice(0, 400),
         );
         throw new Error(
           `AliExpress error ${err.code}: ${err.sub_msg ?? err.msg ?? "unknown"}`,
         );
       }
-      // Log a one-line summary of the success response so we can see
-      // exactly what shape AliExpress returns for each method.
+
+      // Shape 2: Permission denial — flat { code: "InsufficientPermission",
+      // message: "...", bizSuccess: false }. AliExpress returns this for
+      // /solution/ namespace failures, NOT wrapped in error_response.
+      if (
+        json?.code === "InsufficientPermission" ||
+        (json?.bizSuccess === false && typeof json?.message === "string")
+      ) {
+        console.error(
+          `[aliexpress] ${method} access denied:`,
+          JSON.stringify({
+            code: json.code,
+            message: json.message,
+            shortCode: json.shortCode,
+          }).slice(0, 300),
+        );
+        throw new Error(
+          json.code === "InsufficientPermission"
+            ? `Permission missing for ${method} — apply via AliExpress console → Process apply`
+            : `AliExpress error: ${json.message}`,
+        );
+      }
+
+      // Shape 3: Token/auth failure — e.g. expired session
+      if (
+        json?.code === "InvalidAccessToken" ||
+        json?.code === "AccessTokenExpired"
+      ) {
+        console.error(`[aliexpress] ${method} token invalid:`, json);
+        throw new Error(
+          `AliExpress token invalid (${json.code}) — reconnect on Product Hunter`,
+        );
+      }
+
+      // Success — log summary
       console.log(
         `[aliexpress] ${method} ok — top-level keys: ${Object.keys(json).join(", ")}`,
       );
@@ -500,6 +534,7 @@ export async function searchProductsByKeyword(
   ];
 
   let lastResponse: Record<string, unknown> | null = null;
+  const errors: string[] = [];
   for (const method of methodsToTry) {
     try {
       const raw = await aliExpressCall<Record<string, unknown>>(
@@ -520,12 +555,18 @@ export async function searchProductsByKeyword(
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${method}: ${msg}`);
       console.warn(`[aliexpress] ${method} threw: ${msg}`);
     }
   }
 
-  // Everything returned empty/failed — dump the LAST response so we
-  // can see what shape AliExpress sent back and fix the parser.
+  // Everything returned empty/failed — if every attempt threw, surface
+  // the first error so the user sees the real reason (e.g. "Permission
+  // missing — apply via AliExpress console"). Otherwise, dump the last
+  // response and return empty.
+  if (errors.length === methodsToTry.length && errors.length > 0) {
+    throw new Error(errors[0]);
+  }
   if (lastResponse) {
     console.error(
       `[aliexpress] ALL search methods returned 0. Last raw response: ${JSON.stringify(lastResponse).slice(0, 1500)}`,
