@@ -408,9 +408,14 @@ export function AdminDashboard({
   }, [router]);
 
   // Roster expand/collapse state. Each team card has a "Show roster" toggle;
-  // expanding one team doesn't affect others. Collapsed by default to keep
-  // the page short; the per-team summary is enough for the at-a-glance view.
-  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(() => new Set());
+  // expanding one team doesn't affect others. EXPANDED by default — Wasif
+  // wants every employee visible on page load so he doesn't have to click
+  // "Show roster" on each team. The per-team toggle still works to collapse
+  // any team he doesn't care about in the moment. Refreshing the page
+  // resets everything back to expanded.
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(
+    () => new Set(teamGroups.map((t) => t.key)),
+  );
   const toggleTeam = (key: string) => {
     setExpandedTeams((prev) => {
       const next = new Set(prev);
