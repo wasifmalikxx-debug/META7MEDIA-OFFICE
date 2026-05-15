@@ -1,20 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Loader2,
-  Search,
   Sparkles,
   Target,
-  TrendingUp,
-  Heart,
-  Users,
   Crown,
-  Copy,
-  Check,
   ExternalLink,
   Plus,
   X,
@@ -25,61 +19,53 @@ import {
   AlertTriangle,
   Wand2,
   Lightbulb,
+  Search,
+  ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
 
 /**
- * Manual Hunting (May 16 2026 redesign).
+ * Manual Hunting v2 (May 16 2026, redesigned for product-first UX).
  *
- * The new niche-centric flow:
+ * Niche → Categories → PRODUCTS (not keywords).
+ *
+ * Flow:
  *   1. Employee types a niche ("boho jewelry")
- *   2. Optional style + audience pills (boho, minimalist, gift, anniversary)
- *   3. Backend: niche → 5-8 categories → 4-6 keywords per category →
- *      Etsy scoring + AliExpress preview for GREAT/GOOD
- *   4. Results render as an accordion of categories, each expandable
- *      to show its scored keywords
- *   5. Employee can add a custom category (re-runs hunt with that
- *      category forced in)
+ *   2. Optional style + audience pills bias the brainstorm
+ *   3. Backend discovers 6-10 proven-selling categories, generates
+ *      buyer-intent keywords per category, queries Etsy to validate
+ *      demand, queries AliExpress for products, then DEDUPES + QUALITY-
+ *      FILTERS to surface only the top 8-12 products per category
+ *   4. UI: clean product grid inside each expandable category card —
+ *      no keyword cruft, just images + prices + margins + actions
  *
- * Goal: one hunt = a category-organized listing roadmap.
+ * Goal: minutes-not-hours from "I want to sell jewelry" to "here are
+ * 60+ AE products vetted by quality + Etsy demand, organized by my
+ * shop sections."
  */
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-type Verdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
-
-interface AliPreview {
+interface CuratedProduct {
   productId: number;
   title: string;
   imageUrl?: string;
   productUrl?: string;
   priceUsd: number;
+  recommendedEtsyPrice: number;
   marginUsd: number;
+  marginPct: number;
   rating?: number;
   orderCount?: number;
-}
-
-interface NicheKeywordResult {
-  keyword: string;
-  totalListings: number;
-  avgTopFavorites: number;
-  uniqueShops: number;
-  wordCount: number;
-  score: number;
-  verdict: Verdict;
-  reasons: string[];
-  topListings: Array<{
-    title: string;
-    favorites: number;
-    listingId: number;
-    url?: string;
-  }>;
-  aliPreview?: AliPreview[];
+  matchedKeyword: string;
+  qualityScore: number;
 }
 
 interface NicheCategoryResult {
   category: string;
-  keywords: NicheKeywordResult[];
+  products: CuratedProduct[];
+  etsyHotKeywords: number;
+  etsyTotalListings: number;
 }
 
 interface NicheHuntResponse {
@@ -87,6 +73,7 @@ interface NicheHuntResponse {
   style?: string;
   audience?: string;
   scanCount: number;
+  productCount: number;
   totalCostUsd: number;
   durationMs: number;
   categories: NicheCategoryResult[];
@@ -116,43 +103,6 @@ const AUDIENCE_OPTIONS = [
   "Self-gift",
 ];
 
-const VERDICT_STYLE: Record<
-  Verdict,
-  { chip: string; tint: string; label: string; ringBorder: string }
-> = {
-  GREAT: {
-    chip: "bg-emerald-500 text-white",
-    tint: "from-emerald-500/10 via-transparent to-transparent",
-    label: "Hunt this",
-    ringBorder: "ring-emerald-500/30 border-emerald-500/40",
-  },
-  GOOD: {
-    chip: "bg-sky-500 text-white",
-    tint: "from-sky-500/10 via-transparent to-transparent",
-    label: "Worth a look",
-    ringBorder: "ring-sky-500/30 border-sky-500/40",
-  },
-  MAYBE: {
-    chip: "bg-amber-500 text-white",
-    tint: "from-amber-500/10 via-transparent to-transparent",
-    label: "Maybe",
-    ringBorder: "ring-amber-500/30 border-amber-500/40",
-  },
-  SKIP: {
-    chip: "bg-rose-500 text-white",
-    tint: "from-rose-500/5 via-transparent to-transparent",
-    label: "Skip",
-    ringBorder: "ring-rose-500/30 border-rose-500/40",
-  },
-};
-
-function formatCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 10_000) return `${(n / 1_000).toFixed(0)}k`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
-}
-
 // ─── Main section ───────────────────────────────────────────────────
 
 export function ManualHuntingSection() {
@@ -164,7 +114,6 @@ export function ManualHuntingSection() {
   const [hunting, setHunting] = useState(false);
   const [result, setResult] = useState<NicheHuntResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [hideWeaker, setHideWeaker] = useState(true);
 
   async function runHunt(extras: string[] = extraCategories) {
     if (niche.trim().length < 2 || hunting) return;
@@ -187,15 +136,9 @@ export function ManualHuntingSection() {
       }
       const data = (await res.json()) as NicheHuntResponse;
       setResult(data);
-      const wins = data.categories.reduce(
-        (acc, c) =>
-          acc +
-          c.keywords.filter((k) => k.verdict === "GREAT" || k.verdict === "GOOD")
-            .length,
-        0,
-      );
+      const totalProducts = data.productCount ?? 0;
       toast.success(
-        `${data.categories.length} categories · ${wins} hot keywords found`,
+        `${data.categories.length} categories · ${totalProducts} vetted products`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Hunt failed";
@@ -220,35 +163,11 @@ export function ManualHuntingSection() {
     if (!trimmed) return;
     const next = Array.from(new Set([...extraCategories, trimmed]));
     setExtraCategories(next);
-    // Re-run the hunt with the new category — the backend keyword
-    // expansion only fires for it (existing categories are cached in
-    // the user's prior result, but for simplicity we re-run all).
     runHunt(next);
   }
 
-  // Aggregate counts for the summary strip
-  const summary = useMemo(() => {
-    if (!result) return null;
-    let great = 0,
-      good = 0,
-      maybe = 0,
-      skip = 0,
-      total = 0;
-    for (const cat of result.categories) {
-      for (const kw of cat.keywords) {
-        total++;
-        if (kw.verdict === "GREAT") great++;
-        else if (kw.verdict === "GOOD") good++;
-        else if (kw.verdict === "MAYBE") maybe++;
-        else skip++;
-      }
-    }
-    return { great, good, maybe, skip, total };
-  }, [result]);
-
   return (
     <div className="space-y-5">
-      {/* Input card — only shown when no result */}
       {!result && !hunting && (
         <NicheInputCard
           niche={niche}
@@ -262,10 +181,8 @@ export function ManualHuntingSection() {
         />
       )}
 
-      {/* Loading state */}
       {hunting && <HuntProgress niche={niche} />}
 
-      {/* Error */}
       {errorMsg && !hunting && (
         <Card className="border-rose-300/50 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 shadow-none">
           <CardContent className="p-5 flex items-start gap-3">
@@ -284,41 +201,28 @@ export function ManualHuntingSection() {
         </Card>
       )}
 
-      {/* Results — category accordion */}
-      {result && !hunting && summary && (
+      {result && !hunting && (
         <>
-          <ResultSummaryBar
+          <ResultHero
             niche={result.niche}
             style={result.style}
             audience={result.audience}
             categoryCount={result.categories.length}
-            summary={summary}
-            hideWeaker={hideWeaker}
-            onToggleWeaker={() => setHideWeaker((v) => !v)}
+            productCount={result.productCount}
             onReset={handleReset}
             costUsd={result.totalCostUsd}
             durationMs={result.durationMs}
           />
 
           {result.categories.length === 0 ? (
-            <Card className="border border-border/60">
-              <CardContent className="p-10 text-center">
-                <Target className="size-7 text-muted-foreground/60 mx-auto mb-2" />
-                <p className="text-sm font-bold">No categories surfaced</p>
-                <p className="text-[12px] text-muted-foreground mt-1">
-                  Try a more concrete niche (e.g. &ldquo;boho jewelry&rdquo;
-                  instead of &ldquo;jewelry&rdquo;).
-                </p>
-              </CardContent>
-            </Card>
+            <EmptyResultCard niche={result.niche} />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {result.categories.map((cat, idx) => (
-                <CategoryCard
+                <CategoryProductBlock
                   key={cat.category}
                   category={cat}
-                  hideWeaker={hideWeaker}
-                  defaultOpen={idx < 2}
+                  defaultOpen={idx < 3}
                 />
               ))}
               <AddCategoryButton
@@ -356,9 +260,7 @@ function NicheInputCard({
 }) {
   const valid = niche.trim().length >= 2;
   return (
-    <Card
-      className="border border-border/60 bg-card/95 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_12px_36px_-12px_rgba(0,0,0,0.5)] ap-stagger-in"
-    >
+    <Card className="border border-border/60 bg-card/95 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_12px_36px_-12px_rgba(0,0,0,0.5)] ap-stagger-in">
       <CardContent className="p-7 sm:p-8 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3.5">
@@ -373,14 +275,14 @@ function NicheInputCard({
           </div>
           <div className="min-w-0">
             <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-[0.22em]">
-              Step one
+              Start here
             </p>
-            <h3 className="text-[17px] font-bold tracking-tight leading-tight mt-0.5">
-              What niche are you hunting?
+            <h3 className="text-[18px] font-bold tracking-tight leading-tight mt-0.5">
+              What&apos;s your shop&apos;s niche?
             </h3>
-            <p className="text-[12px] text-muted-foreground/80 mt-0.5">
-              A niche or product category — we&apos;ll discover the right
-              sub-categories and keywords for you.
+            <p className="text-[12px] text-muted-foreground/80 mt-1 leading-relaxed">
+              We&apos;ll find the proven-selling categories and curate quality
+              products from AliExpress for each one.
             </p>
           </div>
         </div>
@@ -394,22 +296,29 @@ function NicheInputCard({
             onKeyDown={(e) => {
               if (e.key === "Enter" && valid && !disabled) onHunt();
             }}
-            placeholder="e.g. boho jewelry · home decor · pet supplies · phone accessories"
+            placeholder="e.g. boho jewelry · home decor · pet supplies · kitchen organizer"
             disabled={disabled}
-            className="h-12 text-sm bg-muted/20 border-border/70 focus-visible:border-sky-500/60 focus-visible:ring-sky-500/15 placeholder:text-muted-foreground/55"
+            className="h-14 text-base bg-muted/20 border-border/70 focus-visible:border-sky-500/60 focus-visible:ring-sky-500/15 placeholder:text-muted-foreground/55"
           />
-          <p className="text-[11px] text-muted-foreground/70 leading-snug">
-            Tip: be broad enough to span multiple sub-categories. &ldquo;Boho
-            jewelry&rdquo; works; &ldquo;earrings&rdquo; alone is too narrow.
+          <p className="text-[11px] text-muted-foreground/70 leading-snug px-0.5">
+            Tip: a niche works best when it spans multiple shop sections.
+            &ldquo;Boho jewelry&rdquo; works; &ldquo;earrings&rdquo; alone
+            is too narrow.
           </p>
         </div>
 
         {/* Style pills (optional) */}
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            Style <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">(optional)</span>
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+        <details className="group" open>
+          <summary className="cursor-pointer list-none flex items-center gap-2">
+            <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Style{" "}
+              <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">
+                (optional)
+              </span>
+            </span>
+          </summary>
+          <div className="flex flex-wrap gap-1.5 mt-3 pl-5">
             {STYLE_OPTIONS.map((opt) => (
               <OptionPill
                 key={opt}
@@ -421,14 +330,20 @@ function NicheInputCard({
               />
             ))}
           </div>
-        </div>
+        </details>
 
         {/* Audience pills (optional) */}
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            Audience <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">(optional)</span>
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+        <details className="group" open>
+          <summary className="cursor-pointer list-none flex items-center gap-2">
+            <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Audience{" "}
+              <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">
+                (optional)
+              </span>
+            </span>
+          </summary>
+          <div className="flex flex-wrap gap-1.5 mt-3 pl-5">
             {AUDIENCE_OPTIONS.map((opt) => (
               <OptionPill
                 key={opt}
@@ -440,7 +355,7 @@ function NicheInputCard({
               />
             ))}
           </div>
-        </div>
+        </details>
 
         {/* Hunt button */}
         <div className="relative group">
@@ -457,9 +372,9 @@ function NicheInputCard({
             className="relative w-full h-14 gap-3 bg-gradient-to-r from-sky-500 via-violet-500 to-violet-600 hover:from-sky-500 hover:via-violet-500 hover:to-violet-600 text-white font-bold text-[15px] tracking-wide rounded-2xl shadow-xl shadow-violet-500/30 ring-1 ring-violet-700/30 hover:shadow-2xl hover:shadow-violet-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
           >
             <Wand2 className="size-5" />
-            <span>Hunt by niche</span>
+            <span>Find products for my niche</span>
             <span className="ml-1 text-xs font-semibold opacity-80 hidden sm:inline">
-              · ~20s
+              · ~30s
             </span>
           </Button>
         </div>
@@ -510,9 +425,9 @@ function HuntProgress({ niche }: { niche: string }) {
         aria-hidden
         className="absolute inset-0 bg-gradient-to-br from-sky-50/50 via-transparent to-violet-50/40 dark:from-sky-950/15 dark:via-transparent dark:to-violet-950/15"
       />
-      <CardContent className="relative p-8 sm:p-10">
+      <CardContent className="relative p-10 sm:p-12">
         <div className="flex flex-col items-center text-center">
-          <div className="relative size-28 mb-5">
+          <div className="relative size-32 mb-6">
             <div
               aria-hidden
               className="absolute -inset-6 rounded-full bg-gradient-to-br from-sky-400/30 to-violet-500/30 blur-2xl ap-orb-pulse"
@@ -530,25 +445,26 @@ function HuntProgress({ niche }: { niche: string }) {
             >
               <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 size-2.5 rounded-full bg-violet-500 shadow-lg shadow-violet-500/60" />
             </div>
-            <div className="absolute inset-6 rounded-full bg-gradient-to-br from-sky-500 to-violet-600 ring-1 ring-white/30 flex items-center justify-center shadow-2xl shadow-violet-500/40">
-              <Target className="size-7 text-white" />
+            <div className="absolute inset-7 rounded-full bg-gradient-to-br from-sky-500 to-violet-600 ring-1 ring-white/30 flex items-center justify-center shadow-2xl shadow-violet-500/40">
+              <ShoppingBag className="size-8 text-white" />
             </div>
           </div>
 
           <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-[0.22em] mb-1">
-            Hunting niche
+            Curating products
           </p>
           <h3 className="text-xl sm:text-2xl font-bold tracking-tight">
             &ldquo;{niche}&rdquo;
           </h3>
-          <p className="text-[13px] text-muted-foreground mt-1.5 max-w-md">
-            Discovering categories · brainstorming keywords · checking Etsy
-            demand · pulling AliExpress matches. Usually 20-30 seconds.
+          <p className="text-[13px] text-muted-foreground mt-2 max-w-md leading-relaxed">
+            Discovering proven-selling categories · checking Etsy demand
+            for each · pulling top AliExpress products · quality-filtering
+            · scoring by margin × orders × rating.
           </p>
 
-          <div className="mt-5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80 tabular-nums">
+          <div className="mt-6 inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80 tabular-nums">
             <Loader2 className="size-3 animate-spin" />
-            <span>Working across both APIs</span>
+            <span>Usually 25-35 seconds</span>
           </div>
         </div>
       </CardContent>
@@ -556,16 +472,14 @@ function HuntProgress({ niche }: { niche: string }) {
   );
 }
 
-// ─── Result summary bar ─────────────────────────────────────────────
+// ─── Result hero ────────────────────────────────────────────────────
 
-function ResultSummaryBar({
+function ResultHero({
   niche,
   style,
   audience,
   categoryCount,
-  summary,
-  hideWeaker,
-  onToggleWeaker,
+  productCount,
   onReset,
   costUsd,
   durationMs,
@@ -574,131 +488,95 @@ function ResultSummaryBar({
   style?: string;
   audience?: string;
   categoryCount: number;
-  summary: { great: number; good: number; maybe: number; skip: number; total: number };
-  hideWeaker: boolean;
-  onToggleWeaker: () => void;
+  productCount: number;
   onReset: () => void;
   costUsd: number;
   durationMs: number;
 }) {
   return (
-    <Card className="border border-border/60 shadow-none ap-stagger-in">
-      <CardContent className="p-5">
-        <div className="flex items-start gap-4 flex-wrap">
+    <Card className="border border-border/60 shadow-none ap-stagger-in overflow-hidden relative">
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.04] via-transparent to-violet-500/[0.04]"
+      />
+      <CardContent className="relative p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Niche hunt
+              Niche hunt complete
             </p>
-            <h2 className="text-lg font-bold tracking-tight mt-0.5 leading-tight">
+            <h2 className="text-2xl font-bold tracking-tight mt-0.5 leading-tight">
               {niche}
             </h2>
-            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 text-[12px] font-bold">
+                <Lightbulb className="size-3.5 text-violet-500" />
+                <span className="tabular-nums">{categoryCount}</span>
+                <span className="text-muted-foreground font-normal">categories</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[12px] font-bold">
+                <Package className="size-3.5 text-emerald-500" />
+                <span className="tabular-nums">{productCount}</span>
+                <span className="text-muted-foreground font-normal">curated products</span>
+              </span>
               {style && (
-                <span className="inline-flex items-center text-[10px] font-bold tracking-wide bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 px-2 py-0.5 rounded-full">
+                <span className="inline-flex items-center text-[10px] font-bold bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 px-2 py-0.5 rounded-full">
                   {style}
                 </span>
               )}
               {audience && (
-                <span className="inline-flex items-center text-[10px] font-bold tracking-wide bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 px-2 py-0.5 rounded-full">
+                <span className="inline-flex items-center text-[10px] font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 px-2 py-0.5 rounded-full">
                   {audience}
                 </span>
               )}
-              <span className="text-[11px] text-muted-foreground tabular-nums">
-                {categoryCount} categories · {summary.total} keywords
-              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
-            <SummaryCount count={summary.great} label="GREAT" tint="emerald" />
-            <SummaryCount count={summary.good} label="GOOD" tint="sky" />
-            <SummaryCount count={summary.maybe} label="MAYBE" tint="amber" muted />
-            <SummaryCount count={summary.skip} label="SKIP" tint="rose" muted />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 mt-4 pt-4 border-t border-border/40 flex-wrap">
           <button
             type="button"
-            onClick={onToggleWeaker}
-            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
+            onClick={onReset}
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-foreground/5 hover:bg-foreground/10 transition-colors"
           >
-            {hideWeaker ? "Show" : "Hide"} MAYBE / SKIP
+            <Wand2 className="size-3" />
+            Hunt another niche
           </button>
-
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-muted-foreground tabular-nums">
-              ${costUsd.toFixed(4)} · {(durationMs / 1000).toFixed(1)}s
-            </span>
-            <button
-              type="button"
-              onClick={onReset}
-              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-foreground/5 hover:bg-foreground/10 transition-colors"
-            >
-              <Wand2 className="size-2.5" />
-              Hunt another
-            </button>
-          </div>
         </div>
+
+        <p className="text-[10px] text-muted-foreground/70 tabular-nums mt-3 pt-3 border-t border-border/40">
+          Cost: ${costUsd.toFixed(4)} · {(durationMs / 1000).toFixed(1)}s
+        </p>
       </CardContent>
     </Card>
   );
 }
 
-function SummaryCount({
-  count,
-  label,
-  tint,
-  muted,
-}: {
-  count: number;
-  label: string;
-  tint: "emerald" | "sky" | "amber" | "rose";
-  muted?: boolean;
-}) {
-  const colorClasses = {
-    emerald: "text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 ring-emerald-500/30",
-    sky: "text-sky-700 dark:text-sky-300 bg-sky-500/15 ring-sky-500/30",
-    amber: "text-amber-700 dark:text-amber-300 bg-amber-500/15 ring-amber-500/30",
-    rose: "text-rose-700 dark:text-rose-300 bg-rose-500/15 ring-rose-500/30",
-  }[tint];
+function EmptyResultCard({ niche }: { niche: string }) {
   return (
-    <div
-      className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 ring-1 ${colorClasses} ${
-        muted ? "opacity-60" : ""
-      }`}
-    >
-      <span className="text-[14px] font-bold tabular-nums leading-none">
-        {count}
-      </span>
-      <span className="text-[9px] font-bold uppercase tracking-wider">
-        {label}
-      </span>
-    </div>
+    <Card className="border border-border/60">
+      <CardContent className="p-10 text-center">
+        <Target className="size-7 text-muted-foreground/60 mx-auto mb-2" />
+        <p className="text-sm font-bold">No vetted products found</p>
+        <p className="text-[12px] text-muted-foreground mt-1 max-w-md mx-auto leading-relaxed">
+          We couldn&apos;t surface high-quality products for &ldquo;{niche}
+          &rdquo;. Try a more specific niche (e.g. &ldquo;boho jewelry&rdquo;
+          instead of &ldquo;jewelry&rdquo;) or check that AliExpress is
+          connected.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
-// ─── Category card ──────────────────────────────────────────────────
+// ─── Category block (header + product grid) ────────────────────────
 
-function CategoryCard({
+function CategoryProductBlock({
   category,
-  hideWeaker,
   defaultOpen,
 }: {
   category: NicheCategoryResult;
-  hideWeaker: boolean;
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-
-  const visible = category.keywords.filter((k) =>
-    hideWeaker ? k.verdict === "GREAT" || k.verdict === "GOOD" : true,
-  );
-  const hiddenCount = category.keywords.length - visible.length;
-
-  const wins = category.keywords.filter(
-    (k) => k.verdict === "GREAT" || k.verdict === "GOOD",
-  ).length;
 
   return (
     <Card className="border border-border/60 shadow-none overflow-hidden ap-stagger-in">
@@ -707,379 +585,177 @@ function CategoryCard({
         onClick={() => setOpen((v) => !v)}
         className="w-full text-left"
       >
-        <CardContent className="p-4 flex items-center gap-3 hover:bg-muted/30 transition-colors">
-          <div className="size-9 rounded-lg bg-gradient-to-br from-sky-500/20 to-violet-500/20 ring-1 ring-violet-500/30 flex items-center justify-center shrink-0">
-            <Lightbulb className="size-4 text-violet-600 dark:text-violet-400" />
+        <CardContent className="p-4 sm:p-5 flex items-center gap-3.5 hover:bg-muted/30 transition-colors">
+          <div className="size-11 rounded-xl bg-gradient-to-br from-sky-500/20 to-violet-500/20 ring-1 ring-violet-500/30 flex items-center justify-center shrink-0">
+            <Lightbulb className="size-5 text-violet-600 dark:text-violet-400" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-bold tracking-tight">
+            <p className="text-[16px] font-bold tracking-tight leading-tight">
               {category.category}
             </p>
-            <p className="text-[11px] text-muted-foreground tabular-nums">
-              {category.keywords.length} keywords · {wins} hot
-              {hiddenCount > 0 && hideWeaker && (
-                <span className="text-muted-foreground/60">
+            <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+              {category.products.length} curated products
+              {category.etsyHotKeywords > 0 && (
+                <span className="text-emerald-700 dark:text-emerald-400">
                   {" "}
-                  · {hiddenCount} hidden
+                  · {category.etsyHotKeywords} hot Etsy keyword
+                  {category.etsyHotKeywords === 1 ? "" : "s"}
+                </span>
+              )}
+              {category.etsyTotalListings > 0 && (
+                <span className="text-muted-foreground/70">
+                  {" "}
+                  · {category.etsyTotalListings.toLocaleString()} Etsy listings
                 </span>
               )}
             </p>
           </div>
           {open ? (
-            <ChevronDown className="size-4 text-muted-foreground" />
+            <ChevronDown className="size-5 text-muted-foreground" />
           ) : (
-            <ChevronRight className="size-4 text-muted-foreground" />
+            <ChevronRight className="size-5 text-muted-foreground" />
           )}
         </CardContent>
       </button>
 
-      {open && visible.length > 0 && (
-        <div className="border-t border-border/40 p-4 space-y-2">
-          {visible.map((kw, i) => (
-            <KeywordCard key={kw.keyword} keyword={kw} rank={i + 1} />
-          ))}
-        </div>
-      )}
-      {open && visible.length === 0 && (
-        <div className="border-t border-border/40 px-4 py-6 text-center">
-          <p className="text-[12px] text-muted-foreground italic">
-            All keywords in this category scored MAYBE or SKIP. Click
-            &ldquo;Show MAYBE / SKIP&rdquo; above to view them.
-          </p>
+      {open && category.products.length > 0 && (
+        <div className="border-t border-border/40 p-4 sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {category.products.map((p, i) => (
+              <ProductCard key={p.productId} product={p} rank={i + 1} />
+            ))}
+          </div>
         </div>
       )}
     </Card>
   );
 }
 
-// ─── Keyword card ───────────────────────────────────────────────────
+// ─── Product card ──────────────────────────────────────────────────
 
-function KeywordCard({
-  keyword,
+function ProductCard({
+  product,
   rank,
 }: {
-  keyword: NicheKeywordResult;
+  product: CuratedProduct;
   rank: number;
 }) {
-  const style = VERDICT_STYLE[keyword.verdict];
-  const [copied, setCopied] = useState(false);
-
-  // Lazy-loaded AE preview for MAYBE/SKIP rows (or any row without
-  // auto-loaded aliPreview). Click "Find on AliExpress" → POST to
-  // /api/aliexpress/products-for-keyword → render inline below.
-  const [lazyPreview, setLazyPreview] = useState<AliPreview[] | null>(null);
-  const [lazyOpen, setLazyOpen] = useState(false);
-  const [lazyLoading, setLazyLoading] = useState(false);
-  const [lazyError, setLazyError] = useState<string | null>(null);
-
-  async function handleCopy() {
-    await navigator.clipboard.writeText(keyword.keyword);
-    setCopied(true);
-    toast.success(`Copied "${keyword.keyword}"`);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
-  async function handleFindOnAliExpress() {
-    // If auto-preview already exists, just open/scroll to it
-    if (keyword.aliPreview && keyword.aliPreview.length > 0) {
-      setLazyOpen((v) => !v);
-      return;
-    }
-    // Otherwise lazy-fetch
-    if (lazyLoading) return;
-    if (lazyPreview) {
-      setLazyOpen((v) => !v);
-      return;
-    }
-    setLazyLoading(true);
-    setLazyError(null);
-    setLazyOpen(true);
-    try {
-      const res = await fetch("/api/aliexpress/products-for-keyword", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword: keyword.keyword, limit: 10 }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        if (res.status === 409) {
-          throw new Error(
-            "AliExpress not connected — use the Connect button above.",
-          );
-        }
-        throw new Error(body?.error ?? `Failed (${res.status})`);
-      }
-      const data = (await res.json()) as {
-        products: Array<{
-          productId: number;
-          title: string;
-          imageUrl?: string;
-          productUrl?: string;
-          priceMin: number;
-          rating?: number;
-          orderCount?: number;
-        }>;
-      };
-      // Convert to AliPreview shape (we don't have margin from this
-      // endpoint, so leave it 0 — keyword-level click is just "show me
-      // matching products," not the full margin breakdown).
-      const previews: AliPreview[] = data.products.slice(0, 10).map((p) => ({
-        productId: p.productId,
-        title: p.title,
-        imageUrl: p.imageUrl,
-        productUrl: p.productUrl,
-        priceUsd: p.priceMin,
-        marginUsd: 0,
-        rating: p.rating,
-        orderCount: p.orderCount,
-      }));
-      setLazyPreview(previews);
-      if (previews.length === 0) {
-        toast.message("No AliExpress matches for this keyword");
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed";
-      setLazyError(msg);
-      toast.error("AliExpress lookup failed", { description: msg });
-    } finally {
-      setLazyLoading(false);
-    }
-  }
-
-  const aliExpressUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(keyword.keyword)}`;
-  const etsyUrl = `https://www.etsy.com/search?q=${encodeURIComponent(keyword.keyword)}`;
-
-  const hasAutoPreview = !!keyword.aliPreview && keyword.aliPreview.length > 0;
-  const showLazyPreview = lazyOpen && !hasAutoPreview;
+  const aliExpressUrl =
+    product.productUrl ??
+    `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(product.matchedKeyword)}`;
+  const etsyUrl = `https://www.etsy.com/search?q=${encodeURIComponent(product.matchedKeyword)}`;
 
   return (
-    <div
-      className={`relative rounded-xl ring-1 ${style.ringBorder} overflow-hidden`}
-    >
-      <div
-        aria-hidden
-        className={`absolute inset-0 bg-gradient-to-r ${style.tint} pointer-events-none`}
-      />
-      <div className="relative p-4">
-        <div className="flex items-start gap-3">
-          {/* Rank chip */}
-          <div
-            className={`size-9 rounded-lg ring-1 flex items-center justify-center shrink-0 shadow-sm ${style.chip}`}
-          >
-            {rank === 1 ? (
-              <Crown className="size-4" />
-            ) : (
-              <span className="text-[11px] font-bold tabular-nums">#{rank}</span>
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            {/* Verdict + score */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] ring-1 ${style.chip} ${style.ringBorder}`}
-              >
-                {keyword.verdict}
-              </span>
-              <span className="text-[10px] font-bold tabular-nums text-muted-foreground">
-                {keyword.score}/100
-              </span>
-            </div>
-
-            <h4 className="text-[14px] font-bold leading-tight mt-1 tracking-tight">
-              {keyword.keyword}
-            </h4>
-
-            {/* Compact stats */}
-            <div className="mt-2 flex flex-wrap gap-2.5 text-[10px] text-muted-foreground tabular-nums">
-              <span className="inline-flex items-center gap-1">
-                <TrendingUp className="size-2.5" />
-                {formatCount(keyword.totalListings)} listings
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Heart className="size-2.5" />
-                {formatCount(keyword.avgTopFavorites)} avg favs
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Users className="size-2.5" />
-                {keyword.uniqueShops} shops
-              </span>
-            </div>
-
-            {/* Reasons */}
-            {keyword.reasons.length > 0 && (
-              <ul className="mt-2 space-y-0.5">
-                {keyword.reasons.slice(0, 2).map((r, i) => (
-                  <li
-                    key={i}
-                    className="text-[11px] text-muted-foreground leading-snug flex items-start gap-1.5"
-                  >
-                    <span className="mt-1 size-1 rounded-full bg-muted-foreground/50 shrink-0" />
-                    <span>{r}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {/* Action buttons — same 4 buttons on every keyword row so the
-                team has consistent muscle memory. "Find on AliExpress" lazy-
-                loads inline products for MAYBE/SKIP rows; for GREAT/GOOD it
-                toggles the auto-loaded preview. */}
-            <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[9px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
-              >
-                {copied ? (
-                  <Check className="size-2.5 text-emerald-500" strokeWidth={3} />
-                ) : (
-                  <Copy className="size-2.5" />
-                )}
-                {copied ? "Copied" : "Copy"}
-              </button>
-              <a
-                href={aliExpressUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow shadow-orange-500/30 hover:opacity-90 transition-opacity"
-              >
-                <ExternalLink className="size-2.5" />
-                Hunt on AliExpress
-              </a>
-              <a
-                href={etsyUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[9px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
-              >
-                <ExternalLink className="size-2.5" />
-                See on Etsy
-              </a>
-              <button
-                type="button"
-                onClick={handleFindOnAliExpress}
-                disabled={lazyLoading}
-                className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-violet-500 to-pink-500 text-white shadow shadow-violet-500/30 hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
-                {lazyLoading ? (
-                  <Loader2 className="size-2.5 animate-spin" />
-                ) : (
-                  <Search className="size-2.5" />
-                )}
-                Find on AliExpress
-              </button>
-            </div>
-
-            {/* Inline AE preview — auto-loaded for GREAT/GOOD */}
-            {hasAutoPreview && (
-              <div className="mt-3 pt-3 border-t border-border/40">
-                <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-2">
-                  AliExpress matches · top by orders
-                </p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {keyword.aliPreview!.map((p) => (
-                    <MiniAliCard key={p.productId} product={p} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Lazy-loaded preview — for MAYBE/SKIP when user clicks Find on AliExpress */}
-            {showLazyPreview && (
-              <div className="mt-3 pt-3 border-t border-border/40">
-                <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-2">
-                  AliExpress matches
-                </p>
-                {lazyLoading && (
-                  <p className="text-[11px] text-muted-foreground italic">
-                    Searching AliExpress…
-                  </p>
-                )}
-                {lazyError && (
-                  <p className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50/40 dark:bg-rose-950/20 ring-1 ring-rose-500/20 rounded-md px-3 py-2">
-                    {lazyError}
-                  </p>
-                )}
-                {lazyPreview && lazyPreview.length > 0 && (
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {lazyPreview.map((p) => (
-                      <MiniAliCard key={p.productId} product={p} hideMargin />
-                    ))}
-                  </div>
-                )}
-                {lazyPreview && lazyPreview.length === 0 && !lazyError && (
-                  <p className="text-[11px] text-muted-foreground italic">
-                    No matching AliExpress products. Try the &ldquo;Hunt on
-                    AliExpress&rdquo; link above for broader results.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniAliCard({
-  product,
-  hideMargin,
-}: {
-  product: AliPreview;
-  hideMargin?: boolean;
-}) {
-  return (
-    <a
-      href={product.productUrl ?? "#"}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex gap-2 rounded-lg ring-1 ring-border/50 bg-card hover:bg-muted/30 transition-colors p-2"
-    >
-      <div className="size-14 rounded-md bg-muted/40 overflow-hidden shrink-0 flex items-center justify-center">
+    <div className="group rounded-xl ring-1 ring-border/60 bg-card hover:ring-border hover:shadow-md transition-all overflow-hidden flex flex-col">
+      {/* Image */}
+      <div className="relative aspect-square bg-muted/40 overflow-hidden">
         {product.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.imageUrl}
             alt=""
-            className="size-full object-cover"
+            className="size-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
           />
         ) : (
-          <Package className="size-4 text-muted-foreground/40" />
+          <div className="size-full flex items-center justify-center">
+            <Package className="size-8 text-muted-foreground/40" />
+          </div>
         )}
+
+        {/* Rank chip top-left */}
+        <div className="absolute top-2 left-2">
+          <span
+            className={`inline-flex items-center justify-center min-w-[26px] h-6 px-1.5 rounded-md text-[10px] font-bold tabular-nums backdrop-blur-md ring-1 ${
+              rank === 1
+                ? "bg-amber-500/90 text-white ring-amber-500/40"
+                : "bg-black/50 text-white ring-white/20"
+            }`}
+          >
+            {rank === 1 ? <Crown className="size-3" /> : `#${rank}`}
+          </span>
+        </div>
+
+        {/* Quality score top-right */}
+        <div className="absolute top-2 right-2">
+          <span className="inline-flex items-center h-6 px-1.5 rounded-md text-[10px] font-bold bg-emerald-500/90 text-white backdrop-blur-md ring-1 ring-emerald-500/40">
+            {product.qualityScore}
+          </span>
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] leading-tight line-clamp-2">
+
+      {/* Body */}
+      <div className="p-3 flex flex-col gap-2 flex-1">
+        <p className="text-[12px] leading-snug line-clamp-2 font-medium min-h-[2.4em]">
           {product.title}
         </p>
-        <p className="text-[11px] font-bold tabular-nums mt-1 text-emerald-700 dark:text-emerald-400">
-          ${product.priceUsd.toFixed(2)}
-        </p>
-        <p className="text-[9px] tabular-nums text-muted-foreground leading-none mt-0.5">
-          {!hideMargin && <>+${product.marginUsd.toFixed(2)} margin</>}
-          {!hideMargin && product.rating !== undefined && " · "}
+
+        {/* Stats row */}
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground tabular-nums">
           {product.rating !== undefined && (
-            <>
+            <span className="inline-flex items-center gap-0.5">
               <Star
-                className="inline size-2 text-amber-500 -translate-y-px"
+                className="size-2.5 text-amber-500"
                 fill="currentColor"
                 strokeWidth={0}
               />
               {product.rating.toFixed(1)}
-            </>
+            </span>
           )}
-          {product.orderCount !== undefined &&
-            product.orderCount > 0 && (
-              <>
-                {(product.rating !== undefined || !hideMargin) && " · "}
-                {product.orderCount.toLocaleString()} orders
-              </>
-            )}
+          {product.orderCount !== undefined && product.orderCount > 0 && (
+            <span>{product.orderCount.toLocaleString()} sold</span>
+          )}
+        </div>
+
+        {/* Price + margin */}
+        <div className="flex items-end justify-between pt-1.5 border-t border-border/40">
+          <div>
+            <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold">
+              AE cost
+            </p>
+            <p className="text-[15px] font-bold tabular-nums leading-none">
+              ${product.priceUsd.toFixed(2)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold">
+              Margin
+            </p>
+            <p className="text-[15px] font-bold tabular-nums leading-none text-emerald-700 dark:text-emerald-400">
+              +${product.marginUsd.toFixed(2)}
+            </p>
+          </div>
+        </div>
+
+        {/* Recommended Etsy price */}
+        <p className="text-[10px] text-muted-foreground italic tabular-nums">
+          List at <strong className="text-foreground not-italic font-bold">${product.recommendedEtsyPrice.toFixed(2)}</strong> on Etsy
         </p>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1.5 pt-2 mt-auto">
+          <a
+            href={aliExpressUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 inline-flex items-center justify-center gap-1 h-8 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow shadow-orange-500/30 hover:opacity-90 transition-opacity"
+          >
+            <ExternalLink className="size-2.5" />
+            AliExpress
+          </a>
+          <a
+            href={etsyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1 h-8 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
+            title="See on Etsy"
+          >
+            <Search className="size-2.5" />
+            Etsy
+          </a>
+        </div>
       </div>
-    </a>
+    </div>
   );
 }
 

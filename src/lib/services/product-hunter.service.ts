@@ -263,78 +263,151 @@ export async function huntProducts(
   };
 }
 
-// ─── Niche-based hunt (new Manual Hunting flow, May 16 2026) ────────
+// ─── Niche-based hunt (May 16 2026 — v2: category-level products) ──
 
-export interface AliPreview {
+export interface CuratedProduct {
   productId: number;
   title: string;
   imageUrl?: string;
   productUrl?: string;
   priceUsd: number;
+  recommendedEtsyPrice: number;
   marginUsd: number;
+  marginPct: number;
   rating?: number;
   orderCount?: number;
-}
-
-export interface NicheKeywordResult extends ProductHuntResult {
-  /**
-   * Top 3 AliExpress products for this keyword (only populated for
-   * GREAT / GOOD verdicts to save API budget). MAYBE / SKIP rows
-   * don't auto-fetch AE preview — user has to click through.
-   */
-  aliPreview?: AliPreview[];
+  // Internal: which keyword surfaced this product (for debugging /
+  // filtering — not shown in UI by default).
+  matchedKeyword: string;
+  /** Composite 0-100 score: orders × rating × margin */
+  qualityScore: number;
 }
 
 export interface NicheCategoryResult {
   category: string;
-  keywords: NicheKeywordResult[];
+  products: CuratedProduct[];
+  /** How many of this category's keywords scored GREAT or GOOD on Etsy. */
+  etsyHotKeywords: number;
+  /** Total Etsy listing count summed across the category's keywords. */
+  etsyTotalListings: number;
 }
 
 export interface NicheHuntResponse {
   niche: string;
   style?: string;
   audience?: string;
-  scanCount: number; // total keywords evaluated across all categories
+  scanCount: number;
+  productCount: number;
   totalCostUsd: number;
   durationMs: number;
   categories: NicheCategoryResult[];
 }
 
+// ─── Product quality filters ───────────────────────────────────────
+// Tuned for Etsy listing-ability: products must look professional,
+// have proven demand on AliExpress, and a healthy margin after our
+// markup table.
+
+const PRODUCT_QUALITY = {
+  minOrders: 50, // proven demand — not a brand-new untested listing
+  minRating: 4.4, // <4.4 means returns + bad reviews
+  minMargin: 5, // skip if projected profit < $5/sale
+  maxPriceUsd: 50, // above this, margin math gets weird + buyers are pickier
+  minTitleLength: 12, // garbage 5-word titles get filtered
+};
+
+function passesQualityFilter(p: AliExpressProduct, margin: number): boolean {
+  if (!p.imageUrl) return false; // no image = unusable
+  if (!p.title || p.title.length < PRODUCT_QUALITY.minTitleLength) return false;
+  if (p.priceMin > PRODUCT_QUALITY.maxPriceUsd) return false;
+  if (margin < PRODUCT_QUALITY.minMargin) return false;
+  if (p.orderCount !== undefined && p.orderCount < PRODUCT_QUALITY.minOrders) {
+    return false;
+  }
+  if (p.rating !== undefined && p.rating > 0 && p.rating < PRODUCT_QUALITY.minRating) {
+    return false;
+  }
+  return true;
+}
+
 /**
- * Map an AliExpress product to a lightweight preview with margin
- * computed via the team's stepped markup table.
+ * Composite quality score 0-100. Higher = better candidate to list.
+ * Weights:
+ *   - 40% margin (more profit per sale = more important)
+ *   - 30% order count (proven demand)
+ *   - 20% rating (quality signal)
+ *   - 10% price sweet spot ($3-$25 is ideal for Etsy)
  */
-function toAliPreview(p: AliExpressProduct): AliPreview {
+function scoreProduct(p: AliExpressProduct, margin: number): number {
+  let score = 0;
+
+  // Margin: linear up to $20, capped
+  score += Math.min(margin / 20, 1) * 40;
+
+  // Orders: log-scale (50 → 10pts, 500 → 20pts, 5000 → 30pts)
+  if (p.orderCount && p.orderCount > 0) {
+    const orderPts = Math.min(Math.log10(p.orderCount + 1) / 4, 1) * 30;
+    score += orderPts;
+  }
+
+  // Rating: 4.4 → 10pts, 4.7 → 16pts, 5.0 → 20pts
+  if (p.rating !== undefined && p.rating > 0) {
+    const ratingPts = Math.max(0, ((p.rating - 4) / 1) * 20);
+    score += Math.min(ratingPts, 20);
+  } else {
+    score += 5; // mild neutral
+  }
+
+  // Price sweet spot: $3-$25 = 10pts, otherwise tapered
+  const price = p.priceMin;
+  if (price >= 3 && price <= 25) score += 10;
+  else if (price >= 1 && price <= 35) score += 6;
+  else if (price <= 50) score += 3;
+
+  return Math.round(score);
+}
+
+function toCuratedProduct(
+  p: AliExpressProduct,
+  matchedKeyword: string,
+): CuratedProduct {
   const pricing = calculateEtsyPrice(p.priceMin);
+  const margin = pricing.markup;
   return {
     productId: p.productId,
     title: p.title,
     imageUrl: p.imageUrl,
     productUrl: p.productUrl,
     priceUsd: p.priceMin,
-    marginUsd: pricing.markup, // by formula, profit per sale == markup
+    recommendedEtsyPrice: pricing.etsyMatured,
+    marginUsd: margin,
+    marginPct:
+      pricing.etsyMatured > 0
+        ? (margin / pricing.etsyMatured) * 100
+        : 0,
     rating: p.rating,
     orderCount: p.orderCount,
+    matchedKeyword,
+    qualityScore: scoreProduct(p, margin),
   };
 }
 
 /**
- * Run a Niche Hunt — the new Manual Hunting pipeline (May 16 2026).
+ * Run a Niche Hunt — v2 pipeline (May 16 2026, category-level products).
  *
  * Flow:
- *   1. Haiku — niche → 5-8 shop categories (forced extras from the
- *      employee's shop profile are merged in too)
- *   2. For each category (parallel) — Haiku → 4-6 keywords
- *   3. For ALL keywords (parallel) — Etsy demand check + score
- *   4. For GREAT / GOOD keywords only — AliExpress top-3 preview
- *      with margin calc (skipped if no AE token provided)
+ *   1. Haiku — niche → 6-10 PROVEN-SELLING shop categories
+ *   2. For each category (parallel) — Haiku → 6-8 buyer-intent keywords
+ *   3. For ALL keywords (parallel) — Etsy demand check (validates the
+ *      category actually has Etsy buyer traction)
+ *   4. For ALL keywords (parallel) — AliExpress product fetch
+ *      (20 products per keyword, sorted by orders desc)
+ *   5. Aggregate products to category level — dedup by aliProductId,
+ *      apply quality filter, sort by composite score, take top 12
+ *   6. Drop categories with zero quality-filtered products
  *
- * Cost: ~$0.01-0.015 per niche hunt (1 + ~6 Haiku calls).
- * Wall time: ~20-30s (mostly Etsy at 3.3 QPS).
- *
- * If `accessToken` is null, AE previews are skipped entirely — the
- * pipeline still works and returns keyword scores, just without
- * supplier-side data.
+ * Cost: ~$0.015-0.02 per niche hunt (1 + ~8 Haiku calls).
+ * Wall time: ~25-35s (~40 Etsy + ~50 AE calls).
  */
 export async function huntByNiche(opts: {
   niche: string;
@@ -347,7 +420,7 @@ export async function huntByNiche(opts: {
   const accum = createCostAccumulator();
   const niche = opts.niche.trim();
 
-  // Step 1: niche → categories
+  // Step 1: niche → 6-10 categories
   const categories = await generateNicheCategories(
     {
       niche,
@@ -364,13 +437,14 @@ export async function huntByNiche(opts: {
       style: opts.style,
       audience: opts.audience,
       scanCount: 0,
+      productCount: 0,
       totalCostUsd: accum.totalCostUsd,
       durationMs: Date.now() - startedAt,
       categories: [],
     };
   }
 
-  // Step 2: in parallel, generate keywords per category
+  // Step 2: per category (parallel) → 6-8 keywords
   const perCategory = await Promise.all(
     categories.map(async (category) => {
       const keywords = await generateCategoryKeywords(
@@ -386,8 +460,7 @@ export async function huntByNiche(opts: {
     }),
   );
 
-  // Step 3: flat list of (category, keyword) pairs, dedup keywords
-  // globally (a keyword shouldn't appear in two categories)
+  // Build flat (category, keyword) pairs with global keyword dedup
   const seenKeywords = new Set<string>();
   const allPairs: Array<{ category: string; keyword: string }> = [];
   for (const { category, keywords } of perCategory) {
@@ -399,85 +472,113 @@ export async function huntByNiche(opts: {
     }
   }
 
-  // Step 4: evaluate every keyword in parallel against Etsy
-  const evaluated = await Promise.all(
+  // Step 3: Etsy demand check on every keyword (parallel).
+  // We use the result to score each category's Etsy traction, but
+  // we surface PRODUCTS to the user, not keywords.
+  const etsyEvaluated = await Promise.all(
     allPairs.map(async (pair) => {
       const result = await evaluateKeyword(pair.keyword);
-      if (!result) return null;
-      return { ...pair, result };
+      return { ...pair, etsyResult: result };
     }),
   );
 
-  // Step 5: for GREAT / GOOD keywords, fetch AliExpress preview
-  // (skip if no token to avoid pointless API hits)
-  const winners = evaluated.filter(
-    (e): e is { category: string; keyword: string; result: ProductHuntResult } =>
-      e !== null && (e.result.verdict === "GREAT" || e.result.verdict === "GOOD"),
-  );
-
-  const aliPreviewByKeyword = new Map<string, AliPreview[]>();
-  if (opts.accessToken && winners.length > 0) {
-    // Batch AE calls in groups of 5 so we don't blow the 3.3 QPS bucket
-    // all at once. The token bucket inside the AE client handles the
-    // rate limiting itself but batching keeps things tidy.
+  // Step 4: AliExpress search per keyword (parallel).
+  // For each keyword we pull 20 products to give us a wide enough net
+  // to filter quality. Without a token, we skip all AE — categories
+  // come back empty.
+  const aeProductsByKeyword = new Map<string, AliExpressProduct[]>();
+  if (opts.accessToken) {
     const aeResults = await Promise.all(
-      winners.map(async (w) => {
+      allPairs.map(async (pair) => {
         try {
-          const res = await searchProductsByKeyword(w.keyword, {
+          const res = await searchProductsByKeyword(pair.keyword, {
             accessToken: opts.accessToken!,
-            pageSize: 5,
+            pageSize: 20,
             sortBy: "orders_desc",
           });
-          return {
-            keyword: w.keyword,
-            previews: res.products.slice(0, 3).map(toAliPreview),
-          };
+          return { keyword: pair.keyword, products: res.products };
         } catch {
-          return { keyword: w.keyword, previews: [] };
+          return { keyword: pair.keyword, products: [] };
         }
       }),
     );
-    for (const { keyword, previews } of aeResults) {
-      aliPreviewByKeyword.set(keyword, previews);
+    for (const { keyword, products } of aeResults) {
+      aeProductsByKeyword.set(keyword, products);
     }
   }
 
-  // Step 6: organize results back into category buckets, sorted by
-  // score within each category
-  const categoryMap = new Map<string, NicheKeywordResult[]>();
-  for (const entry of evaluated) {
-    if (!entry) continue;
-    const enriched: NicheKeywordResult = {
-      ...entry.result,
-      aliPreview: aliPreviewByKeyword.get(entry.keyword),
-    };
-    const bucket = categoryMap.get(entry.category) ?? [];
-    bucket.push(enriched);
-    categoryMap.set(entry.category, bucket);
-  }
-
+  // Step 5: Aggregate to category level.
+  // For each category, gather all products from its keywords, dedup
+  // by aliProductId, filter for quality, sort by composite score,
+  // take the top 12.
   const categoryResults: NicheCategoryResult[] = [];
   for (const category of categories) {
-    const items = categoryMap.get(category) ?? [];
-    items.sort((a, b) => b.score - a.score);
-    categoryResults.push({ category, keywords: items });
+    const categoryKeywords = etsyEvaluated.filter(
+      (e) => e.category === category,
+    );
+
+    // Etsy stats for the category
+    const etsyHotKeywords = categoryKeywords.filter(
+      (k) =>
+        k.etsyResult &&
+        (k.etsyResult.verdict === "GREAT" || k.etsyResult.verdict === "GOOD"),
+    ).length;
+    const etsyTotalListings = categoryKeywords.reduce(
+      (sum, k) => sum + (k.etsyResult?.totalListings ?? 0),
+      0,
+    );
+
+    // Aggregate AE products from every keyword in this category
+    const seenProductIds = new Set<number>();
+    const candidatePool: CuratedProduct[] = [];
+    for (const ck of categoryKeywords) {
+      const aeProducts = aeProductsByKeyword.get(ck.keyword) ?? [];
+      for (const p of aeProducts) {
+        if (!p.productId || seenProductIds.has(p.productId)) continue;
+        const pricing = calculateEtsyPrice(p.priceMin);
+        if (!passesQualityFilter(p, pricing.markup)) continue;
+        seenProductIds.add(p.productId);
+        candidatePool.push(toCuratedProduct(p, ck.keyword));
+      }
+    }
+
+    // Sort by composite quality score, take top 12 per category
+    candidatePool.sort((a, b) => b.qualityScore - a.qualityScore);
+    const topProducts = candidatePool.slice(0, 12);
+
+    // Only surface categories that have at least 1 quality product
+    // AND at least 1 keyword with Etsy traction — otherwise drop them
+    // so the user sees a curated list, not noise.
+    if (topProducts.length === 0) continue;
+
+    categoryResults.push({
+      category,
+      products: topProducts,
+      etsyHotKeywords,
+      etsyTotalListings,
+    });
   }
-  // Sort categories so ones with more GREAT/GOOD keywords surface first
+
+  // Sort categories: most Etsy-hot keywords first, then by total
+  // product count (more products = more options for the team).
   categoryResults.sort((a, b) => {
-    const aWins = a.keywords.filter(
-      (k) => k.verdict === "GREAT" || k.verdict === "GOOD",
-    ).length;
-    const bWins = b.keywords.filter(
-      (k) => k.verdict === "GREAT" || k.verdict === "GOOD",
-    ).length;
-    return bWins - aWins;
+    if (a.etsyHotKeywords !== b.etsyHotKeywords) {
+      return b.etsyHotKeywords - a.etsyHotKeywords;
+    }
+    return b.products.length - a.products.length;
   });
+
+  const totalProductCount = categoryResults.reduce(
+    (sum, c) => sum + c.products.length,
+    0,
+  );
 
   return {
     niche,
     style: opts.style,
     audience: opts.audience,
-    scanCount: evaluated.filter((e) => e !== null).length,
+    scanCount: etsyEvaluated.filter((e) => e.etsyResult !== null).length,
+    productCount: totalProductCount,
     totalCostUsd: accum.totalCostUsd,
     durationMs: Date.now() - startedAt,
     categories: categoryResults,

@@ -411,23 +411,26 @@ export async function generateNicheCategories(
 
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR, // Haiku — cheap brainstorm
-    max_tokens: 400,
-    temperature: 0.4,
-    system: `You are an Etsy shop strategist. Given a niche, output the 5-8 most relevant CATEGORIES (shop sections) an seller in that niche would have.
+    max_tokens: 500,
+    temperature: 0.35,
+    system: `You are an Etsy/AliExpress dropshipping strategist with deep knowledge of what categories are PROVEN SELLERS on Etsy. Given a niche, output 6-10 CATEGORIES that established Etsy sellers in this niche actually carry — categories with a track record of consistent sales.
 
-Rules:
-1. Categories are SHOP-LEVEL groupings, not specific products.
-   Good: "Earrings", "Necklaces", "Wall Art", "Coffee Mugs"
-   Bad: "Boho Hoop Earrings", "Crystal Pendant Necklace" (too specific — those are keywords, not categories)
-2. Each category is 1-3 words, Title Case.
-3. Cover the natural breadth of the niche so the seller can offer variety.
-4. Prefer categories that actually show up as Etsy shop sections in real stores.
-5. NO duplicates, NO sub-sub-categories.
-6. 5-8 categories total (lean toward 6).
+CRITICAL rules:
+1. Each category must be a PROVEN seller — categories that real top-100 Etsy shops in this niche already organize their inventory around. Not aspirational, not experimental.
+2. Categories are SHOP SECTIONS, not specific products.
+   ✅ Good: "Earrings", "Necklaces", "Wall Art", "Coffee Mugs", "Phone Cases", "Hair Accessories"
+   ❌ Bad: "Boho Hoop Earrings", "Vintage Style Necklace" (too specific — those are keywords)
+3. Each category is 1-3 words, Title Case.
+4. Cover the NATURAL BREADTH of the niche — span the high-revenue sections that ANY successful Etsy shop in this space would have.
+5. Include some less-obvious sections that are still proven sellers (e.g. for "boho jewelry" also include "Body Chains", "Hair Accessories", "Anklets" — not just the obvious Earrings/Necklaces/Bracelets).
+6. NO duplicates. NO niche-name repeats (don't add "Boho Earrings" if niche is already "boho jewelry").
+7. Output 6-10 categories total. Lean toward 8.
+
+Think: "If I opened the top 3 Etsy shops in this niche right now, which shop sections would they ALL have?"
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
-  "categories": ["Category 1", "Category 2", ... 5-8 items]
+  "categories": ["Category 1", "Category 2", ... 6-10 items]
 }`,
     messages: [
       {
@@ -487,21 +490,30 @@ export async function generateCategoryKeywords(
 
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR, // Haiku
-    max_tokens: 300,
-    temperature: 0.5,
-    system: `You are an Etsy SEO expert. Given a niche and a specific category within it, brainstorm 4-6 long-tail search keywords real buyers would type into Etsy.
+    max_tokens: 400,
+    temperature: 0.45,
+    system: `You are an Etsy SEO expert who knows what real buyers search for. Given a niche and a specific category within it, brainstorm 6-8 search keywords that ACTUAL Etsy buyers type into the search bar to find products in this category.
 
-Rules:
-1. Each keyword is 2-5 words, lowercase, no punctuation.
-2. Keywords MUST fit the category (don't drift into other categories).
-3. Lean into LONG-TAIL (3-5 words) — easier to rank.
-4. Cover diverse buyer intents: style, material, occasion, recipient.
-5. NO brand names or trademarks.
-6. NO duplicates; vary the wording across the set.
+CRITICAL rules:
+1. Each keyword must reflect REAL BUYER INTENT — match how shoppers actually phrase their search (not how a brand would describe their product).
+2. Keywords MUST fit the category — don't drift. If category is "Earrings", every keyword is about earrings, not necklaces.
+3. Lean into LONG-TAIL (3-5 words) — easier for new shops to rank, and buyer intent is clearer.
+4. Mix the search-intent variety — cover:
+   - Style descriptors (vintage, boho, minimalist, statement)
+   - Material/finish (gold, sterling silver, beaded, resin)
+   - Use cases / occasions (wedding, anniversary, everyday, gift)
+   - Recipient types (women, bridesmaid, teen, men)
+   - Aesthetic (cottagecore, Y2K, dainty, chunky)
+5. Each keyword 2-5 words, lowercase, no punctuation, no hashtags.
+6. NO brand names or trademarks (Disney, Apple, Nike, etc).
+7. NO duplicates — vary descriptors across the set.
+8. NO category-name-only keywords (e.g. don't just return "earrings" — return "boho hoop earrings", "tassel statement earrings", etc).
+
+Think: "What would 7 different buyers type into Etsy to find something in this category?"
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
-  "keywords": ["kw 1", "kw 2", ... 4-6 items]
+  "keywords": ["kw 1", "kw 2", ... 6-8 items]
 }`,
     messages: [
       {
@@ -524,7 +536,7 @@ Return 4-6 Etsy search keywords for this category.`,
     return (parsed.keywords ?? [])
       .map((v) => (v ?? "").toString().trim().toLowerCase())
       .filter((v) => v.length >= 3 && v.length <= 80)
-      .slice(0, 8);
+      .slice(0, 10);
   } catch {
     return [];
   }
