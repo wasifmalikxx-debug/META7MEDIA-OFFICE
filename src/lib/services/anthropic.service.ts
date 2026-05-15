@@ -490,30 +490,81 @@ export async function generateCategoryKeywords(
 
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR, // Haiku
-    max_tokens: 400,
-    temperature: 0.45,
-    system: `You are an Etsy SEO expert who knows what real buyers search for. Given a niche and a specific category within it, brainstorm 6-8 search keywords that ACTUAL Etsy buyers type into the search bar to find products in this category.
+    max_tokens: 600,
+    temperature: 0.75,
+    system: `You are a deeply niche Etsy SEO researcher who tracks how aesthetic-driven Gen Z + millennial buyers ACTUALLY search. Generate 8-10 SPECIFIC, NON-OBVIOUS keywords for products in this category.
 
-CRITICAL rules:
-1. Each keyword must reflect REAL BUYER INTENT — match how shoppers actually phrase their search (not how a brand would describe their product).
-2. Keywords MUST fit the category — don't drift. If category is "Earrings", every keyword is about earrings, not necklaces.
-3. Lean into LONG-TAIL (3-5 words) — easier for new shops to rank, and buyer intent is clearer.
-4. Mix the search-intent variety — cover:
-   - Style descriptors (vintage, boho, minimalist, statement)
-   - Material/finish (gold, sterling silver, beaded, resin)
-   - Use cases / occasions (wedding, anniversary, everyday, gift)
-   - Recipient types (women, bridesmaid, teen, men)
-   - Aesthetic (cottagecore, Y2K, dainty, chunky)
-5. Each keyword 2-5 words, lowercase, no punctuation, no hashtags.
-6. NO brand names or trademarks (Disney, Apple, Nike, etc).
-7. NO duplicates — vary descriptors across the set.
-8. NO category-name-only keywords (e.g. don't just return "earrings" — return "boho hoop earrings", "tassel statement earrings", etc).
+🚫 SPECIFICITY IS EVERYTHING — basic keywords are FORBIDDEN.
 
-Think: "What would 7 different buyers type into Etsy to find something in this category?"
+❌ NEVER return generic phrases like:
+- "boho earrings" / "vintage shirt" / "cute necklace" / "modern lamp" / "stylish bag"
+- Anything using filler words: "trendy", "popular", "cute", "stylish", "modern", "beautiful", "lovely", "elegant"
+- Just "[adjective] [category]" — that's the bare minimum every basic seller already uses
+
+✅ GREAT examples by category:
+
+For "Earrings":
+- y2k butterfly drop earrings
+- dainty pearl evil eye studs
+- cottagecore mushroom dangle
+- mob wife chunky gold hoops
+- indie sleaze star chain earrings
+- coastal grandma seashell drops
+- dark academia book lover studs
+- tarnish-free everyday huggie hoops
+
+For "Wall Art":
+- moody dark academia bookshelf print
+- coastal grandma sailboat oil painting
+- y2k chrome heart digital art
+- pressed botanical herbarium frame
+- vintage 70s groovy mushroom poster
+- soft girl pastel cloud print
+- eclectic grandpa antique map
+- maximalist art deco geometric print
+
+For "Coffee Mugs":
+- self-deprecating sarcastic gen z mug
+- cottagecore mushroom forest mug
+- y2k bratz nostalgic mug
+- minimalist line drawing face mug
+- bookish dark academia book stack mug
+- horror movie villain enamel mug
+- dad joke pun coffee mug
+- ceramic handmade speckled glaze mug
+
+For "Phone Cases":
+- y2k butterfly clear case
+- cottagecore mushroom 3d case
+- dark academia book spine case
+- minimalist line art case
+- mob wife leopard print case
+- soft girl pearl beaded case
+- pinterest aesthetic earth tone case
+- alt grunge skull silver case
+
+🎯 The pattern across GREAT keywords:
+- Aesthetic + product specifics (3-5 words)
+- Modern aesthetic vocab: y2k, indie sleaze, cottagecore, soft girl, alt, dark academia, coastal grandma, mob wife, brat summer, clean girl, dopamine dressing, balletcore, dollette, eclectic grandpa, weird girl
+- Specific materials/finishes: polymer clay, resin, freshwater pearl, sterling silver, tarnish-free, hypoallergenic, enamel, oil-painted, hand-pressed
+- Specific forms/silhouettes (per category): huggie, drop, stud, dangle, chunky, dainty, stacked, herringbone, paperclip, rope chain, 3d, embossed
+- Visual motifs: butterfly, evil eye, mushroom, snake, chrome, pearl, smoky quartz, herbarium, bookshelf
+- Context: statement, layering, everyday, festival, bridal, gift for [persona]
+
+📊 Mix at least 3 different aesthetics across your 8-10 keywords (e.g. y2k + cottagecore + dark academia, not all one vibe).
+
+Think: "What would 9 different buyers — a Y2K teen, a cottagecore mom, an alt 20-something, a clean-girl minimalist, a coastal grandma, a dark academia bookworm, a brat summer party girl, an indie sleaze festivalgoer — type into Etsy to find their PERFECT product in this category?"
+
+Rules:
+- Each keyword 2-5 words, lowercase, no punctuation, no hashtags
+- 100% inside the given category (don't drift)
+- NO brand names or trademarks
+- NO duplicates within the set
+- NO single-word or two-word generic ([adjective] + category) outputs
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
-  "keywords": ["kw 1", "kw 2", ... 6-8 items]
+  "keywords": ["kw 1", "kw 2", ... 8-10 items]
 }`,
     messages: [
       {
@@ -523,7 +574,7 @@ Category: ${opts.category}
 ${styleLine}
 ${audienceLine}
 
-Return 4-6 Etsy search keywords for this category.`,
+Generate 8-10 specific, aesthetic-driven keywords for this category. Make them SPECIFIC. Mix aesthetics. No generic "[adjective] [category]" outputs.`,
       },
       { role: "assistant", content: "{" },
     ],
@@ -535,8 +586,23 @@ Return 4-6 Etsy search keywords for this category.`,
     const parsed = safeParseJson<{ keywords: string[] }>(raw);
     return (parsed.keywords ?? [])
       .map((v) => (v ?? "").toString().trim().toLowerCase())
-      .filter((v) => v.length >= 3 && v.length <= 80)
-      .slice(0, 10);
+      // Filter out single-word and pure "[adjective] [category]"
+      // basics — if the keyword is only 2 words AND one of them IS
+      // the category name, it's too generic. Force specificity.
+      .filter((v) => {
+        if (v.length < 3 || v.length > 80) return false;
+        const words = v.split(/\s+/);
+        if (words.length < 2) return false;
+        // 2-word output is allowed only if neither word is the category
+        // name (e.g., "evil eye" is fine; "boho earrings" if category
+        // is "Earrings" is not).
+        if (words.length === 2) {
+          const cat = opts.category.toLowerCase();
+          if (cat.includes(words[1]) || cat.includes(words[0])) return false;
+        }
+        return true;
+      })
+      .slice(0, 12);
   } catch {
     return [];
   }
