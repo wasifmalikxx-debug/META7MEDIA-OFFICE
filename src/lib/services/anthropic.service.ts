@@ -793,7 +793,7 @@ PRODUCT ANCHORS — rules (per category):
 - These are the HARD MATCH gate — products without any of these in their title get filtered out
 
 KEYWORDS — CRITICAL rules:
-- 5 long-tail (3-5 word) search phrases real buyers type into Etsy
+- 7 long-tail (3-5 word) search phrases real buyers type into Etsy
 - Each keyword MUST have a clear single PRODUCT NOUN — same product type as the category.
   ✅ "hand stitched mens jacket"  — clear product (jacket)
   ❌ "hand stitched jacket gift for mom" — mixes "jacket" with "gift for mom"; AliExpress matches "gift for mom" and returns generic mom-gifts instead of jackets
@@ -823,7 +823,7 @@ OUTPUT FORMAT — strict JSON, no prose:
     {
       "name": "Category 1",
       "productAnchors": ["anchor1", "anchor2", "anchor3"],
-      "keywords": ["kw1", "kw2", "kw3", "kw4", "kw5"]
+      "keywords": ["kw1", "kw2", "kw3", "kw4", "kw5", "kw6", "kw7"]
     },
     ... 6-8 categories
   ]
@@ -836,7 +836,7 @@ ${styleLine}
 ${audienceLine}
 ${extrasLine}
 
-Return 6-8 proven-selling categories, each with exactly 5 long-tail buyer-intent keywords. Mix 3+ intent buckets across each category's keywords.`,
+Return 6-8 proven-selling categories, each with exactly 7 long-tail buyer-intent keywords. Mix 3+ intent buckets across each category's keywords.`,
       },
       { role: "assistant", content: "{" },
     ],
@@ -881,9 +881,17 @@ Return 6-8 proven-selling categories, each with exactly 5 long-tail buyer-intent
           if (k.length < 3 || k.length > 80) return false;
           const words = k.split(/\s+/);
           if (words.length < 2) return false;
+          // 2-word redundancy check — drop only when BOTH words appear
+          // in the category name (= the keyword is just the category
+          // restated, e.g. "boho earrings" under cat "Boho Earrings").
+          // The earlier OR check was way too broad — for cat
+          // "Earrings" it killed every legit 2-word phrase like
+          // "tribal earrings" / "stud earrings", which is why categories
+          // were rendering with only 3 keywords instead of the 5-7
+          // Haiku returned.
           if (words.length === 2) {
             const cat = name.toLowerCase();
-            if (cat.includes(words[0]) || cat.includes(words[1])) return false;
+            if (cat.includes(words[0]) && cat.includes(words[1])) return false;
           }
           // Gender / audience enforcement — drop keywords missing the
           // niche's required market-segment tokens.
@@ -893,7 +901,10 @@ Return 6-8 proven-selling categories, each with exactly 5 long-tail buyer-intent
           }
           return true;
         })
-        .slice(0, 10);
+        // Cap at 6 final keywords per category. Asked Haiku for 7 to
+        // leave a 1-2 keyword buffer against filter drops, but we
+        // want a consistent visual density in the UI so the cap is 6.
+        .slice(0, 6);
 
       if (kws.length === 0) continue;
 
