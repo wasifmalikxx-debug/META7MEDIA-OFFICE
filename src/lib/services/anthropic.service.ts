@@ -780,14 +780,17 @@ Examples for niche "mens linen clothing":
 Same rule applies to OTHER strict niche qualifiers (material like "linen", style like "y2k", aesthetic like "cottagecore") — keep them threaded through keywords so AliExpress doesn't drift the search.
 
 PRODUCT ANCHORS — rules (per category):
-3-5 single-word product noun stems that MUST appear in a real product title in this category. These let us filter out off-topic AliExpress matches.
-  • "Outerwear" → ["jacket", "coat", "blazer", "parka", "vest"]
-  • "Earrings" → ["earring", "stud", "hoop", "drop", "dangle"]
-  • "Necklaces" → ["necklace", "pendant", "choker", "chain"]
-  • "Wall Art" → ["print", "poster", "canvas", "painting", "art"]
-  • "Coffee Mugs" → ["mug", "cup", "tumbler"]
-- Lowercase, singular form preferred (we substring-match against titles)
-- These are HARD MATCH terms — every keyword's products will be filtered to contain at least one
+5-8 single-word product noun stems / SYNONYMS that buyers AND AliExpress sellers actually use in titles for this category. Include common alternatives so we don't miss valid products.
+  • "Outerwear"     → ["jacket", "coat", "blazer", "parka", "vest", "windbreaker", "anorak"]
+  • "Earrings"      → ["earring", "stud", "hoop", "drop", "dangle", "ear cuff", "huggie"]
+  • "Necklaces"     → ["necklace", "pendant", "choker", "chain", "lariat"]
+  • "Wall Art"      → ["print", "poster", "canvas", "painting", "art", "wall hanging", "tapestry"]
+  • "Coffee Mugs"   → ["mug", "cup", "tumbler", "stein", "tankard"]
+  • "Mens Shirts"   → ["shirt", "tee", "polo", "t-shirt", "buttondown", "top"]
+  • "Graphic Tees"  → ["tee", "t-shirt", "shirt", "top", "vintage tee"]
+- Lowercase, singular preferred (we substring-match against titles)
+- Include common SYNONYMS — what other words might appear in a title for this same product? (tee/shirt/top all describe a t-shirt; jacket/coat/blazer all are outerwear)
+- These are the HARD MATCH gate — products without any of these in their title get filtered out
 
 KEYWORDS — CRITICAL rules:
 - 5 long-tail (3-5 word) search phrases real buyers type into Etsy
@@ -870,7 +873,7 @@ Return 6-8 proven-selling categories, each with exactly 5 long-tail buyer-intent
       const anchors = (c?.productAnchors ?? [])
         .map((a) => (a ?? "").toString().trim().toLowerCase())
         .filter((a) => a.length >= 3 && a.length <= 30)
-        .slice(0, 6);
+        .slice(0, 10);
 
       const kws = (c?.keywords ?? [])
         .map((k) => (k ?? "").toString().trim().toLowerCase())

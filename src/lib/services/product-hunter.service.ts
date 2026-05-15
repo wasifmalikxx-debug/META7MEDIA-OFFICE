@@ -436,31 +436,80 @@ function strictMatchScore(title: string, keyword: string): number {
 }
 
 /**
- * Pick the BEST one product preview for a keyword.
+ * Extract meaningful product nouns from the keyword itself. Used as
+ * fallback anchors when the category anchors don't match any AE
+ * product (e.g. category anchors are ["shirt"] but the keyword is
+ * "linen vest cardigan" and AE returns "vest" / "cardigan" products
+ * that don't say "shirt").
+ */
+function extractKeywordAnchors(keyword: string): string[] {
+  return keyword
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9]/g, ""))
+    .filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
+}
+
+/**
+ * Pick the BEST one product preview for a keyword. Two-pass matching:
  *
- * Filter rule (gate):
- *   - Title MUST contain at least one of the category's product anchors
- *     (mask / earring / mug / etc.)
+ *   PASS 1 (strict):   anchor from Haiku/category-name must appear in
+ *                      product title.
+ *   PASS 2 (fallback): if pass 1 found nothing, retry with keyword
+ *                      words ALSO treated as anchors. Stays niche-
+ *                      relevant because we still filter by keyword
+ *                      word overlap in the ranker.
  *
- * Ranking rule (after gate, pick the best):
- *   - More keyword words matched in title = better
- *   - On ties, higher order count wins
- *
- * Returns the first valid product even if 0 keyword words match,
- * AS LONG AS the anchor matches. The anchor is the only hard gate —
- * keyword-word count is just the ranking signal. This gives us a
- * preview for nearly every keyword instead of empty cards.
- *
- * Returns null only if AE returned NO anchor-matching products at all.
+ * Returns null only if BOTH passes fail (AE genuinely had no relevant
+ * products for this keyword).
  */
 function pickBestPreview(
   products: AliExpressProduct[],
   keyword: string,
   anchors: string[],
 ): KeywordPreview | null {
+  const validProducts = products.filter(
+    (p) => p.imageUrl && p.title && p.priceMin > 0,
+  );
+  if (validProducts.length === 0) return null;
+
+  // PASS 1 — strict anchor match
+  let best = findBestByAnchor(validProducts, keyword, anchors);
+
+  // PASS 2 — fallback: include keyword's own nouns as anchors
+  if (!best) {
+    const keywordAnchors = extractKeywordAnchors(keyword);
+    const expandedAnchors = Array.from(
+      new Set([...anchors, ...keywordAnchors]),
+    );
+    best = findBestByAnchor(validProducts, keyword, expandedAnchors);
+  }
+
+  if (!best) return null;
+  const p = best;
+  return {
+    productId: p.productId,
+    title: p.title,
+    imageUrl: p.imageUrl,
+    productUrl: p.productUrl,
+    priceUsd: p.priceMin,
+    rating: p.rating,
+    orderCount: p.orderCount,
+  };
+}
+
+/**
+ * Helper for pickBestPreview's two-pass logic — finds the single best
+ * anchor-matching product, ranked by keyword-word match score then
+ * order count.
+ */
+function findBestByAnchor(
+  products: AliExpressProduct[],
+  keyword: string,
+  anchors: string[],
+): AliExpressProduct | null {
   let best: { p: AliExpressProduct; score: number } | null = null;
   for (const p of products) {
-    if (!p.imageUrl || !p.title || p.priceMin <= 0) continue;
     if (!passesRelevanceFilter(p, anchors)) continue;
     const score = strictMatchScore(p.title, keyword);
     if (
@@ -472,17 +521,7 @@ function pickBestPreview(
       best = { p, score };
     }
   }
-  if (!best) return null;
-  const p = best.p;
-  return {
-    productId: p.productId,
-    title: p.title,
-    imageUrl: p.imageUrl,
-    productUrl: p.productUrl,
-    priceUsd: p.priceMin,
-    rating: p.rating,
-    orderCount: p.orderCount,
-  };
+  return best?.p ?? null;
 }
 
 /**
