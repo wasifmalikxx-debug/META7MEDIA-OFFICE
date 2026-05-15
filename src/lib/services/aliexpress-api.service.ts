@@ -199,15 +199,19 @@ export async function aliExpressCall<T = unknown>(
 
   const url = `${API_BASE}?${new URLSearchParams(stringifiedParams).toString()}`;
 
+  // Reduced from 4 → 2 attempts with halved backoff. The original
+  // 4-attempt × 800ms-base backoff could waste up to 12s per failing
+  // call. With many parallel calls (~40 AE during a Manual Hunting
+  // hunt), retry storms compounded into 60s+ wall times.
   let lastErr: unknown = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     await acquireSlot();
     try {
       const res = await fetch(url, { method: "POST" });
       if (!res.ok) {
         if (res.status === 429 || res.status >= 500) {
           lastErr = new Error(`AliExpress ${res.status}`);
-          await new Promise((r) => setTimeout(r, 800 * Math.pow(2, attempt)));
+          await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
           continue;
         }
         throw new Error(
@@ -274,8 +278,8 @@ export async function aliExpressCall<T = unknown>(
       return json as T;
     } catch (err) {
       lastErr = err;
-      if (attempt === 3) break;
-      await new Promise((r) => setTimeout(r, 800 * Math.pow(2, attempt)));
+      if (attempt === 1) break;
+      await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
     }
   }
   throw lastErr instanceof Error

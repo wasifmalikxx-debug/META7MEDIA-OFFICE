@@ -655,25 +655,42 @@ export async function huntByNiche(opts: {
   // At our 3.3 QPS bucket: ~64 keywords × 1 call each ≈ 20s per API,
   // running in parallel = ~20s total instead of 30s sequential.
   const previewByKeyword = new Map<string, KeywordPreview | null>();
+  // Per-call timeout so a single slow / 429-retrying AE call can't
+  // drag the whole hunt past the user's patience threshold. The AE
+  // service has 4 retries with exponential backoff (up to 12s per
+  // call). Most calls finish in <3s; the few that don't get killed
+  // at 6s and that keyword just renders without a preview.
+  const PREVIEW_TIMEOUT_MS = 6000;
   const fetchPreview = async (pair: { category: string; keyword: string }) => {
     if (!opts.accessToken) return null;
-    try {
-      // 10 candidates is plenty — we pick 1 preview per keyword and
-      // the anchor filter only rejects clearly off-topic products.
-      // Smaller payload = faster AE response (we measured 2x faster
-      // with pageSize=10 vs 20 under rate-limit stress).
-      const res = await searchProductsByKeyword(pair.keyword, {
-        accessToken: opts.accessToken,
-        pageSize: 10,
-        sortBy: "orders_desc",
-      });
-      const anchors = perCategory.find((c) => c.category === pair.category)
-        ?.productAnchors ?? [];
-      return pickBestPreview(res.products, pair.keyword, anchors);
-    } catch {
-      return null;
-    }
+    const anchors = perCategory.find((c) => c.category === pair.category)
+      ?.productAnchors ?? [];
+
+    const fetchPromise = (async (): Promise<KeywordPreview | null> => {
+      try {
+        const res = await searchProductsByKeyword(pair.keyword, {
+          accessToken: opts.accessToken!,
+          pageSize: 8,
+          sortBy: "orders_desc",
+        });
+        return pickBestPreview(res.products, pair.keyword, anchors);
+      } catch {
+        return null;
+      }
+    })();
+
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), PREVIEW_TIMEOUT_MS),
+    );
+
+    return Promise.race([fetchPromise, timeoutPromise]);
   };
+
+  const tEtsyStart = Date.now();
+  const tAeStart = Date.now();
+  let tEtsyEnd = 0;
+  let tAeEnd = 0;
+  let aePreviewsResolved = 0;
 
   const [etsyEvaluated, previewResults] = await Promise.all([
     Promise.all(
@@ -681,13 +698,24 @@ export async function huntByNiche(opts: {
         const result = await evaluateKeyword(pair.keyword);
         return { ...pair, etsyResult: result };
       }),
-    ),
+    ).then((r) => {
+      tEtsyEnd = Date.now();
+      console.log(`[hunt-by-niche] Etsy scoring done in ${tEtsyEnd - tEtsyStart}ms (${r.length} keywords)`);
+      return r;
+    }),
     Promise.all(
-      allPairs.map(async (pair) => ({
-        keyword: pair.keyword,
-        preview: await fetchPreview(pair),
-      })),
-    ),
+      allPairs.map(async (pair) => {
+        const preview = await fetchPreview(pair);
+        if (preview) aePreviewsResolved++;
+        return { keyword: pair.keyword, preview };
+      }),
+    ).then((r) => {
+      tAeEnd = Date.now();
+      console.log(
+        `[hunt-by-niche] AE previews done in ${tAeEnd - tAeStart}ms (${aePreviewsResolved}/${r.length} found)`,
+      );
+      return r;
+    }),
   ]);
 
   for (const { keyword, preview } of previewResults) {
