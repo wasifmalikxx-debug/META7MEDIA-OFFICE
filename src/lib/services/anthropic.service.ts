@@ -632,6 +632,46 @@ export interface NicheBreakdownCategory {
   productAnchors: string[];
 }
 
+/**
+ * Stop-word list used when deriving anchors from category names —
+ * connectors / fillers that shouldn't become product-title anchors.
+ */
+const CATEGORY_NAME_STOP_WORDS = new Set([
+  "and", "the", "for", "with", "of", "in", "on", "to", "by", "or",
+  "a", "an", "is", "are", "&", "set", "sets", "all",
+]);
+
+/**
+ * Extract product-anchor stems from a category name. Splits on any
+ * non-alphanumeric chars + filters stop words + trims plural/derived
+ * suffixes to short stems so AE title `includes()` substring matching
+ * catches common variants.
+ *
+ *   "Masks & Face Accessories"  → ["mask", "face", "accessor"]
+ *   "Coffee Mugs"               → ["coffee", "mug"]
+ *   "Hair Accessories"          → ["hair", "accessor"]
+ *   "Wall Art"                  → ["wall", "art"]
+ *   "Outerwear"                 → ["outerwear"]
+ *   "Graphic Tees"              → ["graphic", "tee"]
+ */
+function deriveAnchorsFromCategoryName(name: string): string[] {
+  const words = name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3 && !CATEGORY_NAME_STOP_WORDS.has(w));
+  const stems: string[] = [];
+  for (const w of words) {
+    // Trim common plural / -y / -ie endings to get a substring stem
+    // that catches both singular and plural product titles.
+    if (w.endsWith("ies") && w.length > 4) stems.push(w.slice(0, -3));
+    else if (w.endsWith("ses") && w.length > 4) stems.push(w.slice(0, -2));
+    else if (w.endsWith("es") && w.length > 4) stems.push(w.slice(0, -1));
+    else if (w.endsWith("s") && w.length > 3) stems.push(w.slice(0, -1));
+    else stems.push(w);
+  }
+  return Array.from(new Set(stems));
+}
+
 export async function generateNicheBreakdown(
   opts: {
     niche: string;
@@ -766,17 +806,18 @@ Return 8-10 proven-selling categories, each with 8 long-tail buyer-intent keywor
 
       if (kws.length === 0) continue;
 
-      // Fallback anchor: if Haiku didn't provide any, use the category
-      // name lowercased + a singular variant. Better than no filter.
-      const safeAnchors =
-        anchors.length > 0
-          ? anchors
-          : [lowerName, lowerName.replace(/s$/, "")];
+      // ALWAYS merge category-name-derived anchors with Haiku's.
+      // The category name itself usually contains the most reliable
+      // anchor words. E.g. "Masks & Face Accessories" yields anchors
+      // ["mask", "face", "accessor"] which match AE titles like
+      // "Halloween Face Mask Cosplay" reliably.
+      const nameDerivedAnchors = deriveAnchorsFromCategoryName(name);
+      const allAnchors = Array.from(new Set([...anchors, ...nameDerivedAnchors]));
 
       result.push({
         category: name,
         keywords: kws,
-        productAnchors: safeAnchors,
+        productAnchors: allAnchors.length > 0 ? allAnchors : [lowerName],
       });
     }
 
@@ -785,10 +826,11 @@ Return 8-10 proven-selling categories, each with 8 long-tail buyer-intent keywor
       const trimmed = extra.trim();
       if (trimmed && !seenCats.has(trimmed.toLowerCase())) {
         const lower = trimmed.toLowerCase();
+        const derived = deriveAnchorsFromCategoryName(trimmed);
         result.push({
           category: trimmed,
           keywords: [trimmed],
-          productAnchors: [lower, lower.replace(/s$/, "")],
+          productAnchors: derived.length > 0 ? derived : [lower],
         });
         seenCats.add(lower);
       }

@@ -436,36 +436,33 @@ function strictMatchScore(title: string, keyword: string): number {
 }
 
 /**
- * Pick the BEST one product preview for a keyword. Returns null if no
- * AE product strictly matches.
+ * Pick the BEST one product preview for a keyword.
  *
- * Strictness rules:
- *   1. Title must contain at least one product anchor (jacket / earring
- *      / mug / etc.)
- *   2. Title must contain at least half of the keyword's meaningful
- *      words (excluding stop words and 1-letter tokens)
+ * Filter rule (gate):
+ *   - Title MUST contain at least one of the category's product anchors
+ *     (mask / earring / mug / etc.)
  *
- * Among candidates that pass, pick the highest strictMatchScore. Tied
- * scores break by order count (popularity).
+ * Ranking rule (after gate, pick the best):
+ *   - More keyword words matched in title = better
+ *   - On ties, higher order count wins
+ *
+ * Returns the first valid product even if 0 keyword words match,
+ * AS LONG AS the anchor matches. The anchor is the only hard gate —
+ * keyword-word count is just the ranking signal. This gives us a
+ * preview for nearly every keyword instead of empty cards.
+ *
+ * Returns null only if AE returned NO anchor-matching products at all.
  */
 function pickBestPreview(
   products: AliExpressProduct[],
   keyword: string,
   anchors: string[],
 ): KeywordPreview | null {
-  const keywordWords = keyword
-    .toLowerCase()
-    .split(/\s+/)
-    .map((w) => w.replace(/[^a-z0-9]/g, ""))
-    .filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
-  const minMatch = Math.max(2, Math.ceil(keywordWords.length * 0.5));
-
   let best: { p: AliExpressProduct; score: number } | null = null;
   for (const p of products) {
     if (!p.imageUrl || !p.title || p.priceMin <= 0) continue;
     if (!passesRelevanceFilter(p, anchors)) continue;
     const score = strictMatchScore(p.title, keyword);
-    if (score < minMatch) continue;
     if (
       !best ||
       score > best.score ||
@@ -661,9 +658,12 @@ export async function huntByNiche(opts: {
   const fetchPreview = async (pair: { category: string; keyword: string }) => {
     if (!opts.accessToken) return null;
     try {
+      // 20 candidates gives the relevance filter a wider net so we
+      // almost always find at least one anchor-matching product to
+      // surface as the preview.
       const res = await searchProductsByKeyword(pair.keyword, {
         accessToken: opts.accessToken,
-        pageSize: 10,
+        pageSize: 20,
         sortBy: "orders_desc",
       });
       const anchors = perCategory.find((c) => c.category === pair.category)
