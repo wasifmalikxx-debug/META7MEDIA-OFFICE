@@ -383,6 +383,153 @@ Generate 25 long-tail Etsy search variants.`,
   }
 }
 
+/**
+ * Niche → Etsy shop categories. Used by the new niche-centric Manual
+ * Hunting flow: employee types "boho jewelry", we surface 5-8 actual
+ * Etsy shop categories an seller in that niche would have (Earrings,
+ * Necklaces, Bracelets, etc.).
+ *
+ * Returns category names; the caller then runs keyword expansion per
+ * category to organize the hunt by shop section.
+ */
+export async function generateNicheCategories(
+  opts: {
+    niche: string;
+    style?: string;
+    audience?: string;
+    extras?: string[]; // categories the employee wants to force-include
+  },
+  accum?: CostAccumulator,
+): Promise<string[]> {
+  const styleLine = opts.style ? `Style hint: ${opts.style}` : "";
+  const audienceLine = opts.audience
+    ? `Target audience hint: ${opts.audience}`
+    : "";
+  const extrasLine = opts.extras?.length
+    ? `IMPORTANT — ALSO include these categories the seller specified: ${opts.extras.join(", ")}`
+    : "";
+
+  const msg = await client().messages.create({
+    model: MODEL_VALIDATOR, // Haiku — cheap brainstorm
+    max_tokens: 400,
+    temperature: 0.4,
+    system: `You are an Etsy shop strategist. Given a niche, output the 5-8 most relevant CATEGORIES (shop sections) an seller in that niche would have.
+
+Rules:
+1. Categories are SHOP-LEVEL groupings, not specific products.
+   Good: "Earrings", "Necklaces", "Wall Art", "Coffee Mugs"
+   Bad: "Boho Hoop Earrings", "Crystal Pendant Necklace" (too specific — those are keywords, not categories)
+2. Each category is 1-3 words, Title Case.
+3. Cover the natural breadth of the niche so the seller can offer variety.
+4. Prefer categories that actually show up as Etsy shop sections in real stores.
+5. NO duplicates, NO sub-sub-categories.
+6. 5-8 categories total (lean toward 6).
+
+OUTPUT FORMAT — strict JSON, no prose:
+{
+  "categories": ["Category 1", "Category 2", ... 5-8 items]
+}`,
+    messages: [
+      {
+        role: "user",
+        content: `Niche: ${opts.niche}
+${styleLine}
+${audienceLine}
+${extrasLine}
+
+Return the 5-8 shop categories for this niche.`,
+      },
+      { role: "assistant", content: "{" },
+    ],
+  });
+  trackUsage(accum, msg, modelKindFromId(MODEL_VALIDATOR));
+
+  const raw = "{" + extractText(msg);
+  try {
+    const parsed = safeParseJson<{ categories: string[] }>(raw);
+    const fromAi = (parsed.categories ?? [])
+      .map((c) => (c ?? "").toString().trim())
+      .filter((c) => c.length >= 2 && c.length <= 40);
+    // Merge in the user's forced extras (deduped, case-insensitive)
+    const seen = new Set(fromAi.map((c) => c.toLowerCase()));
+    const merged = [...fromAi];
+    for (const extra of opts.extras ?? []) {
+      const trimmed = extra.trim();
+      if (trimmed && !seen.has(trimmed.toLowerCase())) {
+        merged.push(trimmed);
+        seen.add(trimmed.toLowerCase());
+      }
+    }
+    return merged.slice(0, 10); // hard cap so wall time stays sane
+  } catch {
+    return opts.extras ?? [];
+  }
+}
+
+/**
+ * Niche + Category → 4-6 specific search keywords buyers would type.
+ *
+ * Called once per category in the niche-hunting pipeline. Per category
+ * we get 4-6 keywords; 6 categories × 5 keywords = ~30 keywords per
+ * niche hunt — organized rather than flat.
+ */
+export async function generateCategoryKeywords(
+  opts: {
+    niche: string;
+    category: string;
+    style?: string;
+    audience?: string;
+  },
+  accum?: CostAccumulator,
+): Promise<string[]> {
+  const styleLine = opts.style ? `Style: ${opts.style}` : "";
+  const audienceLine = opts.audience ? `Audience: ${opts.audience}` : "";
+
+  const msg = await client().messages.create({
+    model: MODEL_VALIDATOR, // Haiku
+    max_tokens: 300,
+    temperature: 0.5,
+    system: `You are an Etsy SEO expert. Given a niche and a specific category within it, brainstorm 4-6 long-tail search keywords real buyers would type into Etsy.
+
+Rules:
+1. Each keyword is 2-5 words, lowercase, no punctuation.
+2. Keywords MUST fit the category (don't drift into other categories).
+3. Lean into LONG-TAIL (3-5 words) — easier to rank.
+4. Cover diverse buyer intents: style, material, occasion, recipient.
+5. NO brand names or trademarks.
+6. NO duplicates; vary the wording across the set.
+
+OUTPUT FORMAT — strict JSON, no prose:
+{
+  "keywords": ["kw 1", "kw 2", ... 4-6 items]
+}`,
+    messages: [
+      {
+        role: "user",
+        content: `Niche: ${opts.niche}
+Category: ${opts.category}
+${styleLine}
+${audienceLine}
+
+Return 4-6 Etsy search keywords for this category.`,
+      },
+      { role: "assistant", content: "{" },
+    ],
+  });
+  trackUsage(accum, msg, modelKindFromId(MODEL_VALIDATOR));
+
+  const raw = "{" + extractText(msg);
+  try {
+    const parsed = safeParseJson<{ keywords: string[] }>(raw);
+    return (parsed.keywords ?? [])
+      .map((v) => (v ?? "").toString().trim().toLowerCase())
+      .filter((v) => v.length >= 3 && v.length <= 80)
+      .slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
 // ─── Optional — Category classifier (Haiku, text-only) ──────────────
 
 /**

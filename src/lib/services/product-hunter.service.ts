@@ -19,9 +19,16 @@ import {
 } from "./etsy-api.service";
 import {
   expandSearchVariants,
+  generateNicheCategories,
+  generateCategoryKeywords,
   createCostAccumulator,
   type CostAccumulator,
 } from "./anthropic.service";
+import {
+  searchProductsByKeyword,
+  type AliExpressProduct,
+} from "./aliexpress-api.service";
+import { calculateEtsyPrice } from "@/lib/etsy-price-calculator";
 
 export type ProductHuntVerdict = "GREAT" | "GOOD" | "MAYBE" | "SKIP";
 
@@ -253,5 +260,226 @@ export async function huntProducts(
     totalCostUsd: costAccum.totalCostUsd,
     durationMs: Date.now() - startedAt,
     results: evaluated,
+  };
+}
+
+// ─── Niche-based hunt (new Manual Hunting flow, May 16 2026) ────────
+
+export interface AliPreview {
+  productId: number;
+  title: string;
+  imageUrl?: string;
+  productUrl?: string;
+  priceUsd: number;
+  marginUsd: number;
+  rating?: number;
+  orderCount?: number;
+}
+
+export interface NicheKeywordResult extends ProductHuntResult {
+  /**
+   * Top 3 AliExpress products for this keyword (only populated for
+   * GREAT / GOOD verdicts to save API budget). MAYBE / SKIP rows
+   * don't auto-fetch AE preview — user has to click through.
+   */
+  aliPreview?: AliPreview[];
+}
+
+export interface NicheCategoryResult {
+  category: string;
+  keywords: NicheKeywordResult[];
+}
+
+export interface NicheHuntResponse {
+  niche: string;
+  style?: string;
+  audience?: string;
+  scanCount: number; // total keywords evaluated across all categories
+  totalCostUsd: number;
+  durationMs: number;
+  categories: NicheCategoryResult[];
+}
+
+/**
+ * Map an AliExpress product to a lightweight preview with margin
+ * computed via the team's stepped markup table.
+ */
+function toAliPreview(p: AliExpressProduct): AliPreview {
+  const pricing = calculateEtsyPrice(p.priceMin);
+  return {
+    productId: p.productId,
+    title: p.title,
+    imageUrl: p.imageUrl,
+    productUrl: p.productUrl,
+    priceUsd: p.priceMin,
+    marginUsd: pricing.markup, // by formula, profit per sale == markup
+    rating: p.rating,
+    orderCount: p.orderCount,
+  };
+}
+
+/**
+ * Run a Niche Hunt — the new Manual Hunting pipeline (May 16 2026).
+ *
+ * Flow:
+ *   1. Haiku — niche → 5-8 shop categories (forced extras from the
+ *      employee's shop profile are merged in too)
+ *   2. For each category (parallel) — Haiku → 4-6 keywords
+ *   3. For ALL keywords (parallel) — Etsy demand check + score
+ *   4. For GREAT / GOOD keywords only — AliExpress top-3 preview
+ *      with margin calc (skipped if no AE token provided)
+ *
+ * Cost: ~$0.01-0.015 per niche hunt (1 + ~6 Haiku calls).
+ * Wall time: ~20-30s (mostly Etsy at 3.3 QPS).
+ *
+ * If `accessToken` is null, AE previews are skipped entirely — the
+ * pipeline still works and returns keyword scores, just without
+ * supplier-side data.
+ */
+export async function huntByNiche(opts: {
+  niche: string;
+  style?: string;
+  audience?: string;
+  extraCategories?: string[];
+  accessToken?: string | null;
+}): Promise<NicheHuntResponse> {
+  const startedAt = Date.now();
+  const accum = createCostAccumulator();
+  const niche = opts.niche.trim();
+
+  // Step 1: niche → categories
+  const categories = await generateNicheCategories(
+    {
+      niche,
+      style: opts.style,
+      audience: opts.audience,
+      extras: opts.extraCategories,
+    },
+    accum,
+  );
+
+  if (categories.length === 0) {
+    return {
+      niche,
+      style: opts.style,
+      audience: opts.audience,
+      scanCount: 0,
+      totalCostUsd: accum.totalCostUsd,
+      durationMs: Date.now() - startedAt,
+      categories: [],
+    };
+  }
+
+  // Step 2: in parallel, generate keywords per category
+  const perCategory = await Promise.all(
+    categories.map(async (category) => {
+      const keywords = await generateCategoryKeywords(
+        {
+          niche,
+          category,
+          style: opts.style,
+          audience: opts.audience,
+        },
+        accum,
+      );
+      return { category, keywords };
+    }),
+  );
+
+  // Step 3: flat list of (category, keyword) pairs, dedup keywords
+  // globally (a keyword shouldn't appear in two categories)
+  const seenKeywords = new Set<string>();
+  const allPairs: Array<{ category: string; keyword: string }> = [];
+  for (const { category, keywords } of perCategory) {
+    for (const kw of keywords) {
+      const lower = kw.toLowerCase();
+      if (seenKeywords.has(lower)) continue;
+      seenKeywords.add(lower);
+      allPairs.push({ category, keyword: lower });
+    }
+  }
+
+  // Step 4: evaluate every keyword in parallel against Etsy
+  const evaluated = await Promise.all(
+    allPairs.map(async (pair) => {
+      const result = await evaluateKeyword(pair.keyword);
+      if (!result) return null;
+      return { ...pair, result };
+    }),
+  );
+
+  // Step 5: for GREAT / GOOD keywords, fetch AliExpress preview
+  // (skip if no token to avoid pointless API hits)
+  const winners = evaluated.filter(
+    (e): e is { category: string; keyword: string; result: ProductHuntResult } =>
+      e !== null && (e.result.verdict === "GREAT" || e.result.verdict === "GOOD"),
+  );
+
+  const aliPreviewByKeyword = new Map<string, AliPreview[]>();
+  if (opts.accessToken && winners.length > 0) {
+    // Batch AE calls in groups of 5 so we don't blow the 3.3 QPS bucket
+    // all at once. The token bucket inside the AE client handles the
+    // rate limiting itself but batching keeps things tidy.
+    const aeResults = await Promise.all(
+      winners.map(async (w) => {
+        try {
+          const res = await searchProductsByKeyword(w.keyword, {
+            accessToken: opts.accessToken!,
+            pageSize: 5,
+            sortBy: "orders_desc",
+          });
+          return {
+            keyword: w.keyword,
+            previews: res.products.slice(0, 3).map(toAliPreview),
+          };
+        } catch {
+          return { keyword: w.keyword, previews: [] };
+        }
+      }),
+    );
+    for (const { keyword, previews } of aeResults) {
+      aliPreviewByKeyword.set(keyword, previews);
+    }
+  }
+
+  // Step 6: organize results back into category buckets, sorted by
+  // score within each category
+  const categoryMap = new Map<string, NicheKeywordResult[]>();
+  for (const entry of evaluated) {
+    if (!entry) continue;
+    const enriched: NicheKeywordResult = {
+      ...entry.result,
+      aliPreview: aliPreviewByKeyword.get(entry.keyword),
+    };
+    const bucket = categoryMap.get(entry.category) ?? [];
+    bucket.push(enriched);
+    categoryMap.set(entry.category, bucket);
+  }
+
+  const categoryResults: NicheCategoryResult[] = [];
+  for (const category of categories) {
+    const items = categoryMap.get(category) ?? [];
+    items.sort((a, b) => b.score - a.score);
+    categoryResults.push({ category, keywords: items });
+  }
+  // Sort categories so ones with more GREAT/GOOD keywords surface first
+  categoryResults.sort((a, b) => {
+    const aWins = a.keywords.filter(
+      (k) => k.verdict === "GREAT" || k.verdict === "GOOD",
+    ).length;
+    const bWins = b.keywords.filter(
+      (k) => k.verdict === "GREAT" || k.verdict === "GOOD",
+    ).length;
+    return bWins - aWins;
+  });
+
+  return {
+    niche,
+    style: opts.style,
+    audience: opts.audience,
+    scanCount: evaluated.filter((e) => e !== null).length,
+    totalCostUsd: accum.totalCostUsd,
+    durationMs: Date.now() - startedAt,
+    categories: categoryResults,
   };
 }
