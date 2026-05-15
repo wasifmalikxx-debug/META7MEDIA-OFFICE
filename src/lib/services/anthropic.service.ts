@@ -619,6 +619,19 @@ Generate 8 long-tail keywords for this category. Cover at least 5 different inte
  * Same quality — Haiku has the full niche context for every keyword,
  * which arguably IMPROVES coherence vs. isolated per-category calls.
  */
+export interface NicheBreakdownCategory {
+  category: string;
+  keywords: string[];
+  /**
+   * Single-word product noun stems that should appear in a real product
+   * title for this category. Used downstream to filter out off-topic
+   * AliExpress matches — e.g. for category "Outerwear", anchors
+   * ["jacket", "coat", "blazer"] reject mom-gift mugs that AE returns
+   * because the query contained "for mom".
+   */
+  productAnchors: string[];
+}
+
 export async function generateNicheBreakdown(
   opts: {
     niche: string;
@@ -627,7 +640,7 @@ export async function generateNicheBreakdown(
     extras?: string[]; // categories the employee wants to force-include
   },
   accum?: CostAccumulator,
-): Promise<Array<{ category: string; keywords: string[] }>> {
+): Promise<NicheBreakdownCategory[]> {
   const styleLine = opts.style ? `Style hint: ${opts.style}` : "";
   const audienceLine = opts.audience
     ? `Audience hint: ${opts.audience}`
@@ -640,7 +653,7 @@ export async function generateNicheBreakdown(
     model: MODEL_VALIDATOR, // Haiku — single call
     max_tokens: 2500,
     temperature: 0.6,
-    system: `You are an Etsy SEO + dropshipping strategist. Given a niche, output 8-10 proven-selling CATEGORIES, and for EACH category, 8 long-tail buyer-intent KEYWORDS.
+    system: `You are an Etsy SEO + dropshipping strategist. Given a niche, output 8-10 proven-selling CATEGORIES, and for EACH category: 3-5 product-anchor words + 8 long-tail buyer-intent KEYWORDS.
 
 CATEGORIES — rules:
 - Be EXHAUSTIVE. Cover the full breadth of the niche, including less-obvious sections proven Etsy shops in the niche actually carry.
@@ -650,15 +663,34 @@ CATEGORIES — rules:
 - Each category 1-3 words, Title Case
 - NO duplicates, NO niche-name repeats
 
-KEYWORDS — rules (per category):
+PRODUCT ANCHORS — rules (per category):
+3-5 single-word product noun stems that MUST appear in a real product title in this category. These let us filter out off-topic AliExpress matches.
+  • "Outerwear" → ["jacket", "coat", "blazer", "parka", "vest"]
+  • "Earrings" → ["earring", "stud", "hoop", "drop", "dangle"]
+  • "Necklaces" → ["necklace", "pendant", "choker", "chain"]
+  • "Wall Art" → ["print", "poster", "canvas", "painting", "art"]
+  • "Coffee Mugs" → ["mug", "cup", "tumbler"]
+- Lowercase, singular form preferred (we substring-match against titles)
+- These are HARD MATCH terms — every keyword's products will be filtered to contain at least one
+
+KEYWORDS — CRITICAL rules:
 - 8 long-tail (3-5 word) search phrases real buyers type into Etsy
-- Cover at least 5 of these intent buckets — DON'T be one-note:
-  1. Aesthetic — y2k, indie sleaze, cottagecore, dark academia, mob wife, coastal grandma, soft girl, alt grunge, clean girl, brat summer, vintage 70s, minimalist
-  2. Material/Finish — sterling silver, polymer clay, freshwater pearl, vintage denim, organic linen, oversized cotton, hand-stitched, embroidered, distressed
+- Each keyword MUST have a clear single PRODUCT NOUN — same product type as the category.
+  ✅ "hand stitched mens jacket"  — clear product (jacket)
+  ❌ "hand stitched jacket gift for mom" — mixes "jacket" with "gift for mom"; AliExpress matches "gift for mom" and returns generic mom-gifts instead of jackets
+  ❌ "moms day birthday gift" — no product noun at all
+  ❌ "anniversary gift for husband" — no product noun
+- If you want to express a recipient/occasion, attach it as MODIFIERS to the product:
+  ✅ "mom mothers day jacket"
+  ✅ "anniversary gift bracelet"  (when category is Bracelets)
+  ✅ "groomsmen leather wallet"  (when category is Wallets)
+- Cover at least 5 of these intent buckets across the 8 keywords:
+  1. Aesthetic — y2k, indie sleaze, cottagecore, dark academia, mob wife, coastal grandma, soft girl, alt grunge, clean girl, brat summer, minimalist
+  2. Material/Finish — sterling silver, polymer clay, freshwater pearl, vintage denim, organic linen, hand-stitched, embroidered, distressed
   3. Occasion — wedding, anniversary, birthday, valentine, baby shower, bridal, graduation, christmas, summer festival, everyday
-  4. Recipient — gift for sister, gift for mom, groomsmen, bridesmaid, teen, men, women, boyfriend, dad
-  5. Product Specifics — huggie, drop, stud (jewelry); oversized, cropped, baggy, slim fit (clothing); 3d, embossed, engraved (decor)
-  6. Use Case — layering, statement, everyday, workout, lounging, festival, work-from-home, gym
+  4. Recipient — sister, mom, groomsmen, bridesmaid, teen, men, women, boyfriend, dad
+  5. Product Specifics — huggie, drop, stud (jewelry); oversized, cropped, baggy, slim fit (clothing); 3d, embossed (decor)
+  6. Use Case — layering, statement, everyday, workout, festival, work-from-home, gym
   7. Size/Fit — plus size, petite, tall, oversized, slim
   8. Color/Motif — sage green, butterfly, evil eye, mushroom, snake, chrome, pearl
 - 2-5 words, lowercase, no punctuation
@@ -671,6 +703,7 @@ OUTPUT FORMAT — strict JSON, no prose:
   "categories": [
     {
       "name": "Category 1",
+      "productAnchors": ["anchor1", "anchor2", "anchor3"],
       "keywords": ["kw1", "kw2", "kw3", "kw4", "kw5", "kw6", "kw7", "kw8"]
     },
     ... 8-10 categories
@@ -694,13 +727,16 @@ Return 8-10 proven-selling categories, each with 8 long-tail buyer-intent keywor
   const raw = "{" + extractText(msg);
   try {
     const parsed = safeParseJson<{
-      categories: Array<{ name: string; keywords: string[] }>;
+      categories: Array<{
+        name: string;
+        productAnchors?: string[];
+        keywords: string[];
+      }>;
     }>(raw);
     const cats = parsed.categories ?? [];
 
-    // Normalize + de-dup + merge employee extras
     const seenCats = new Set<string>();
-    const result: Array<{ category: string; keywords: string[] }> = [];
+    const result: NicheBreakdownCategory[] = [];
 
     for (const c of cats) {
       const name = (c?.name ?? "").toString().trim();
@@ -709,13 +745,17 @@ Return 8-10 proven-selling categories, each with 8 long-tail buyer-intent keywor
       if (seenCats.has(lowerName)) continue;
       seenCats.add(lowerName);
 
+      const anchors = (c?.productAnchors ?? [])
+        .map((a) => (a ?? "").toString().trim().toLowerCase())
+        .filter((a) => a.length >= 3 && a.length <= 30)
+        .slice(0, 6);
+
       const kws = (c?.keywords ?? [])
         .map((k) => (k ?? "").toString().trim().toLowerCase())
         .filter((k) => {
           if (k.length < 3 || k.length > 80) return false;
           const words = k.split(/\s+/);
           if (words.length < 2) return false;
-          // Ban "[adjective] [category]" outputs
           if (words.length === 2) {
             const cat = name.toLowerCase();
             if (cat.includes(words[0]) || cat.includes(words[1])) return false;
@@ -725,16 +765,32 @@ Return 8-10 proven-selling categories, each with 8 long-tail buyer-intent keywor
         .slice(0, 10);
 
       if (kws.length === 0) continue;
-      result.push({ category: name, keywords: kws });
+
+      // Fallback anchor: if Haiku didn't provide any, use the category
+      // name lowercased + a singular variant. Better than no filter.
+      const safeAnchors =
+        anchors.length > 0
+          ? anchors
+          : [lowerName, lowerName.replace(/s$/, "")];
+
+      result.push({
+        category: name,
+        keywords: kws,
+        productAnchors: safeAnchors,
+      });
     }
 
-    // Force-include employee extras (with empty keywords — caller can
-    // re-prompt for them, or scrape AE directly with the category name)
+    // Force-include employee extras
     for (const extra of opts.extras ?? []) {
       const trimmed = extra.trim();
       if (trimmed && !seenCats.has(trimmed.toLowerCase())) {
-        result.push({ category: trimmed, keywords: [trimmed] });
-        seenCats.add(trimmed.toLowerCase());
+        const lower = trimmed.toLowerCase();
+        result.push({
+          category: trimmed,
+          keywords: [trimmed],
+          productAnchors: [lower, lower.replace(/s$/, "")],
+        });
+        seenCats.add(lower);
       }
     }
 

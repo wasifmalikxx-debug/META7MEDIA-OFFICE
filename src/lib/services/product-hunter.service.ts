@@ -352,6 +352,26 @@ function passesQualityFilter(p: AliExpressProduct, margin: number): boolean {
 }
 
 /**
+ * Relevance filter — does the product's title contain any of the
+ * category's product anchor terms? Stops "hand-stitched jacket gift
+ * for mom" from returning generic mom-gift mugs that have nothing to
+ * do with jackets.
+ *
+ * AliExpress's search algorithm matches popular tokens in long queries
+ * (it prefers "gift for mom" over "hand-stitched jacket"), so we have
+ * to post-filter at the title level.
+ */
+function passesRelevanceFilter(
+  p: AliExpressProduct,
+  productAnchors: string[],
+): boolean {
+  if (productAnchors.length === 0) return true; // no anchors = no filter
+  if (!p.title) return false;
+  const title = p.title.toLowerCase();
+  return productAnchors.some((anchor) => title.includes(anchor));
+}
+
+/**
  * Composite quality score 0-100. Higher = better candidate to list.
  * Weights:
  *   - 40% margin (more profit per sale = more important)
@@ -444,9 +464,14 @@ export async function huntByNiche(opts: {
   console.log(`[hunt-by-niche] starting: "${niche}" (style=${opts.style ?? "—"}, audience=${opts.audience ?? "—"})`);
 
   // Step 1+2: ONE Haiku call returns categories AND their keywords
-  // in one shot. Replaces the previous 11-call pipeline that cost
-  // ~$0.02 per hunt — now ~$0.003.
-  let perCategory: Array<{ category: string; keywords: string[] }> = [];
+  // AND their product anchors (for title relevance filtering) in one
+  // shot. Replaces the previous 11-call pipeline that cost ~$0.02 per
+  // hunt — now ~$0.003.
+  let perCategory: Array<{
+    category: string;
+    keywords: string[];
+    productAnchors: string[];
+  }> = [];
   try {
     perCategory = await generateNicheBreakdown(
       {
@@ -465,11 +490,14 @@ export async function huntByNiche(opts: {
       `[hunt-by-niche] generateNicheBreakdown failed:`,
       err instanceof Error ? err.message : String(err),
     );
-    // Fall back to any extra categories the user added manually
-    perCategory = (opts.extraCategories ?? []).map((c) => ({
-      category: c,
-      keywords: [c],
-    }));
+    perCategory = (opts.extraCategories ?? []).map((c) => {
+      const lower = c.toLowerCase();
+      return {
+        category: c,
+        keywords: [c],
+        productAnchors: [lower, lower.replace(/s$/, "")],
+      };
+    });
   }
 
   if (perCategory.length === 0) {
@@ -483,6 +511,12 @@ export async function huntByNiche(opts: {
       durationMs: Date.now() - startedAt,
       categories: [],
     };
+  }
+
+  // Lookup map: category → productAnchors (used in product filter step)
+  const anchorsByCategory = new Map<string, string[]>();
+  for (const p of perCategory) {
+    anchorsByCategory.set(p.category, p.productAnchors);
   }
 
   const categories = perCategory.map((p) => p.category);
@@ -564,6 +598,8 @@ export async function huntByNiche(opts: {
       (e) => e.category === category,
     );
 
+    const anchors = anchorsByCategory.get(category) ?? [];
+
     const keywordResults: NicheKeywordResult[] = [];
     for (const ck of categoryKeywords) {
       const aeProducts = aeProductsByKeyword.get(ck.keyword) ?? [];
@@ -571,6 +607,11 @@ export async function huntByNiche(opts: {
       const quality: CuratedProduct[] = [];
       for (const p of aeProducts) {
         if (!p.productId || seenIds.has(p.productId)) continue;
+        // Relevance gate FIRST — drop products whose titles don't
+        // contain any of the category's product anchors. Stops
+        // "hand-stitched jacket gift for mom" from returning
+        // generic mom-gift mugs.
+        if (!passesRelevanceFilter(p, anchors)) continue;
         const pricing = calculateEtsyPrice(p.priceMin);
         if (!passesQualityFilter(p, pricing.markup)) continue;
         seenIds.add(p.productId);
