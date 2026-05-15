@@ -212,7 +212,7 @@ function formatCount(n: number): string {
  * Backend contract is untouched — same POST /api/seo-autopilot/generate
  * with { aliExpressTitle, images, sizes, variants }, same response shape.
  */
-export function SeoAutopilotView() {
+export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
   // ─── Form state ───────────────────────────────────────────────────
   const [aliTitle, setAliTitle] = useState("");
   const [images, setImages] = useState<UploadedImage[]>([]);
@@ -501,6 +501,7 @@ export function SeoAutopilotView() {
               entries={history}
               windowLabel={historyWindowLabel}
               onRestore={handleRestoreHistory}
+              isCeo={isCeo}
             />
           </div>
         )}
@@ -3531,12 +3532,17 @@ function MyHistorySection({
   entries,
   windowLabel,
   onRestore,
+  isCeo,
 }: {
   entries: MyHistoryEntry[];
   windowLabel: string;
   onRestore: (entry: MyHistoryEntry) => void;
+  isCeo: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  // Default OPEN — the user complained they couldn't find their past
+  // generations. Expanding by default makes them immediately visible
+  // when the page loads with the input view (no result on screen).
+  const [open, setOpen] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const totalCost = entries.reduce((s, e) => s + e.costUsd, 0);
@@ -3567,9 +3573,13 @@ function MyHistorySection({
                 {windowLabel || "This month"} · {entries.length}{" "}
                 {entries.length === 1 ? "listing" : "listings"}
               </h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
-                Total spend on AI: {formatHistoryCost(totalCost)}
-              </p>
+              {/* Cost subtitle is CEO-only — employees don't see what
+                  their gens cost, only that they exist. */}
+              {isCeo && (
+                <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+                  Total spend on AI: {formatHistoryCost(totalCost)}
+                </p>
+              )}
             </div>
           </div>
           <ChevronDown
@@ -3590,14 +3600,14 @@ function MyHistorySection({
               }
               onRestore={() => onRestore(entry)}
               animationDelay={i * 30}
+              showCost={isCeo}
             />
           ))}
 
-          <p className="text-[10px] text-muted-foreground/70 leading-snug mt-4 pt-3 border-t border-border/40">
-            This list shows the current Pakistan calendar month and resets
-            cleanly at midnight on the 1st. Tap <strong>Restore</strong> to
-            load any past listing back into the result panel — no new quota
-            slot used.
+          <p className="mt-4 pt-3 border-t border-border/40 text-[10px] text-muted-foreground/70 leading-snug">
+            Showing this calendar month. Resets cleanly at midnight on the
+            1st. Tap <strong>Restore</strong> to load any past listing back
+            into the result panel — no new quota slot used.
           </p>
         </div>
       )}
@@ -3611,12 +3621,14 @@ function HistoryRow({
   onToggleExpand,
   onRestore,
   animationDelay,
+  showCost,
 }: {
   entry: MyHistoryEntry;
   expanded: boolean;
   onToggleExpand: () => void;
   onRestore: () => void;
   animationDelay: number;
+  showCost: boolean;
 }) {
   const verdictTone =
     entry.verdict === "BLOCKED"
@@ -3672,9 +3684,11 @@ function HistoryRow({
                     hour12: true,
                   }).format(new Date(entry.createdAt))}
                 </span>
-                <span className="text-[10px] font-bold tabular-nums text-violet-700 dark:text-violet-300">
-                  · {formatHistoryCost(entry.costUsd)}
-                </span>
+                {showCost && (
+                  <span className="text-[10px] font-bold tabular-nums text-violet-700 dark:text-violet-300">
+                    · {formatHistoryCost(entry.costUsd)}
+                  </span>
+                )}
               </div>
             </div>
             {entry.generatedTitle ? (

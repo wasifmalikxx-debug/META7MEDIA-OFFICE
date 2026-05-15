@@ -87,7 +87,9 @@ export default async function SeoAutopilotPage() {
   if (canUseRealTool) {
     // No PageHeader — the hero banner inside the view already provides
     // the title + tagline. PageHeader was a duplicate.
-    return <SeoAutopilotView />;
+    // Pass isCeo so the inline history section can hide cost UI from
+    // non-CEO users — only Wasif sees what each gen costs.
+    return <SeoAutopilotView isCeo={isCeo} />;
   }
 
   // AE / ME employees, Awais, Mubeen, HR all land here during the test

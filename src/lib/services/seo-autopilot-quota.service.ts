@@ -956,41 +956,31 @@ export interface MyHistoryEntry {
 }
 
 export interface MyHistoryResponse {
-  /** Human label for the active window e.g. "November 2026" */
+  /** Human label for the active window e.g. "November 2026" or "All time" */
   windowLabel: string;
-  /** UTC instant when this window started (PKT month start) */
-  windowStartIso: string;
-  /** UTC instant when this window will end (next PKT month start) */
-  windowEndIso: string;
+  /** UTC instant when this window started (PKT month start, or null for all-time) */
+  windowStartIso: string | null;
+  /** UTC instant when this window will end (next PKT month start, or null) */
+  windowEndIso: string | null;
   entries: MyHistoryEntry[];
 }
 
 /**
- * Pull a user's own generations from the CURRENT PKT calendar month,
- * newest first. The list resets cleanly at PKT midnight on the 1st of
- * every month — gens from previous months disappear from this view
- * (they're still in the DB for CEO audit).
- *
- * Used by /api/seo-autopilot/my-history so employees can revisit + copy
- * past listings without burning a fresh quota slot.
+ * Per-row mapper — keep DB → API shape in one place.
  */
-export async function getMyHistory(
-  userId: string,
-  limit = 200,
-): Promise<MyHistoryResponse> {
-  const monthStart = pktCurrentMonthStartUtc();
-  const monthEnd = nextPktMonthStartUtc();
-
-  const rows = await prisma.seoAutopilotLog.findMany({
-    where: {
-      userId,
-      createdAt: { gte: monthStart },
-    },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
-
-  const entries: MyHistoryEntry[] = rows.map((r) => ({
+function toMyHistoryEntry(r: {
+  id: string;
+  createdAt: Date;
+  sourceTitle: string;
+  generatedTitle: string | null;
+  verdict: string;
+  category: string | null;
+  actualCostUsd: number | null;
+  sizes: string[];
+  variants: string[];
+  listingJson: unknown;
+}): MyHistoryEntry {
+  return {
     id: r.id,
     createdAt: r.createdAt.toISOString(),
     sourceTitle: r.sourceTitle,
@@ -1008,12 +998,63 @@ export async function getMyHistory(
     sizes: r.sizes ?? [],
     variants: r.variants ?? [],
     listing: (r.listingJson as SavedListing | null) ?? null,
-  }));
+  };
+}
+
+/**
+ * Pull a user's own generations.
+ *
+ * - `scope: "month"` (default) → current PKT calendar month, newest
+ *   first. Used by the inline history section on /seo-autopilot.
+ * - `scope: "all"` → every generation the user has ever made (capped
+ *   at `limit`). Used by the dedicated /seo-autopilot/listings page.
+ *
+ * Either way the listing is filtered by `userId`, so an employee only
+ * ever sees their own rows.
+ */
+export async function getMyHistory(
+  userId: string,
+  opts: { limit?: number; scope?: "month" | "all" } = {},
+): Promise<MyHistoryResponse> {
+  const limit = opts.limit ?? 200;
+  const scope = opts.scope ?? "month";
+
+  const monthStart = pktCurrentMonthStartUtc();
+  const monthEnd = nextPktMonthStartUtc();
+
+  const where =
+    scope === "month"
+      ? { userId, createdAt: { gte: monthStart } }
+      : { userId };
+
+  const rows = await prisma.seoAutopilotLog.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
 
   return {
-    windowLabel: pktCurrentMonthLabel(),
-    windowStartIso: monthStart.toISOString(),
-    windowEndIso: monthEnd.toISOString(),
-    entries,
+    windowLabel:
+      scope === "month" ? pktCurrentMonthLabel() : "All time",
+    windowStartIso: scope === "month" ? monthStart.toISOString() : null,
+    windowEndIso: scope === "month" ? monthEnd.toISOString() : null,
+    entries: rows.map(toMyHistoryEntry),
   };
+}
+
+/**
+ * Fetch one historical generation by ID, scoped to the requesting user
+ * (returns null if it belongs to someone else). Used by the "Restore"
+ * action — `/seo-autopilot?restore=<id>` calls this to populate the
+ * result panel without firing a fresh API call.
+ */
+export async function getMyHistoryEntry(
+  userId: string,
+  id: string,
+): Promise<MyHistoryEntry | null> {
+  const row = await prisma.seoAutopilotLog.findFirst({
+    where: { id, userId },
+  });
+  if (!row) return null;
+  return toMyHistoryEntry(row);
 }
