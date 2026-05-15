@@ -427,7 +427,7 @@ CRITICAL rules:
    - "Mens Clothing" → also include Outerwear, Activewear, Loungewear, Accessories, Workwear, Streetwear, Underwear, Suits, Coats, Pants, Shorts — not just Tees/Hoodies
    - "Home Decor" → also include Throw Pillows, Wall Hangings, Plant Pots, Mirrors, Candles, Vases, Rugs, Art Prints, Doormats, Storage
 6. NO duplicates. NO niche-name repeats.
-7. Aim for 8-10 categories — enough breadth to span the niche without diluting quality. Better to have 10 strong sections than 12 with weak ones.
+7. Aim for 6-8 categories — enough breadth to span the niche without diluting quality. Better to have 10 strong sections than 12 with weak ones.
 
 Think: "If I'm starting an Etsy shop in this niche, what are EVERY POSSIBLE shop section I could add to maximize listings + cross-sell? Cover all of them."
 
@@ -466,12 +466,12 @@ Return the 5-8 shop categories for this niche.`,
         seen.add(trimmed.toLowerCase());
       }
     }
-    // Cap at 10 categories. Each category triggers ~8 Etsy calls
-    // (keyword scoring) + ~4 AE calls (for GREAT/GOOD winners). At 3.3
-    // QPS shared rate limit, 10 × 8 = 80 Etsy calls = ~25s. More than
-    // 10 categories blows past 60s in real-world conditions, even with
-    // 300s timeout — user perception is "stuck loading" at 90s.
-    return merged.slice(0, 10);
+    // Cap at 8 categories. With 5 keywords each × 2 APIs (Etsy + AE) at
+    // shared 3.3 QPS, math becomes 8×5 = 40 keywords × 2 APIs = 80 API
+    // calls / 3.3 QPS = ~12s per API in parallel. Plus AE retries on
+    // 429s, real-world wall time ~15-20s. Previous 10×8 = 80 keywords
+    // pushed wall time to 90+s with retry storms.
+    return merged.slice(0, 8);
   } catch {
     return opts.extras ?? [];
   }
@@ -598,9 +598,11 @@ Generate 8 long-tail keywords for this category. Cover at least 5 different inte
         }
         return true;
       })
-      // Cap at 8 keywords per category. 10 cats × 8 = 80 Etsy calls,
-      // half become AE calls = ~36s total wall time. Sweet spot.
-      .slice(0, 8);
+      // Cap at 5 keywords per category. 8 cats × 5 = 40 keywords ×
+      // 2 APIs in parallel = ~12s wall time. Was 8 keywords; user
+      // reported 2+ minute hunts because of AE rate-limit retry
+      // storms with 80+ keywords.
+      .slice(0, 5);
   } catch {
     return [];
   }
@@ -693,7 +695,7 @@ export async function generateNicheBreakdown(
     model: MODEL_VALIDATOR, // Haiku — single call
     max_tokens: 2500,
     temperature: 0.6,
-    system: `You are an Etsy SEO + dropshipping strategist. Given a niche, output 8-10 proven-selling CATEGORIES, and for EACH category: 3-5 product-anchor words + 8 long-tail buyer-intent KEYWORDS.
+    system: `You are an Etsy SEO + dropshipping strategist. Given a niche, output 6-8 proven-selling CATEGORIES, and for EACH category: 3-5 product-anchor words + 5 long-tail buyer-intent KEYWORDS.
 
 CATEGORIES — rules:
 - Be EXHAUSTIVE. Cover the full breadth of the niche, including less-obvious sections proven Etsy shops in the niche actually carry.
@@ -714,7 +716,7 @@ PRODUCT ANCHORS — rules (per category):
 - These are HARD MATCH terms — every keyword's products will be filtered to contain at least one
 
 KEYWORDS — CRITICAL rules:
-- 8 long-tail (3-5 word) search phrases real buyers type into Etsy
+- 5 long-tail (3-5 word) search phrases real buyers type into Etsy
 - Each keyword MUST have a clear single PRODUCT NOUN — same product type as the category.
   ✅ "hand stitched mens jacket"  — clear product (jacket)
   ❌ "hand stitched jacket gift for mom" — mixes "jacket" with "gift for mom"; AliExpress matches "gift for mom" and returns generic mom-gifts instead of jackets
@@ -724,7 +726,7 @@ KEYWORDS — CRITICAL rules:
   ✅ "mom mothers day jacket"
   ✅ "anniversary gift bracelet"  (when category is Bracelets)
   ✅ "groomsmen leather wallet"  (when category is Wallets)
-- Cover at least 5 of these intent buckets across the 8 keywords:
+- Cover at least 3 of these intent buckets across the 5 keywords:
   1. Aesthetic — y2k, indie sleaze, cottagecore, dark academia, mob wife, coastal grandma, soft girl, alt grunge, clean girl, brat summer, minimalist
   2. Material/Finish — sterling silver, polymer clay, freshwater pearl, vintage denim, organic linen, hand-stitched, embroidered, distressed
   3. Occasion — wedding, anniversary, birthday, valentine, baby shower, bridal, graduation, christmas, summer festival, everyday
@@ -744,9 +746,9 @@ OUTPUT FORMAT — strict JSON, no prose:
     {
       "name": "Category 1",
       "productAnchors": ["anchor1", "anchor2", "anchor3"],
-      "keywords": ["kw1", "kw2", "kw3", "kw4", "kw5", "kw6", "kw7", "kw8"]
+      "keywords": ["kw1", "kw2", "kw3", "kw4", "kw5"]
     },
-    ... 8-10 categories
+    ... 6-8 categories
   ]
 }`,
     messages: [
@@ -757,7 +759,7 @@ ${styleLine}
 ${audienceLine}
 ${extrasLine}
 
-Return 8-10 proven-selling categories, each with 8 long-tail buyer-intent keywords. Mix 5+ intent buckets across each category's keywords.`,
+Return 6-8 proven-selling categories, each with exactly 5 long-tail buyer-intent keywords. Mix 3+ intent buckets across each category's keywords.`,
       },
       { role: "assistant", content: "{" },
     ],

@@ -658,12 +658,13 @@ export async function huntByNiche(opts: {
   const fetchPreview = async (pair: { category: string; keyword: string }) => {
     if (!opts.accessToken) return null;
     try {
-      // 20 candidates gives the relevance filter a wider net so we
-      // almost always find at least one anchor-matching product to
-      // surface as the preview.
+      // 10 candidates is plenty — we pick 1 preview per keyword and
+      // the anchor filter only rejects clearly off-topic products.
+      // Smaller payload = faster AE response (we measured 2x faster
+      // with pageSize=10 vs 20 under rate-limit stress).
       const res = await searchProductsByKeyword(pair.keyword, {
         accessToken: opts.accessToken,
-        pageSize: 20,
+        pageSize: 10,
         sortBy: "orders_desc",
       });
       const anchors = perCategory.find((c) => c.category === pair.category)
