@@ -30,7 +30,6 @@ import {
   FileText,
   Calculator,
   Sparkles,
-  Link2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -488,28 +487,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
-                  {/* Reverse Hunt — Play 2. CEO sees the live tool (sky
-                      "New" pill); SEO Autopilot users (Izaan, EM, Etsy
-                      partners) see a Coming Soon placeholder (violet
-                      "Soon" pill). Same pattern as Product Hunter. */}
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      render={<Link href="/reverse-hunt" />}
-                      isActive={isItemActive("/reverse-hunt")}
-                    >
-                      <Link2 className="size-4" />
-                      <span>Reverse Hunt</span>
-                      {isCeo ? (
-                        <span className="ml-auto inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
-                          New
-                        </span>
-                      ) : (
-                        <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
-                          Soon
-                        </span>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  {/* Reverse Hunt removed from sidebar May 16 — it's
+                      now a tab inside the unified Product Hunter hub.
+                      Old /reverse-hunt URL redirects to
+                      /seo-autopilot/product-hunter?tab=reverse. */}
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/price-calculator" />}

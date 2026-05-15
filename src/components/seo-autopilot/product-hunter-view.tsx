@@ -24,8 +24,14 @@ import {
   Package,
   Star,
   ShoppingBag,
+  Link2,
+  Image as ImageIcon,
+  Hourglass,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ReverseHuntSection } from "./reverse-hunt-section";
+import { ImageHuntSection } from "./image-hunt-section";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -104,12 +110,43 @@ const VERDICT_STYLE: Record<
 
 type VerdictFilter = "all" | "great" | "good" | "maybe" | "skip";
 
+/**
+ * Tab identifiers for the Product Hunter hub.
+ *
+ *  - niche    → original keyword-brainstorm + Etsy scoring (the OG tool)
+ *  - reverse  → paste an AE URL → Etsy demand verdict + projected margin
+ *  - image    → paste an image URL → similar AE products
+ *  - soon     → roadmap card (Watchlists, Fresh Finds, etc.)
+ *
+ * Every future hunting tool we build slots in here as a new tab so the
+ * whole team has one URL to remember.
+ */
+type HunterTab = "niche" | "reverse" | "image" | "soon";
+
 export function ProductHunterView() {
+  const [activeTab, setActiveTab] = useState<HunterTab>("niche");
+
+  // Niche Hunter state (the original Product Hunter)
   const [seed, setSeed] = useState("");
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<ScanResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
+
+  // ?tab=reverse|image|soon support — lets us redirect from the
+  // legacy /reverse-hunt URL straight to the right section here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("tab");
+    if (
+      requested === "niche" ||
+      requested === "reverse" ||
+      requested === "image" ||
+      requested === "soon"
+    ) {
+      setActiveTab(requested);
+    }
+  }, []);
 
   async function handleScan() {
     if (seed.trim().length < 2 || scanning) return;
@@ -155,67 +192,344 @@ export function ProductHunterView() {
 
   return (
     <div className="relative max-w-5xl mx-auto space-y-6 pb-12">
-      <HeroBanner scanning={scanning} hasResult={!!result} />
+      <HeroBanner
+        activeTab={activeTab}
+        scanning={scanning}
+        hasResult={!!result}
+      />
       <AliExpressConnectionBanner />
+      <ToolTabsBar active={activeTab} onChange={setActiveTab} />
 
-      {!result && !scanning && (
-        <InputCard
-          seed={seed}
-          onSeedChange={setSeed}
-          disabled={scanning}
-          onScan={handleScan}
-        />
-      )}
-
-      {scanning && <ScanProgress seed={seed} />}
-
-      {errorMsg && !scanning && <ErrorPanel message={errorMsg} />}
-
-      {result && !scanning && (
+      {/* ─── Niche Hunter (original Product Hunter) ─────────────── */}
+      {activeTab === "niche" && (
         <>
-          <ScanSummary
-            result={result}
-            verdictFilter={verdictFilter}
-            onVerdictFilter={setVerdictFilter}
-            onReset={handleReset}
-          />
-          {filtered.length === 0 ? (
-            <Card className="border border-border/60">
-              <CardContent className="p-10 text-center">
-                <Target className="size-7 text-muted-foreground/60 mx-auto mb-2" />
-                <p className="text-sm font-bold">No results match that filter</p>
-                <p className="text-[12px] text-muted-foreground mt-1">
-                  Try a wider verdict filter, or scan a different seed.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map((r, i) => (
-                <HuntResultRow
-                  key={r.keyword}
-                  result={r}
-                  rank={i + 1}
-                  animationDelay={i * 30}
-                />
-              ))}
-            </div>
+          {!result && !scanning && (
+            <InputCard
+              seed={seed}
+              onSeedChange={setSeed}
+              disabled={scanning}
+              onScan={handleScan}
+            />
+          )}
+          {scanning && <ScanProgress seed={seed} />}
+          {errorMsg && !scanning && <ErrorPanel message={errorMsg} />}
+          {result && !scanning && (
+            <>
+              <ScanSummary
+                result={result}
+                verdictFilter={verdictFilter}
+                onVerdictFilter={setVerdictFilter}
+                onReset={handleReset}
+              />
+              {filtered.length === 0 ? (
+                <Card className="border border-border/60">
+                  <CardContent className="p-10 text-center">
+                    <Target className="size-7 text-muted-foreground/60 mx-auto mb-2" />
+                    <p className="text-sm font-bold">
+                      No results match that filter
+                    </p>
+                    <p className="text-[12px] text-muted-foreground mt-1">
+                      Try a wider verdict filter, or scan a different seed.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-2">
+                  {filtered.map((r, i) => (
+                    <HuntResultRow
+                      key={r.keyword}
+                      result={r}
+                      rank={i + 1}
+                      animationDelay={i * 30}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
+
+      {/* ─── Reverse Hunt (paste AE URL → Etsy verdict) ───────────── */}
+      {activeTab === "reverse" && <ReverseHuntSection isCeo={true} />}
+
+      {/* ─── Image Hunt (paste image URL → similar AE) ────────────── */}
+      {activeTab === "image" && <ImageHuntSection />}
+
+      {/* ─── Coming Soon roadmap ──────────────────────────────────── */}
+      {activeTab === "soon" && <ComingSoonRoadmap />}
+    </div>
+  );
+}
+
+// ─── Tool tabs bar ──────────────────────────────────────────────────
+
+/**
+ * Pill-style tab bar that switches between hunting tools.
+ *
+ * Every tab keeps its own state inside its child component, so flipping
+ * back to "Niche Hunter" preserves any in-progress scan results. Same
+ * for Reverse / Image. Coming Soon is static.
+ */
+function ToolTabsBar({
+  active,
+  onChange,
+}: {
+  active: HunterTab;
+  onChange: (t: HunterTab) => void;
+}) {
+  const tabs: Array<{
+    id: HunterTab;
+    label: string;
+    icon: typeof Target;
+    description: string;
+    gradient: string;
+  }> = [
+    {
+      id: "niche",
+      label: "Niche Hunter",
+      icon: Target,
+      description: "Find underserved Etsy keywords",
+      gradient: "from-sky-500 to-violet-500",
+    },
+    {
+      id: "reverse",
+      label: "Reverse Hunt",
+      icon: Link2,
+      description: "Paste AE URL → will it sell?",
+      gradient: "from-emerald-500 to-orange-500",
+    },
+    {
+      id: "image",
+      label: "Image Hunt",
+      icon: ImageIcon,
+      description: "Paste image → find the supplier",
+      gradient: "from-violet-500 to-pink-500",
+    },
+    {
+      id: "soon",
+      label: "More Soon",
+      icon: LayoutGrid,
+      description: "Watchlists · Fresh Finds",
+      gradient: "from-amber-500 to-rose-500",
+    },
+  ];
+
+  return (
+    <div className="relative">
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = active === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onChange(tab.id)}
+              className={`relative flex-1 min-w-[180px] snap-start rounded-2xl ring-1 transition-all overflow-hidden ${
+                isActive
+                  ? "ring-foreground/30 bg-card shadow-md"
+                  : "ring-border/50 bg-card/60 hover:ring-border hover:bg-card"
+              }`}
+            >
+              {isActive && (
+                <span
+                  aria-hidden
+                  className={`absolute inset-0 bg-gradient-to-br ${tab.gradient} opacity-[0.06]`}
+                />
+              )}
+              <div className="relative flex items-center gap-3 p-3">
+                <div
+                  className={`size-9 rounded-lg flex items-center justify-center shrink-0 ring-1 ${
+                    isActive
+                      ? `bg-gradient-to-br ${tab.gradient} ring-white/20 shadow-md`
+                      : "bg-muted/60 ring-border/40"
+                  }`}
+                >
+                  <Icon
+                    className={`size-4 ${
+                      isActive ? "text-white" : "text-muted-foreground"
+                    }`}
+                  />
+                </div>
+                <div className="min-w-0 text-left">
+                  <p
+                    className={`text-[12px] font-bold tracking-tight leading-tight ${
+                      isActive ? "text-foreground" : "text-foreground/85"
+                    }`}
+                  >
+                    {tab.label}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 truncate">
+                    {tab.description}
+                  </p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Coming Soon roadmap card ───────────────────────────────────────
+
+function ComingSoonRoadmap() {
+  const items = [
+    {
+      icon: LayoutGrid,
+      title: "My Watchlists",
+      copy: "Save your niches as watchlists — products auto-flow into a triage queue every morning. Skip / Save / List in one click.",
+      eta: "Next sprint",
+      color: "amber",
+    },
+    {
+      icon: Sparkles,
+      title: "Fresh Finds",
+      copy: "Newly-listed AliExpress products from credible sellers — catch winners before they saturate. Quality-filtered: 4.7★+, 20-500 orders, established shops only.",
+      eta: "Next sprint",
+      color: "rose",
+    },
+    {
+      icon: TrendingUp,
+      title: "Bulk URL Checker",
+      copy: "Paste 50 AliExpress URLs at once → verdict + margin for every one in 90 seconds. Sortable table, bulk Save / Skip.",
+      eta: "Soon",
+      color: "sky",
+    },
+    {
+      icon: Heart,
+      title: "Source Health Monitor",
+      copy: "Daily check on every linked AE source for our active listings. Alert when prices rise, stock drops, or seller rating tanks.",
+      eta: "Soon",
+      color: "emerald",
+    },
+  ];
+
+  return (
+    <div className="space-y-4 ap-stagger-in">
+      <Card className="border border-border/60 shadow-none">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="size-11 rounded-xl bg-gradient-to-br from-amber-500 to-rose-500 ring-1 ring-amber-500/40 flex items-center justify-center shadow shadow-amber-500/30">
+              <Hourglass className="size-5 text-white" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-600 dark:text-amber-400">
+                Coming Soon
+              </p>
+              <h3 className="text-[17px] font-bold leading-tight">
+                Hunting tools in the pipeline
+              </h3>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {items.map((item) => {
+              const Icon = item.icon;
+              const colorClasses: Record<string, string> = {
+                amber:
+                  "bg-amber-500/15 ring-amber-500/30 text-amber-600 dark:text-amber-400",
+                rose: "bg-rose-500/15 ring-rose-500/30 text-rose-600 dark:text-rose-400",
+                sky: "bg-sky-500/15 ring-sky-500/30 text-sky-600 dark:text-sky-400",
+                emerald:
+                  "bg-emerald-500/15 ring-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+              };
+              return (
+                <div
+                  key={item.title}
+                  className="rounded-xl ring-1 ring-border/50 bg-card p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`size-9 rounded-lg ring-1 flex items-center justify-center shrink-0 ${colorClasses[item.color]}`}
+                    >
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[13px] font-bold tracking-tight">
+                          {item.title}
+                        </p>
+                        <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/50 ring-1 ring-border/40 px-1.5 py-0.5 rounded-full">
+                          {item.eta}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-snug mt-1">
+                        {item.copy}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="text-[11px] text-muted-foreground/80 mt-4 italic text-center">
+            Every new hunting tool we build will appear here as a tab —
+            one URL for the whole team.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
 // ─── Hero banner ────────────────────────────────────────────────────
 
+const TAB_COPY: Record<
+  HunterTab,
+  { description: string; cells: Array<{ icon: typeof Zap; label: string; sub: string }> }
+> = {
+  niche: {
+    description:
+      "Find underserved Etsy niches before the team hunts AliExpress. Paste a seed product type — we brainstorm 25 long-tail variants and score each one against live Etsy demand, engagement, and shop diversity.",
+    cells: [
+      { icon: Zap, label: "25 variants", sub: "Haiku brainstorm" },
+      { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
+      { icon: Lightbulb, label: "Ranked", sub: "GREAT · GOOD · MAYBE · SKIP" },
+    ],
+  },
+  reverse: {
+    description:
+      "Already eyeing a product on AliExpress? Paste the link — we'll fetch it, check Etsy demand, project your margin, and tell you in plain English: source it or skip it.",
+    cells: [
+      { icon: ShoppingBag, label: "AE source", sub: "Live price + rating" },
+      { icon: TrendingUp, label: "Etsy demand", sub: "Listings + favorites" },
+      { icon: Lightbulb, label: "Verdict", sub: "STRONG YES · YES · MAYBE · NO" },
+    ],
+  },
+  image: {
+    description:
+      "See a competitor's winning Etsy listing? Drop their image URL here — AliExpress image search finds the supplier(s) selling that exact product. Turn their wins into your pipeline.",
+    cells: [
+      { icon: ImageIcon, label: "Image input", sub: "Any URL works" },
+      { icon: Target, label: "Visual match", sub: "AE image-search API" },
+      { icon: TrendingUp, label: "12 sources", sub: "Sorted by orders" },
+    ],
+  },
+  soon: {
+    description:
+      "Hunting tools in the pipeline — Watchlists, Fresh Finds, Bulk URL Checker, Source Health Monitor. Every new tool we build slots in as a tab on this page.",
+    cells: [
+      { icon: LayoutGrid, label: "Watchlists", sub: "Auto-fetch your niches" },
+      { icon: Sparkles, label: "Fresh Finds", sub: "Early but credible" },
+      { icon: TrendingUp, label: "Bulk tools", sub: "50 URLs at a time" },
+    ],
+  },
+};
+
 function HeroBanner({
+  activeTab,
   scanning,
   hasResult,
 }: {
+  activeTab: HunterTab;
   scanning: boolean;
   hasResult: boolean;
 }) {
+  const copy = TAB_COPY[activeTab];
   return (
     <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-violet-500/20 ap-stagger-in">
       <div className="absolute inset-0 bg-gradient-to-br from-[#0d1a2a] via-[#1a1226] to-[#0d1a2a]" />
@@ -256,15 +570,15 @@ function HeroBanner({
           </span>
           <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
             <Sparkles className="size-3" />
-            Pre-listing intelligence
+            Hunting hub
           </span>
-          {scanning && (
+          {activeTab === "niche" && scanning && (
             <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.16em] uppercase bg-violet-500/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-violet-300/40">
               <Loader2 className="size-3 animate-spin" />
               Scanning
             </span>
           )}
-          {hasResult && !scanning && (
+          {activeTab === "niche" && hasResult && !scanning && (
             <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-200 tracking-[0.16em] uppercase bg-emerald-500/20 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-emerald-300/30">
               <Check className="size-3" />
               Results ready
@@ -287,18 +601,20 @@ function HeroBanner({
               Product Hunter
             </h1>
             <p className="text-[13px] sm:text-sm text-white/75 mt-2 leading-relaxed max-w-2xl">
-              Find underserved Etsy niches before the team hunts AliExpress.
-              Paste a seed product type — Autopilot brainstorms 25 long-tail
-              variants and scores each one against live Etsy demand,
-              engagement, and shop diversity.
+              {copy.description}
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-7 pt-5 border-t border-white/10">
-          <FeatureCell icon={Zap} label="25 variants" sub="Haiku brainstorm" />
-          <FeatureCell icon={TrendingUp} label="Live Etsy" sub="Demand · favorites · shops" />
-          <FeatureCell icon={Lightbulb} label="Ranked" sub="GREAT · GOOD · MAYBE · SKIP" />
+          {copy.cells.map((cell) => (
+            <FeatureCell
+              key={cell.label}
+              icon={cell.icon}
+              label={cell.label}
+              sub={cell.sub}
+            />
+          ))}
         </div>
       </div>
     </div>

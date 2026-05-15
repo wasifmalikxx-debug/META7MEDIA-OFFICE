@@ -1,40 +1,13 @@
-import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { ReverseHuntView } from "@/components/reverse-hunt/reverse-hunt-view";
-import { ReverseHuntComingSoon } from "@/components/reverse-hunt/reverse-hunt-coming-soon";
-import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
-
-export const dynamic = "force-dynamic";
 
 /**
- * /reverse-hunt — Play 2.
+ * /reverse-hunt is now a permanent redirect to the unified Product
+ * Hunter hub. All hunting tools (Niche Hunter, Reverse Hunt, Image
+ * Hunt, etc.) live on one page now — May 16 2026 consolidation.
  *
- * Paste an AliExpress URL → get an Etsy demand verdict + projected margin.
- *
- * Access policy (May 15 2026):
- *  - SUPER_ADMIN (Wasif)                  → real Reverse Hunt tool
- *  - SEO Autopilot users (Izaan, EM,      → Coming Soon placeholder
- *    Etsy partners)                          (CEO validates verdicts first)
- *  - Everyone else                        → redirect to /dashboard
+ * Old bookmarks continue to work; users land on the Reverse Hunt
+ * tab inside Product Hunter.
  */
-export default async function ReverseHuntPage() {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-
-  if (session.user.role === "SUPER_ADMIN") {
-    return <ReverseHuntView isCeo={true} />;
-  }
-
-  // Anyone with SEO Autopilot access (Izaan, EM, Etsy partners) sees
-  // a tailored Coming Soon; everyone else gets bounced.
-  const access = await getSeoAutopilotAccess({
-    id: session.user.id,
-    role: session.user.role,
-    employeeId: session.user.employeeId ?? null,
-  });
-  if (!access.canUseRealTool) {
-    redirect("/dashboard");
-  }
-
-  return <ReverseHuntComingSoon />;
+export default function ReverseHuntRedirect() {
+  redirect("/seo-autopilot/product-hunter?tab=reverse");
 }
