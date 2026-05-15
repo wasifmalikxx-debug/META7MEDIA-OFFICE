@@ -696,9 +696,12 @@ export async function huntByNiche(opts: {
   const previewByKeyword = new Map<string, KeywordPreview | null>();
   // Per-call timeout so a single slow / 429-retrying AE call can't
   // drag the whole hunt past the user's patience threshold.
-  // 10s budget is enough for AE network + one retry, while still
-  // capping worst-case hunt time at ~15-20s.
-  const PREVIEW_TIMEOUT_MS = 10000;
+  //
+  // Sizing math: with AE rate-limited at 5 QPS, 40 calls drain the
+  // queue in ~8s. The last call needs queue-wait (~8s) + HTTP (~1s)
+  // + one retry budget (~1.5s) = ~10.5s. 12s gives the last few
+  // keywords (which were silently timing out before) safe margin.
+  const PREVIEW_TIMEOUT_MS = 12000;
   // Diagnostic counters for Vercel logs — helps us see why specific
   // keywords don't get previews.
   let zeroProductCount = 0;

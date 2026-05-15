@@ -21,7 +21,10 @@ import {
   Star,
   ArrowDownNarrowWide,
   ChevronDown,
+  ChevronRight,
   Flame,
+  LayoutGrid,
+  Rows3,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -153,6 +156,9 @@ function formatCount(n: number): string {
 
 type VerdictFilter = "all" | "great" | "goodPlus";
 type SortKey = "score" | "listings" | "favorites";
+type ViewMode = "grid" | "list";
+
+const VIEW_MODE_STORAGE_KEY = "manualHunting.viewMode";
 
 const VERDICT_DOT: Record<Verdict, string> = {
   GREAT: "bg-emerald-500",
@@ -198,6 +204,21 @@ export function ManualHuntingSection() {
   // Reset when a new niche result lands so the user starts fresh.
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("score");
+
+  // Grid vs list view. Persisted in localStorage so each user's
+  // preference sticks. Read via a function initializer so we don't
+  // touch window during SSR (returns "grid" if storage not available).
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "grid";
+    const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    return stored === "list" ? "list" : "grid";
+  });
+  const handleViewModeChange = useCallback((next: ViewMode) => {
+    setViewMode(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, next);
+    }
+  }, []);
 
   // Active category tracking — used to highlight the heatmap cell that
   // matches whichever category is currently in the viewport. Updated by
@@ -362,6 +383,8 @@ export function ManualHuntingSection() {
                 onVerdictFilterChange={setVerdictFilter}
                 sortKey={sortKey}
                 onSortKeyChange={setSortKey}
+                viewMode={viewMode}
+                onViewModeChange={handleViewModeChange}
               />
 
               {result.categories.map((cat, idx) => (
@@ -371,6 +394,7 @@ export function ManualHuntingSection() {
                   idx={idx}
                   verdictFilter={verdictFilter}
                   sortKey={sortKey}
+                  viewMode={viewMode}
                   registerRef={(el) => {
                     sectionRefs.current[idx] = el;
                   }}
@@ -736,6 +760,8 @@ function HeatmapNav({
   onVerdictFilterChange,
   sortKey,
   onSortKeyChange,
+  viewMode,
+  onViewModeChange,
 }: {
   categories: NicheCategoryResult[];
   activeIdx: number;
@@ -744,11 +770,13 @@ function HeatmapNav({
   onVerdictFilterChange: (v: VerdictFilter) => void;
   sortKey: SortKey;
   onSortKeyChange: (v: SortKey) => void;
+  viewMode: ViewMode;
+  onViewModeChange: (v: ViewMode) => void;
 }) {
   return (
     <div className="sticky top-3 z-20 ap-stagger-in">
       <div className="rounded-2xl bg-card/85 backdrop-blur-xl ring-1 ring-border/60 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_28px_-8px_rgba(0,0,0,0.6)] p-3 sm:p-4 space-y-3">
-        {/* Header row — title + filter/sort */}
+        {/* Header row — title + filter/sort/view */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground inline-flex items-center gap-1.5">
             <Target className="size-3 text-violet-500" />
@@ -760,6 +788,7 @@ function HeatmapNav({
           <div className="flex items-center gap-2 flex-wrap">
             <FilterPills value={verdictFilter} onChange={onVerdictFilterChange} />
             <SortDropdown value={sortKey} onChange={onSortKeyChange} />
+            <ViewToggle value={viewMode} onChange={onViewModeChange} />
           </div>
         </div>
 
@@ -896,6 +925,51 @@ function SortDropdown({
   );
 }
 
+// Icon-only segmented toggle for grid vs list view. Preference is
+// persisted to localStorage so each user gets their layout back on
+// reload.
+function ViewToggle({
+  value,
+  onChange,
+}: {
+  value: ViewMode;
+  onChange: (v: ViewMode) => void;
+}) {
+  const options: { value: ViewMode; icon: typeof LayoutGrid; label: string }[] = [
+    { value: "grid", icon: LayoutGrid, label: "Grid view" },
+    { value: "list", icon: Rows3, label: "List view" },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="View mode"
+      className="inline-flex items-center bg-muted/30 ring-1 ring-border/40 rounded-full p-0.5"
+    >
+      {options.map((opt) => {
+        const Icon = opt.icon;
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            title={opt.label}
+            aria-label={opt.label}
+            aria-pressed={active}
+            className={`size-6 rounded-full inline-flex items-center justify-center transition-all ${
+              active
+                ? "bg-card text-foreground shadow ring-1 ring-border/50"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="size-3" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Category section (anchor-scrolled) ────────────────────────────
 //
 // Each category gets its own section with a stable data-cat-idx so
@@ -908,12 +982,14 @@ function CategorySection({
   idx,
   verdictFilter,
   sortKey,
+  viewMode,
   registerRef,
 }: {
   category: NicheCategoryResult;
   idx: number;
   verdictFilter: VerdictFilter;
   sortKey: SortKey;
+  viewMode: ViewMode;
   registerRef: (el: HTMLElement | null) => void;
 }) {
   const visible = useMemo(() => {
@@ -961,17 +1037,23 @@ function CategorySection({
         </div>
       </div>
 
-      {/* Keyword grid */}
+      {/* Keyword grid or list */}
       {visible.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border/60 bg-muted/15 py-6 px-4 text-center">
           <p className="text-[12px] text-muted-foreground">
             No keywords match the current filter.
           </p>
         </div>
-      ) : (
+      ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
           {visible.map((kw) => (
             <KeywordCard key={kw.keyword} keyword={kw} />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {visible.map((kw) => (
+            <KeywordRow key={kw.keyword} keyword={kw} />
           ))}
         </div>
       )}
@@ -1101,6 +1183,163 @@ function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
             <Search className="size-3" />
             Etsy
           </a>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Keyword row (list view) ───────────────────────────────────────
+//
+// Horizontal one-line layout used when viewMode === "list". Same
+// data as KeywordCard but laid out as a single row so the user can
+// scan 12+ keywords per screen instead of 6. The verdict gets a
+// vertical color stripe on the far left so verdict scan-ability
+// stays excellent even with smaller chips.
+
+function KeywordRow({ keyword }: { keyword: NicheKeywordResult }) {
+  const verdictStyle = VERDICT_STYLE[keyword.verdict];
+  const aliExpressUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(keyword.keyword)}`;
+  const etsyUrl = `https://www.etsy.com/search?q=${encodeURIComponent(keyword.keyword)}`;
+  const imageHref = keyword.preview?.productUrl ?? aliExpressUrl;
+
+  // Map verdict to a left-edge stripe color matching the chip family.
+  const stripeColor: Record<Verdict, string> = {
+    GREAT: "bg-emerald-500",
+    GOOD: "bg-sky-500",
+    MAYBE: "bg-amber-500",
+    SKIP: "bg-rose-400",
+  };
+
+  return (
+    <Card className="border border-border/60 shadow-none overflow-hidden ap-stagger-in group transition-shadow hover:shadow-md">
+      <div className="flex items-stretch">
+        {/* Verdict color stripe — far-left vertical bar */}
+        <span
+          aria-hidden
+          className={`w-1 shrink-0 ${stripeColor[keyword.verdict]}`}
+        />
+
+        {/* Thumbnail */}
+        <a
+          href={imageHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative shrink-0 size-16 sm:size-20 bg-muted/40 overflow-hidden self-stretch"
+          title={keyword.preview?.title ?? keyword.keyword}
+        >
+          {keyword.preview?.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={keyword.preview.imageUrl}
+              alt=""
+              className="size-full object-cover group-hover:scale-[1.05] transition-transform duration-300"
+              loading="lazy"
+            />
+          ) : (
+            <div className="size-full flex items-center justify-center text-muted-foreground/40">
+              <Package className="size-5" />
+            </div>
+          )}
+        </a>
+
+        {/* Main content row */}
+        <div className="flex-1 min-w-0 flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-2.5">
+          {/* Verdict + score block */}
+          <div className="shrink-0 flex flex-col items-center gap-1 w-12 sm:w-14">
+            <span
+              className={`inline-flex items-center justify-center w-full rounded-md px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-[0.15em] ${verdictStyle.chip} ring-1 ${verdictStyle.ringBorder}`}
+            >
+              {verdictStyle.label}
+            </span>
+            <span className="text-[12px] font-bold tabular-nums leading-none">
+              {keyword.score}
+            </span>
+          </div>
+
+          {/* Keyword + preview meta */}
+          <div className="min-w-0 flex-1">
+            <h4 className="text-[13px] sm:text-[14px] font-bold tracking-tight leading-snug truncate">
+              {keyword.keyword}
+            </h4>
+            {keyword.preview ? (
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground tabular-nums mt-0.5">
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                  ${keyword.preview.priceUsd.toFixed(2)}
+                </span>
+                {keyword.preview.rating !== undefined && (
+                  <span className="inline-flex items-center gap-0.5">
+                    <Star
+                      className="size-2.5 text-amber-500"
+                      fill="currentColor"
+                      strokeWidth={0}
+                    />
+                    {keyword.preview.rating.toFixed(1)}
+                  </span>
+                )}
+                {keyword.preview.orderCount !== undefined &&
+                  keyword.preview.orderCount > 0 && (
+                    <span className="truncate">
+                      {keyword.preview.orderCount.toLocaleString()} sold
+                    </span>
+                  )}
+              </div>
+            ) : (
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5 italic">
+                No AliExpress preview
+              </p>
+            )}
+          </div>
+
+          {/* Etsy stats — hidden on mobile to keep the row clean */}
+          <div className="hidden md:flex items-center gap-3 shrink-0 text-[10px] text-muted-foreground tabular-nums">
+            <span
+              className="inline-flex items-center gap-1"
+              title="Etsy listings"
+            >
+              <TrendingUp className="size-2.5" />
+              {formatCount(keyword.totalListings)}
+            </span>
+            <span
+              className="inline-flex items-center gap-1"
+              title="Avg top favorites"
+            >
+              <Heart className="size-2.5" />
+              {formatCount(keyword.avgTopFavorites)}
+            </span>
+            <span
+              className="inline-flex items-center gap-1"
+              title="Unique shops"
+            >
+              <Users className="size-2.5" />
+              {keyword.uniqueShops}
+            </span>
+          </div>
+
+          {/* Actions */}
+          <div className="shrink-0 flex items-center gap-1.5">
+            <a
+              href={aliExpressUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-sm shadow-orange-500/20 hover:opacity-90 transition-opacity"
+              title={`Hunt "${keyword.keyword}" on AliExpress`}
+            >
+              <ShoppingBag className="size-3" />
+              <span className="hidden sm:inline">AliExpress</span>
+            </a>
+            <a
+              href={etsyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider border border-border/70 hover:bg-muted/60 transition-colors"
+              title={`See "${keyword.keyword}" on Etsy`}
+            >
+              <Search className="size-3" />
+              <span className="hidden sm:inline">Etsy</span>
+            </a>
+            <ChevronRight className="size-3 text-muted-foreground/40 ml-0.5 hidden sm:block" />
+          </div>
         </div>
       </div>
     </Card>

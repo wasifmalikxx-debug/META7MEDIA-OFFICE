@@ -135,13 +135,21 @@ function signRequest(params: Record<string, string>): string {
 }
 
 // ─── Token bucket (5 QPS app-wide, same shape as Etsy service) ──────
-// AliExpress Personal Access tier caps at 5 QPS / 5K QPD. We use a
-// conservative cap=1 refill=300ms (3.3 QPS sustained) to leave headroom.
+// AliExpress Personal Access tier caps at 5 QPS / 5K QPD. cap=1
+// refill=200ms = 5 QPS sustained, exactly at AE's documented limit.
+//
+// Earlier (May 16 2026) we ran at refill=300ms / 3.3 QPS for safety,
+// but that meant the 40-keyword niche hunt queued the last ~7 AE
+// preview calls past the 10s per-call timeout — the last two
+// categories' keyword cards never got their preview image. Bumping
+// to the actual documented limit (5 QPS) drains 40 calls in ~8s
+// instead of ~12s, fixing that bug. Daily usage at this rate is
+// still ~2-3K calls/day, well under the 5K QPD cap.
 
 let bucketTokens = 1;
 let lastRefillAt = Date.now();
 const BUCKET_CAP = 1;
-const REFILL_MS = 300;
+const REFILL_MS = 200;
 
 async function acquireSlot(): Promise<void> {
   for (;;) {
