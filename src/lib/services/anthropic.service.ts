@@ -413,7 +413,7 @@ export async function generateNicheCategories(
     model: MODEL_VALIDATOR, // Haiku — cheap brainstorm
     max_tokens: 600,
     temperature: 0.5,
-    system: `You are an Etsy/AliExpress dropshipping strategist with deep knowledge of what categories are PROVEN SELLERS on Etsy. Given a niche, output 8-12 CATEGORIES that established Etsy sellers in this niche actually carry.
+    system: `You are an Etsy/AliExpress dropshipping strategist with deep knowledge of what categories are PROVEN SELLERS on Etsy. Given a niche, output 8-10 CATEGORIES that established Etsy sellers in this niche actually carry.
 
 CRITICAL rules:
 1. BE EXHAUSTIVE — cover the FULL breadth of the niche. Don't return 4-6 obvious categories. Top Etsy shops in big niches have 10-15 sections; surface that breadth.
@@ -427,13 +427,13 @@ CRITICAL rules:
    - "Mens Clothing" → also include Outerwear, Activewear, Loungewear, Accessories, Workwear, Streetwear, Underwear, Suits, Coats, Pants, Shorts — not just Tees/Hoodies
    - "Home Decor" → also include Throw Pillows, Wall Hangings, Plant Pots, Mirrors, Candles, Vases, Rugs, Art Prints, Doormats, Storage
 6. NO duplicates. NO niche-name repeats.
-7. Aim for 10-12 categories. Better to have 12 with some less-obvious than 6 generic ones.
+7. Aim for 8-10 categories — enough breadth to span the niche without diluting quality. Better to have 10 strong sections than 12 with weak ones.
 
 Think: "If I'm starting an Etsy shop in this niche, what are EVERY POSSIBLE shop section I could add to maximize listings + cross-sell? Cover all of them."
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
-  "categories": ["Category 1", "Category 2", ... 8-12 items]
+  "categories": ["Category 1", "Category 2", ... 8-10 items]
 }`,
     messages: [
       {
@@ -466,7 +466,12 @@ Return the 5-8 shop categories for this niche.`,
         seen.add(trimmed.toLowerCase());
       }
     }
-    return merged.slice(0, 14); // hard cap so wall time stays sane
+    // Cap at 10 categories. Each category triggers ~8 Etsy calls
+    // (keyword scoring) + ~4 AE calls (for GREAT/GOOD winners). At 3.3
+    // QPS shared rate limit, 10 × 8 = 80 Etsy calls = ~25s. More than
+    // 10 categories blows past 60s in real-world conditions, even with
+    // 300s timeout — user perception is "stuck loading" at 90s.
+    return merged.slice(0, 10);
   } catch {
     return opts.extras ?? [];
   }
@@ -495,7 +500,7 @@ export async function generateCategoryKeywords(
     model: MODEL_VALIDATOR, // Haiku
     max_tokens: 700,
     temperature: 0.7,
-    system: `You are an Etsy buyer behavior expert. Given a niche + a category within it, brainstorm 10-14 long-tail search phrases REAL buyers type into Etsy to find products in this category. Cover the FULL breadth of how buyers shop: gifts, occasions, recipients, styles, materials, aesthetics, sizes, use cases.
+    system: `You are an Etsy buyer behavior expert. Given a niche + a category within it, brainstorm 8 long-tail search phrases REAL buyers type into Etsy to find products in this category. Cover the FULL breadth of how buyers shop: gifts, occasions, recipients, styles, materials, aesthetics, sizes, use cases.
 
 Mix at least 5 of these intent buckets across the keyword set (don't be one-note):
 
@@ -559,7 +564,7 @@ Think: "10-14 different buyers walked into the Etsy search bar for this category
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
-  "keywords": ["kw 1", "kw 2", ... 10-14 items]
+  "keywords": ["kw 1", "kw 2", ... 8 items]
 }`,
     messages: [
       {
@@ -569,7 +574,7 @@ Category: ${opts.category}
 ${styleLine}
 ${audienceLine}
 
-Generate 10-14 long-tail keywords for this category. Cover at least 5 different intent buckets (aesthetic / material / occasion / recipient / product specifics / use case). Make them SPECIFIC. No generic "[adjective] [category]" outputs.`,
+Generate 8 long-tail keywords for this category. Cover at least 5 different intent buckets (aesthetic / material / occasion / recipient / product specifics / use case). Make them SPECIFIC. No generic "[adjective] [category]" outputs.`,
       },
       { role: "assistant", content: "{" },
     ],
@@ -593,7 +598,9 @@ Generate 10-14 long-tail keywords for this category. Cover at least 5 different 
         }
         return true;
       })
-      .slice(0, 14);
+      // Cap at 8 keywords per category. 10 cats × 8 = 80 Etsy calls,
+      // half become AE calls = ~36s total wall time. Sweet spot.
+      .slice(0, 8);
   } catch {
     return [];
   }
