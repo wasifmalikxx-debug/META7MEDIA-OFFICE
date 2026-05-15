@@ -606,6 +606,144 @@ Generate 8 long-tail keywords for this category. Cover at least 5 different inte
   }
 }
 
+/**
+ * Niche → full breakdown in ONE Haiku call.
+ *
+ * Replaces the previous 11-call pipeline (1 categories + 10 keywords-
+ * per-category) with a single fat call that returns both the category
+ * list AND the keywords for each in one shot. Cost dropped ~6x:
+ *
+ *   Old: ~$0.020 per hunt (11 calls × ~$0.002 each)
+ *   New: ~$0.003 per hunt (1 call with bigger output)
+ *
+ * Same quality — Haiku has the full niche context for every keyword,
+ * which arguably IMPROVES coherence vs. isolated per-category calls.
+ */
+export async function generateNicheBreakdown(
+  opts: {
+    niche: string;
+    style?: string;
+    audience?: string;
+    extras?: string[]; // categories the employee wants to force-include
+  },
+  accum?: CostAccumulator,
+): Promise<Array<{ category: string; keywords: string[] }>> {
+  const styleLine = opts.style ? `Style hint: ${opts.style}` : "";
+  const audienceLine = opts.audience
+    ? `Audience hint: ${opts.audience}`
+    : "";
+  const extrasLine = opts.extras?.length
+    ? `IMPORTANT — ALSO include these categories the seller specified: ${opts.extras.join(", ")}`
+    : "";
+
+  const msg = await client().messages.create({
+    model: MODEL_VALIDATOR, // Haiku — single call
+    max_tokens: 2500,
+    temperature: 0.6,
+    system: `You are an Etsy SEO + dropshipping strategist. Given a niche, output 8-10 proven-selling CATEGORIES, and for EACH category, 8 long-tail buyer-intent KEYWORDS.
+
+CATEGORIES — rules:
+- Be EXHAUSTIVE. Cover the full breadth of the niche, including less-obvious sections proven Etsy shops in the niche actually carry.
+  • "Mens Clothing" → Graphic Tees, T-Shirts, Hoodies, Sweatshirts, Joggers, Sweatpants, Outerwear, Activewear, Loungewear, Accessories (10)
+  • "Boho Jewelry" → Earrings, Necklaces, Bracelets, Rings, Body Chains, Anklets, Toe Rings, Hair Accessories (8)
+  • "Home Decor" → Wall Art, Throw Pillows, Candles, Vases, Mirrors, Plant Pots, Rugs, Doormats, Curtains (9)
+- Each category 1-3 words, Title Case
+- NO duplicates, NO niche-name repeats
+
+KEYWORDS — rules (per category):
+- 8 long-tail (3-5 word) search phrases real buyers type into Etsy
+- Cover at least 5 of these intent buckets — DON'T be one-note:
+  1. Aesthetic — y2k, indie sleaze, cottagecore, dark academia, mob wife, coastal grandma, soft girl, alt grunge, clean girl, brat summer, vintage 70s, minimalist
+  2. Material/Finish — sterling silver, polymer clay, freshwater pearl, vintage denim, organic linen, oversized cotton, hand-stitched, embroidered, distressed
+  3. Occasion — wedding, anniversary, birthday, valentine, baby shower, bridal, graduation, christmas, summer festival, everyday
+  4. Recipient — gift for sister, gift for mom, groomsmen, bridesmaid, teen, men, women, boyfriend, dad
+  5. Product Specifics — huggie, drop, stud (jewelry); oversized, cropped, baggy, slim fit (clothing); 3d, embossed, engraved (decor)
+  6. Use Case — layering, statement, everyday, workout, lounging, festival, work-from-home, gym
+  7. Size/Fit — plus size, petite, tall, oversized, slim
+  8. Color/Motif — sage green, butterfly, evil eye, mushroom, snake, chrome, pearl
+- 2-5 words, lowercase, no punctuation
+- NO "[adjective] [category]" generic patterns (e.g. don't return "boho earrings" if category is Earrings)
+- NO brand names or trademarks (Disney, Nike, etc.)
+- NO duplicates
+
+OUTPUT FORMAT — strict JSON, no prose:
+{
+  "categories": [
+    {
+      "name": "Category 1",
+      "keywords": ["kw1", "kw2", "kw3", "kw4", "kw5", "kw6", "kw7", "kw8"]
+    },
+    ... 8-10 categories
+  ]
+}`,
+    messages: [
+      {
+        role: "user",
+        content: `Niche: ${opts.niche}
+${styleLine}
+${audienceLine}
+${extrasLine}
+
+Return 8-10 proven-selling categories, each with 8 long-tail buyer-intent keywords. Mix 5+ intent buckets across each category's keywords.`,
+      },
+      { role: "assistant", content: "{" },
+    ],
+  });
+  trackUsage(accum, msg, modelKindFromId(MODEL_VALIDATOR));
+
+  const raw = "{" + extractText(msg);
+  try {
+    const parsed = safeParseJson<{
+      categories: Array<{ name: string; keywords: string[] }>;
+    }>(raw);
+    const cats = parsed.categories ?? [];
+
+    // Normalize + de-dup + merge employee extras
+    const seenCats = new Set<string>();
+    const result: Array<{ category: string; keywords: string[] }> = [];
+
+    for (const c of cats) {
+      const name = (c?.name ?? "").toString().trim();
+      if (!name || name.length < 2 || name.length > 40) continue;
+      const lowerName = name.toLowerCase();
+      if (seenCats.has(lowerName)) continue;
+      seenCats.add(lowerName);
+
+      const kws = (c?.keywords ?? [])
+        .map((k) => (k ?? "").toString().trim().toLowerCase())
+        .filter((k) => {
+          if (k.length < 3 || k.length > 80) return false;
+          const words = k.split(/\s+/);
+          if (words.length < 2) return false;
+          // Ban "[adjective] [category]" outputs
+          if (words.length === 2) {
+            const cat = name.toLowerCase();
+            if (cat.includes(words[0]) || cat.includes(words[1])) return false;
+          }
+          return true;
+        })
+        .slice(0, 10);
+
+      if (kws.length === 0) continue;
+      result.push({ category: name, keywords: kws });
+    }
+
+    // Force-include employee extras (with empty keywords — caller can
+    // re-prompt for them, or scrape AE directly with the category name)
+    for (const extra of opts.extras ?? []) {
+      const trimmed = extra.trim();
+      if (trimmed && !seenCats.has(trimmed.toLowerCase())) {
+        result.push({ category: trimmed, keywords: [trimmed] });
+        seenCats.add(trimmed.toLowerCase());
+      }
+    }
+
+    return result.slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
 // ─── Optional — Category classifier (Haiku, text-only) ──────────────
 
 /**

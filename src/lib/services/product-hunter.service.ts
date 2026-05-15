@@ -19,8 +19,7 @@ import {
 } from "./etsy-api.service";
 import {
   expandSearchVariants,
-  generateNicheCategories,
-  generateCategoryKeywords,
+  generateNicheBreakdown,
   createCostAccumulator,
   type CostAccumulator,
 } from "./anthropic.service";
@@ -444,12 +443,12 @@ export async function huntByNiche(opts: {
 
   console.log(`[hunt-by-niche] starting: "${niche}" (style=${opts.style ?? "—"}, audience=${opts.audience ?? "—"})`);
 
-  // Step 1: niche → 6-10 categories.
-  // If Haiku flakes (rate limit, transient network), fall back to the
-  // employee's extraCategories alone instead of 500ing.
-  let categories: string[] = [];
+  // Step 1+2: ONE Haiku call returns categories AND their keywords
+  // in one shot. Replaces the previous 11-call pipeline that cost
+  // ~$0.02 per hunt — now ~$0.003.
+  let perCategory: Array<{ category: string; keywords: string[] }> = [];
   try {
-    categories = await generateNicheCategories(
+    perCategory = await generateNicheBreakdown(
       {
         niche,
         style: opts.style,
@@ -458,17 +457,22 @@ export async function huntByNiche(opts: {
       },
       accum,
     );
-    console.log(`[hunt-by-niche] got ${categories.length} categories: ${categories.join(", ")}`);
+    console.log(
+      `[hunt-by-niche] got ${perCategory.length} categories with ${perCategory.reduce((s, c) => s + c.keywords.length, 0)} total keywords`,
+    );
   } catch (err) {
     console.error(
-      `[hunt-by-niche] generateNicheCategories failed:`,
+      `[hunt-by-niche] generateNicheBreakdown failed:`,
       err instanceof Error ? err.message : String(err),
     );
     // Fall back to any extra categories the user added manually
-    categories = opts.extraCategories ?? [];
+    perCategory = (opts.extraCategories ?? []).map((c) => ({
+      category: c,
+      keywords: [c],
+    }));
   }
 
-  if (categories.length === 0) {
+  if (perCategory.length === 0) {
     return {
       niche,
       style: opts.style,
@@ -481,34 +485,7 @@ export async function huntByNiche(opts: {
     };
   }
 
-  // Step 2: per category (parallel) → 6-8 keywords.
-  // Each call is wrapped in its own try/catch so one Haiku flake on
-  // a single category doesn't kill the whole hunt.
-  const perCategory = await Promise.all(
-    categories.map(async (category) => {
-      try {
-        const keywords = await generateCategoryKeywords(
-          {
-            niche,
-            category,
-            style: opts.style,
-            audience: opts.audience,
-          },
-          accum,
-        );
-        return { category, keywords };
-      } catch (err) {
-        console.error(
-          `[hunt-by-niche] generateCategoryKeywords failed for "${category}":`,
-          err instanceof Error ? err.message : String(err),
-        );
-        return { category, keywords: [] };
-      }
-    }),
-  );
-  console.log(
-    `[hunt-by-niche] generated keywords for ${perCategory.filter((p) => p.keywords.length > 0).length}/${perCategory.length} categories`,
-  );
+  const categories = perCategory.map((p) => p.category);
 
   // Build flat (category, keyword) pairs with global keyword dedup
   const seenKeywords = new Set<string>();
