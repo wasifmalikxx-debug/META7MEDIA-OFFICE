@@ -37,9 +37,7 @@ import {
   Award,
   Gauge,
   Clock,
-  BarChart3,
   Activity,
-  Trophy,
   Sparkle,
   Info,
 } from "lucide-react";
@@ -2368,20 +2366,17 @@ function InsightsDrawer({ data }: { data: GenerateResponse }) {
           <InsightsTabPill
             active={tab === "health"}
             onClick={() => setTab("health")}
-            icon={Activity}
             label="Health"
           />
           <InsightsTabPill
             active={tab === "keywords"}
             onClick={() => setTab("keywords")}
-            icon={Hash}
             label="Keywords"
             disabled={!hasAnchors}
           />
           <InsightsTabPill
             active={tab === "tags"}
             onClick={() => setTab("tags")}
-            icon={BarChart3}
             label="Tags"
             disabled={tagIntel.length === 0}
             badge={tagIntel.length || undefined}
@@ -2389,7 +2384,6 @@ function InsightsDrawer({ data }: { data: GenerateResponse }) {
           <InsightsTabPill
             active={tab === "competition"}
             onClick={() => setTab("competition")}
-            icon={Trophy}
             label="Competition"
             disabled={!hasCompetitors}
             badge={data.research.topCompetitors.length || undefined}
@@ -2419,18 +2413,20 @@ function InsightsDrawer({ data }: { data: GenerateResponse }) {
 }
 
 // ─── Tab bar pill ──────────────────────────────────────────────────
+//
+// Compact pill — no leading icon, tight padding — designed to fit all
+// four labels ("Health · Keywords · Tags · Competition") in the narrow
+// 40%-width sidebar on lg+. Active tab gets a gradient underline.
 
 function InsightsTabPill({
   active,
   onClick,
-  icon: Icon,
   label,
   badge,
   disabled,
 }: {
   active: boolean;
   onClick: () => void;
-  icon: React.ComponentType<{ className?: string }>;
   label: string;
   badge?: number;
   disabled?: boolean;
@@ -2440,13 +2436,12 @@ function InsightsTabPill({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`relative inline-flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+      className={`relative inline-flex items-center gap-1 px-2 py-2.5 text-[10px] font-bold uppercase tracking-[0.08em] whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
         active
           ? "text-emerald-700 dark:text-emerald-300"
           : "text-muted-foreground hover:text-foreground"
       }`}
     >
-      <Icon className="size-3" />
       {label}
       {typeof badge === "number" && (
         <span
@@ -2462,7 +2457,7 @@ function InsightsTabPill({
       {active && (
         <span
           aria-hidden
-          className="absolute inset-x-2 bottom-0 h-0.5 rounded-t-full bg-gradient-to-r from-emerald-500 to-sky-500"
+          className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-t-full bg-gradient-to-r from-emerald-500 to-sky-500"
         />
       )}
     </button>
@@ -3873,15 +3868,45 @@ function relativeFromNow(iso: string): string {
 function RestartButton({ onReset }: { onReset: () => void }) {
   return (
     <div className="pt-3 ap-stagger-in" style={{ animationDelay: "800ms" }}>
-      <Button
+      <button
         type="button"
-        variant="outline"
         onClick={onReset}
-        className="w-full h-12 gap-2 text-sm font-semibold border-dashed border-2 hover:border-solid hover:bg-muted/40 transition-all"
+        className="group relative w-full overflow-hidden rounded-2xl border border-orange-500/25 hover:border-orange-500/60 bg-gradient-to-br from-orange-50/60 via-card to-violet-50/40 dark:from-orange-950/20 dark:via-card dark:to-violet-950/15 shadow-sm hover:shadow-lg hover:shadow-orange-500/15 transition-all h-16 px-5 flex items-center justify-center gap-4"
       >
-        <RotateCw className="size-4" />
-        Start a new listing
-      </Button>
+        {/* Soft glow blob that pulses subtly on hover */}
+        <span
+          aria-hidden
+          className="absolute -top-12 -left-10 size-32 rounded-full bg-orange-400/15 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"
+        />
+        <span
+          aria-hidden
+          className="absolute -bottom-12 -right-10 size-32 rounded-full bg-violet-400/15 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"
+        />
+        {/* Gradient icon chip */}
+        <div className="relative shrink-0">
+          <span
+            aria-hidden
+            className="absolute -inset-1 rounded-xl bg-gradient-to-br from-orange-400/40 to-violet-500/40 blur-md opacity-0 group-hover:opacity-100 transition-opacity"
+          />
+          <div className="relative size-10 rounded-xl bg-gradient-to-br from-[#F1641E] via-orange-500 to-violet-600 ring-1 ring-orange-700/30 flex items-center justify-center shadow-md shadow-orange-500/30 group-hover:scale-105 transition-transform">
+            <Wand2 className="size-4 text-white" />
+          </div>
+        </div>
+        {/* Label */}
+        <div className="relative text-left min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-orange-700/85 dark:text-orange-300/85">
+            Generate another
+          </p>
+          <p className="text-[15px] font-bold tracking-tight leading-tight mt-0.5">
+            Start a new listing
+          </p>
+        </div>
+        {/* Chevron — slides on hover */}
+        <RotateCw
+          className="relative size-4 text-muted-foreground/60 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-all group-hover:rotate-180"
+          aria-hidden
+        />
+      </button>
     </div>
   );
 }
