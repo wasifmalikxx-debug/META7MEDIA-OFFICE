@@ -732,26 +732,88 @@ function parseProductSearch(raw: unknown): ProductSearchResponse {
   const resp = findFirst(wrapper ?? root, (k) => k === "resp_result") ?? wrapper;
   const result = findFirst(resp ?? root, (k) => k === "result") ?? resp;
 
-  if (!result || typeof result !== "object") {
-    return { totalResults: 0, products: [] };
+  // Strict path — try the most common shape first
+  let list: unknown[] = [];
+  let total = 0;
+
+  if (result && typeof result === "object") {
+    const r = result as Record<string, unknown>;
+    total = Number(
+      r.total_record_count ??
+        r.totalRecord ??
+        r.total_result_count ??
+        r.totalCount ??
+        r.total ??
+        0,
+    );
+    list =
+      extractArray(r.products) ??
+      extractArray(r.product_list) ??
+      extractArray(r.product) ??
+      extractArray(r.items) ??
+      extractArray(r.itemList) ??
+      extractArray((r.data as Record<string, unknown>)?.products) ??
+      extractArray((r.data as Record<string, unknown>)?.items) ??
+      [];
   }
 
-  const r = result as Record<string, unknown>;
-  const total = Number(
-    r.total_record_count ?? r.totalRecord ?? r.total_result_count ?? 0,
-  );
-
-  // Products typically live under r.products.product[] or r.product_list
-  const list =
-    extractArray(r.products) ??
-    extractArray(r.product_list) ??
-    extractArray(r.product) ??
-    [];
+  // Fallback — recursively scan the entire response tree for any
+  // array whose first item looks like a product. AliExpress's response
+  // shapes vary between methods/versions, so the recursive walk is a
+  // safety net.
+  if (list.length === 0) {
+    const found = findProductArrayDeep(raw, 0);
+    if (found) {
+      list = found;
+      if (total === 0) total = found.length;
+    }
+  }
 
   return {
-    totalResults: total,
+    totalResults: total || list.length,
     products: list.map((p) => normalizeProduct(p as RawProduct)),
   };
+}
+
+/**
+ * Recursively walk an object looking for any array whose first element
+ * has product-shaped fields. Bounded depth so we don't blow the stack
+ * on circular refs.
+ */
+function findProductArrayDeep(
+  obj: unknown,
+  depth: number,
+): unknown[] | null {
+  if (depth > 8 || !obj) return null;
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return null;
+    const first = obj[0];
+    if (first && typeof first === "object") {
+      const f = first as Record<string, unknown>;
+      // Anything with a product-shaped identifier is a product list
+      if (
+        f.product_id !== undefined ||
+        f.productId !== undefined ||
+        f.item_id !== undefined ||
+        (typeof f.title === "string" &&
+          (f.product_main_image_url !== undefined ||
+            f.image_url !== undefined ||
+            f.product_image_url !== undefined)) ||
+        (typeof f.subject === "string" &&
+          f.product_main_image_url !== undefined)
+      ) {
+        return obj;
+      }
+    }
+    return null;
+  }
+  if (typeof obj === "object") {
+    for (const value of Object.values(obj as Record<string, unknown>)) {
+      const found = findProductArrayDeep(value, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 function parseSingleProduct(raw: unknown): AliExpressProduct | null {
