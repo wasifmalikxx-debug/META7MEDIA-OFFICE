@@ -50,16 +50,21 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    console.log(
+      `[aliexpress] products-for-keyword: searching "${body.keyword}" (limit ${body.limit ?? 10})`,
+    );
     const result = await searchProductsByKeyword(body.keyword, {
       accessToken,
       pageSize: body.limit ?? 10,
       sortBy: "orders_desc",
     });
+    console.log(
+      `[aliexpress] products-for-keyword: got ${result.products.length} products (totalResults=${result.totalResults})`,
+    );
     return json(result);
   } catch (err) {
-    return error(
-      `AliExpress search failed: ${err instanceof Error ? err.message : "unknown"}`,
-      502,
-    );
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(`[aliexpress] products-for-keyword FAILED:`, reason);
+    return error(`AliExpress search failed: ${reason}`, 502);
   }
 }

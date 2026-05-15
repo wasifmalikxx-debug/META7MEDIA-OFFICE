@@ -219,10 +219,21 @@ export async function aliExpressCall<T = unknown>(
       //   { error_response: { code, msg, sub_msg } }
       if (json?.error_response) {
         const err = json.error_response;
+        // Log full error to Vercel logs so the user can see exactly
+        // what AliExpress complained about (code + msg + which method)
+        console.error(
+          `[aliexpress] ${method} returned error_response:`,
+          JSON.stringify(err).slice(0, 400),
+        );
         throw new Error(
-          `AliExpress error ${err.code}: ${err.sub_msg ?? err.msg}`,
+          `AliExpress error ${err.code}: ${err.sub_msg ?? err.msg ?? "unknown"}`,
         );
       }
+      // Log a one-line summary of the success response so we can see
+      // exactly what shape AliExpress returns for each method.
+      console.log(
+        `[aliexpress] ${method} ok — top-level keys: ${Object.keys(json).join(", ")}`,
+      );
       return json as T;
     } catch (err) {
       lastErr = err;
