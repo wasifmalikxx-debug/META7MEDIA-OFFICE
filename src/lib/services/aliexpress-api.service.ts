@@ -445,8 +445,11 @@ export async function getActiveTokenForUser(
  * Search AliExpress for products by keyword.
  * Used by Play 1 (full-loop Product Hunter) + Play 3 (daily auto-hunt).
  *
- * `aliexpress.ds.text.search` is the documented DS search method (some
- * older docs say `aliexpress.ds.product.list` — both are recognized).
+ * Tries methods in this order (some require permissions we may or may
+ * not have; we accept the first that returns products):
+ *   1. aliexpress.ds.text.search       — DS keyword search
+ *   2. aliexpress.affiliate.product.query — Affiliate search (works for many apps)
+ *   3. aliexpress.ds.recommend.feed.get — Feed-based recommendations
  */
 export async function searchProductsByKeyword(
   keyword: string,
@@ -461,25 +464,74 @@ export async function searchProductsByKeyword(
     targetLanguage?: string;
   },
 ): Promise<ProductSearchResponse> {
-  const params: Record<string, string | number> = {
+  const baseParams: Record<string, string | number> = {
+    keywords: keyword,
     keyWord: keyword,
+    keyword: keyword,
     local: "en_US",
+    locale: "en_US",
+    country: "US",
     countryCode: "US",
+    target_currency: options.targetCurrency ?? "USD",
+    target_language: "en",
     currency: options.targetCurrency ?? "USD",
+    page_size: options.pageSize ?? 20,
     pageSize: options.pageSize ?? 20,
+    page_no: options.pageNo ?? 1,
     pageNo: options.pageNo ?? 1,
   };
-  if (options.sortBy) params.sortBy = options.sortBy;
-  if (options.minPrice !== undefined) params.minPrice = options.minPrice;
-  if (options.maxPrice !== undefined) params.maxPrice = options.maxPrice;
+  if (options.sortBy) {
+    baseParams.sortBy = options.sortBy;
+    baseParams.sort = options.sortBy;
+  }
+  if (options.minPrice !== undefined) {
+    baseParams.minPrice = options.minPrice;
+    baseParams.min_sale_price = options.minPrice;
+  }
+  if (options.maxPrice !== undefined) {
+    baseParams.maxPrice = options.maxPrice;
+    baseParams.max_sale_price = options.maxPrice;
+  }
 
-  const raw = await aliExpressCall<Record<string, unknown>>(
+  const methodsToTry = [
     "aliexpress.ds.text.search",
-    params,
-    options.accessToken,
-  );
+    "aliexpress.affiliate.product.query",
+    "aliexpress.solution.product.list.get",
+  ];
 
-  return parseProductSearch(raw);
+  let lastResponse: Record<string, unknown> | null = null;
+  for (const method of methodsToTry) {
+    try {
+      const raw = await aliExpressCall<Record<string, unknown>>(
+        method,
+        baseParams,
+        options.accessToken,
+      );
+      lastResponse = raw;
+      const parsed = parseProductSearch(raw);
+      if (parsed.products.length > 0) {
+        console.log(
+          `[aliexpress] search via ${method} returned ${parsed.products.length} products`,
+        );
+        return parsed;
+      }
+      console.log(
+        `[aliexpress] ${method} returned 0 products — trying next method. Raw keys: ${Object.keys(raw).join(", ")}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[aliexpress] ${method} threw: ${msg}`);
+    }
+  }
+
+  // Everything returned empty/failed — dump the LAST response so we
+  // can see what shape AliExpress sent back and fix the parser.
+  if (lastResponse) {
+    console.error(
+      `[aliexpress] ALL search methods returned 0. Last raw response: ${JSON.stringify(lastResponse).slice(0, 1500)}`,
+    );
+  }
+  return { totalResults: 0, products: [] };
 }
 
 /**
