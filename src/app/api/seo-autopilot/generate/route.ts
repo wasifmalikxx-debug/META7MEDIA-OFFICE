@@ -71,8 +71,11 @@ const RequestSchema = z.object({
   // length is allowed but the UI nudges the seller to fill at least one).
   // `variants` was renamed from `colors` — it covers any choice the buyer
   // makes (color, phone model, design, material, scent).
-  sizes: z.array(z.string().min(1).max(50)).max(30).default([]),
-  variants: z.array(z.string().min(1).max(50)).max(30).default([]),
+  // Per-label cap raised 50 → 100 (May 16) — 50 was rejecting legit
+  // descriptive sizes like "Free Size for Petite, Average, and Plus
+  // figures" that some AliExpress listings ship with.
+  sizes: z.array(z.string().min(1).max(100)).max(30).default([]),
+  variants: z.array(z.string().min(1).max(100)).max(30).default([]),
 });
 
 export async function POST(request: NextRequest) {
@@ -104,6 +107,28 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     payload = RequestSchema.parse(body);
   } catch (err) {
+    // Zod errors dump as raw JSON which is incomprehensible to the
+    // employee. Translate them to human messages.
+    if (err instanceof z.ZodError) {
+      const friendly = err.issues
+        .map((issue) => {
+          const field = issue.path.join(".") || "input";
+          // Map common errors to plain English
+          if (issue.code === "too_big") {
+            const max = (issue as { maximum?: number }).maximum;
+            return `${field} is too long (max ${max} characters). Trim the value and try again.`;
+          }
+          if (issue.code === "too_small") {
+            return `${field} is too short or empty.`;
+          }
+          if (issue.code === "invalid_type") {
+            return `${field} has the wrong type — expected ${issue.expected ?? "another type"}.`;
+          }
+          return `${field}: ${issue.message}`;
+        })
+        .join(" · ");
+      return error(friendly || "Invalid input", 400);
+    }
     return error(err instanceof Error ? err.message : "Invalid payload", 400);
   }
 

@@ -35,6 +35,10 @@ function ChipBox({
     const tokens = raw
       .split(/[,\n]/)
       .map((t) => t.trim())
+      // Hard-cap each token at 100 chars to match the server schema.
+      // Pasted strings (e.g. an AliExpress size description copy-paste)
+      // can run far longer than 100 chars; we trim defensively here.
+      .map((t) => (t.length > 100 ? t.slice(0, 100) : t))
       .filter(Boolean);
     if (tokens.length === 0) return;
     const seen = new Set(values.map((v) => v.toLowerCase()));
@@ -86,6 +90,10 @@ function ChipBox({
         onBlur={() => draft.trim() && commit(draft)}
         placeholder={values.length === 0 ? placeholder : ""}
         disabled={disabled}
+        // 100-char cap matches the server-side Zod schema. Browsers hard-stop
+        // typing at this length, so employees can't accidentally trigger
+        // a "too long" validation error on the generate API.
+        maxLength={100}
         className="flex-1 min-w-[120px] bg-transparent outline-none text-sm placeholder:text-muted-foreground/60 py-1"
       />
     </div>
