@@ -327,12 +327,15 @@ export interface NicheHuntResponse {
 // have proven demand on AliExpress, and a healthy margin after our
 // markup table.
 
+// Relaxed May 16 — too strict for clothing/home decor where many valid
+// products have <50 orders or rate below 4.4. New thresholds keep the
+// filter as a "noise cutoff" not a "perfectionist gate."
 const PRODUCT_QUALITY = {
-  minOrders: 50, // proven demand — not a brand-new untested listing
-  minRating: 4.4, // <4.4 means returns + bad reviews
-  minMargin: 5, // skip if projected profit < $5/sale
-  maxPriceUsd: 50, // above this, margin math gets weird + buyers are pickier
-  minTitleLength: 12, // garbage 5-word titles get filtered
+  minOrders: 15, // even 15 orders means real buyers vetted it
+  minRating: 4.0, // 4.0+ is the "not actively bad" bar
+  minMargin: 4, // $4/sale × 50 sales/month = enough to be worth listing
+  maxPriceUsd: 80, // higher cap for clothing / home decor
+  minTitleLength: 10,
 };
 
 function passesQualityFilter(p: AliExpressProduct, margin: number): boolean {
@@ -439,16 +442,31 @@ export async function huntByNiche(opts: {
   const accum = createCostAccumulator();
   const niche = opts.niche.trim();
 
-  // Step 1: niche → 6-10 categories
-  const categories = await generateNicheCategories(
-    {
-      niche,
-      style: opts.style,
-      audience: opts.audience,
-      extras: opts.extraCategories,
-    },
-    accum,
-  );
+  console.log(`[hunt-by-niche] starting: "${niche}" (style=${opts.style ?? "—"}, audience=${opts.audience ?? "—"})`);
+
+  // Step 1: niche → 6-10 categories.
+  // If Haiku flakes (rate limit, transient network), fall back to the
+  // employee's extraCategories alone instead of 500ing.
+  let categories: string[] = [];
+  try {
+    categories = await generateNicheCategories(
+      {
+        niche,
+        style: opts.style,
+        audience: opts.audience,
+        extras: opts.extraCategories,
+      },
+      accum,
+    );
+    console.log(`[hunt-by-niche] got ${categories.length} categories: ${categories.join(", ")}`);
+  } catch (err) {
+    console.error(
+      `[hunt-by-niche] generateNicheCategories failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    // Fall back to any extra categories the user added manually
+    categories = opts.extraCategories ?? [];
+  }
 
   if (categories.length === 0) {
     return {
@@ -463,20 +481,33 @@ export async function huntByNiche(opts: {
     };
   }
 
-  // Step 2: per category (parallel) → 6-8 keywords
+  // Step 2: per category (parallel) → 6-8 keywords.
+  // Each call is wrapped in its own try/catch so one Haiku flake on
+  // a single category doesn't kill the whole hunt.
   const perCategory = await Promise.all(
     categories.map(async (category) => {
-      const keywords = await generateCategoryKeywords(
-        {
-          niche,
-          category,
-          style: opts.style,
-          audience: opts.audience,
-        },
-        accum,
-      );
-      return { category, keywords };
+      try {
+        const keywords = await generateCategoryKeywords(
+          {
+            niche,
+            category,
+            style: opts.style,
+            audience: opts.audience,
+          },
+          accum,
+        );
+        return { category, keywords };
+      } catch (err) {
+        console.error(
+          `[hunt-by-niche] generateCategoryKeywords failed for "${category}":`,
+          err instanceof Error ? err.message : String(err),
+        );
+        return { category, keywords: [] };
+      }
     }),
+  );
+  console.log(
+    `[hunt-by-niche] generated keywords for ${perCategory.filter((p) => p.keywords.length > 0).length}/${perCategory.length} categories`,
   );
 
   // Build flat (category, keyword) pairs with global keyword dedup
@@ -526,7 +557,7 @@ export async function huntByNiche(opts: {
         try {
           const res = await searchProductsByKeyword(pair.keyword, {
             accessToken: opts.accessToken!,
-            pageSize: 15,
+            pageSize: 30, // wider net so quality filter still leaves us 6-8 after
             sortBy: "orders_desc",
           });
           return { keyword: pair.keyword, products: res.products };
@@ -569,7 +600,7 @@ export async function huntByNiche(opts: {
         quality.push(toCuratedProduct(p, ck.keyword));
       }
       quality.sort((a, b) => b.qualityScore - a.qualityScore);
-      const top = quality.slice(0, 5);
+      const top = quality.slice(0, 8); // was 5; bumped per user feedback
       if (top.length === 0) continue;
 
       keywordResults.push({

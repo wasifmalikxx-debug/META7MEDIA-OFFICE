@@ -411,26 +411,29 @@ export async function generateNicheCategories(
 
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR, // Haiku — cheap brainstorm
-    max_tokens: 500,
-    temperature: 0.35,
-    system: `You are an Etsy/AliExpress dropshipping strategist with deep knowledge of what categories are PROVEN SELLERS on Etsy. Given a niche, output 6-10 CATEGORIES that established Etsy sellers in this niche actually carry — categories with a track record of consistent sales.
+    max_tokens: 600,
+    temperature: 0.5,
+    system: `You are an Etsy/AliExpress dropshipping strategist with deep knowledge of what categories are PROVEN SELLERS on Etsy. Given a niche, output 8-12 CATEGORIES that established Etsy sellers in this niche actually carry.
 
 CRITICAL rules:
-1. Each category must be a PROVEN seller — categories that real top-100 Etsy shops in this niche already organize their inventory around. Not aspirational, not experimental.
-2. Categories are SHOP SECTIONS, not specific products.
-   ✅ Good: "Earrings", "Necklaces", "Wall Art", "Coffee Mugs", "Phone Cases", "Hair Accessories"
+1. BE EXHAUSTIVE — cover the FULL breadth of the niche. Don't return 4-6 obvious categories. Top Etsy shops in big niches have 10-15 sections; surface that breadth.
+2. Each category must be a PROVEN seller — categories real Etsy shops in this niche organize their inventory around.
+3. Categories are SHOP SECTIONS, not specific products.
+   ✅ Good: "Earrings", "Graphic Tees", "Wall Art", "Coffee Mugs", "Outerwear", "Hair Accessories"
    ❌ Bad: "Boho Hoop Earrings", "Vintage Style Necklace" (too specific — those are keywords)
-3. Each category is 1-3 words, Title Case.
-4. Cover the NATURAL BREADTH of the niche — span the high-revenue sections that ANY successful Etsy shop in this space would have.
-5. Include some less-obvious sections that are still proven sellers (e.g. for "boho jewelry" also include "Body Chains", "Hair Accessories", "Anklets" — not just the obvious Earrings/Necklaces/Bracelets).
-6. NO duplicates. NO niche-name repeats (don't add "Boho Earrings" if niche is already "boho jewelry").
-7. Output 6-10 categories total. Lean toward 8.
+4. Each category is 1-3 words, Title Case.
+5. Include LESS-OBVIOUS sections that are still proven sellers. Examples:
+   - "Boho Jewelry" → also include Body Chains, Anklets, Toe Rings, Belly Chains, Hair Accessories — not just Earrings/Necklaces/Bracelets
+   - "Mens Clothing" → also include Outerwear, Activewear, Loungewear, Accessories, Workwear, Streetwear, Underwear, Suits, Coats, Pants, Shorts — not just Tees/Hoodies
+   - "Home Decor" → also include Throw Pillows, Wall Hangings, Plant Pots, Mirrors, Candles, Vases, Rugs, Art Prints, Doormats, Storage
+6. NO duplicates. NO niche-name repeats.
+7. Aim for 10-12 categories. Better to have 12 with some less-obvious than 6 generic ones.
 
-Think: "If I opened the top 3 Etsy shops in this niche right now, which shop sections would they ALL have?"
+Think: "If I'm starting an Etsy shop in this niche, what are EVERY POSSIBLE shop section I could add to maximize listings + cross-sell? Cover all of them."
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
-  "categories": ["Category 1", "Category 2", ... 6-10 items]
+  "categories": ["Category 1", "Category 2", ... 8-12 items]
 }`,
     messages: [
       {
@@ -463,7 +466,7 @@ Return the 5-8 shop categories for this niche.`,
         seen.add(trimmed.toLowerCase());
       }
     }
-    return merged.slice(0, 10); // hard cap so wall time stays sane
+    return merged.slice(0, 14); // hard cap so wall time stays sane
   } catch {
     return opts.extras ?? [];
   }
@@ -490,81 +493,73 @@ export async function generateCategoryKeywords(
 
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR, // Haiku
-    max_tokens: 600,
-    temperature: 0.75,
-    system: `You are a deeply niche Etsy SEO researcher who tracks how aesthetic-driven Gen Z + millennial buyers ACTUALLY search. Generate 8-10 SPECIFIC, NON-OBVIOUS keywords for products in this category.
+    max_tokens: 700,
+    temperature: 0.7,
+    system: `You are an Etsy buyer behavior expert. Given a niche + a category within it, brainstorm 10-14 long-tail search phrases REAL buyers type into Etsy to find products in this category. Cover the FULL breadth of how buyers shop: gifts, occasions, recipients, styles, materials, aesthetics, sizes, use cases.
 
-🚫 SPECIFICITY IS EVERYTHING — basic keywords are FORBIDDEN.
+Mix at least 5 of these intent buckets across the keyword set (don't be one-note):
 
-❌ NEVER return generic phrases like:
-- "boho earrings" / "vintage shirt" / "cute necklace" / "modern lamp" / "stylish bag"
-- Anything using filler words: "trendy", "popular", "cute", "stylish", "modern", "beautiful", "lovely", "elegant"
-- Just "[adjective] [category]" — that's the bare minimum every basic seller already uses
+1. AESTHETIC / STYLE — y2k, indie sleaze, cottagecore, dark academia, mob wife, coastal grandma, soft girl, alt grunge, clean girl, brat summer, vintage 70s, minimalist, maximalist, dopamine, weird girl
+2. MATERIAL / FINISH — sterling silver, polymer clay, freshwater pearl, oversized cotton, vintage denim, organic linen, tarnish-free, recycled, hand-stitched, embroidered, distressed, hand-painted
+3. OCCASION — wedding, anniversary, birthday, valentine, mother's day, baby shower, bridal, graduation, christmas, halloween, summer festival, everyday, office
+4. RECIPIENT — gift for sister, gift for mom, groomsmen, bridesmaid, teen daughter, men, women, boyfriend, husband, dad, mother-in-law
+5. PRODUCT SPECIFICS — huggie / drop / stud (jewelry); oversized / cropped / baggy / slim fit (clothing); 3d / embossed / engraved (decor); chunky / dainty / stacked
+6. USE CASE — layering, statement piece, everyday, workout, lounging, festival outfit, work-from-home, costume, gym, beach
+7. SIZE / FIT (when relevant) — plus size, petite, tall, oversized, slim, mens xxl
+8. COLOR / MOTIF — sage green, smoky quartz, butterfly, evil eye, mushroom, snake, chrome, pearl, herbarium, bookshelf
 
-✅ GREAT examples by category:
+✅ GREAT examples (different niches):
 
-For "Earrings":
+"Earrings" niche:
 - y2k butterfly drop earrings
 - dainty pearl evil eye studs
 - cottagecore mushroom dangle
-- mob wife chunky gold hoops
-- indie sleaze star chain earrings
-- coastal grandma seashell drops
-- dark academia book lover studs
-- tarnish-free everyday huggie hoops
+- groomsmen ear cuff gift
+- statement turquoise drops
+- minimalist huggie hoop set
+- chunky herringbone gold hoops
+- gift for sister birthday earrings
+- mob wife oversized hoops
+- bridesmaid pearl drop set
 
-For "Wall Art":
-- moody dark academia bookshelf print
-- coastal grandma sailboat oil painting
-- y2k chrome heart digital art
-- pressed botanical herbarium frame
-- vintage 70s groovy mushroom poster
-- soft girl pastel cloud print
-- eclectic grandpa antique map
-- maximalist art deco geometric print
+"Graphic Tees" niche:
+- y2k baggy graphic tee oversized fit
+- alt grunge distressed skull shirt
+- cottagecore mushroom forest tee
+- vintage 90s band tour tshirt
+- minimalist line art graphic tee
+- dad joke pun shirt funny gift
+- gym bro lifting heavy graphic tee
+- soft girl pastel cherub tee
+- bookish dark academia literary tee
+- streetwear oversized graphic tee men
 
-For "Coffee Mugs":
-- self-deprecating sarcastic gen z mug
-- cottagecore mushroom forest mug
-- y2k bratz nostalgic mug
+"Coffee Mugs" niche:
+- sarcastic gen z mug self deprecating
+- cottagecore mushroom forest ceramic mug
+- gift for boss promotion mug
 - minimalist line drawing face mug
 - bookish dark academia book stack mug
-- horror movie villain enamel mug
-- dad joke pun coffee mug
-- ceramic handmade speckled glaze mug
-
-For "Phone Cases":
-- y2k butterfly clear case
-- cottagecore mushroom 3d case
-- dark academia book spine case
-- minimalist line art case
-- mob wife leopard print case
-- soft girl pearl beaded case
-- pinterest aesthetic earth tone case
-- alt grunge skull silver case
-
-🎯 The pattern across GREAT keywords:
-- Aesthetic + product specifics (3-5 words)
-- Modern aesthetic vocab: y2k, indie sleaze, cottagecore, soft girl, alt, dark academia, coastal grandma, mob wife, brat summer, clean girl, dopamine dressing, balletcore, dollette, eclectic grandpa, weird girl
-- Specific materials/finishes: polymer clay, resin, freshwater pearl, sterling silver, tarnish-free, hypoallergenic, enamel, oil-painted, hand-pressed
-- Specific forms/silhouettes (per category): huggie, drop, stud, dangle, chunky, dainty, stacked, herringbone, paperclip, rope chain, 3d, embossed
-- Visual motifs: butterfly, evil eye, mushroom, snake, chrome, pearl, smoky quartz, herbarium, bookshelf
-- Context: statement, layering, everyday, festival, bridal, gift for [persona]
-
-📊 Mix at least 3 different aesthetics across your 8-10 keywords (e.g. y2k + cottagecore + dark academia, not all one vibe).
-
-Think: "What would 9 different buyers — a Y2K teen, a cottagecore mom, an alt 20-something, a clean-girl minimalist, a coastal grandma, a dark academia bookworm, a brat summer party girl, an indie sleaze festivalgoer — type into Etsy to find their PERFECT product in this category?"
+- y2k bratz nostalgic glossy mug
+- handmade speckled glaze coffee mug
+- dad joke pun fathers day mug
+- horror movie villain enamel camp mug
+- valentine couples matching mug set
 
 Rules:
 - Each keyword 2-5 words, lowercase, no punctuation, no hashtags
-- 100% inside the given category (don't drift)
-- NO brand names or trademarks
+- 100% inside the given category (don't drift to other categories)
+- LEAN long-tail (3-5 words) — easier to rank for new shops
+- NO brand names or trademarks (Disney, Nike, Marvel, etc.)
 - NO duplicates within the set
-- NO single-word or two-word generic ([adjective] + category) outputs
+- NO "[adjective] [category]" generic patterns — make them SPECIFIC
+- Mix at least 5 intent buckets across the set so they're not all aesthetic-only or all occasion-only
+
+Think: "10-14 different buyers walked into the Etsy search bar for this category — what did EACH of them type?"
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
-  "keywords": ["kw 1", "kw 2", ... 8-10 items]
+  "keywords": ["kw 1", "kw 2", ... 10-14 items]
 }`,
     messages: [
       {
@@ -574,7 +569,7 @@ Category: ${opts.category}
 ${styleLine}
 ${audienceLine}
 
-Generate 8-10 specific, aesthetic-driven keywords for this category. Make them SPECIFIC. Mix aesthetics. No generic "[adjective] [category]" outputs.`,
+Generate 10-14 long-tail keywords for this category. Cover at least 5 different intent buckets (aesthetic / material / occasion / recipient / product specifics / use case). Make them SPECIFIC. No generic "[adjective] [category]" outputs.`,
       },
       { role: "assistant", content: "{" },
     ],
@@ -586,23 +581,19 @@ Generate 8-10 specific, aesthetic-driven keywords for this category. Make them S
     const parsed = safeParseJson<{ keywords: string[] }>(raw);
     return (parsed.keywords ?? [])
       .map((v) => (v ?? "").toString().trim().toLowerCase())
-      // Filter out single-word and pure "[adjective] [category]"
-      // basics — if the keyword is only 2 words AND one of them IS
-      // the category name, it's too generic. Force specificity.
       .filter((v) => {
         if (v.length < 3 || v.length > 80) return false;
         const words = v.split(/\s+/);
         if (words.length < 2) return false;
-        // 2-word output is allowed only if neither word is the category
-        // name (e.g., "evil eye" is fine; "boho earrings" if category
-        // is "Earrings" is not).
+        // Allow 2-word outputs unless they're pure "[adj] [category]"
+        // basics — e.g. ban "boho earrings" but allow "evil eye".
         if (words.length === 2) {
           const cat = opts.category.toLowerCase();
           if (cat.includes(words[1]) || cat.includes(words[0])) return false;
         }
         return true;
       })
-      .slice(0, 12);
+      .slice(0, 14);
   } catch {
     return [];
   }
