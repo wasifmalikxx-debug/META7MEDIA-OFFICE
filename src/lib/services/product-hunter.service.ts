@@ -501,18 +501,32 @@ export async function huntByNiche(opts: {
     }),
   );
 
-  // Step 4: AliExpress search per keyword (parallel).
-  // For each keyword we pull 20 products to give us a wide enough net
-  // to filter quality. Without a token, we skip all AE — categories
-  // come back empty.
+  // Step 4: AliExpress search — ONLY for keywords with Etsy traction.
+  //
+  // We previously fetched AE for every keyword (40-50 calls per scan),
+  // which pushed wall time over the 60s cap and timed out. Now we
+  // skip MAYBE/SKIP keywords entirely — they're noise anyway, since
+  // keywords with weak Etsy demand rarely produce listable products
+  // for our team. Halves the AE call budget; cuts wall time ~30%.
+  const winningPairs = allPairs.filter((pair) => {
+    const evalEntry = etsyEvaluated.find(
+      (e) => e.category === pair.category && e.keyword === pair.keyword,
+    );
+    return (
+      evalEntry?.etsyResult &&
+      (evalEntry.etsyResult.verdict === "GREAT" ||
+        evalEntry.etsyResult.verdict === "GOOD")
+    );
+  });
+
   const aeProductsByKeyword = new Map<string, AliExpressProduct[]>();
-  if (opts.accessToken) {
+  if (opts.accessToken && winningPairs.length > 0) {
     const aeResults = await Promise.all(
-      allPairs.map(async (pair) => {
+      winningPairs.map(async (pair) => {
         try {
           const res = await searchProductsByKeyword(pair.keyword, {
             accessToken: opts.accessToken!,
-            pageSize: 20,
+            pageSize: 15,
             sortBy: "orders_desc",
           });
           return { keyword: pair.keyword, products: res.products };

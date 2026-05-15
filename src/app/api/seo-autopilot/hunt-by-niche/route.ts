@@ -29,7 +29,10 @@ import { prisma } from "@/lib/prisma";
  */
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // ~30s wall time at our rate limits
+// v2.2 pipeline ran ~56s on the first prod test, which was too close to
+// the 60s cap. Bumped to 300s (Vercel Pro max) so network latency spikes
+// don't push us over. Actual typical wall time is still 30-45s.
+export const maxDuration = 300;
 
 const RequestSchema = z.object({
   niche: z.string().min(2, "Niche must be at least 2 chars").max(80),
