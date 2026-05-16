@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import {
   searchByVolumeDesc,
+  searchByVolumeAsc,
   type AliExpressProduct,
+  type ProductSearchResponse,
 } from "@/lib/services/aliexpress-api.service";
 import { calculateEtsyPrice } from "@/lib/etsy-price-calculator";
 import { listAllActiveNichesDistinct } from "@/lib/services/employee-niche.service";
@@ -10,18 +12,31 @@ import { listAllActiveNichesDistinct } from "@/lib/services/employee-niche.servi
  * Daily Trending Products service.
  *
  * The cron at /api/cron/daily-trending calls `runDailyTrendingFetch` once
- * a day at 5 AM PKT. For every distinct active employee niche it:
- *   1. Asks AE for the top 20 highest-volume products (sortBy=orders_desc)
- *   2. Drops anything with a missing price/url/image (unrenderable)
- *   3. Drops anything we already saved in the last 7 days for this niche
- *      (so the page only shows truly NEW products each day)
- *   4. Pre-computes the suggested Etsy listing prices (matured + new shop)
- *      so the UI can render without reaching back to the calculator
- *   5. Bulk-inserts the survivors with fetchDate = today (PKT)
+ * a day at 5 AM PKT. For every distinct active employee niche it runs
+ * TWO passes — TRENDING (high-volume best-sellers) and FRESH (early-
+ * momentum new listings) — and stores them as separate rows.
  *
- * The page reads from `DailyTrendingProduct` filtered to today's bucket —
- * no live AE calls per visit, so page loads are instant and free.
+ * Per-source filters (May 16 2026):
+ *   TRENDING:
+ *     - AE sort: orders_desc, pageSize 20
+ *     - ordersCount >= 50  (proven best-seller)
+ *     - ratingStars >= 4.0 (avoid 1-2-star outliers)
+ *   FRESH:
+ *     - AE sort: orders_asc, pageSize 30 (lower post-filter survival)
+ *     - 5 <= ordersCount <= 200 (some validation, not yet popular)
+ *     - ratingStars >= 4.0
+ *
+ * Shared filters (both sources):
+ *   - Must have title + image + url + price
+ *   - $0.50 <= price <= $300 (drop test SKUs + luxury outliers)
+ *   - 7-day dedupe per niche+source (so daily batch is genuinely new)
+ *
+ * The page reads from `DailyTrendingProduct` filtered to today's bucket
+ * + source — no live AE calls per visit, so loads are instant and free.
  */
+
+/** Source of a row — drives which UI tab shows it. */
+export type TrendingSource = "TRENDING" | "FRESH";
 
 /** AE products are bucketed by date in Asia/Karachi. Page filters by this. */
 export function todayInPkt(): Date {
@@ -40,9 +55,9 @@ export function todayInPkt(): Date {
   );
 }
 
-/** How many AE products to ask for per niche. Higher than we need so
- * dedupe + price-floor filters still leave us with a healthy pool. */
-const PAGE_SIZE_PER_NICHE = 20;
+/** How many AE products to ask for per niche per source. */
+const PAGE_SIZE_TRENDING = 20;
+const PAGE_SIZE_FRESH = 30;
 
 /** Keep AE products in the dedupe window for this many days. A product
  * that trended yesterday is hidden today even if it still has high
@@ -57,8 +72,27 @@ const MIN_PRICE_FLOOR = 0.5;
  * sense for Etsy dropship and skew the page towards luxury outliers. */
 const MAX_PRICE_CEILING = 300;
 
+/** Minimum rating in stars (0-5 scale) for any product to make the cut.
+ * 4.0 stars = 80% in AE's percentage rating shape. Products without
+ * rating data are NOT filtered out (some legit new SKUs have no
+ * reviews yet). */
+const MIN_RATING_STARS = 4.0;
+
+/** TRENDING: proven best-seller floor. Below this, "best-seller" is a
+ * stretch — could be a one-time spike from a single influencer mention. */
+const MIN_ORDERS_TRENDING = 50;
+
+/** FRESH: lower bound = some real demand validation. Above zero so we
+ * don't surface untested zero-sale SKUs. */
+const MIN_ORDERS_FRESH = 5;
+
+/** FRESH: upper bound = differentiates from "already viral." Anything
+ * over 200 orders is already a known winner — show it in TRENDING. */
+const MAX_ORDERS_FRESH = 200;
+
 export interface NicheRunSummary {
   niche: string;
+  source: TrendingSource;
   fetched: number;
   added: number;
   dedupedOut: number;
@@ -72,13 +106,19 @@ export interface DailyTrendingRunResult {
   fetchDate: Date;
   nichesScanned: number;
   productsAdded: number;
+  /** Per (niche, source) entry — 2× the niche count when both passes
+   * run successfully (one TRENDING + one FRESH per niche). */
   perNiche: NicheRunSummary[];
 }
 
 /**
- * Run the full fetch pass. Caller (cron route) supplies the CEO's
- * AliExpress access token — the cron borrows the CEO's connection
- * because partners/employees aren't required to OAuth themselves.
+ * Run the full fetch pass — both TRENDING and FRESH per niche.
+ * Caller (cron route) supplies the CEO's AliExpress access token; the
+ * cron borrows the CEO's connection because partners/employees aren't
+ * required to OAuth themselves.
+ *
+ * Cost: 2 AE calls per niche per day. At 15 niches that's 30 calls/day
+ * — rounding error against the 5K daily AE cap.
  */
 export async function runDailyTrendingFetch(opts: {
   accessToken: string;
@@ -90,29 +130,36 @@ export async function runDailyTrendingFetch(opts: {
   const perNiche: NicheRunSummary[] = [];
   let productsAdded = 0;
 
-  // Sequential per-niche to stay polite with AE rate limits + give us
-  // tidy logs. ~30 niches × ~1.5s/call = ~45s total — well under the
-  // 300s cron budget.
+  // Sequential per (niche, source) to stay polite with AE rate limits
+  // + give us tidy logs. ~15 niches × 2 sources × ~1.5s/call = ~45s
+  // total — well under the 300s cron budget.
   for (const niche of niches) {
-    try {
-      const summary = await runNiche({
-        niche,
-        accessToken: opts.accessToken,
-        fetchDate,
-      });
-      perNiche.push(summary);
-      productsAdded += summary.added;
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : "unknown";
-      console.error(`[daily-trending] ${niche} failed:`, reason);
-      perNiche.push({
-        niche,
-        fetched: 0,
-        added: 0,
-        dedupedOut: 0,
-        filteredOut: 0,
-        error: reason,
-      });
+    for (const source of ["TRENDING", "FRESH"] as TrendingSource[]) {
+      try {
+        const summary = await runNiche({
+          niche,
+          source,
+          accessToken: opts.accessToken,
+          fetchDate,
+        });
+        perNiche.push(summary);
+        productsAdded += summary.added;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : "unknown";
+        console.error(
+          `[daily-trending] ${niche} (${source}) failed:`,
+          reason,
+        );
+        perNiche.push({
+          niche,
+          source,
+          fetched: 0,
+          added: 0,
+          dedupedOut: 0,
+          filteredOut: 0,
+          error: reason,
+        });
+      }
     }
   }
 
@@ -128,41 +175,53 @@ export async function runDailyTrendingFetch(opts: {
 }
 
 /**
- * Single-niche fetch + dedupe + insert. Exposed for tests + the
- * "Refresh now" button on the page (CEO-only).
+ * Single (niche, source) fetch + dedupe + insert. Exposed for tests +
+ * the "Refresh now" button on the page (CEO-only).
+ *
+ * Filter behaviour depends on `source`:
+ *   TRENDING → high-volume + 4★+
+ *   FRESH    → low-but-validated volume + 4★+
  */
 export async function runNiche(opts: {
   niche: string;
+  source: TrendingSource;
   accessToken: string;
   fetchDate: Date;
 }): Promise<NicheRunSummary> {
-  const { niche, accessToken, fetchDate } = opts;
+  const { niche, source, accessToken, fetchDate } = opts;
 
-  const ae = await searchByVolumeDesc(niche, {
-    accessToken,
-    pageSize: PAGE_SIZE_PER_NICHE,
-  });
+  // Pick the AE sort + pageSize for this source
+  let ae: ProductSearchResponse;
+  if (source === "TRENDING") {
+    ae = await searchByVolumeDesc(niche, {
+      accessToken,
+      pageSize: PAGE_SIZE_TRENDING,
+    });
+  } else {
+    ae = await searchByVolumeAsc(niche, {
+      accessToken,
+      pageSize: PAGE_SIZE_FRESH,
+    });
+  }
 
-  // Filter to renderable + sane-priced products
+  // Apply hard filters — basic field checks, price band, rating + orders
   const candidates: AliExpressProduct[] = [];
   let filteredOut = 0;
   for (const p of ae.products) {
-    if (
-      !p.productId ||
-      !p.title ||
-      !p.productUrl ||
-      !p.imageUrl ||
-      !p.priceMin ||
-      p.priceMin < MIN_PRICE_FLOOR ||
-      p.priceMin > MAX_PRICE_CEILING
-    ) {
+    if (!passesBasicFilters(p)) {
+      filteredOut += 1;
+      continue;
+    }
+    if (!passesQualityFilters(p, source)) {
       filteredOut += 1;
       continue;
     }
     candidates.push(p);
   }
 
-  // Dedupe against the last DEDUPE_WINDOW_DAYS for this niche
+  // Dedupe against the last DEDUPE_WINDOW_DAYS for THIS niche+source.
+  // Sources are deduped independently — a product that was in TRENDING
+  // last Tuesday can still appear in FRESH this Monday (and vice versa).
   const cutoff = new Date(
     fetchDate.getTime() - DEDUPE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
   );
@@ -171,6 +230,7 @@ export async function runNiche(opts: {
     ? await prisma.dailyTrendingProduct.findMany({
         where: {
           niche,
+          source,
           aeProductId: { in: aeIds },
           fetchDate: { gte: cutoff },
         },
@@ -182,28 +242,32 @@ export async function runNiche(opts: {
   const fresh = candidates.filter((p) => !recentIds.has(String(p.productId)));
   const dedupedOut = candidates.length - fresh.length;
 
-  // Insert one-by-one via upsert to handle the (niche, aeProductId,
-  // fetchDate) unique constraint cleanly when the cron is re-run on the
-  // same day (e.g. CEO clicks "Refresh now").
+  // Upsert on the 4-col unique key (niche, aeProductId, fetchDate, source).
+  // Re-runs of the same source on the same day refresh live fields without
+  // breaking the claim state.
   let added = 0;
   for (const p of fresh) {
     const pricing = calculateEtsyPrice(p.priceMin);
+    const ratingStars = normalizeRatingToStars(p.rating);
     try {
       await prisma.dailyTrendingProduct.upsert({
         where: {
-          niche_aeProductId_fetchDate: {
+          niche_aeProductId_fetchDate_source: {
             niche,
             aeProductId: String(p.productId),
             fetchDate,
+            source,
           },
         },
         create: {
           niche,
+          source,
           aeProductId: String(p.productId),
           title: p.title.slice(0, 300),
           imageUrl: p.imageUrl?.slice(0, 500) ?? null,
           priceUsd: p.priceMin,
           ordersCount: p.orderCount ?? null,
+          ratingStars,
           productUrl: p.productUrl!.slice(0, 500),
           suggestedEtsyMatured: round2(pricing.etsyMatured),
           suggestedEtsyNew: round2(pricing.etsyNew),
@@ -214,6 +278,7 @@ export async function runNiche(opts: {
           // the row but refresh the live fields. Claim state is preserved.
           priceUsd: p.priceMin,
           ordersCount: p.orderCount ?? null,
+          ratingStars,
           suggestedEtsyMatured: round2(pricing.etsyMatured),
           suggestedEtsyNew: round2(pricing.etsyNew),
         },
@@ -221,7 +286,7 @@ export async function runNiche(opts: {
       added += 1;
     } catch (err) {
       console.warn(
-        `[daily-trending] insert failed for ${niche} / ${p.productId}:`,
+        `[daily-trending] insert failed for ${niche} / ${source} / ${p.productId}:`,
         err instanceof Error ? err.message : err,
       );
     }
@@ -229,11 +294,70 @@ export async function runNiche(opts: {
 
   return {
     niche,
+    source,
     fetched: ae.products.length,
     added,
     dedupedOut,
     filteredOut,
   };
+}
+
+// ─── Filters ────────────────────────────────────────────────────────
+
+/** Universal field + price-band check. Same for both sources. */
+function passesBasicFilters(p: AliExpressProduct): boolean {
+  if (
+    !p.productId ||
+    !p.title ||
+    !p.productUrl ||
+    !p.imageUrl ||
+    !p.priceMin ||
+    p.priceMin < MIN_PRICE_FLOOR ||
+    p.priceMin > MAX_PRICE_CEILING
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Source-specific rating + orders gate. */
+function passesQualityFilters(
+  p: AliExpressProduct,
+  source: TrendingSource,
+): boolean {
+  // Rating filter: when AE didn't return rating, we keep the product
+  // (some legit new SKUs have no reviews yet). When it did, demand 4★+.
+  const stars = normalizeRatingToStars(p.rating);
+  if (stars !== null && stars < MIN_RATING_STARS) return false;
+
+  const orders = p.orderCount ?? 0;
+  if (source === "TRENDING") {
+    return orders >= MIN_ORDERS_TRENDING;
+  }
+  // FRESH — band: some validation, not yet popular
+  return orders >= MIN_ORDERS_FRESH && orders <= MAX_ORDERS_FRESH;
+}
+
+/**
+ * Normalize AE's mixed rating formats into a 0-5 star scale.
+ *
+ * AE returns rating as either:
+ *   - percentage (e.g. "94.7%") → parsed by normalizeProduct as 94.7
+ *   - 0-5 stars (e.g. "4.7")    → 4.7
+ *   - 0-1 fraction (rare)        → 0.94 → treat as fraction
+ *
+ * Returns null if AE didn't include rating data (so filters can decide
+ * whether to keep the product anyway).
+ */
+function normalizeRatingToStars(rating: number | undefined): number | null {
+  if (rating === undefined || rating === null || isNaN(rating)) return null;
+  if (rating <= 0) return null;
+  // Percentage scale → divide by 20 to get stars
+  if (rating > 5) return rating / 20;
+  // Fraction scale → multiply by 5 to get stars
+  if (rating < 1) return rating * 5;
+  // Already in star scale
+  return rating;
 }
 
 function round2(n: number): number {
@@ -245,11 +369,13 @@ function round2(n: number): number {
 export interface TrendingProductRow {
   id: string;
   niche: string;
+  source: TrendingSource;
   aeProductId: string;
   title: string;
   imageUrl: string | null;
   priceUsd: number;
   ordersCount: number | null;
+  ratingStars: number | null;
   productUrl: string;
   suggestedEtsyMatured: number;
   suggestedEtsyNew: number;
@@ -264,16 +390,17 @@ export interface NicheGroup {
 }
 
 /**
- * Fetch today's batch for the given niches, grouped by niche.
- * Within each niche, claimed-by-someone-else products sink to the
- * bottom (CEO chose "stay visible with badge" — but unclaimed first
- * keeps focus on what's still up for grabs).
+ * Fetch today's batch for the given niches + source, grouped by niche.
+ * Within each niche, unclaimed products surface first (CEO chose "stay
+ * visible with badge" — unclaimed at the top keeps focus on what's
+ * still up for grabs).
  *
  * If `niches` is empty, returns an empty array (employee hasn't picked
  * any niches yet — page shows the empty state).
  */
 export async function getTodaysTrendingGrouped(
   niches: string[],
+  source: TrendingSource = "TRENDING",
 ): Promise<NicheGroup[]> {
   if (niches.length === 0) return [];
   const fetchDate = todayInPkt();
@@ -281,23 +408,31 @@ export async function getTodaysTrendingGrouped(
   const rows = await prisma.dailyTrendingProduct.findMany({
     where: {
       fetchDate,
+      source,
       niche: { in: niches },
     },
     orderBy: [
       // Unclaimed first (NULLs sort first by default in Postgres,
-      // but Prisma defers — explicit ordering)
+      // but Prisma defers — explicit ordering).
       { claimedAt: { sort: "asc", nulls: "first" } },
-      { ordersCount: "desc" },
-      { priceUsd: "asc" },
+      // TRENDING: most-sold first (proven winners up top)
+      // FRESH:    cheapest first (lowest barrier-to-list up top —
+      //           order count is intentionally low across the board,
+      //           so it's not a strong differentiator within fresh)
+      ...(source === "TRENDING"
+        ? ([{ ordersCount: "desc" as const }, { priceUsd: "asc" as const }])
+        : ([{ priceUsd: "asc" as const }, { ordersCount: "desc" as const }])),
     ],
     select: {
       id: true,
       niche: true,
+      source: true,
       aeProductId: true,
       title: true,
       imageUrl: true,
       priceUsd: true,
       ordersCount: true,
+      ratingStars: true,
       productUrl: true,
       suggestedEtsyMatured: true,
       suggestedEtsyNew: true,
@@ -312,7 +447,10 @@ export async function getTodaysTrendingGrouped(
   for (const niche of niches) groups.set(niche, []);
   for (const row of rows) {
     const list = groups.get(row.niche);
-    if (list) list.push(row);
+    // Prisma returns `source` as a generic string from the DB; cast
+    // back to the discriminated union for callers.
+    if (list)
+      list.push({ ...row, source: row.source as TrendingSource });
   }
   return [...groups.entries()].map(([niche, products]) => ({
     niche,

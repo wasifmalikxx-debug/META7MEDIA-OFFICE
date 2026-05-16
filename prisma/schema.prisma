@@ -1129,8 +1129,18 @@ model DailyTrendingProduct {
   priceUsd    Float
   // Last-30-day order count from AE. Used to sort within a niche.
   ordersCount Int?
+  // AE rating expressed as stars (0-5). Normalized from AE's mixed
+  // % / star formats by daily-trending.service.ts. Null when AE
+  // didn't return rating data for the SKU.
+  ratingStars Float?
   // Direct AE product URL — opened in a new tab when employee clicks.
   productUrl  String   @db.VarChar(500)
+
+  // Which sourcing mode put this row here. Cron now runs TWO passes
+  // per niche per day — one for high-volume best-sellers (TRENDING),
+  // one for early-momentum new listings (FRESH). The page toggles
+  // between them. Default = TRENDING so pre-source rows backfill cleanly.
+  source String @default("TRENDING") @db.VarChar(20)
 
   // Pre-computed Etsy prices using the standard markup formula
   // (no per-user personalization — that's applied client-side when
@@ -1139,8 +1149,10 @@ model DailyTrendingProduct {
   suggestedEtsyNew     Float
 
   // Date-only bucket for "today's batch". The page filters by
-  // fetchDate = today (PKT). One row per (niche, aeProductId, fetchDate)
-  // so re-running the cron on the same day upserts cleanly.
+  // fetchDate = today (PKT). One row per (niche, aeProductId,
+  // fetchDate, source) so re-running the cron on the same day upserts
+  // cleanly AND a product that qualifies for BOTH trending + fresh
+  // (overlap zone: 50-200 orders) is stored under each source.
   fetchDate DateTime @db.Date
   fetchedAt DateTime @default(now())
 
@@ -1154,10 +1166,10 @@ model DailyTrendingProduct {
   claimedByName String?   @db.VarChar(120)
   claimedAt     DateTime?
 
-  // One product per niche per day (upserts on re-run).
-  @@unique([niche, aeProductId, fetchDate])
-  // Page query: today + filter by IN (user's niches).
-  @@index([fetchDate, niche])
+  // One product per niche per day per source.
+  @@unique([niche, aeProductId, fetchDate, source])
+  // Page query: today + filter by source + IN (user's niches).
+  @@index([fetchDate, source, niche])
   // Claim history per user (CEO admin view).
   @@index([claimedById])
 }

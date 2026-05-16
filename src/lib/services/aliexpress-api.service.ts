@@ -519,7 +519,15 @@ export async function searchProductsByKeyword(
     accessToken: string;
     pageSize?: number;
     pageNo?: number;
-    sortBy?: "orders_desc" | "rating_desc" | "price_asc" | "price_desc";
+    // orders_asc added May 16 2026 for Daily Trending's FRESH mode —
+    // surfaces low-volume listings (new arrivals + duds; daily-trending
+    // filters duds via rating + min-orders floor).
+    sortBy?:
+      | "orders_desc"
+      | "orders_asc"
+      | "rating_desc"
+      | "price_asc"
+      | "price_desc";
     minPrice?: number;
     maxPrice?: number;
     targetCurrency?: string;
@@ -622,12 +630,12 @@ export async function searchProductsByKeyword(
 /**
  * Search AliExpress for the top-selling products in a niche.
  *
- * Used by the Daily Trending cron — for each employee niche, we fetch
- * the highest-volume products so they surface as "today's hot picks".
+ * Used by Daily Trending's TRENDING mode — for each niche, we fetch
+ * the highest-volume products so they surface as "today's hot picks."
  *
- * Same plumbing as `searchProductsByKeyword` but pinned to volume-desc
- * sort + a wider page size, so the cron gets a meaningful pool to
- * dedupe against the last 7 days' history.
+ * Same plumbing as `searchProductsByKeyword` but pinned to
+ * volume-desc sort + a wider page size, so the cron gets a meaningful
+ * pool to dedupe against the last 7 days' history.
  */
 export async function searchByVolumeDesc(
   keyword: string,
@@ -640,6 +648,38 @@ export async function searchByVolumeDesc(
     accessToken: options.accessToken,
     pageSize: options.pageSize ?? 20,
     sortBy: "orders_desc",
+    targetCurrency: "USD",
+  });
+}
+
+/**
+ * Search AliExpress for new / early-momentum listings in a niche.
+ *
+ * Used by Daily Trending's FRESH mode — surfaces products that have
+ * SOME validation (a handful of orders + good rating) but haven't yet
+ * gone viral. The point: list these on Etsy before the rest of the
+ * dropship community discovers them.
+ *
+ * AE DS API doesn't expose a "newest" sort directly. The closest
+ * proxy is volume-asc — products with the FEWEST recent orders are
+ * either brand-new SKUs or duds. Daily-trending then filters out
+ * the duds via rating + an orders-count floor (5+) so only legit
+ * new arrivals survive.
+ *
+ * Wider pageSize than TRENDING (~30) because the post-filter survival
+ * rate is lower — many low-volume products have no rating data yet.
+ */
+export async function searchByVolumeAsc(
+  keyword: string,
+  options: {
+    accessToken: string;
+    pageSize?: number;
+  },
+): Promise<ProductSearchResponse> {
+  return searchProductsByKeyword(keyword, {
+    accessToken: options.accessToken,
+    pageSize: options.pageSize ?? 30,
+    sortBy: "orders_asc",
     targetCurrency: "USD",
   });
 }

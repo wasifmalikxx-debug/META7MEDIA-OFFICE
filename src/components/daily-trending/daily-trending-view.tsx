@@ -9,6 +9,7 @@ import {
   Sparkles,
   Bookmark,
   TrendingUp,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,8 +45,13 @@ interface NicheGroup {
   products: TrendingCardData[];
 }
 
+/** Matches TrendingSource in daily-trending.service.ts — kept duplicated
+ * client-side so this "use client" file doesn't import a server module. */
+type Source = "TRENDING" | "FRESH";
+
 interface FeedResponse {
   fetchDate: string;
+  source: Source;
   niches: Array<{
     id: string;
     niche: string;
@@ -74,29 +80,44 @@ export function DailyTrendingView({
   const [feed, setFeed] = useState<FeedResponse | null>(null);
   const [busyClaimId, setBusyClaimId] = useState<string | null>(null);
   const [showNicheModal, setShowNicheModal] = useState(false);
+  // Which feed we're viewing — defaults to TRENDING. Toggling re-fetches.
+  const [source, setSource] = useState<Source>("TRENDING");
 
-  const fetchFeed = useCallback(async () => {
-    try {
-      const res = await fetch("/api/daily-trending");
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? `Failed (${res.status})`);
+  const fetchFeed = useCallback(
+    async (nextSource: Source = source) => {
+      try {
+        const res = await fetch(`/api/daily-trending?source=${nextSource}`);
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error ?? `Failed (${res.status})`);
+        }
+        const data = (await res.json()) as FeedResponse;
+        setFeed(data);
+      } catch (err) {
+        toast.error("Couldn't load trending feed", {
+          description: err instanceof Error ? err.message : "unknown",
+        });
+      } finally {
+        setLoading(false);
       }
-      const data = (await res.json()) as FeedResponse;
-      setFeed(data);
-    } catch (err) {
-      toast.error("Couldn't load trending feed", {
-        description: err instanceof Error ? err.message : "unknown",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [source],
+  );
 
   // Initial fetch
   useEffect(() => {
     fetchFeed();
   }, [fetchFeed]);
+
+  // Toggle handler — flips source + immediately re-fetches. Sets
+  // loading=true so the skeleton replaces the old feed instead of the
+  // wrong-source data flashing briefly.
+  async function handleSourceChange(nextSource: Source) {
+    if (nextSource === source) return;
+    setSource(nextSource);
+    setLoading(true);
+    await fetchFeed(nextSource);
+  }
 
   // CEO-only manual cron trigger. Useful for first-day testing and
   // same-day re-runs after adding new niches.
@@ -202,6 +223,11 @@ export function DailyTrendingView({
   // the niche bar so it's always reachable.
   const content = (
     <>
+      <SourceToggle
+        source={source}
+        onChange={handleSourceChange}
+        disabled={loading || refreshing}
+      />
       <NicheRowBar
         niches={niches}
         onManage={() => setShowNicheModal(true)}
@@ -217,7 +243,10 @@ export function DailyTrendingView({
       ) : niches.length === 0 ? (
         <EmptyNichesState onAddFirst={() => setShowNicheModal(true)} />
       ) : groups.every((g) => g.products.length === 0) ? (
-        <NoTrendingTodayState onRefresh={isCeo ? handleRefresh : undefined} />
+        <NoTrendingTodayState
+          source={source}
+          onRefresh={isCeo ? handleRefresh : undefined}
+        />
       ) : (
         <div className="space-y-8">
           {groups.map((g) => (
@@ -275,7 +304,12 @@ export function DailyTrendingView({
       </div>
 
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Niche row + Manage button */}
+        {/* Source toggle + niche row */}
+        <SourceToggle
+          source={source}
+          onChange={handleSourceChange}
+          disabled={loading || refreshing}
+        />
         <NicheRowBar
           niches={niches}
           onManage={() => setShowNicheModal(true)}
@@ -287,7 +321,10 @@ export function DailyTrendingView({
         ) : niches.length === 0 ? (
           <EmptyNichesState onAddFirst={() => setShowNicheModal(true)} />
         ) : groups.every((g) => g.products.length === 0) ? (
-          <NoTrendingTodayState onRefresh={isCeo ? handleRefresh : undefined} />
+          <NoTrendingTodayState
+          source={source}
+          onRefresh={isCeo ? handleRefresh : undefined}
+        />
         ) : (
           <div className="space-y-8">
             {groups.map((g) => (
@@ -511,6 +548,99 @@ function FeatureCell({
   );
 }
 
+// ─── Source toggle (TRENDING ↔ FRESH) ───────────────────────────────
+//
+// Pill-style segmented toggle. The cron stores both feeds daily, so
+// switching is a free re-fetch — no extra AE call. Disabled while
+// loading or a CEO refresh is in-flight to avoid request thrash.
+
+function SourceToggle({
+  source,
+  onChange,
+  disabled,
+}: {
+  source: Source;
+  onChange: (next: Source) => void;
+  disabled: boolean;
+}) {
+  const options: Array<{
+    id: Source;
+    label: string;
+    sub: string;
+    icon: typeof Flame;
+    gradient: string;
+  }> = [
+    {
+      id: "TRENDING",
+      label: "Trending",
+      sub: "High-volume best-sellers · 50+ sold · 4★+",
+      icon: Flame,
+      gradient: "from-orange-500 to-rose-500",
+    },
+    {
+      id: "FRESH",
+      label: "Fresh Listings",
+      sub: "Early momentum · 5-200 sold · 4★+",
+      icon: Zap,
+      gradient: "from-sky-500 to-violet-500",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2 rounded-2xl bg-muted/50 p-1.5 ring-1 ring-border/40">
+      {options.map((opt) => {
+        const Icon = opt.icon;
+        const active = source === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(opt.id)}
+            className={`relative rounded-xl px-3 py-2.5 text-left transition-all overflow-hidden ${
+              active
+                ? "bg-card shadow-md ring-1 ring-border/60"
+                : "hover:bg-card/60 disabled:opacity-50"
+            } ${disabled ? "cursor-not-allowed" : ""}`}
+          >
+            {active && (
+              <span
+                aria-hidden
+                className={`absolute inset-0 bg-gradient-to-br ${opt.gradient} opacity-[0.07]`}
+              />
+            )}
+            <div className="relative flex items-center gap-2.5">
+              <div
+                className={`size-9 rounded-lg flex items-center justify-center shrink-0 ring-1 ${
+                  active
+                    ? `bg-gradient-to-br ${opt.gradient} ring-white/20 shadow-md`
+                    : "bg-muted ring-border/40"
+                }`}
+              >
+                <Icon
+                  className={`size-4 ${active ? "text-white" : "text-muted-foreground"}`}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`text-[12px] font-bold leading-tight ${
+                    active ? "text-foreground" : "text-foreground/75"
+                  }`}
+                >
+                  {opt.label}
+                </p>
+                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 truncate">
+                  {opt.sub}
+                </p>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Niche row bar ──────────────────────────────────────────────────
 
 function NicheRowBar({
@@ -710,19 +840,27 @@ function EmptyNichesState({ onAddFirst }: { onAddFirst: () => void }) {
   );
 }
 
-function NoTrendingTodayState({ onRefresh }: { onRefresh?: () => void }) {
+function NoTrendingTodayState({
+  source,
+  onRefresh,
+}: {
+  source: Source;
+  onRefresh?: () => void;
+}) {
+  const label = source === "FRESH" ? "fresh listings" : "trending products";
+  const Icon = source === "FRESH" ? Zap : Flame;
   return (
     <Card className="border border-border/60 shadow-none">
       <CardContent className="p-8 sm:p-10 text-center space-y-3">
         <div className="inline-flex size-12 items-center justify-center rounded-2xl bg-muted/60 mx-auto">
-          <Flame className="size-5 text-muted-foreground" />
+          <Icon className="size-5 text-muted-foreground" />
         </div>
         <h2 className="text-base font-bold tracking-tight">
-          No trends today yet
+          No {label} today yet
         </h2>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          The 5 AM PKT cron hasn&apos;t produced fresh products for your niches
-          yet. New niches start producing trends in the next morning&apos;s
+          The 5 AM PKT cron hasn&apos;t produced any {label} for your niches
+          yet. New niches start producing results in the next morning&apos;s
           batch.
         </p>
         {onRefresh && (

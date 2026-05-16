@@ -8,6 +8,7 @@ import {
   Check,
   Loader2,
   Package,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -35,6 +36,8 @@ export interface TrendingCardData {
   imageUrl: string | null;
   priceUsd: number;
   ordersCount: number | null;
+  /** 0-5 stars; null when AE didn't return rating data. */
+  ratingStars?: number | null;
   productUrl: string;
   suggestedEtsyMatured: number;
   suggestedEtsyNew: number;
@@ -108,6 +111,14 @@ export function TrendingCard({
         {product.ordersCount != null && product.ordersCount > 0 && (
           <div className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/65 backdrop-blur-md px-2 py-0.5 text-[10px] font-bold text-white tabular-nums">
             {formatOrders(product.ordersCount)} sold
+          </div>
+        )}
+
+        {/* Rating chip — bottom-right (only when AE returned rating) */}
+        {product.ratingStars != null && product.ratingStars > 0 && (
+          <div className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 backdrop-blur-md px-2 py-0.5 text-[10px] font-bold text-white tabular-nums shadow-sm">
+            <Star className="size-2.5 fill-white" strokeWidth={0} />
+            {product.ratingStars.toFixed(1)}
           </div>
         )}
       </div>
