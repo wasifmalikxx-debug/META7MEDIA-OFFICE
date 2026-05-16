@@ -647,7 +647,14 @@ export async function searchByVolumeDesc(
   return searchProductsByKeyword(keyword, {
     accessToken: options.accessToken,
     pageSize: options.pageSize ?? 20,
-    sortBy: "orders_desc",
+    // AE's text.search accepts SORT_FIELD enum values, not loose
+    // "orders_desc" style. May 16 2026: switched to the official
+    // values after the FRESH source (orders_asc) returned 0 products
+    // across every niche — AE was silently ignoring/hanging on
+    // unrecognized sort values. orders_desc worked for some niches
+    // because AE happened to fall back to a reasonable default; for
+    // others it returned junk that got filtered out.
+    sortBy: "LAST_VOLUME_DESC" as "orders_desc",
     targetCurrency: "USD",
   });
 }
@@ -679,7 +686,9 @@ export async function searchByVolumeAsc(
   return searchProductsByKeyword(keyword, {
     accessToken: options.accessToken,
     pageSize: options.pageSize ?? 30,
-    sortBy: "orders_asc",
+    // Use AE's official SORT_FIELD enum value, not loose alias.
+    // See searchByVolumeDesc comment above for the diagnostic story.
+    sortBy: "LAST_VOLUME_ASC" as "orders_asc",
     targetCurrency: "USD",
   });
 }

@@ -406,7 +406,11 @@ async function fetchWithTimeout<T>(
   }
 }
 
-const AE_QUERY_TIMEOUT_MS = 20_000;
+/** Per-AE-query timeout. Was 20s — reduced to 12s on May 16 2026
+ * after the audit showed sequential niches with 20s timeouts
+ * couldn't fit in the 300s cron budget. AE rarely needs more than
+ * 5s for a successful response; 12s covers retries + slow days. */
+const AE_QUERY_TIMEOUT_MS = 12_000;
 
 /**
  * Sanitize a query string before sending to AE search. AE's text
@@ -525,6 +529,18 @@ export interface DailyTrendingRunResult {
  * Cost: 2 AE calls per niche per day. At 15 niches that's 30 calls/day
  * — rounding error against the 5K daily AE cap.
  */
+/** How many niches to process in parallel. With 6 variants per niche +
+ * 2 sources, 3 niches × 12 calls = 36 concurrent AE calls at peak —
+ * the bucket (cap 10, refill 10 QPS) drains then refills smoothly.
+ *
+ * Math for 8 niches: 3 batches × ~20s worst case = ~60s. Fits the
+ * 300s cron budget with massive headroom.
+ *
+ * Was sequential (one niche at a time) before May 16 2026 — that
+ * gave us 8 × 2 sources × 20s = 320s which JUST overflowed the budget
+ * and left the cron killed mid-way through the niche queue. */
+const NICHE_CONCURRENCY = 3;
+
 export async function runDailyTrendingFetch(opts: {
   accessToken: string;
 }): Promise<DailyTrendingRunResult> {
@@ -535,11 +551,17 @@ export async function runDailyTrendingFetch(opts: {
   const perNiche: NicheRunSummary[] = [];
   let productsAdded = 0;
 
-  // Sequential per (niche, source) to stay polite with AE rate limits
-  // + give us tidy logs. ~15 niches × 2 sources × ~1.5s/call = ~45s
-  // total — well under the 300s cron budget.
-  for (const niche of niches) {
+  console.log(
+    `[daily-trending] starting fetch for ${niches.length} niches (concurrency=${NICHE_CONCURRENCY})`,
+  );
+
+  // Process niches in parallel batches of NICHE_CONCURRENCY. Within a
+  // single niche, TRENDING runs first then FRESH (sequential), to
+  // avoid 2× simultaneous source-fetches for the same niche which
+  // would 2× the bucket pressure for no benefit.
+  const runOneNiche = async (niche: string): Promise<void> => {
     for (const source of ["TRENDING", "FRESH"] as TrendingSource[]) {
+      const tNiche = Date.now();
       try {
         const summary = await runNiche({
           niche,
@@ -549,10 +571,13 @@ export async function runDailyTrendingFetch(opts: {
         });
         perNiche.push(summary);
         productsAdded += summary.added;
+        console.log(
+          `[daily-trending] ${niche} (${source}) done in ${Date.now() - tNiche}ms — added ${summary.added}, filteredOut ${summary.filteredOut}`,
+        );
       } catch (err) {
         const reason = err instanceof Error ? err.message : "unknown";
         console.error(
-          `[daily-trending] ${niche} (${source}) failed:`,
+          `[daily-trending] ${niche} (${source}) failed in ${Date.now() - tNiche}ms:`,
           reason,
         );
         perNiche.push({
@@ -566,9 +591,18 @@ export async function runDailyTrendingFetch(opts: {
         });
       }
     }
+  };
+
+  const queue = [...niches];
+  while (queue.length > 0) {
+    const batch = queue.splice(0, NICHE_CONCURRENCY);
+    await Promise.allSettled(batch.map(runOneNiche));
   }
 
   const finishedAt = new Date();
+  console.log(
+    `[daily-trending] all niches done in ${finishedAt.getTime() - startedAt.getTime()}ms — total ${productsAdded} products added across ${niches.length} niches`,
+  );
   return {
     startedAt,
     finishedAt,
