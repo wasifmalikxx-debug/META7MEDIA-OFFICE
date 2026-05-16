@@ -221,6 +221,8 @@ model User {
   seoAutopilotLogs       SeoAutopilotLog[]   @relation("SeoAutopilotLogUser")
   seoAutopilotTagSwaps   SeoAutopilotTagSwapLog[] @relation("SeoAutopilotTagSwapUser")
   aliExpressTokens       AliExpressToken[]   @relation("AliExpressTokenUser")
+  employeeNiches         EmployeeNiche[]     @relation("EmployeeNicheUser")
+  trendingClaims         DailyTrendingProduct[] @relation("TrendingClaimedBy")
   complaintsSubmitted    Complaint[]        @relation("ComplaintSubmitter")
   complaintsResolved     Complaint[]        @relation("ComplaintResponder")
   complaintMessages      ComplaintMessage[] @relation("ComplaintMessageSender")
@@ -1083,5 +1085,80 @@ model AliExpressToken {
 
   @@unique([userId, aliUserId])
   @@index([expiresAt])
+}
+
+// ─── Daily Trending Products ─────────────────────────────────────────
+//
+// Each Etsy employee picks up to 5 niches they work (free-form strings,
+// e.g. "boho jewelry", "cottagecore decor"). A daily 5 AM PKT cron
+// pulls the top-selling AliExpress products per niche and stores them
+// here. Employees see today's fresh batch on /daily-trending and can
+// claim products to prevent intra-team racing on the same listing.
+//
+// Live since May 16 2026 (CEO + EM team rollout).
+
+model EmployeeNiche {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("EmployeeNicheUser", fields: [userId], references: [id], onDelete: Cascade)
+  // Free-form niche string the cron uses as an AE search query.
+  // Lower-cased on insert so duplicates collapse case-insensitively.
+  niche     String   @db.VarChar(80)
+  // active=false = soft-disabled. Cron skips inactive rows. Lets
+  // employees pause a niche without losing the row + its history.
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per (user, niche) — duplicate adds are 409.
+  @@unique([userId, niche])
+  // Cron walks all active niches once per run.
+  @@index([active, niche])
+  @@index([userId])
+}
+
+model DailyTrendingProduct {
+  id          String   @id @default(cuid())
+  // The niche this product was discovered for. Matches EmployeeNiche.niche
+  // (lower-cased). Not a FK — niches can be deleted without losing history.
+  niche       String   @db.VarChar(80)
+  aeProductId String   @db.VarChar(40)
+  title       String   @db.VarChar(300)
+  imageUrl    String?  @db.VarChar(500)
+  // Cost in USD as returned by AE search (target_sale_price).
+  priceUsd    Float
+  // Last-30-day order count from AE. Used to sort within a niche.
+  ordersCount Int?
+  // Direct AE product URL — opened in a new tab when employee clicks.
+  productUrl  String   @db.VarChar(500)
+
+  // Pre-computed Etsy prices using the standard markup formula
+  // (no per-user personalization — that's applied client-side when
+  // the employee clicks "Calc" and opens the calculator).
+  suggestedEtsyMatured Float
+  suggestedEtsyNew     Float
+
+  // Date-only bucket for "today's batch". The page filters by
+  // fetchDate = today (PKT). One row per (niche, aeProductId, fetchDate)
+  // so re-running the cron on the same day upserts cleanly.
+  fetchDate DateTime @db.Date
+  fetchedAt DateTime @default(now())
+
+  // Claim system — when an employee clicks "Claim", their id + name
+  // get stamped here. Others see a "✓ Claimed by [name]" badge.
+  // Reversible (DELETE clears these fields).
+  claimedById   String?
+  claimedBy     User?     @relation("TrendingClaimedBy", fields: [claimedById], references: [id], onDelete: SetNull)
+  // Denormalized so the page doesn't need to join + fetch the User
+  // row just to render the claim badge.
+  claimedByName String?   @db.VarChar(120)
+  claimedAt     DateTime?
+
+  // One product per niche per day (upserts on re-run).
+  @@unique([niche, aeProductId, fetchDate])
+  // Page query: today + filter by IN (user's niches).
+  @@index([fetchDate, niche])
+  // Claim history per user (CEO admin view).
+  @@index([claimedById])
 }
 

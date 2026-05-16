@@ -258,7 +258,24 @@ export function ManualHuntingSection({
   initialStyle?: string | null;
   initialAudience?: string | null;
 } = {}) {
-  const [niche, setNiche] = useState(initialNiche);
+  // Lazy initializer reads `?niche=` from the URL on first mount —
+  // Daily Trending cards link here as
+  //   /seo-autopilot/product-hunter?niche=boho+jewelry
+  // and the input pre-fills with that string. Falls back to the
+  // `initialNiche` prop, then to "". Doesn't reset on re-render and
+  // doesn't strip the query param (the param re-fires on full reload,
+  // which is the desired UX — the user came here to research that niche).
+  const [niche, setNiche] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const v = new URL(window.location.href).searchParams.get("niche");
+        if (v && v.trim().length >= 2) return v.trim().slice(0, 80);
+      } catch {
+        /* ignore */
+      }
+    }
+    return initialNiche;
+  });
   const [style, setStyle] = useState<string | null>(initialStyle);
   const [audience, setAudience] = useState<string | null>(initialAudience);
   const [extraCategories, setExtraCategories] = useState<string[]>([]);

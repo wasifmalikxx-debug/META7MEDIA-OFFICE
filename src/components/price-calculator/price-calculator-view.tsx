@@ -61,13 +61,19 @@ export function PriceCalculatorView({
    * back to a per-browser localStorage seed. */
   userId?: string;
 } = {}) {
+  // Read ?aeUrl=... once at mount (lazy useState initializer keeps us
+  // out of the React 19 "no setState in useEffect" rule). Used by
+  // Daily Trending cards: clicking "Calc" deep-links here with the
+  // AE URL pre-filled — we flip into URL mode and auto-fetch.
+  const initialAeUrl = readAeUrlParam();
   const [aliInput, setAliInput] = useState("");
-  const [urlInput, setUrlInput] = useState("");
-  const [urlMode, setUrlMode] = useState(false);
+  const [urlInput, setUrlInput] = useState(initialAeUrl ?? "");
+  const [urlMode, setUrlMode] = useState(initialAeUrl != null);
   const [fetching, setFetching] = useState(false);
   const [fetchedProduct, setFetchedProduct] = useState<FetchedProduct | null>(
     null,
   );
+  const [autoFetched, setAutoFetched] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFetchFromUrl() {
@@ -114,6 +120,25 @@ export function PriceCalculatorView({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Auto-fetch on mount when the page was opened with ?aeUrl=... from
+  // a Daily Trending card. Strips the param after triggering so a
+  // refresh doesn't re-fire it. autoFetched flag prevents the effect
+  // from re-running on re-renders (React 19 strict mode + URL change).
+  useEffect(() => {
+    if (autoFetched || !initialAeUrl) return;
+    setAutoFetched(true);
+    // Strip ?aeUrl= from the URL bar so refresh doesn't re-fetch
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("aeUrl")) {
+      url.searchParams.delete("aeUrl");
+      window.history.replaceState({}, "", url.toString());
+    }
+    handleFetchFromUrl();
+  // handleFetchFromUrl is stable enough — included in deps would
+  // re-trigger fetch every render. autoFetched guards against that.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFetched, initialAeUrl]);
 
   const aliPrice = useMemo(() => {
     const trimmed = aliInput.trim();
@@ -362,6 +387,25 @@ export function PriceCalculatorView({
  *
  * Non-dismissible — every listing needs the sale set.
  */
+
+// ─── ?aeUrl= prefill ───────────────────────────────────────────────
+//
+// Daily Trending cards link to /price-calculator?aeUrl=<aeProductUrl>.
+// Reads the query param once at mount, returns null on SSR or when the
+// param is missing/empty. Length cap mirrors the AE URL ceiling used
+// by the trending service.
+function readAeUrlParam(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const v = new URL(window.location.href).searchParams.get("aeUrl");
+    if (!v) return null;
+    const trimmed = v.trim();
+    if (trimmed.length < 8 || trimmed.length > 500) return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Per-browser personalization seed ──────────────────────────────
 //

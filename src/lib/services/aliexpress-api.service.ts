@@ -620,6 +620,31 @@ export async function searchProductsByKeyword(
 }
 
 /**
+ * Search AliExpress for the top-selling products in a niche.
+ *
+ * Used by the Daily Trending cron — for each employee niche, we fetch
+ * the highest-volume products so they surface as "today's hot picks".
+ *
+ * Same plumbing as `searchProductsByKeyword` but pinned to volume-desc
+ * sort + a wider page size, so the cron gets a meaningful pool to
+ * dedupe against the last 7 days' history.
+ */
+export async function searchByVolumeDesc(
+  keyword: string,
+  options: {
+    accessToken: string;
+    pageSize?: number;
+  },
+): Promise<ProductSearchResponse> {
+  return searchProductsByKeyword(keyword, {
+    accessToken: options.accessToken,
+    pageSize: options.pageSize ?? 20,
+    sortBy: "orders_desc",
+    targetCurrency: "USD",
+  });
+}
+
+/**
  * Fetch a single product by ID. Used by Play 2 (reverse hunt) +
  * Play 5 (margin calc).
  */

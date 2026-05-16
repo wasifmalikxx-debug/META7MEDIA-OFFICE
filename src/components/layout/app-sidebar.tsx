@@ -30,6 +30,7 @@ import {
   FileText,
   Calculator,
   Sparkles,
+  Flame,
 } from "lucide-react";
 import {
   Sidebar,
@@ -493,6 +494,46 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+
+                  {/* Daily Trending — morning AE feed scoped to each
+                      employee's niches. Real-tool access is wider than
+                      SEO Autopilot (EM + AE + ME employees + Etsy
+                      partners + Izaan all get it, since there are no
+                      per-user Claude costs). HR / Facebook still see
+                      the Coming Soon placeholder via the page guard. */}
+                  {(() => {
+                    const hasDailyTrending =
+                      isCeo ||
+                      isIzaan ||
+                      isEmEmployee ||
+                      isEtsyPartner ||
+                      user.employeeId?.startsWith("AE") ||
+                      user.employeeId?.startsWith("ME");
+                    return (
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          render={<Link href="/daily-trending" />}
+                          isActive={isItemActive("/daily-trending")}
+                        >
+                          <Flame className="size-4" />
+                          <span>Daily Trending</span>
+                          {hasDailyTrending ? (
+                            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
+                              <span className="relative flex size-1">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                                <span className="relative inline-flex size-1 rounded-full bg-emerald-500" />
+                              </span>
+                              Beta
+                            </span>
+                          ) : (
+                            <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
+                              Soon
+                            </span>
+                          )}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })()}
 
                   {/* Reverse Hunt removed from sidebar May 16 — it's
                       now a tab inside the unified Product Hunter hub.
