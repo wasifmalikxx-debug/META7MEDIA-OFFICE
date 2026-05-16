@@ -3,17 +3,23 @@ import { prisma } from "@/lib/prisma";
 /**
  * Employee niche service — CRUD over the `EmployeeNiche` table.
  *
- * Each Etsy employee owns a list of niches (free-form strings) that
- * drive the daily trending fetcher. The service enforces:
- *   - Hard cap of 5 niches per employee (cron load control)
+ * Each user owns a list of niches (free-form strings) that drive the
+ * daily trending fetcher. The service enforces:
+ *   - Hard cap per user (cron load control — was 5, bumped to 15
+ *     on May 16 2026 so the CEO's solo pilot covers more ground)
  *   - Case-insensitive uniqueness within a user's niche book
  *   - Lower-cased + trimmed storage so "Boho Jewelry" and "boho jewelry"
  *     aren't stored twice
  *
- * Live since May 16 2026 (CEO + EM team rollout).
+ * Live since May 16 2026 (CEO solo validation phase).
  */
 
-export const NICHE_CAP_PER_USER = 5;
+// Bumped from 5 → 15 on May 16 2026 (same day as initial release). With
+// only the CEO holding niches during the validation phase, more slots
+// = wider sourcing coverage at zero extra cron overhead — each unique
+// niche is still one AE call per day, and 15 calls/day is a rounding
+// error against the 5K daily AE cap.
+export const NICHE_CAP_PER_USER = 15;
 export const NICHE_MIN_LENGTH = 2;
 export const NICHE_MAX_LENGTH = 80;
 
@@ -128,30 +134,39 @@ export async function listAllActiveNichesDistinct(): Promise<string[]> {
  * Niches modal when an employee has < 5 niches. Curated to match the
  * shop categories the Etsy team usually works.
  */
+/**
+ * Suggested niche pool — shown as one-click chips inside the Manage
+ * Niches modal. Curated to match the shop categories the Etsy team
+ * usually works.
+ *
+ * Excludes anything with "personalized" / "custom" wording: the AE
+ * results for those queries are dominated by listings the team can't
+ * actually drop-ship (they require buyer data attached at the seller).
+ * Same policy as SEO Autopilot's tag-generation rules.
+ */
 export const SUGGESTED_NICHES: ReadonlyArray<string> = [
   "boho jewelry",
   "minimalist jewelry",
-  "cottagecore decor",
-  "farmhouse wall art",
-  "minimalist nursery",
-  "baby shower gifts",
-  "witchy decor",
-  "bridesmaid gifts",
-  "anniversary gift",
-  "personalized keychain",
   "silver jewelry",
   "gold jewelry",
-  "travel mug",
-  "candle holder",
-  "kitchen wall art",
+  "cottagecore decor",
+  "farmhouse wall art",
   "boho wall hanging",
   "macrame decor",
+  "kitchen wall art",
+  "garden decor",
+  "minimalist nursery",
+  "baby shower gifts",
+  "bridesmaid gifts",
+  "anniversary gift",
+  "teacher appreciation",
+  "mental health gift",
+  "yoga gift",
+  "witchy decor",
+  "candle holder",
+  "travel mug",
   "phone case minimalist",
   "leather wallet",
   "embroidered hat",
   "pet portrait",
-  "garden decor",
-  "yoga gift",
-  "mental health gift",
-  "teacher appreciation",
 ];

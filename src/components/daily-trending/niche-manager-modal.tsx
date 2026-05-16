@@ -30,29 +30,36 @@ export interface NicheRow {
   niche: string;
 }
 
+// Curated suggestion pool — shown as one-click chips. Mirrors
+// SUGGESTED_NICHES in employee-niche.service.ts (kept duplicated here
+// to avoid pulling the server module into a "use client" file).
+// No "personalized"/"custom" wording — AE results for those queries
+// are dominated by listings we can't actually drop-ship.
 const SUGGESTED: ReadonlyArray<string> = [
   "boho jewelry",
   "minimalist jewelry",
+  "silver jewelry",
+  "gold jewelry",
   "cottagecore decor",
   "farmhouse wall art",
-  "minimalist nursery",
-  "baby shower gifts",
-  "witchy decor",
-  "bridesmaid gifts",
-  "anniversary gift",
-  "personalized keychain",
-  "silver jewelry",
-  "travel mug",
-  "candle holder",
-  "kitchen wall art",
   "boho wall hanging",
   "macrame decor",
+  "kitchen wall art",
+  "garden decor",
+  "minimalist nursery",
+  "baby shower gifts",
+  "bridesmaid gifts",
+  "anniversary gift",
+  "teacher appreciation",
+  "mental health gift",
+  "yoga gift",
+  "witchy decor",
+  "candle holder",
+  "travel mug",
+  "phone case minimalist",
   "leather wallet",
   "embroidered hat",
   "pet portrait",
-  "garden decor",
-  "yoga gift",
-  "teacher appreciation",
 ];
 
 export function NicheManagerModal({
@@ -223,7 +230,7 @@ export function NicheManagerModal({
                 Suggested for you
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {suggestedFiltered.slice(0, 12).map((s) => (
+                {suggestedFiltered.slice(0, 18).map((s) => (
                   <button
                     key={s}
                     type="button"

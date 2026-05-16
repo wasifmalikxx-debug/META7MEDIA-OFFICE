@@ -16,6 +16,12 @@ import { Button } from "@/components/ui/button";
 import { TrendingCard, type TrendingCardData } from "./trending-card";
 import { NicheManagerModal } from "./niche-manager-modal";
 
+// Single source of truth for the niche cap — kept in the service
+// (NICHE_CAP_PER_USER). Mirror the constant value here so this
+// "use client" view file doesn't import a server module. If the
+// service cap changes, update both — see employee-niche.service.ts.
+const NICHE_CAP = 15;
+
 /**
  * Daily Trending hub — full page view.
  *
@@ -247,7 +253,7 @@ export function DailyTrendingView({
           open={showNicheModal}
           onOpenChange={setShowNicheModal}
           niches={niches.map((n) => ({ id: n.id, niche: n.niche }))}
-          cap={5}
+          cap={NICHE_CAP}
           onChanged={fetchFeed}
         />
       </div>
@@ -312,7 +318,7 @@ export function DailyTrendingView({
         open={showNicheModal}
         onOpenChange={setShowNicheModal}
         niches={niches.map((n) => ({ id: n.id, niche: n.niche }))}
-        cap={5}
+        cap={NICHE_CAP}
         onChanged={fetchFeed}
       />
     </div>
