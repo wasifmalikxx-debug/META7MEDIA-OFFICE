@@ -307,49 +307,82 @@ const NICHE_QUERY_EXPANSIONS: ReadonlyArray<NicheExpansion> = [
       "women minimalist blouse",
     ],
   },
-  // Mens clothing → graphic / vintage / cotton (NOT counterfeit branded)
+  // Mens clothing → graphic / vintage / cotton / flannel / henley
+  // (NOT counterfeit branded items / bulk-pack underwear).
+  // Expanded from 3 → 7 variants because AE's top-volume mens
+  // clothing was overwhelmed by brand counterfeits + 5pcs packs.
   {
     matches: /\bmen('?s)?\s+clothing\b/i,
     variations: [
       "mens graphic tee vintage",
       "mens cotton hoodie",
       "mens linen shirt",
+      "mens flannel shirt",
+      "mens summer henley",
+      "mens vintage polo",
+      "mens minimalist tshirt",
     ],
   },
-  // Women nails → press-on / decals / wraps (NOT LED nail lamps)
+  // Women nails → press-on / decals / wraps / charms / acrylic
+  // (NOT LED nail lamps / UV equipment / bulk gel polish sets).
+  // Expanded from 3 → 7 variants on May 16 2026 because AE's top-
+  // volume nail inventory is dominated by lamps + bulk packs which
+  // all hit our blocklist; needed wider net to find listable items.
   {
     matches: /\bwomen('?s)?\s+nail(s)?\b/i,
-    variations: ["press on nails", "nail decals", "nail wraps"],
+    variations: [
+      "press on nails",
+      "nail decals stickers",
+      "nail wraps",
+      "fake nails almond",
+      "nail charms 3d",
+      "acrylic nails set",
+      "stick on nails",
+    ],
   },
-  // Office/study mats → desk mats / mouse pads (NOT industrial mats)
+  // Office/study mats — push toward leather/felt/cork desk pads
+  // (away from industrial floor mats / yoga mats / RGB LED pads).
+  // Expanded from 3 → 7 variants.
   {
     matches: /\b(office|study|desk)\s.*\bmat(s)?\b/i,
-    variations: ["desk mat leather", "mouse pad cute", "desk pad cork"],
+    variations: [
+      "desk mat leather",
+      "mouse pad cute",
+      "desk pad cork",
+      "desk mat felt",
+      "leather desk pad large",
+      "writing desk pad",
+      "office desk decor leather",
+    ],
   },
   // Leather accessories — broad term that AE returns mixed for.
-  // Push toward handmade keychains, bracelets, wallets (away from
-  // luggage parts / industrial leather)
+  // Push toward handmade specific leather goods. Expanded 3 → 7.
   {
     matches: /\bleather\s+accessor(y|ies)\b/i,
     variations: [
       "leather keychain handmade",
       "leather bracelet boho",
       "leather wallet minimalist",
+      "leather card holder",
+      "leather book cover",
+      "leather earrings handmade",
+      "leather pen case",
     ],
   },
-  // Women leather shoes/heels — narrow toward styled footwear.
-  // Wider net here because the "/" in the original niche caused AE
-  // search to misfire (now sanitized), and inventory clusters around
-  // a few specific styles.
+  // Women leather shoes/heels — broader variants (was over-specific
+  // before, e.g. "women leather oxford shoes" returns nearly nothing
+  // on AE). Push toward styled footwear away from safety/tactical
+  // boots.
   {
     matches: /\bwomen.*\bleather\s+(shoes?|heels?|sandals?)\b/i,
     variations: [
-      "women leather sandals boho",
-      "women leather ballet flats",
-      "women vintage leather shoes",
+      "women leather sandals",
+      "women leather flats",
+      "women leather shoes vintage",
       "women leather loafers",
       "women leather mules",
-      "women leather oxford shoes",
+      "women leather shoes summer",
+      "women leather mary jane",
     ],
   },
   // Generic catch-all for ambiguous "X jewelry" → push artisan signals
