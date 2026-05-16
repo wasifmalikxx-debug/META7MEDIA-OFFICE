@@ -55,26 +55,29 @@ export function todayInPkt(): Date {
   );
 }
 
-/** How many AE products to ask for per niche per source. */
-const PAGE_SIZE_TRENDING = 20;
-const PAGE_SIZE_FRESH = 30;
+/** How many AE products to ask for per niche per source. Bumped May 16
+ * 2026 (from 20/30) — generic-category niches like "women clothing" /
+ * "pet accessories" have a low survival rate after rating + Etsy +
+ * price filters; we need a wider candidate pool so each niche still
+ * surfaces something. AE rate budget easily absorbs 4x larger pages. */
+const PAGE_SIZE_TRENDING = 40;
+const PAGE_SIZE_FRESH = 60;
 
 /** Keep AE products in the dedupe window for this many days. A product
  * that trended yesterday is hidden today even if it still has high
  * volume — keeps the daily batch genuinely fresh. */
 const DEDUPE_WINDOW_DAYS = 7;
 
-/** Drop anything cheaper than $10. Bumped from $0.50 → $10 on May 16
- * 2026 per CEO call: sub-$10 AE products are mostly commodity items
- * with 1000 sellers racing the same listing — they crush Etsy margins
- * AND look too cheap for the artisan/handmade buyer who's our target.
- * $10+ → ~$60 Etsy matured → ~$30 buyer (post-50%-sale) → ~$18 profit
- * per sale, vs sub-$10 commodities that net less even at higher volume.
+/** Drop anything cheaper than $5. Originally $0.50 → bumped to $10
+ * (May 16 morning) → softened to $5 (May 16 same day) because the $10
+ * floor combined with rating + Etsy filters left most generic-category
+ * niches (women clothing, women nails, leather accessories) entirely
+ * empty.
  *
- * Trade-off: some niches lose a handful of legit $5-8 winners (small
- * jewelry especially). Watch per-niche batch sizes for a week and we
- * can soften this per-niche if any consistently go empty. */
-const MIN_PRICE_FLOOR = 10;
+ * $5 still filters the absolute sub-bargain commodity SKUs ($0.50-$4
+ * range = mostly bulk stickers, charms, tiny accessories) but leaves
+ * enough candidates for niches where AE inventory clusters at $5-9. */
+const MIN_PRICE_FLOOR = 5;
 
 /** Drop anything more expensive than this — over-$300 items rarely make
  * sense for Etsy dropship and skew the page towards luxury outliers. */
@@ -86,17 +89,18 @@ const MAX_PRICE_CEILING = 300;
  * reviews yet). */
 const MIN_RATING_STARS = 4.0;
 
-/** TRENDING: proven best-seller floor. Below this, "best-seller" is a
- * stretch — could be a one-time spike from a single influencer mention. */
-const MIN_ORDERS_TRENDING = 50;
+/** TRENDING: proven best-seller floor. Softened from 50 → 20 (May 16
+ * 2026) so generic-category niches still surface something — many
+ * niches have plenty of $5-15 products with 20-50 orders that are
+ * solid winners but were getting filtered by the stricter floor. */
+const MIN_ORDERS_TRENDING = 20;
 
-/** FRESH: lower bound = some real demand validation. Above zero so we
- * don't surface untested zero-sale SKUs. */
-const MIN_ORDERS_FRESH = 5;
+/** FRESH: lower bound = some real demand validation. Softened 5 → 3. */
+const MIN_ORDERS_FRESH = 3;
 
-/** FRESH: upper bound = differentiates from "already viral." Anything
- * over 200 orders is already a known winner — show it in TRENDING. */
-const MAX_ORDERS_FRESH = 200;
+/** FRESH: upper bound = differentiates from "already viral." Bumped
+ * 200 → 500 so more emerging products qualify. */
+const MAX_ORDERS_FRESH = 500;
 
 /** Minimum title length. Sub-20-char titles on AE are usually badly
  * translated stubs or spam SKUs that look broken on Etsy listings. */
@@ -154,11 +158,37 @@ const ETSY_HOSTILE_TOKENS: ReadonlyArray<string> = [
   "trimmer", "clipper", "razor", "shaver", "epilator",
   "treadmill", "dumbbell", "barbell",
 
+  // ─ Medical / surgical / vet equipment ─
+  // Added May 16 2026 after "Animal Surgical Accessories Pet Vacuum"
+  // slipped through. Pet niche should surface toys / beds / collars,
+  // not vet-clinic gear.
+  "surgical", "sterile", "medical grade", "clinical",
+  "veterinary", "syringe", "scalpel", "stethoscope",
+
+  // ─ Safety / PPE / industrial protective gear ─
+  // Added May 16 2026 after "Full Face Protective Safe Mask, Anti Fog,
+  // Anti Impact" slipped through the face-mask niche. Cloth/decorative
+  // face masks are fine for Etsy; industrial respirators are not.
+  "ppe", "hazmat", "respirator", "n95", "kn95", "n99",
+  "welding", "welder", "grinder",
+  "face shield", "safety mask", "protective mask",
+  "full face protective", "full face safety",
+  "anti fog", "anti-fog", "anti impact", "anti splash",
+  "dust mask", "gas mask", "chemical mask",
+  "safety glasses", "safety goggles",
+  "safety helmet", "hard hat",
+  "safety vest", "reflective vest", "hi-vis",
+  "safety boots", "steel toe",
+
   // ─ Cheap copies / counterfeit indicators ─
   "replica", "clone", "fake ", "knockoff", "1:1 copy",
 
   // ─ Adult / NSFW (off-brand for Etsy in our shops) ─
+  // "sexy" added May 16 2026 — softer than the explicit terms but
+  // surfaces the wrong vibe for our artisan shops (e.g. "mesh see
+  // through sexy shirt" slipped through mens-clothing niche).
   "sex toy", "vibrator", "lingerie", "intimate", "g-spot",
+  "sexy ", " sexy", "see through", "see-through", "fetish",
 ];
 
 /** Returns true if the title is safe for Etsy listing — clears the
@@ -422,7 +452,18 @@ function passesQualityFilters(
   const stars = normalizeRatingToStars(p.rating);
   if (stars !== null && stars < MIN_RATING_STARS) return false;
 
-  const orders = p.orderCount ?? 0;
+  // Order filter: when AE didn't return order count, we keep the
+  // product if rating is good enough (4★+ is decent quality signal
+  // even without order history). When we DO have order count, apply
+  // the source-specific threshold. Avoids over-filtering AE responses
+  // that omit volume data for newer SKUs.
+  const orders = p.orderCount;
+  if (orders === null || orders === undefined) {
+    // No order data — rely on rating. If rating is also missing, the
+    // product is too unverified to surface.
+    return stars !== null;
+  }
+
   if (source === "TRENDING") {
     return orders >= MIN_ORDERS_TRENDING;
   }
