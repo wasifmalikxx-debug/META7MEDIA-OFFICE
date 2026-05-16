@@ -267,31 +267,44 @@ interface NicheExpansion {
 }
 
 const NICHE_QUERY_EXPANSIONS: ReadonlyArray<NicheExpansion> = [
-  // Face masks → cloth / fashion / wedding (NOT PPE / halloween)
+  // Face masks → cloth / fashion / wedding / decorative (NOT PPE /
+  // halloween). Wide net of common Etsy face-mask types — AE
+  // inventory in this category is thin per-variant, so we cast wide.
   {
     matches: /\bface\s?mask(s)?\b/i,
     variations: [
       "cloth face mask handmade",
       "fashion face mask boho",
       "wedding face mask",
+      "cotton face mask cute",
+      "embroidered face mask",
+      "lace face mask",
     ],
   },
-  // Pet accessories / supplies → handmade collars, tags, bandanas
+  // Pet accessories / supplies → handmade collars, tags, bandanas,
+  // dog/cat specific (broader catch — AE inventory varies)
   {
     matches: /\bpet\s+(accessor|suppl)/i,
     variations: [
       "pet collar handmade",
       "pet bandana cute",
-      "personalized pet tag",
+      "dog collar leather",
+      "cat collar handmade",
+      "dog accessories handmade",
+      "pet bowl ceramic",
     ],
   },
-  // Women clothing → boho / linen / vintage (NOT lingerie / fast fashion)
+  // Women clothing → boho / linen / vintage / cottagecore (broader
+  // for thin inventory, NOT lingerie / fast fashion)
   {
     matches: /\bwomen('?s)?\s+clothing\b/i,
     variations: [
       "women boho dress",
       "women linen blouse",
       "women vintage shirt",
+      "women cottagecore top",
+      "women summer dress boho",
+      "women minimalist blouse",
     ],
   },
   // Mens clothing → graphic / vintage / cotton (NOT counterfeit branded)
@@ -324,13 +337,19 @@ const NICHE_QUERY_EXPANSIONS: ReadonlyArray<NicheExpansion> = [
       "leather wallet minimalist",
     ],
   },
-  // Women leather shoes/heels — narrow toward styled footwear
+  // Women leather shoes/heels — narrow toward styled footwear.
+  // Wider net here because the "/" in the original niche caused AE
+  // search to misfire (now sanitized), and inventory clusters around
+  // a few specific styles.
   {
     matches: /\bwomen.*\bleather\s+(shoes?|heels?|sandals?)\b/i,
     variations: [
       "women leather sandals boho",
       "women leather ballet flats",
       "women vintage leather shoes",
+      "women leather loafers",
+      "women leather mules",
+      "women leather oxford shoes",
     ],
   },
   // Generic catch-all for ambiguous "X jewelry" → push artisan signals
@@ -346,19 +365,40 @@ const NICHE_QUERY_EXPANSIONS: ReadonlyArray<NicheExpansion> = [
 ];
 
 /**
+ * Sanitize a query string before sending to AE search. AE's text
+ * search treats `/`, `|`, and `\` as operators or separators, so a
+ * niche like "women leather shoes/heels" returns garbage results
+ * (or zero) without normalization. Also collapses whitespace.
+ */
+function normalizeQueryForAE(q: string): string {
+  return q
+    .replace(/[\/\\|]/g, " ")
+    .replace(/[^\w\s'-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Expand a niche keyword into the set of AE search queries the cron
- * should run for it. Returns [original, ...variations] — original
- * always first so it gets the prime AE relevance ranking.
+ * should run for it. Returns [normalized-original, ...variations] —
+ * original (sanitized) always first so it gets the prime AE relevance
+ * ranking. All variations are also sanitized to defend against future
+ * niches with operator characters.
  */
 function expandNicheQueries(niche: string): string[] {
-  const queries: string[] = [niche];
-  const seen = new Set([niche.toLowerCase()]);
+  const originalNormalized = normalizeQueryForAE(niche);
+  const queries: string[] = [originalNormalized];
+  const seen = new Set([originalNormalized.toLowerCase()]);
+  // Pattern match against the raw niche (so the regex doesn't have to
+  // know about the sanitized form). All expansions are normalized
+  // before being added to the query list.
   for (const exp of NICHE_QUERY_EXPANSIONS) {
     if (exp.matches.test(niche)) {
       for (const v of exp.variations) {
-        if (!seen.has(v.toLowerCase())) {
-          queries.push(v);
-          seen.add(v.toLowerCase());
+        const norm = normalizeQueryForAE(v);
+        if (!seen.has(norm.toLowerCase())) {
+          queries.push(norm);
+          seen.add(norm.toLowerCase());
         }
       }
       // First match wins to avoid query explosion when multiple
@@ -606,6 +646,20 @@ export async function runNiche(opts: {
         if (candidates.length >= MIN_ITEMS_PER_NICHE) break;
       }
     }
+  }
+
+  // Hail Mary — TRENDING only. If after the full rating-softening loop
+  // we STILL have nothing, drop the orders threshold too and accept
+  // any product that passes basic + Etsy filters. Better to show a
+  // few unverified-but-on-brand products than to show an empty niche.
+  // Skipped for FRESH because FRESH already has wider order bands.
+  if (source === "TRENDING" && candidates.length === 0) {
+    console.log(
+      `[daily-trending] ${niche} (${source}) Hail Mary — dropping rating + orders thresholds`,
+    );
+    const hailMary = ae.products.filter((p) => passesBasicFilters(p));
+    candidates = hailMary;
+    filteredOut = ae.products.length - candidates.length;
   }
 
   // Dedupe against the last DEDUPE_WINDOW_DAYS for this niche+source.
