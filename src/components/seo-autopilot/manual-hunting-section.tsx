@@ -21,13 +21,18 @@ import {
   Star,
   ArrowDownNarrowWide,
   ChevronDown,
+  Clock,
   Flame,
   LayoutGrid,
   Rows3,
   SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
-import { saveRecentHunt } from "./product-hunter-view";
+import {
+  saveRecentHunt,
+  useRecentHunts,
+  type RecentHunt,
+} from "./product-hunter-view";
 
 /**
  * Manual Hunting v3.0 — May 16 2026 single-page heatmap redesign.
@@ -236,14 +241,13 @@ function applySort(
 // ─── Main section ───────────────────────────────────────────────────
 
 /**
- * Initial values for niche/style/audience. The parent ProductHunterView
- * passes these when the user clicks a card in the Recent Hunts strip
- * AND uses `key={prefill.timestamp}` to force a remount — so each
- * prefill event becomes a fresh component instance with new defaults.
+ * Manual Hunting section. Owns the niche/style/audience state, the
+ * Etsy+AE hunt flow, and the result UI. Recent hunts live INSIDE
+ * NicheInputCard as inline chips (read via useRecentHunts) — see
+ * the chip row at the top of the input card for click-to-refill.
  *
- * The remount-on-key pattern keeps us within the codebase's "no
- * setState inside useEffect" rule (React 19 best practice). Lazy
- * useState initializers below read these props once per mount.
+ * The optional `initial*` props are kept for backward compat but
+ * no longer wired through anywhere; default values are used.
  */
 export function ManualHuntingSection({
   initialNiche = "",
@@ -258,6 +262,28 @@ export function ManualHuntingSection({
   const [style, setStyle] = useState<string | null>(initialStyle);
   const [audience, setAudience] = useState<string | null>(initialAudience);
   const [extraCategories, setExtraCategories] = useState<string[]>([]);
+
+  // Live list of the user's recent hunts (from localStorage). Used by
+  // NicheInputCard to render inline "RECENT" chips. Auto-refreshes
+  // when saveRecentHunt fires (same-tab) or another tab updates the
+  // storage (cross-tab).
+  const recentHunts = useRecentHunts();
+
+  // Click handler for the inline chips:
+  //   - Recent chip → applies niche + style + audience (full re-run)
+  //   - Example chip → applies niche only (no style/audience)
+  const applyHunt = useCallback(
+    (
+      nextNiche: string,
+      nextStyle: string | null = null,
+      nextAudience: string | null = null,
+    ) => {
+      setNiche(nextNiche);
+      setStyle(nextStyle);
+      setAudience(nextAudience);
+    },
+    [],
+  );
 
   const [hunting, setHunting] = useState(false);
   const [result, setResult] = useState<NicheHuntResponse | null>(null);
@@ -412,6 +438,8 @@ export function ManualHuntingSection({
           onAudienceChange={setAudience}
           disabled={hunting}
           onHunt={() => runHunt()}
+          recentHunts={recentHunts}
+          onApplyHunt={applyHunt}
         />
       )}
 
@@ -492,17 +520,62 @@ export function ManualHuntingSection({
 
 // ─── Input card ─────────────────────────────────────────────────────
 
-// Quick-start niches the team has run successfully — clicking one
-// fills the input. Picked to span jewelry / clothing / home / pets /
-// kitchen / baby so the seller sees the range of what works.
-const QUICK_START_NICHES = [
+// Curated pool of proven niches — when the user has no hunt history
+// yet (new user / fresh browser), we randomly pick 6 of these to
+// show as starter ideas. The pool intentionally spans jewelry /
+// clothing / home / pets / kitchen / baby / accessories so the
+// seller sees the breadth of what works.
+const NICHE_POOL = [
+  // Jewelry
   "boho jewelry",
-  "home decor lamps",
+  "y2k earrings",
+  "minimalist gold necklace",
+  "vintage signet rings",
+  "evil eye bracelet",
+  // Clothing
   "mens linen clothing",
-  "newborn baby clothing",
-  "kitchen organizer",
+  "cottagecore dresses",
+  "vintage band tees",
+  "oversized hoodies",
+  "y2k denim",
+  // Home decor
+  "home decor lamps",
+  "modern wall art",
+  "mushroom decor",
+  "rustic candle holders",
+  "dark academia bookmarks",
+  // Pet
+  "pet bandanas",
   "pet supplies",
+  "cat collar",
+  // Kitchen
+  "kitchen organizer",
+  "ceramic coffee mugs",
+  "spice rack wooden",
+  // Baby
+  "newborn baby clothing",
+  "baby shower gift",
+  // Accessories / misc
+  "minimalist desk accessories",
+  "leather wallets",
+  "tarot card deck",
+  "houseplant pots",
 ];
+
+/**
+ * Pick `n` unique random niches from NICHE_POOL. Used as the
+ * fallback "Try" chips when the user has no recent hunts yet.
+ * Deterministic per-mount (lazy useState initializer caches it).
+ */
+function pickRandomNiches(n: number): string[] {
+  const pool = [...NICHE_POOL];
+  const out: string[] = [];
+  while (out.length < n && pool.length > 0) {
+    const i = Math.floor(Math.random() * pool.length);
+    out.push(pool.splice(i, 1)[0]);
+  }
+  return out;
+}
 
 function NicheInputCard({
   niche,
@@ -513,6 +586,8 @@ function NicheInputCard({
   onAudienceChange,
   disabled,
   onHunt,
+  recentHunts,
+  onApplyHunt,
 }: {
   niche: string;
   onNicheChange: (v: string) => void;
@@ -522,10 +597,27 @@ function NicheInputCard({
   onAudienceChange: (v: string | null) => void;
   disabled: boolean;
   onHunt: () => void;
+  recentHunts: RecentHunt[];
+  onApplyHunt: (
+    niche: string,
+    style?: string | null,
+    audience?: string | null,
+  ) => void;
 }) {
   const valid = niche.trim().length >= 2;
   const NICHE_MAX = 80;
   const hasAnyFilter = style !== null || audience !== null;
+
+  // Smart starter chips:
+  //   - If the user has hunt history → show their last 6 (click =
+  //     re-apply niche+style+audience). Branded "RECENT".
+  //   - If no history yet → show 6 random picks from NICHE_POOL.
+  //     Branded "TRY". Random selection cached per mount via lazy
+  //     useState initializer so it doesn't reshuffle on every keystroke.
+  const lastSix = recentHunts.slice(0, 6);
+  const usingRecents = lastSix.length > 0;
+  const [randomStarters] = useState<string[]>(() => pickRandomNiches(6));
+  const starterChips = usingRecents ? null : randomStarters;
 
   return (
     <Card className="border border-border/60 bg-card/95 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_12px_36px_-12px_rgba(0,0,0,0.5)] ap-stagger-in overflow-hidden relative">
@@ -614,23 +706,50 @@ function NicheInputCard({
           </div>
         </div>
 
-        {/* Quick-start chips — inline "Try:" label + sparkle chips */}
+        {/* Smart starter chips — RECENT history if any, else random
+            picks from the curated niche pool. */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-bold uppercase tracking-[0.20em] text-muted-foreground shrink-0">
-            Try
+          <span className="text-[10px] font-bold uppercase tracking-[0.20em] text-muted-foreground shrink-0 inline-flex items-center gap-1.5">
+            {usingRecents ? (
+              <>
+                <Clock className="size-2.5 text-violet-500" />
+                Recent
+              </>
+            ) : (
+              "Try"
+            )}
           </span>
-          {QUICK_START_NICHES.map((ex) => (
-            <button
-              key={ex}
-              type="button"
-              onClick={() => onNicheChange(ex)}
-              disabled={disabled}
-              className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium bg-muted/25 ring-1 ring-border/50 text-foreground/80 hover:bg-card hover:ring-border hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              <Sparkles className="size-2.5 text-violet-500" />
-              {ex}
-            </button>
-          ))}
+          {usingRecents
+            ? lastSix.map((h) => (
+                <button
+                  key={h.timestamp}
+                  type="button"
+                  onClick={() => onApplyHunt(h.niche, h.style, h.audience)}
+                  disabled={disabled}
+                  title={`Re-run hunt for "${h.niche}" (${h.style ?? "any style"} · ${h.audience ?? "any audience"})`}
+                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium bg-violet-500/10 ring-1 ring-violet-500/30 text-foreground/85 hover:bg-violet-500/15 hover:ring-violet-500/50 transition-colors disabled:opacity-50"
+                >
+                  <Sparkles className="size-2.5 text-violet-500" />
+                  {h.niche}
+                  {(h.style || h.audience) && (
+                    <span className="text-muted-foreground/55 ml-0.5">
+                      · {[h.style, h.audience].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
+                </button>
+              ))
+            : starterChips?.map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => onNicheChange(ex)}
+                  disabled={disabled}
+                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium bg-muted/25 ring-1 ring-border/50 text-foreground/80 hover:bg-card hover:ring-border hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  <Sparkles className="size-2.5 text-violet-500" />
+                  {ex}
+                </button>
+              ))}
         </div>
 
         {/* TWO-COLUMN refinement section — Style left, Audience right.

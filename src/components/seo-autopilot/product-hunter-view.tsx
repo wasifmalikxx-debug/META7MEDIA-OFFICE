@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Sparkles,
@@ -13,7 +13,6 @@ import {
   Image as ImageIcon,
   Hourglass,
   LayoutGrid,
-  Clock,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -73,28 +72,40 @@ export function saveRecentHunt(hunt: RecentHunt) {
   }
 }
 
-function clearRecentHunt(timestamp: number) {
-  if (typeof window === "undefined") return;
-  try {
-    const existing = readRecentHunts();
-    const next = existing.filter((h) => h.timestamp !== timestamp);
-    window.localStorage.setItem(RECENT_HUNTS_KEY, JSON.stringify(next));
-    window.dispatchEvent(new CustomEvent("productHunter:recentHuntsChanged"));
-  } catch {
-    /* ignore */
-  }
-}
+// formatTimeAgo() lived here for the deleted RecentHuntsStrip card.
+// Removed — the inline chips don't show timestamps (would make them
+// too long). Resurrect from git history if/when needed again.
 
-function formatTimeAgo(ts: number): string {
-  const seconds = Math.floor((Date.now() - ts) / 1000);
-  if (seconds < 60) return "just now";
-  const mins = Math.floor(seconds / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(ts).toLocaleDateString();
+/**
+ * React hook — returns the live recent-hunts list and re-renders
+ * whenever saveRecentHunt() fires (same-tab) or another tab updates
+ * localStorage (cross-tab). Lazy initializer avoids the "no setState
+ * in useEffect" rule; subscriptions only call setHunts from event
+ * callbacks (which is allowed).
+ *
+ * Used by ManualHuntingSection to show the user's last hunts inline
+ * inside the niche input card.
+ */
+export function useRecentHunts(): RecentHunt[] {
+  const [hunts, setHunts] = useState<RecentHunt[]>(() => readRecentHunts());
+
+  useEffect(() => {
+    const onChange = () => setHunts(readRecentHunts());
+    window.addEventListener("productHunter:recentHuntsChanged", onChange);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === RECENT_HUNTS_KEY) setHunts(readRecentHunts());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(
+        "productHunter:recentHuntsChanged",
+        onChange,
+      );
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  return hunts;
 }
 
 // ─── Main view ──────────────────────────────────────────────────────
@@ -143,24 +154,11 @@ export function ProductHunterView({
 }) {
   const [activeTab, setActiveTab] = useState<HunterTab>(resolveInitialTab);
 
-  // Prefill state — when a recent-hunt card is clicked, this gets set
-  // and we pass its values as `initial*` props to ManualHuntingSection
-  // PLUS a unique `key={prefill.timestamp}` to force a remount with the
-  // new defaults. This is the React 19 way (no setState in useEffect).
-  const [prefill, setPrefill] = useState<RecentHunt | null>(null);
-  const handlePickRecent = useCallback((hunt: RecentHunt) => {
-    setPrefill(hunt);
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, []);
-
-  // Layout (May 16 2026, third pass — full-width hero per CEO):
-  //   1. HeroBanner — FULL-WIDTH (breaks out of <main>'s p-4 md:p-6
-  //      padding via negative margins). Inner text still capped at
-  //      max-w-5xl for readability on wide displays.
-  //   2-5. AE banner, tabs, active mode, recent hunts — all stay
-  //      constrained to the centered max-w-5xl content column.
+  // Recent hunts now live INSIDE the NicheInputCard (May 16 2026 v3
+  // CEO ask). No more standalone strip at the bottom and no more
+  // prefill prop / key remount on ManualHuntingSection — the input
+  // card reads from useRecentHunts() directly and updates its own
+  // niche/style/audience state on chip click.
   return (
     <div className="relative pb-12">
       {/* Full-bleed hero: cancels the <main> p-4 md:p-6 + own top
@@ -175,24 +173,13 @@ export function ProductHunterView({
       <div className="max-w-5xl mx-auto space-y-6">
         <ToolTabsBar active={activeTab} onChange={setActiveTab} />
 
-        {activeTab === "manual" && (
-          <ManualHuntingSection
-            key={prefill?.timestamp ?? "fresh"}
-            initialNiche={prefill?.niche ?? ""}
-            initialStyle={prefill?.style ?? null}
-            initialAudience={prefill?.audience ?? null}
-          />
-        )}
+        {activeTab === "manual" && <ManualHuntingSection />}
 
         {activeTab === "reverse" && <ReverseHuntSection isCeo={true} />}
 
         {activeTab === "image" && <ImageHuntSection />}
 
         {activeTab === "soon" && <ComingSoonRoadmap />}
-
-        {activeTab === "manual" && (
-          <RecentHuntsStrip onPick={handlePickRecent} />
-        )}
       </div>
     </div>
   );
@@ -732,129 +719,7 @@ function AliExpressHeaderPill({
   );
 }
 
-// ─── Recent hunts strip ─────────────────────────────────────────────
-//
-// Horizontal scroll of the last N Manual Hunting runs (read from
-// localStorage). Click a card → prefills the niche/style/audience
-// inputs back into ManualHuntingSection via the onPick callback.
-//
-// Auto-refreshes when ManualHuntingSection saves a new hunt — it
-// dispatches a `productHunter:recentHuntsChanged` custom event and
-// this component re-reads the list. Avoids any prop-drilling.
-
-function RecentHuntsStrip({
-  onPick,
-}: {
-  onPick: (hunt: RecentHunt) => void;
-}) {
-  // Lazy useState initializer reads from localStorage exactly once
-  // per mount (no setState-in-effect needed). readRecentHunts() is
-  // SSR-safe (returns [] when window is undefined).
-  const [hunts, setHunts] = useState<RecentHunt[]>(() => readRecentHunts());
-
-  useEffect(() => {
-    // Subscribe pattern only — setHunts is called from event
-    // CALLBACKS (allowed), not from the effect body itself.
-    const onChange = () => setHunts(readRecentHunts());
-    window.addEventListener("productHunter:recentHuntsChanged", onChange);
-    // Cross-tab updates
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === RECENT_HUNTS_KEY) setHunts(readRecentHunts());
-    };
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener(
-        "productHunter:recentHuntsChanged",
-        onChange,
-      );
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
-
-  if (hunts.length === 0) return null;
-
-  return (
-    <div className="space-y-2.5 ap-stagger-in">
-      <div className="flex items-center justify-between gap-3 px-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground inline-flex items-center gap-1.5">
-          <Clock className="size-3 text-violet-500" />
-          Recent hunts
-          <span className="text-foreground/60 font-bold tabular-nums">
-            · {hunts.length}
-          </span>
-        </p>
-      </div>
-      <div className="flex gap-2 overflow-x-auto pb-1.5 -mx-1 px-1 snap-x">
-        {hunts.map((h) => (
-          <RecentHuntCard
-            key={h.timestamp}
-            hunt={h}
-            onPick={() => onPick(h)}
-            onClear={() => setHunts(readRecentHunts())}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RecentHuntCard({
-  hunt,
-  onPick,
-  onClear,
-}: {
-  hunt: RecentHunt;
-  onPick: () => void;
-  onClear: () => void;
-}) {
-  return (
-    <div className="group relative shrink-0 snap-start min-w-[180px] max-w-[240px] rounded-xl ring-1 ring-border/50 bg-card/80 hover:bg-card hover:ring-border transition-colors overflow-hidden">
-      {/* Main click area */}
-      <button
-        type="button"
-        onClick={onPick}
-        className="w-full text-left p-3"
-        title={`Re-open hunt for "${hunt.niche}"`}
-      >
-        <p className="text-[12px] font-bold tracking-tight truncate pr-5">
-          {hunt.niche}
-        </p>
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          {hunt.style && (
-            <span className="inline-flex items-center text-[9px] font-bold bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 px-1.5 py-0.5 rounded">
-              {hunt.style}
-            </span>
-          )}
-          {hunt.audience && (
-            <span className="inline-flex items-center text-[9px] font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 px-1.5 py-0.5 rounded">
-              {hunt.audience}
-            </span>
-          )}
-        </div>
-        <p className="text-[9px] text-muted-foreground tabular-nums mt-1.5">
-          {formatTimeAgo(hunt.timestamp)}
-          {hunt.categoryCount !== undefined && hunt.productCount !== undefined && (
-            <span>
-              {" "}
-              · {hunt.categoryCount} cats · {hunt.productCount} kw
-            </span>
-          )}
-        </p>
-      </button>
-      {/* Remove button (hover only) */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          clearRecentHunt(hunt.timestamp);
-          onClear();
-        }}
-        className="absolute top-1.5 right-1.5 size-5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-foreground/10 flex items-center justify-center transition-opacity"
-        title="Remove from recent"
-        aria-label={`Remove "${hunt.niche}" from recent hunts`}
-      >
-        <X className="size-3 text-muted-foreground" />
-      </button>
-    </div>
-  );
-}
+// Recent-hunts UI used to live here as a standalone strip at the
+// bottom of the page. Consolidated into the NicheInputCard (May 16
+// 2026 v3) — see `useRecentHunts()` above + ManualHuntingSection's
+// inline chip row. Strip + card components deleted.
