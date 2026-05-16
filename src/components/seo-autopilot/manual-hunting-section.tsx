@@ -24,6 +24,7 @@ import {
   Flame,
   LayoutGrid,
   Rows3,
+  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { saveRecentHunt } from "./product-hunter-view";
@@ -528,10 +529,10 @@ function NicheInputCard({
 
   return (
     <Card className="border border-border/60 bg-card/95 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_12px_36px_-12px_rgba(0,0,0,0.5)] ap-stagger-in overflow-hidden relative">
-      {/* Soft aurora wash in the corner to match the dark hero above */}
+      {/* Soft aurora wash to match the dark hero above */}
       <div
         aria-hidden
-        className="absolute -top-24 -right-16 size-64 rounded-full blur-3xl opacity-40"
+        className="absolute -top-32 -right-20 size-72 rounded-full blur-3xl opacity-40"
         style={{
           background:
             "radial-gradient(closest-side, rgba(168,85,247,0.18), rgba(168,85,247,0) 70%)",
@@ -539,108 +540,111 @@ function NicheInputCard({
       />
       <div
         aria-hidden
-        className="absolute -bottom-20 -left-16 size-56 rounded-full blur-3xl opacity-40"
+        className="absolute -bottom-24 -left-20 size-64 rounded-full blur-3xl opacity-40"
         style={{
           background:
             "radial-gradient(closest-side, rgba(34,211,238,0.16), rgba(34,211,238,0) 70%)",
         }}
       />
 
-      <CardContent className="relative p-7 sm:p-9 space-y-6">
-        {/* Centered hero header */}
-        <div className="text-center space-y-2.5">
-          <div className="relative inline-block">
-            <span
+      <CardContent className="relative p-6 sm:p-8 space-y-7">
+        {/* Slim header — just a centered title. No big icon orb, no
+            description paragraph (the hero banner above already
+            introduces the tool). */}
+        <div className="text-center">
+          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-sky-600 dark:text-sky-400">
+            Start here
+          </p>
+          <h3 className="text-[22px] sm:text-[28px] font-bold tracking-tight leading-tight mt-1">
+            What do you want to hunt?
+          </h3>
+        </div>
+
+        {/* COMMAND-BAR INPUT — the real focal point of the page.
+            Search icon prefix, large font, ↵ key hint, char counter. */}
+        <div className="space-y-2">
+          <div className="relative group">
+            <div
               aria-hidden
-              className="absolute -inset-2 rounded-2xl bg-gradient-to-br from-sky-400/35 to-violet-500/35 blur-lg ap-orb-pulse"
+              className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-sky-400/40 via-violet-500/40 to-pink-500/40 blur-md transition-opacity ${
+                valid ? "opacity-30" : "opacity-0"
+              } group-focus-within:opacity-60`}
             />
-            <div className="relative size-14 rounded-2xl bg-gradient-to-br from-sky-500 to-violet-600 ring-1 ring-violet-700/30 flex items-center justify-center shadow-lg shadow-violet-500/30 mx-auto">
-              <Search className="size-6 text-white" />
-            </div>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-[0.22em]">
-              Start here
-            </p>
-            <h3 className="text-2xl sm:text-[26px] font-bold tracking-tight leading-tight mt-1">
-              What&apos;s your shop&apos;s niche?
-            </h3>
-            <p className="text-[12.5px] sm:text-[13px] text-muted-foreground/80 mt-2 leading-relaxed max-w-xl mx-auto">
-              We&apos;ll find the proven-selling categories, the keywords
-              real buyers search, and curated AliExpress products for each
-              one.
-            </p>
-          </div>
-        </div>
-
-        {/* Niche input with inline char counter */}
-        <div className="space-y-2">
-          <div className="relative">
-            <Input
-              type="text"
-              value={niche}
-              onChange={(e) => onNicheChange(e.target.value.slice(0, NICHE_MAX))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && valid && !disabled) onHunt();
-              }}
-              placeholder="e.g. boho jewelry · mens linen · pet supplies · kitchen organizer"
-              disabled={disabled}
-              maxLength={NICHE_MAX}
-              className="h-14 sm:h-16 text-base pr-16 bg-muted/20 border-border/70 focus-visible:border-sky-500/60 focus-visible:ring-sky-500/15 placeholder:text-muted-foreground/55"
-            />
-            {niche.length > 0 && (
-              <span
-                className={`absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold tabular-nums tracking-wider ${
-                  niche.length >= NICHE_MAX - 5
-                    ? "text-rose-500"
-                    : "text-muted-foreground/60"
-                }`}
-              >
-                {niche.length}/{NICHE_MAX}
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-muted-foreground/70 leading-snug px-0.5">
-            Tip: a niche works best when it spans multiple shop sections.
-            &ldquo;Boho jewelry&rdquo; works; &ldquo;earrings&rdquo; alone
-            is too narrow.
-          </p>
-        </div>
-
-        {/* Quick-start niches — click to fill input */}
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            Try one of these
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {QUICK_START_NICHES.map((ex) => (
-              <button
-                key={ex}
-                type="button"
-                onClick={() => onNicheChange(ex)}
+            <div className="relative flex items-center gap-3 bg-card ring-1 ring-border/70 group-focus-within:ring-sky-500/50 rounded-2xl pl-4 pr-2.5 transition-all">
+              <Search className="size-5 text-muted-foreground/55 shrink-0" />
+              <input
+                type="text"
+                value={niche}
+                onChange={(e) =>
+                  onNicheChange(e.target.value.slice(0, NICHE_MAX))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && valid && !disabled) onHunt();
+                }}
+                placeholder="boho jewelry, mens linen, pet supplies..."
                 disabled={disabled}
-                className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium bg-muted/30 ring-1 ring-border/50 text-foreground/80 hover:bg-card hover:ring-border hover:text-foreground transition-colors disabled:opacity-50"
-              >
-                <Sparkles className="size-2.5 text-violet-500" />
-                {ex}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Style + Audience pills with selected-count indicators */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Style{" "}
-              <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">
-                (optional)
-              </span>
-              {style && (
-                <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 text-[9px] font-bold normal-case tracking-normal">
-                  {style}
+                maxLength={NICHE_MAX}
+                className="flex-1 min-w-0 h-16 sm:h-[68px] bg-transparent outline-none text-base sm:text-lg placeholder:text-muted-foreground/50 disabled:opacity-50"
+              />
+              {niche.length > 0 && (
+                <span
+                  className={`text-[10px] font-bold tabular-nums tracking-wider shrink-0 ${
+                    niche.length >= NICHE_MAX - 5
+                      ? "text-rose-500"
+                      : "text-muted-foreground/60"
+                  }`}
+                >
+                  {niche.length}/{NICHE_MAX}
                 </span>
               )}
+              {valid && (
+                <kbd className="hidden sm:inline-flex items-center justify-center h-7 min-w-[28px] px-1.5 rounded-md text-[10px] font-bold bg-muted/50 ring-1 ring-border/50 text-muted-foreground tabular-nums shrink-0">
+                  ↵
+                </kbd>
+              )}
+            </div>
+          </div>
+          {/* Tip + examples in one row to save vertical space */}
+          <div className="flex items-start gap-3 flex-wrap px-1 pt-1">
+            <p className="text-[11px] text-muted-foreground/70 leading-snug flex-1 min-w-[200px]">
+              Tip: a niche works best when it spans multiple shop
+              sections. &ldquo;Boho jewelry&rdquo; works;
+              &ldquo;earrings&rdquo; alone is too narrow.
+            </p>
+          </div>
+        </div>
+
+        {/* Quick-start chips — inline "Try:" label + sparkle chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-[0.20em] text-muted-foreground shrink-0">
+            Try
+          </span>
+          {QUICK_START_NICHES.map((ex) => (
+            <button
+              key={ex}
+              type="button"
+              onClick={() => onNicheChange(ex)}
+              disabled={disabled}
+              className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium bg-muted/25 ring-1 ring-border/50 text-foreground/80 hover:bg-card hover:ring-border hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <Sparkles className="size-2.5 text-violet-500" />
+              {ex}
+            </button>
+          ))}
+        </div>
+
+        {/* TWO-COLUMN refinement section — Style left, Audience right.
+            Visually grouped inside a soft container so the filters
+            read as "refinements" not as primary actions. Stacks on
+            mobile. */}
+        <div className="rounded-2xl bg-muted/20 ring-1 ring-border/40 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.20em] text-muted-foreground inline-flex items-center gap-1.5">
+              <SlidersHorizontal className="size-3 text-violet-500" />
+              Refine your hunt
+              <span className="text-muted-foreground/55 normal-case font-normal tracking-normal">
+                (optional)
+              </span>
             </p>
             {hasAnyFilter && (
               <button
@@ -650,53 +654,70 @@ function NicheInputCard({
                   onAudienceChange(null);
                 }}
                 disabled={disabled}
-                className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 hover:text-foreground transition-colors"
+                className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 hover:text-foreground transition-colors"
               >
-                Clear filters
+                <X className="size-2.5" />
+                Clear
               </button>
             )}
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {STYLE_OPTIONS.map((opt) => (
-              <OptionPill
-                key={opt}
-                label={opt}
-                selected={style === opt}
-                onClick={() => onStyleChange(style === opt ? null : opt)}
-                accent="violet"
-                disabled={disabled}
-              />
-            ))}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
+            {/* Style column */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/85 flex items-center gap-1.5">
+                Style
+                {style && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 text-[9px] font-bold normal-case tracking-normal">
+                    {style}
+                  </span>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {STYLE_OPTIONS.map((opt) => (
+                  <OptionPill
+                    key={opt}
+                    label={opt}
+                    selected={style === opt}
+                    onClick={() =>
+                      onStyleChange(style === opt ? null : opt)
+                    }
+                    accent="violet"
+                    disabled={disabled}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Audience column */}
+            <div className="space-y-2 sm:border-l sm:border-border/40 sm:pl-5 sm:-ml-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/85 flex items-center gap-1.5">
+                Audience
+                {audience && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 text-[9px] font-bold normal-case tracking-normal">
+                    {audience}
+                  </span>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {AUDIENCE_OPTIONS.map((opt) => (
+                  <OptionPill
+                    key={opt}
+                    label={opt}
+                    selected={audience === opt}
+                    onClick={() =>
+                      onAudienceChange(audience === opt ? null : opt)
+                    }
+                    accent="sky"
+                    disabled={disabled}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="space-y-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            Audience{" "}
-            <span className="text-muted-foreground/60 normal-case font-normal tracking-normal">
-              (optional)
-            </span>
-            {audience && (
-              <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 text-[9px] font-bold normal-case tracking-normal">
-                {audience}
-              </span>
-            )}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {AUDIENCE_OPTIONS.map((opt) => (
-              <OptionPill
-                key={opt}
-                label={opt}
-                selected={audience === opt}
-                onClick={() => onAudienceChange(audience === opt ? null : opt)}
-                accent="sky"
-                disabled={disabled}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Hunt button */}
+        {/* Primary CTA — bigger, with subtle pulse halo on valid state */}
         <div className="relative group">
           <div
             aria-hidden
@@ -708,7 +729,7 @@ function NicheInputCard({
             type="button"
             onClick={onHunt}
             disabled={!valid || disabled}
-            className="relative w-full h-14 gap-3 bg-gradient-to-r from-sky-500 via-violet-500 to-violet-600 hover:from-sky-500 hover:via-violet-500 hover:to-violet-600 text-white font-bold text-[15px] tracking-wide rounded-2xl shadow-xl shadow-violet-500/30 ring-1 ring-violet-700/30 hover:shadow-2xl hover:shadow-violet-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+            className="relative w-full h-16 gap-3 bg-gradient-to-r from-sky-500 via-violet-500 to-violet-600 hover:from-sky-500 hover:via-violet-500 hover:to-violet-600 text-white font-bold text-[16px] tracking-wide rounded-2xl shadow-xl shadow-violet-500/30 ring-1 ring-violet-700/30 hover:shadow-2xl hover:shadow-violet-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
           >
             <Wand2 className="size-5" />
             <span>Find products for my niche</span>
