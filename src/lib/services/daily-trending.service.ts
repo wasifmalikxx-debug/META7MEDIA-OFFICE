@@ -64,9 +64,17 @@ const PAGE_SIZE_FRESH = 30;
  * volume — keeps the daily batch genuinely fresh. */
 const DEDUPE_WINDOW_DAYS = 7;
 
-/** Drop anything cheaper than this — sub-$0.50 AE listings are almost
- * always test/scam SKUs that hijack the volume sort. */
-const MIN_PRICE_FLOOR = 0.5;
+/** Drop anything cheaper than $10. Bumped from $0.50 → $10 on May 16
+ * 2026 per CEO call: sub-$10 AE products are mostly commodity items
+ * with 1000 sellers racing the same listing — they crush Etsy margins
+ * AND look too cheap for the artisan/handmade buyer who's our target.
+ * $10+ → ~$60 Etsy matured → ~$30 buyer (post-50%-sale) → ~$18 profit
+ * per sale, vs sub-$10 commodities that net less even at higher volume.
+ *
+ * Trade-off: some niches lose a handful of legit $5-8 winners (small
+ * jewelry especially). Watch per-niche batch sizes for a week and we
+ * can soften this per-niche if any consistently go empty. */
+const MIN_PRICE_FLOOR = 10;
 
 /** Drop anything more expensive than this — over-$300 items rarely make
  * sense for Etsy dropship and skew the page towards luxury outliers. */
