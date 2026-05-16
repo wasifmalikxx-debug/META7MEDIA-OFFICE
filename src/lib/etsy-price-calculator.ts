@@ -131,6 +131,39 @@ export interface PriceCalculation {
 }
 
 /**
+ * Maximum absolute personalization offset applied per user (USD).
+ *
+ * Reason: when two different sellers price the SAME AliExpress item,
+ * the discrete formula gives them an identical Etsy listing price.
+ * That tipped off Etsy's anti-dupe heuristics and made our shops
+ * look like a single organisation. To break the tie, the calculator
+ * accepts a `userSeed` and adds a deterministic per-user offset in
+ * the range [-PERSONALIZATION_OFFSET_MAX, +PERSONALIZATION_OFFSET_MAX]
+ * to the final price. Same user + same ali cost → same offset (stable
+ * across page reloads). Different users → different offsets.
+ *
+ * CEO ask (May 16 2026): "1-2$ margin is good to go" — i.e. ±$2 max
+ * swing is acceptable for both matured and new-shop modes.
+ */
+export const PERSONALIZATION_OFFSET_MAX = 2;
+
+/**
+ * Deterministic hash → pseudo-random number in [-1, +1].
+ * Same input always returns same output (so the user sees stable
+ * prices on reload), but different inputs map to different positions
+ * in the range. Simple djb2-ish hash, no crypto needed.
+ */
+function deterministicSwing(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) {
+    h = ((h << 5) - h + key.charCodeAt(i)) | 0;
+  }
+  // Normalize abs hash to [0, 1) then map to [-1, +1)
+  const norm = (Math.abs(h) % 100000) / 100000;
+  return norm * 2 - 1;
+}
+
+/**
  * Run the stepped-markup formula on a single Ali Express cost.
  *
  * Two regimes:
@@ -145,10 +178,18 @@ export interface PriceCalculation {
  *                   trend instead. See ABOVE_TABLE_MARKUP_RATIO for the
  *                   derivation.
  *
+ * Optional `userSeed` adds a deterministic ±$2 personalization offset
+ * (see PERSONALIZATION_OFFSET_MAX) so two sellers pricing the same
+ * product don't get an identical Etsy price — fights the Etsy
+ * anti-dupe heuristics across our shops.
+ *
  * Always returns BOTH prices (matured and new-shop). `tier` is null when
  * ali is above the discrete table (i.e. we're in the proportional regime).
  */
-export function calculateEtsyPrice(aliPrice: number): PriceCalculation {
+export function calculateEtsyPrice(
+  aliPrice: number,
+  options?: { userSeed?: string },
+): PriceCalculation {
   let matchedIdx = -1;
   for (let i = 0; i < MARKUP_TIERS.length; i++) {
     if (aliPrice <= MARKUP_TIERS[i].maxAli) {
@@ -173,8 +214,21 @@ export function calculateEtsyPrice(aliPrice: number): PriceCalculation {
   }
 
   const subtotal = aliPrice + markup;
-  const etsyMatured = subtotal / NET_DIVISOR;
-  const etsyNew = etsyMatured * (1 - NEW_SHOP_DISCOUNT);
+  let etsyMatured = subtotal / NET_DIVISOR;
+  let etsyNew = etsyMatured * (1 - NEW_SHOP_DISCOUNT);
+
+  // Per-user personalization offset — applied AFTER the divide so
+  // the absolute swing stays bounded at ±PERSONALIZATION_OFFSET_MAX
+  // (would be ~2.4× larger if applied before the divide). Same
+  // offset is added to both modes so the matured/new price gap
+  // remains exactly NEW_SHOP_DISCOUNT.
+  if (options?.userSeed) {
+    const offset =
+      deterministicSwing(`${options.userSeed}|${aliPrice}`) *
+      PERSONALIZATION_OFFSET_MAX;
+    etsyMatured += offset;
+    etsyNew += offset;
+  }
 
   return {
     aliPrice,

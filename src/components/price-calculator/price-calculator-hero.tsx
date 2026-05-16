@@ -114,7 +114,7 @@ export function PriceCalculatorHero() {
           <FeatureCell
             icon={ShoppingBag}
             label="AE cost in"
-            sub="Live PKR / USD"
+            sub="Live USD"
           />
           <FeatureCell
             icon={Percent}

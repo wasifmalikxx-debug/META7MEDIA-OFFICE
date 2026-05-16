@@ -115,9 +115,19 @@ export function PriceCalculatorView() {
     return n;
   }, [aliInput]);
 
+  // Per-browser personalization seed — generated once on first
+  // visit, persisted to localStorage. Passing it to
+  // calculateEtsyPrice() adds a deterministic ±$2 offset that's
+  // unique to this user/browser. Two sellers pricing the same
+  // AliExpress item get different Etsy prices, but each seller
+  // sees stable prices across page reloads.
+  const userSeed = usePriceCalcSeed();
   const result = useMemo(
-    () => (aliPrice == null ? null : calculateEtsyPrice(aliPrice)),
-    [aliPrice],
+    () =>
+      aliPrice == null
+        ? null
+        : calculateEtsyPrice(aliPrice, { userSeed }),
+    [aliPrice, userSeed],
   );
 
   function handleCopy(value: number, label: string) {
@@ -344,6 +354,41 @@ export function PriceCalculatorView() {
  *
  * Non-dismissible — every listing needs the sale set.
  */
+
+// ─── Per-browser personalization seed ──────────────────────────────
+//
+// Returns a stable random string unique to this browser. Generated on
+// first visit, persisted to localStorage. Passed to calculateEtsyPrice
+// to apply a deterministic ±$2 offset per (user, ali price). Two
+// different sellers pricing the same AE item get different Etsy prices;
+// the same seller always sees stable prices on reload.
+//
+// SSR-safe: returns "" on the server (no offset applied), then
+// hydrates with the real seed on mount. Since the calculator only
+// computes a result after the user types a price (post-mount), the
+// hydration delay never matters in practice.
+const PRICE_CALC_SEED_KEY = "priceCalc.userSeed.v1";
+
+function usePriceCalcSeed(): string {
+  const [seed] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const existing = window.localStorage.getItem(PRICE_CALC_SEED_KEY);
+      if (existing && existing.length > 0) return existing;
+      // Generate a 12-char random seed (~62 bits of entropy — plenty)
+      const fresh =
+        Math.random().toString(36).slice(2, 8) +
+        Math.random().toString(36).slice(2, 8);
+      window.localStorage.setItem(PRICE_CALC_SEED_KEY, fresh);
+      return fresh;
+    } catch {
+      // localStorage blocked? fall back to no-seed (formula-only price)
+      return "";
+    }
+  });
+  return seed;
+}
+
 function ReminderBanner() {
   return (
     <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-rose-500 via-rose-600 to-rose-700 dark:from-rose-600 dark:via-rose-700 dark:to-rose-800 shadow-lg shadow-rose-500/20 dark:shadow-rose-950/40 ring-1 ring-rose-700/40">
