@@ -16,10 +16,9 @@ import {
  *
  * Returns the top similar products from AliExpress.
  *
- * Access: CEO-only during the Reverse Hunt pilot (same gate as
- * /api/reverse-hunt). The page at /reverse-hunt routes non-CEO users
- * to a Coming Soon view, but the API also enforces the gate so direct
- * calls are blocked.
+ * Access: CEO-only during pilot. Powers the Image Hunt tab inside
+ * the Product Hunter hub. (Was originally paired with the now-deleted
+ * Reverse Hunt feature — same access gate.)
  */
 
 export const dynamic = "force-dynamic";

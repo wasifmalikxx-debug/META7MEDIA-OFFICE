@@ -9,7 +9,6 @@ import {
   Target,
   Heart,
   Plug,
-  Link2,
   Image as ImageIcon,
   Hourglass,
   LayoutGrid,
@@ -18,7 +17,6 @@ import {
   Bookmark,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ReverseHuntSection } from "./reverse-hunt-section";
 import { ImageHuntSection } from "./image-hunt-section";
 import { ManualHuntingSection } from "./manual-hunting-section";
 import { DailyTrendingView } from "@/components/daily-trending/daily-trending-view";
@@ -119,28 +117,33 @@ export function useRecentHunts(): RecentHunt[] {
  *
  *  - manual    → keyword-brainstorm + Etsy scoring (CEO types a seed,
  *                we brainstorm and score against Etsy demand)
- *  - reverse   → paste an AE URL → Etsy demand verdict + projected margin
  *  - image     → paste an image URL → similar AE products
  *  - trending  → Daily Trending — morning AE feed scoped to niche book
  *                (CEO-only during validation phase; others see Coming Soon)
  *  - soon      → roadmap card (Watchlists, Fresh Finds, etc.)
  *
+ * Removed May 17 2026:
+ *  - reverse   → Reverse Hunt (paste AE URL → verdict). CEO call:
+ *                ".us URLs don't work and the .com flow was already
+ *                covered by Manual Hunting." Files purged with the
+ *                tab.
+ *
  * Every future hunting tool we build slots in here as a new tab so the
  * whole team has one URL to remember.
  */
-type HunterTab = "manual" | "reverse" | "image" | "trending" | "soon";
+type HunterTab = "manual" | "image" | "trending" | "soon";
 
 /**
  * Initial-tab resolver — reads `?tab=X` from window.location.
  * Computed once during useState lazy init so we don't violate React 19's
- * "no setState in useEffect" rule.
+ * "no setState in useEffect" rule. Legacy `?tab=reverse` quietly
+ * falls back to "manual" since Reverse Hunt was removed.
  */
 function resolveInitialTab(): HunterTab {
   if (typeof window === "undefined") return "manual";
   const requested = new URLSearchParams(window.location.search).get("tab");
   if (
     requested === "manual" ||
-    requested === "reverse" ||
     requested === "image" ||
     requested === "trending" ||
     requested === "soon"
@@ -188,8 +191,6 @@ export function ProductHunterView({
 
         {activeTab === "manual" && <ManualHuntingSection />}
 
-        {activeTab === "reverse" && <ReverseHuntSection isCeo={true} />}
-
         {activeTab === "image" && <ImageHuntSection />}
 
         {activeTab === "trending" &&
@@ -229,13 +230,6 @@ const MODE_TABS: Array<{
     icon: Target,
     description: "Type a seed → find underserved Etsy keywords",
     gradient: "from-sky-500 to-violet-500",
-  },
-  {
-    id: "reverse",
-    label: "Reverse Hunt",
-    icon: Link2,
-    description: "Paste AE URL → will it sell?",
-    gradient: "from-emerald-500 to-orange-500",
   },
   {
     id: "image",
@@ -352,13 +346,6 @@ const TAB_COPY: Record<
       { icon: Sparkles, label: "25 variants", sub: "Claude brainstorm" },
       { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
       { icon: Heart, label: "Ranked", sub: "GREAT · GOOD · MAYBE · SKIP" },
-    ],
-  },
-  reverse: {
-    cells: [
-      { icon: Sparkles, label: "AE source", sub: "Live price + rating" },
-      { icon: TrendingUp, label: "Etsy demand", sub: "Listings + favorites" },
-      { icon: Heart, label: "Verdict", sub: "STRONG YES · YES · MAYBE · NO" },
     ],
   },
   image: {

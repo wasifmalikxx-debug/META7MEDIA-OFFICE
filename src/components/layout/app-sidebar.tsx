@@ -500,10 +500,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       URL redirects to /seo-autopilot/product-hunter?tab=trending.
                       Access is CEO-only during the validation phase. */}
 
-                  {/* Reverse Hunt removed from sidebar May 16 — it's
-                      now a tab inside the unified Product Hunter hub.
-                      Old /reverse-hunt URL redirects to
-                      /seo-autopilot/product-hunter?tab=reverse. */}
+                  {/* Reverse Hunt was removed entirely on May 17 2026
+                      (CEO call: ".us URLs don't work and the .com flow
+                      was already covered by Manual Hunting"). The
+                      /reverse-hunt route + tab + service are deleted. */}
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/price-calculator" />}
