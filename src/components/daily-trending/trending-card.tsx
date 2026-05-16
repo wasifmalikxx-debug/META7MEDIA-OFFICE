@@ -144,32 +144,52 @@ export function TrendingCard({
           </div>
         )}
 
-        {/* Price block — AE → Etsy + margin chip */}
-        <div className="grid grid-cols-2 gap-1.5 text-[11px] tabular-nums">
-          <div className="rounded-lg bg-muted/40 px-2 py-1.5">
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground/80">
-              AE cost
+        {/* Price block — CEO sees full breakdown (AE cost + Etsy + margin);
+            employees only see the Etsy listing price they should use.
+            CEO ask May 17 2026: hide all cost / profit info from non-CEO
+            users so the team can't reverse-engineer sourcing markups. */}
+        {isCeo ? (
+          <>
+            <div className="grid grid-cols-2 gap-1.5 text-[11px] tabular-nums">
+              <div className="rounded-lg bg-muted/40 px-2 py-1.5">
+                <p className="text-[9px] uppercase tracking-wider text-muted-foreground/80">
+                  AE cost
+                </p>
+                <p className="font-bold text-foreground/90">
+                  ${product.priceUsd.toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20 px-2 py-1.5">
+                <p className="text-[9px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                  Etsy
+                </p>
+                <p className="font-bold text-emerald-700 dark:text-emerald-300">
+                  ${product.suggestedEtsyMatured.toFixed(2)}
+                </p>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground tabular-nums px-0.5">
+              Margin{" "}
+              <span className="font-bold text-foreground/85">
+                ${margin.toFixed(2)}
+              </span>{" "}
+              · New shop ${product.suggestedEtsyNew.toFixed(2)}
             </p>
-            <p className="font-bold text-foreground/90">
-              ${product.priceUsd.toFixed(2)}
-            </p>
-          </div>
-          <div className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20 px-2 py-1.5">
+          </>
+        ) : (
+          // Non-CEO view: just the recommended Etsy listing price.
+          <div className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20 px-3 py-2 text-center tabular-nums">
             <p className="text-[9px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-              Etsy
+              List on Etsy
             </p>
-            <p className="font-bold text-emerald-700 dark:text-emerald-300">
+            <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300 leading-tight">
               ${product.suggestedEtsyMatured.toFixed(2)}
             </p>
+            <p className="text-[9px] text-emerald-700/70 dark:text-emerald-400/70">
+              New shop · ${product.suggestedEtsyNew.toFixed(2)}
+            </p>
           </div>
-        </div>
-        <p className="text-[10px] text-muted-foreground tabular-nums px-0.5">
-          Margin{" "}
-          <span className="font-bold text-foreground/85">
-            ${margin.toFixed(2)}
-          </span>{" "}
-          · New shop ${product.suggestedEtsyNew.toFixed(2)}
-        </p>
+        )}
 
         {/* Action row — AE / Calc / Hunt as compact buttons */}
         <div className="grid grid-cols-3 gap-1.5">

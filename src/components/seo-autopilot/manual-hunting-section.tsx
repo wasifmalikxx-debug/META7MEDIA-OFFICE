@@ -253,10 +253,14 @@ export function ManualHuntingSection({
   initialNiche = "",
   initialStyle = null,
   initialAudience = null,
+  isCeo = false,
 }: {
   initialNiche?: string;
   initialStyle?: string | null;
   initialAudience?: string | null;
+  /** CEO sees AE prices + Claude API cost footer; employees don't.
+   * CEO ask May 17 2026 — hide all sourcing-cost info from team. */
+  isCeo?: boolean;
 } = {}) {
   // Lazy initializer reads `?niche=` from the URL on first mount —
   // Daily Trending cards link here as
@@ -491,6 +495,7 @@ export function ManualHuntingSection({
             onReset={handleReset}
             costUsd={result.totalCostUsd}
             durationMs={result.durationMs}
+            isCeo={isCeo}
           />
 
           {result.categories.length === 0 ? (
@@ -517,6 +522,7 @@ export function ManualHuntingSection({
                   verdictFilter={verdictFilter}
                   sortKey={sortKey}
                   viewMode={viewMode}
+                  isCeo={isCeo}
                   registerRef={(el) => {
                     sectionRefs.current[idx] = el;
                   }}
@@ -974,6 +980,7 @@ function ResultHero({
   onReset,
   costUsd,
   durationMs,
+  isCeo,
 }: {
   niche: string;
   style?: string;
@@ -983,6 +990,7 @@ function ResultHero({
   onReset: () => void;
   costUsd: number;
   durationMs: number;
+  isCeo: boolean;
 }) {
   return (
     <Card className="border border-border/60 shadow-none ap-stagger-in overflow-hidden relative">
@@ -1037,9 +1045,16 @@ function ResultHero({
           </button>
         </div>
 
-        <p className="text-[10px] text-muted-foreground/70 tabular-nums mt-3 pt-3 border-t border-border/40">
-          Cost: ${costUsd.toFixed(4)} · {(durationMs / 1000).toFixed(1)}s
-        </p>
+        {/* Cost/duration footer — CEO-only. Employees just see results. */}
+        {isCeo ? (
+          <p className="text-[10px] text-muted-foreground/70 tabular-nums mt-3 pt-3 border-t border-border/40">
+            Cost: ${costUsd.toFixed(4)} · {(durationMs / 1000).toFixed(1)}s
+          </p>
+        ) : (
+          <p className="text-[10px] text-muted-foreground/70 tabular-nums mt-3 pt-3 border-t border-border/40">
+            Took {(durationMs / 1000).toFixed(1)}s
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -1309,6 +1324,7 @@ function CategorySection({
   verdictFilter,
   sortKey,
   viewMode,
+  isCeo,
   registerRef,
 }: {
   category: NicheCategoryResult;
@@ -1316,6 +1332,7 @@ function CategorySection({
   verdictFilter: VerdictFilter;
   sortKey: SortKey;
   viewMode: ViewMode;
+  isCeo: boolean;
   registerRef: (el: HTMLElement | null) => void;
 }) {
   const visible = useMemo(() => {
@@ -1373,13 +1390,13 @@ function CategorySection({
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
           {visible.map((kw) => (
-            <KeywordCard key={kw.keyword} keyword={kw} />
+            <KeywordCard key={kw.keyword} keyword={kw} isCeo={isCeo} />
           ))}
         </div>
       ) : (
         <div className="space-y-2">
           {visible.map((kw) => (
-            <KeywordRow key={kw.keyword} keyword={kw} />
+            <KeywordRow key={kw.keyword} keyword={kw} isCeo={isCeo} />
           ))}
         </div>
       )}
@@ -1395,7 +1412,13 @@ function CategorySection({
 // below. Built for the 2-3 column grid layout so several cards live
 // side-by-side instead of stacking vertically.
 
-function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
+function KeywordCard({
+  keyword,
+  isCeo,
+}: {
+  keyword: NicheKeywordResult;
+  isCeo: boolean;
+}) {
   const verdictStyle = VERDICT_STYLE[keyword.verdict];
 
   const aliExpressUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(keyword.keyword)}`;
@@ -1443,12 +1466,16 @@ function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
           </span>
         </div>
 
-        {/* Price / rating / sold ribbon (bottom of image) */}
+        {/* Price / rating / sold ribbon (bottom of image). AE price
+            CEO-only; rating + sold count visible to everyone (they're
+            quality signals, not sourcing-cost info). */}
         {keyword.preview && (
           <div className="absolute bottom-0 inset-x-0 px-2.5 py-1.5 bg-gradient-to-t from-black/85 via-black/45 to-transparent flex items-center gap-2.5 text-[10px] text-white tabular-nums">
-            <span className="text-[12px] font-bold text-emerald-300">
-              ${keyword.preview.priceUsd.toFixed(2)}
-            </span>
+            {isCeo && (
+              <span className="text-[12px] font-bold text-emerald-300">
+                ${keyword.preview.priceUsd.toFixed(2)}
+              </span>
+            )}
             {keyword.preview.rating !== undefined && (
               <span className="inline-flex items-center gap-0.5">
                 <Star
@@ -1525,7 +1552,13 @@ function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
 // All on a single line on desktop. On narrow screens the Etsy stats
 // hide first, then the preview meta drops to a second line.
 
-function KeywordRow({ keyword }: { keyword: NicheKeywordResult }) {
+function KeywordRow({
+  keyword,
+  isCeo,
+}: {
+  keyword: NicheKeywordResult;
+  isCeo: boolean;
+}) {
   const verdictStyle = VERDICT_STYLE[keyword.verdict];
   const aliExpressUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(keyword.keyword)}`;
   const etsyUrl = `https://www.etsy.com/search?q=${encodeURIComponent(keyword.keyword)}`;
@@ -1593,9 +1626,14 @@ function KeywordRow({ keyword }: { keyword: NicheKeywordResult }) {
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground tabular-nums mt-0.5">
             {keyword.preview ? (
               <>
-                <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                  ${keyword.preview.priceUsd.toFixed(2)}
-                </span>
+                {/* AE preview price — CEO-only. Rating + sold count
+                    visible to everyone (they're quality signals, not
+                    sourcing-cost info). */}
+                {isCeo && (
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                    ${keyword.preview.priceUsd.toFixed(2)}
+                  </span>
+                )}
                 {keyword.preview.rating !== undefined && (
                   <span className="inline-flex items-center gap-0.5">
                     <Star

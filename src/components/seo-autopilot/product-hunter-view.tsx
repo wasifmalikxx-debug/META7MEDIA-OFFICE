@@ -189,9 +189,9 @@ export function ProductHunterView({
       <div className="max-w-5xl mx-auto space-y-6">
         <ToolTabsBar active={activeTab} onChange={setActiveTab} />
 
-        {activeTab === "manual" && <ManualHuntingSection />}
+        {activeTab === "manual" && <ManualHuntingSection isCeo={isCeo} />}
 
-        {activeTab === "image" && <ImageHuntSection />}
+        {activeTab === "image" && <ImageHuntSection isCeo={isCeo} />}
 
         {activeTab === "trending" &&
           (isCeo && currentUserId ? (
