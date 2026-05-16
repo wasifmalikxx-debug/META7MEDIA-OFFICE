@@ -52,7 +52,15 @@ interface FetchedProduct {
   orderCount?: number;
 }
 
-export function PriceCalculatorView() {
+export function PriceCalculatorView({
+  userId,
+}: {
+  /** Logged-in user id (from page-level auth). Used as the
+   * personalization seed for the per-user price offset. When
+   * omitted (e.g. test renders, future public mode) we fall
+   * back to a per-browser localStorage seed. */
+  userId?: string;
+} = {}) {
   const [aliInput, setAliInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const [urlMode, setUrlMode] = useState(false);
@@ -115,13 +123,13 @@ export function PriceCalculatorView() {
     return n;
   }, [aliInput]);
 
-  // Per-browser personalization seed — generated once on first
-  // visit, persisted to localStorage. Passing it to
-  // calculateEtsyPrice() adds a deterministic ±$2 offset that's
-  // unique to this user/browser. Two sellers pricing the same
-  // AliExpress item get different Etsy prices, but each seller
-  // sees stable prices across page reloads.
-  const userSeed = usePriceCalcSeed();
+  // Personalization seed for the ±$2 per-user price offset.
+  // PREFERS the logged-in user.id (passed from server) — stable
+  // across browsers / laptops / incognito for the same seller.
+  // Falls back to a per-browser localStorage seed when there's no
+  // userId (test renders / future public mode).
+  const browserSeed = usePriceCalcSeed();
+  const userSeed = userId ?? browserSeed;
   const result = useMemo(
     () =>
       aliPrice == null

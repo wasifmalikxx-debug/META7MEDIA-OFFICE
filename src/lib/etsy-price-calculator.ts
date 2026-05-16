@@ -220,8 +220,9 @@ export function calculateEtsyPrice(
   // Per-user personalization offset — applied AFTER the divide so
   // the absolute swing stays bounded at ±PERSONALIZATION_OFFSET_MAX
   // (would be ~2.4× larger if applied before the divide). Same
-  // offset is added to both modes so the matured/new price gap
-  // remains exactly NEW_SHOP_DISCOUNT.
+  // offset is added to both modes so the ABSOLUTE matured/new gap
+  // is preserved (the percentage discount shifts by <1% in practice,
+  // unnoticeable to sellers).
   if (options?.userSeed) {
     const offset =
       deterministicSwing(`${options.userSeed}|${aliPrice}`) *

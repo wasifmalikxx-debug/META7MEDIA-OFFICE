@@ -72,7 +72,11 @@ export default async function PriceCalculatorPage() {
       </div>
 
       <div className="max-w-5xl mx-auto">
-        <PriceCalculatorView />
+        {/* userId drives the personalization seed for the per-user
+            price offset. Same user across browsers/laptops/incognito
+            sees the same prices; different users see different prices
+            even on the same machine. */}
+        <PriceCalculatorView userId={user.id} />
       </div>
     </div>
   );
