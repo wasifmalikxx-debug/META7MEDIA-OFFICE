@@ -723,7 +723,11 @@ export async function getProductById(
  * Image search — Play 4. Accepts a public image URL (or pre-uploaded
  * AliExpress image_id). Returns top similar products.
  *
- * `aliexpress.ds.image.search` is the documented method.
+ * `aliexpress.ds.image.search` is the documented method. AE rejects
+ * the call with `MissingParameter: shpt_to` when ship-to country
+ * isn't supplied — fixed May 17 2026 by sending `shpt_to: "US"` (the
+ * other ship-to param-name variants we already sent — `countryCode`,
+ * `ship_to_country` — were ignored by this specific endpoint).
  */
 export async function searchProductsByImage(
   imageUrl: string,
@@ -738,8 +742,15 @@ export async function searchProductsByImage(
       imageUrl,
       pageSize: options.pageSize ?? 12,
       currency: "USD",
+      target_currency: "USD",
       local: "en_US",
+      target_language: "en",
       countryCode: "US",
+      // The required parameter that was missing — image.search uses
+      // this specific name (other AE methods accept ship_to_country
+      // or countryCode, but this endpoint demands shpt_to).
+      shpt_to: "US",
+      ship_to_country: "US",
     },
     options.accessToken,
   );
