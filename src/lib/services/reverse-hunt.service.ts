@@ -70,19 +70,51 @@ export async function reverseHunt(
   const startedAt = Date.now();
   const accum = createCostAccumulator();
 
+  const trimmed = aliUrlOrId.trim();
   const productId =
-    /^\d+$/.test(aliUrlOrId.trim())
-      ? aliUrlOrId.trim()
-      : extractProductId(aliUrlOrId);
+    /^\d+$/.test(trimmed) ? trimmed : extractProductId(aliUrlOrId);
   if (!productId) {
     throw new Error("Couldn't extract product ID from that URL.");
   }
+
+  // Detect aliexpress.us / aliexpress.ru / other regional storefronts —
+  // their product IDs (typically starting with "3256") belong to
+  // separate regional catalogs that the global DS API doesn't always
+  // serve. The call still "succeeds" but returns an empty product
+  // (no title, no price), which then produces nonsense downstream
+  // (a $0 cost product with random Etsy search results).
+  //
+  // The .com and .us product ID prefixes:
+  //   - aliexpress.com IDs typically start with "1005" (16 digits)
+  //   - aliexpress.us IDs typically start with "3256" (16 digits)
+  const isUsRegionalId = productId.startsWith("3256");
+  const isUsRegionalUrl = /aliexpress\.(us|ru|fr|de|es|it|pl)/i.test(
+    aliUrlOrId,
+  );
 
   // Step 1: fetch AliExpress product
   const aliProduct = await getProductById(productId, { accessToken });
   if (!aliProduct) {
     throw new Error(
       "AliExpress product not found — it may be unlisted or restricted.",
+    );
+  }
+
+  // Validate the AE response actually contains real product data.
+  // The DS API returns a "successful" empty response for products
+  // outside its catalog (e.g. aliexpress.us regional IDs) — without
+  // this check we'd run the rest of the pipeline on $0 cost + empty
+  // title and produce nonsense Etsy results.
+  const titleOk = aliProduct.title && aliProduct.title.trim().length > 0;
+  const priceOk = aliProduct.priceMin && aliProduct.priceMin > 0;
+  if (!titleOk || !priceOk) {
+    if (isUsRegionalId || isUsRegionalUrl) {
+      throw new Error(
+        "This is an aliexpress.us URL — those use a separate regional catalog that our API can't read. Find the same product on aliexpress.com (product ID usually starts with 1005…) and paste that URL instead.",
+      );
+    }
+    throw new Error(
+      "AliExpress returned empty data for this product — it may be unlisted, restricted, or unavailable in the global catalog.",
     );
   }
 
