@@ -1,26 +1,101 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Sparkles,
   Check,
   TrendingUp,
   Target,
-  Lightbulb,
-  Zap,
   Heart,
   Plug,
-  ShoppingBag,
   Link2,
   Image as ImageIcon,
   Hourglass,
   LayoutGrid,
+  Clock,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ReverseHuntSection } from "./reverse-hunt-section";
 import { ImageHuntSection } from "./image-hunt-section";
 import { ManualHuntingSection } from "./manual-hunting-section";
+
+// ─── Recent hunts storage (localStorage) ─────────────────────────────
+//
+// Each successful Manual Hunting run is appended to a per-user list in
+// localStorage so the hub can show a Recent Hunts strip at the bottom.
+// Clicking a card pre-fills the niche input so the seller can re-run
+// (or tweak) without retyping. Cap at 12 entries, LRU-style.
+
+export interface RecentHunt {
+  niche: string;
+  style: string | null;
+  audience: string | null;
+  timestamp: number;
+  categoryCount?: number;
+  productCount?: number;
+}
+
+const RECENT_HUNTS_KEY = "productHunter.recentHunts.v1";
+const RECENT_HUNTS_MAX = 12;
+
+function readRecentHunts(): RecentHunt[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(RECENT_HUNTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(0, RECENT_HUNTS_MAX);
+  } catch {
+    return [];
+  }
+}
+
+export function saveRecentHunt(hunt: RecentHunt) {
+  if (typeof window === "undefined") return;
+  try {
+    const existing = readRecentHunts();
+    // Dedupe by niche+style+audience signature (same query = bump to top)
+    const sig = `${hunt.niche.toLowerCase()}|${hunt.style ?? ""}|${hunt.audience ?? ""}`;
+    const filtered = existing.filter(
+      (h) =>
+        `${h.niche.toLowerCase()}|${h.style ?? ""}|${h.audience ?? ""}` !==
+        sig,
+    );
+    const next = [hunt, ...filtered].slice(0, RECENT_HUNTS_MAX);
+    window.localStorage.setItem(RECENT_HUNTS_KEY, JSON.stringify(next));
+    // Notify any listening components via a custom event
+    window.dispatchEvent(new CustomEvent("productHunter:recentHuntsChanged"));
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearRecentHunt(timestamp: number) {
+  if (typeof window === "undefined") return;
+  try {
+    const existing = readRecentHunts();
+    const next = existing.filter((h) => h.timestamp !== timestamp);
+    window.localStorage.setItem(RECENT_HUNTS_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent("productHunter:recentHuntsChanged"));
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatTimeAgo(ts: number): string {
+  const seconds = Math.floor((Date.now() - ts) / 1000);
+  if (seconds < 60) return "just now";
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
 
 // ─── Main view ──────────────────────────────────────────────────────
 
@@ -60,133 +135,167 @@ function resolveInitialTab(): HunterTab {
 export function ProductHunterView() {
   const [activeTab, setActiveTab] = useState<HunterTab>(resolveInitialTab);
 
+  // Prefill state — when a recent-hunt card is clicked, this gets set
+  // and we pass its values as `initial*` props to ManualHuntingSection
+  // PLUS a unique `key={prefill.timestamp}` to force a remount with the
+  // new defaults. This is the React 19 way (no setState in useEffect).
+  const [prefill, setPrefill] = useState<RecentHunt | null>(null);
+  const handlePickRecent = useCallback((hunt: RecentHunt) => {
+    setPrefill(hunt);
+    // Scroll the input back into view in case we were scrolled down on
+    // an old result page.
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  // Spotlight layout (May 16 2026 redesign):
+  //   1. Compact HeaderStrip — logo + mode pills + AE badge in one line
+  //   2. AE banner (only when NOT connected — prompts the user to auth)
+  //   3. Active mode section (the tool itself, full focus)
+  //   4. Recent hunts strip (only on Manual mode, click to prefill)
   return (
-    <div className="relative max-w-5xl mx-auto space-y-6 pb-12">
-      <HeroBanner activeTab={activeTab} />
-      <AliExpressConnectionBanner />
-      <ToolTabsBar active={activeTab} onChange={setActiveTab} />
+    <div className="relative max-w-5xl mx-auto space-y-5 pb-12">
+      <HeaderStrip active={activeTab} onChange={setActiveTab} />
 
-      {/* Manual Hunting — niche → categories → keywords → AE preview */}
-      {activeTab === "manual" && <ManualHuntingSection />}
+      <AliExpressConnectionBanner compactWhenConnected />
 
-      {/* Reverse Hunt — paste AE URL → Etsy verdict + margin */}
+      {activeTab === "manual" && (
+        <ManualHuntingSection
+          key={prefill?.timestamp ?? "fresh"}
+          initialNiche={prefill?.niche ?? ""}
+          initialStyle={prefill?.style ?? null}
+          initialAudience={prefill?.audience ?? null}
+        />
+      )}
+
       {activeTab === "reverse" && <ReverseHuntSection isCeo={true} />}
 
-      {/* Image Hunt — paste image URL → similar AE products */}
       {activeTab === "image" && <ImageHuntSection />}
 
-      {/* Coming Soon roadmap */}
       {activeTab === "soon" && <ComingSoonRoadmap />}
+
+      {/* Recent hunts only on Manual Hunting — the other modes are
+          input-driven (URL / image) and don't benefit from a history
+          carousel yet. */}
+      {activeTab === "manual" && <RecentHuntsStrip onPick={handlePickRecent} />}
     </div>
   );
 }
 
-// ─── Tool tabs bar ──────────────────────────────────────────────────
+// ─── Header strip (Spotlight layout, May 16 2026) ───────────────────
+//
+// One-line header that combines what used to be a 350px-tall
+// HeroBanner + a 4-card ToolTabsBar + AE banner. Saves ~280px of
+// vertical space so the actual tool (the niche input) lands above
+// the fold on every screen size.
+//
+// Layout:
+//   [logo · "Product Hunter"]   [Manual] [Reverse] [Image] [Soon]   [✓ AE]
+//
+// On narrow screens the mode tabs wrap to a second row underneath.
 
-/**
- * Pill-style tab bar that switches between hunting tools.
- *
- * Every tab keeps its own state inside its child component, so flipping
- * back to "Manual Hunting" preserves any in-progress scan results. Same
- * for Reverse / Image. Coming Soon is static.
- */
-function ToolTabsBar({
+const MODE_TABS: Array<{
+  id: HunterTab;
+  label: string;
+  icon: typeof Target;
+  gradient: string;
+}> = [
+  {
+    id: "manual",
+    label: "Manual Hunting",
+    icon: Target,
+    gradient: "from-sky-500 to-violet-500",
+  },
+  {
+    id: "reverse",
+    label: "Reverse Hunt",
+    icon: Link2,
+    gradient: "from-emerald-500 to-orange-500",
+  },
+  {
+    id: "image",
+    label: "Image Hunt",
+    icon: ImageIcon,
+    gradient: "from-violet-500 to-pink-500",
+  },
+  {
+    id: "soon",
+    label: "More Soon",
+    icon: LayoutGrid,
+    gradient: "from-amber-500 to-rose-500",
+  },
+];
+
+function HeaderStrip({
   active,
   onChange,
 }: {
   active: HunterTab;
   onChange: (t: HunterTab) => void;
 }) {
-  const tabs: Array<{
-    id: HunterTab;
-    label: string;
-    icon: typeof Target;
-    description: string;
-    gradient: string;
-  }> = [
-    {
-      id: "manual",
-      label: "Manual Hunting",
-      icon: Target,
-      description: "Type a seed → find underserved Etsy keywords",
-      gradient: "from-sky-500 to-violet-500",
-    },
-    {
-      id: "reverse",
-      label: "Reverse Hunt",
-      icon: Link2,
-      description: "Paste AE URL → will it sell?",
-      gradient: "from-emerald-500 to-orange-500",
-    },
-    {
-      id: "image",
-      label: "Image Hunt",
-      icon: ImageIcon,
-      description: "Paste image → find the supplier",
-      gradient: "from-violet-500 to-pink-500",
-    },
-    {
-      id: "soon",
-      label: "More Soon",
-      icon: LayoutGrid,
-      description: "Watchlists · Fresh Finds",
-      gradient: "from-amber-500 to-rose-500",
-    },
-  ];
-
   return (
-    <div className="relative">
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = active === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onChange(tab.id)}
-              className={`relative flex-1 min-w-[180px] snap-start rounded-2xl ring-1 transition-all overflow-hidden ${
-                isActive
-                  ? "ring-foreground/30 bg-card shadow-md"
-                  : "ring-border/50 bg-card/60 hover:ring-border hover:bg-card"
-              }`}
-            >
-              {isActive && (
-                <span
-                  aria-hidden
-                  className={`absolute inset-0 bg-gradient-to-br ${tab.gradient} opacity-[0.06]`}
-                />
-              )}
-              <div className="relative flex items-center gap-3 p-3">
-                <div
-                  className={`size-9 rounded-lg flex items-center justify-center shrink-0 ring-1 ${
+    <div className="relative ap-stagger-in">
+      <div className="rounded-2xl bg-card/95 ring-1 ring-border/60 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_12px_36px_-12px_rgba(0,0,0,0.5)] p-3 sm:p-3.5">
+        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+          {/* Logo + name */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="relative">
+              <span
+                aria-hidden
+                className="absolute -inset-1 rounded-xl bg-gradient-to-br from-sky-400/30 to-violet-500/30 blur-md"
+              />
+              <div className="relative size-9 rounded-xl bg-gradient-to-br from-sky-500 to-violet-600 ring-1 ring-violet-700/30 flex items-center justify-center shadow-md shadow-violet-500/25">
+                <Target className="size-4 text-white" />
+              </div>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-muted-foreground leading-tight">
+                Hunting hub
+              </p>
+              <h1 className="text-[15px] font-bold tracking-tight leading-tight">
+                Product Hunter
+              </h1>
+            </div>
+          </div>
+
+          {/* Mode tabs — flex-1 row, wraps on mobile */}
+          <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto pb-0.5 snap-x">
+            {MODE_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = active === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => onChange(tab.id)}
+                  className={`relative shrink-0 snap-start inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg ring-1 transition-all overflow-hidden text-[11px] font-bold tracking-tight ${
                     isActive
-                      ? `bg-gradient-to-br ${tab.gradient} ring-white/20 shadow-md`
-                      : "bg-muted/60 ring-border/40"
+                      ? "ring-foreground/30 bg-card shadow"
+                      : "ring-border/40 bg-muted/15 hover:ring-border hover:bg-muted/30 text-foreground/75"
                   }`}
                 >
+                  {isActive && (
+                    <span
+                      aria-hidden
+                      className={`absolute inset-0 bg-gradient-to-br ${tab.gradient} opacity-[0.08]`}
+                    />
+                  )}
                   <Icon
-                    className={`size-4 ${
-                      isActive ? "text-white" : "text-muted-foreground"
+                    className={`relative size-3 ${
+                      isActive ? "text-foreground" : "text-muted-foreground"
                     }`}
                   />
-                </div>
-                <div className="min-w-0 text-left">
-                  <p
-                    className={`text-[12px] font-bold tracking-tight leading-tight ${
-                      isActive ? "text-foreground" : "text-foreground/85"
-                    }`}
-                  >
-                    {tab.label}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 truncate">
-                    {tab.description}
-                  </p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+                  <span className="relative">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* AE compact badge sits on the far right — rendered by
+              AliExpressConnectionBanner itself when connected (compact
+              mode). When disconnected, the full banner renders below. */}
+        </div>
       </div>
     </div>
   );
@@ -295,156 +404,6 @@ function ComingSoonRoadmap() {
   );
 }
 
-// ─── Hero banner ────────────────────────────────────────────────────
-
-const TAB_COPY: Record<
-  HunterTab,
-  { description: string; cells: Array<{ icon: typeof Zap; label: string; sub: string }> }
-> = {
-  manual: {
-    description:
-      "Manual hunting — type a seed product type or niche, we brainstorm 25 long-tail variants and score each one against live Etsy demand, engagement, and shop diversity. You stay in control; the system surfaces the angles worth listing.",
-    cells: [
-      { icon: Zap, label: "25 variants", sub: "Haiku brainstorm" },
-      { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
-      { icon: Lightbulb, label: "Ranked", sub: "GREAT · GOOD · MAYBE · SKIP" },
-    ],
-  },
-  reverse: {
-    description:
-      "Already eyeing a product on AliExpress? Paste the link — we'll fetch it, check Etsy demand, project your margin, and tell you in plain English: source it or skip it.",
-    cells: [
-      { icon: ShoppingBag, label: "AE source", sub: "Live price + rating" },
-      { icon: TrendingUp, label: "Etsy demand", sub: "Listings + favorites" },
-      { icon: Lightbulb, label: "Verdict", sub: "STRONG YES · YES · MAYBE · NO" },
-    ],
-  },
-  image: {
-    description:
-      "See a competitor's winning Etsy listing? Drop their image URL here — AliExpress image search finds the supplier(s) selling that exact product. Turn their wins into your pipeline.",
-    cells: [
-      { icon: ImageIcon, label: "Image input", sub: "Any URL works" },
-      { icon: Target, label: "Visual match", sub: "AE image-search API" },
-      { icon: TrendingUp, label: "12 sources", sub: "Sorted by orders" },
-    ],
-  },
-  soon: {
-    description:
-      "Hunting tools in the pipeline — Watchlists, Fresh Finds, Bulk URL Checker, Source Health Monitor. Every new tool we build slots in as a tab on this page.",
-    cells: [
-      { icon: LayoutGrid, label: "Watchlists", sub: "Auto-fetch your niches" },
-      { icon: Sparkles, label: "Fresh Finds", sub: "Early but credible" },
-      { icon: TrendingUp, label: "Bulk tools", sub: "50 URLs at a time" },
-    ],
-  },
-};
-
-function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
-  const copy = TAB_COPY[activeTab];
-  return (
-    <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-violet-500/20 ap-stagger-in">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0d1a2a] via-[#1a1226] to-[#0d1a2a]" />
-      <div
-        aria-hidden
-        className="absolute -top-32 -left-20 size-[420px] rounded-full blur-3xl ap-aurora-1"
-        style={{
-          background:
-            "radial-gradient(closest-side, rgba(34,211,238,0.55), rgba(34,211,238,0) 70%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute -bottom-40 right-0 size-[520px] rounded-full blur-3xl ap-aurora-2"
-        style={{
-          background:
-            "radial-gradient(closest-side, rgba(168,85,247,0.55), rgba(168,85,247,0) 70%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-0 opacity-[0.08]"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle, rgba(255,255,255,0.6) 1px, transparent 1px)",
-          backgroundSize: "18px 18px",
-        }}
-      />
-
-      <div className="relative px-7 sm:px-9 py-8 sm:py-10">
-        <div className="flex items-center gap-2 mb-5 flex-wrap">
-          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 shadow-inner">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-80" />
-              <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
-            </span>
-            CEO admin · Beta
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
-            <Sparkles className="size-3" />
-            Hunting hub
-          </span>
-        </div>
-
-        <div className="flex items-center gap-4 sm:gap-5">
-          <div className="relative shrink-0">
-            <span
-              aria-hidden
-              className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-sky-400/40 to-violet-500/40 blur-lg ap-orb-pulse"
-            />
-            <div className="relative size-16 sm:size-[68px] rounded-2xl bg-gradient-to-br from-white/20 to-white/5 ring-1 ring-white/30 flex items-center justify-center backdrop-blur-md shadow-2xl shadow-sky-900/40">
-              <Target className="size-7 sm:size-8 text-white drop-shadow-lg" />
-            </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-[1.05]">
-              Product Hunter
-            </h1>
-            <p className="text-[13px] sm:text-sm text-white/75 mt-2 leading-relaxed max-w-2xl">
-              {copy.description}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-7 pt-5 border-t border-white/10">
-          {copy.cells.map((cell) => (
-            <FeatureCell
-              key={cell.label}
-              icon={cell.icon}
-              label={cell.label}
-              sub={cell.sub}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FeatureCell({
-  icon: Icon,
-  label,
-  sub,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  sub: string;
-}) {
-  return (
-    <div className="flex items-center gap-2.5 min-w-0">
-      <div className="size-8 rounded-lg bg-white/10 ring-1 ring-white/15 flex items-center justify-center shrink-0">
-        <Icon className="size-4 text-white/90" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] sm:text-[12px] font-semibold text-white leading-tight truncate">
-          {label}
-        </p>
-        <p className="text-[10px] text-white/55 leading-tight truncate">{sub}</p>
-      </div>
-    </div>
-  );
-}
-
-
 // ─── AliExpress connection banner ───────────────────────────────────
 
 interface AliConnectionStatus {
@@ -456,7 +415,11 @@ interface AliConnectionStatus {
   connectedAt?: string;
 }
 
-function AliExpressConnectionBanner() {
+function AliExpressConnectionBanner({
+  compactWhenConnected = false,
+}: {
+  compactWhenConnected?: boolean;
+}) {
   const [status, setStatus] = useState<AliConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -534,7 +497,47 @@ function AliExpressConnectionBanner() {
     );
   }
 
-  // Connected — compact green strip
+  // Connected
+  const disconnect = async () => {
+    if (!confirm("Disconnect AliExpress? You'll need to re-authorize."))
+      return;
+    await fetch("/api/aliexpress/disconnect", { method: "POST" });
+    setStatus({ connected: false });
+    toast.success("Disconnected from AliExpress");
+  };
+
+  // In the Spotlight layout the AE-connected state collapses to a
+  // single-line ultra-compact strip so it doesn't compete with the
+  // tool input below. When disconnected we always show the full
+  // CTA banner because the user needs to act.
+  if (compactWhenConnected) {
+    return (
+      <div className="flex items-center justify-between gap-3 px-3 py-1.5 rounded-lg bg-emerald-50/40 dark:bg-emerald-950/10 ring-1 ring-emerald-300/40 dark:ring-emerald-700/30 text-[11px]">
+        <div className="inline-flex items-center gap-1.5 min-w-0">
+          <Check
+            className="size-3 text-emerald-600 dark:text-emerald-400"
+            strokeWidth={3}
+          />
+          <span className="font-bold text-emerald-700 dark:text-emerald-300">
+            AliExpress connected
+          </span>
+          {status.aliUserNick && (
+            <span className="text-muted-foreground truncate">
+              · {status.aliUserNick}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={disconnect}
+          className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
+        >
+          Disconnect
+        </button>
+      </div>
+    );
+  }
+
   return (
     <Card className="border border-emerald-300/40 dark:border-emerald-700/30 bg-emerald-50/30 dark:bg-emerald-950/10 shadow-none">
       <CardContent className="p-3 flex items-center gap-2.5">
@@ -561,18 +564,139 @@ function AliExpressConnectionBanner() {
         </div>
         <button
           type="button"
-          onClick={async () => {
-            if (!confirm("Disconnect AliExpress? You'll need to re-authorize."))
-              return;
-            await fetch("/api/aliexpress/disconnect", { method: "POST" });
-            setStatus({ connected: false });
-            toast.success("Disconnected from AliExpress");
-          }}
+          onClick={disconnect}
           className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground"
         >
           Disconnect
         </button>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Recent hunts strip ─────────────────────────────────────────────
+//
+// Horizontal scroll of the last N Manual Hunting runs (read from
+// localStorage). Click a card → prefills the niche/style/audience
+// inputs back into ManualHuntingSection via the onPick callback.
+//
+// Auto-refreshes when ManualHuntingSection saves a new hunt — it
+// dispatches a `productHunter:recentHuntsChanged` custom event and
+// this component re-reads the list. Avoids any prop-drilling.
+
+function RecentHuntsStrip({
+  onPick,
+}: {
+  onPick: (hunt: RecentHunt) => void;
+}) {
+  // Lazy useState initializer reads from localStorage exactly once
+  // per mount (no setState-in-effect needed). readRecentHunts() is
+  // SSR-safe (returns [] when window is undefined).
+  const [hunts, setHunts] = useState<RecentHunt[]>(() => readRecentHunts());
+
+  useEffect(() => {
+    // Subscribe pattern only — setHunts is called from event
+    // CALLBACKS (allowed), not from the effect body itself.
+    const onChange = () => setHunts(readRecentHunts());
+    window.addEventListener("productHunter:recentHuntsChanged", onChange);
+    // Cross-tab updates
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === RECENT_HUNTS_KEY) setHunts(readRecentHunts());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(
+        "productHunter:recentHuntsChanged",
+        onChange,
+      );
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  if (hunts.length === 0) return null;
+
+  return (
+    <div className="space-y-2.5 ap-stagger-in">
+      <div className="flex items-center justify-between gap-3 px-1">
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground inline-flex items-center gap-1.5">
+          <Clock className="size-3 text-violet-500" />
+          Recent hunts
+          <span className="text-foreground/60 font-bold tabular-nums">
+            · {hunts.length}
+          </span>
+        </p>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1.5 -mx-1 px-1 snap-x">
+        {hunts.map((h) => (
+          <RecentHuntCard
+            key={h.timestamp}
+            hunt={h}
+            onPick={() => onPick(h)}
+            onClear={() => setHunts(readRecentHunts())}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecentHuntCard({
+  hunt,
+  onPick,
+  onClear,
+}: {
+  hunt: RecentHunt;
+  onPick: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="group relative shrink-0 snap-start min-w-[180px] max-w-[240px] rounded-xl ring-1 ring-border/50 bg-card/80 hover:bg-card hover:ring-border transition-colors overflow-hidden">
+      {/* Main click area */}
+      <button
+        type="button"
+        onClick={onPick}
+        className="w-full text-left p-3"
+        title={`Re-open hunt for "${hunt.niche}"`}
+      >
+        <p className="text-[12px] font-bold tracking-tight truncate pr-5">
+          {hunt.niche}
+        </p>
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          {hunt.style && (
+            <span className="inline-flex items-center text-[9px] font-bold bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 px-1.5 py-0.5 rounded">
+              {hunt.style}
+            </span>
+          )}
+          {hunt.audience && (
+            <span className="inline-flex items-center text-[9px] font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 px-1.5 py-0.5 rounded">
+              {hunt.audience}
+            </span>
+          )}
+        </div>
+        <p className="text-[9px] text-muted-foreground tabular-nums mt-1.5">
+          {formatTimeAgo(hunt.timestamp)}
+          {hunt.categoryCount !== undefined && hunt.productCount !== undefined && (
+            <span>
+              {" "}
+              · {hunt.categoryCount} cats · {hunt.productCount} kw
+            </span>
+          )}
+        </p>
+      </button>
+      {/* Remove button (hover only) */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          clearRecentHunt(hunt.timestamp);
+          onClear();
+        }}
+        className="absolute top-1.5 right-1.5 size-5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-foreground/10 flex items-center justify-center transition-opacity"
+        title="Remove from recent"
+        aria-label={`Remove "${hunt.niche}" from recent hunts`}
+      >
+        <X className="size-3 text-muted-foreground" />
+      </button>
+    </div>
   );
 }

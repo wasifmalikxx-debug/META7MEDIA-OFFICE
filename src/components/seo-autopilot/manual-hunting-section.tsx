@@ -26,6 +26,7 @@ import {
   Rows3,
 } from "lucide-react";
 import { toast } from "sonner";
+import { saveRecentHunt } from "./product-hunter-view";
 
 /**
  * Manual Hunting v3.0 — May 16 2026 single-page heatmap redesign.
@@ -193,10 +194,28 @@ function applySort(
 
 // ─── Main section ───────────────────────────────────────────────────
 
-export function ManualHuntingSection() {
-  const [niche, setNiche] = useState("");
-  const [style, setStyle] = useState<string | null>(null);
-  const [audience, setAudience] = useState<string | null>(null);
+/**
+ * Initial values for niche/style/audience. The parent ProductHunterView
+ * passes these when the user clicks a card in the Recent Hunts strip
+ * AND uses `key={prefill.timestamp}` to force a remount — so each
+ * prefill event becomes a fresh component instance with new defaults.
+ *
+ * The remount-on-key pattern keeps us within the codebase's "no
+ * setState inside useEffect" rule (React 19 best practice). Lazy
+ * useState initializers below read these props once per mount.
+ */
+export function ManualHuntingSection({
+  initialNiche = "",
+  initialStyle = null,
+  initialAudience = null,
+}: {
+  initialNiche?: string;
+  initialStyle?: string | null;
+  initialAudience?: string | null;
+} = {}) {
+  const [niche, setNiche] = useState(initialNiche);
+  const [style, setStyle] = useState<string | null>(initialStyle);
+  const [audience, setAudience] = useState<string | null>(initialAudience);
   const [extraCategories, setExtraCategories] = useState<string[]>([]);
 
   const [hunting, setHunting] = useState(false);
@@ -300,6 +319,17 @@ export function ManualHuntingSection() {
       }
       const data = (await res.json()) as NicheHuntResponse;
       setResult(data);
+      // Persist to Recent Hunts strip in the hub. Only on successful
+      // runs — failures don't clutter the history. Same niche + style
+      // + audience signature gets bumped to the top instead of duped.
+      saveRecentHunt({
+        niche: niche.trim(),
+        style,
+        audience,
+        timestamp: Date.now(),
+        categoryCount: data.categories.length,
+        productCount: data.productCount,
+      });
       toast.success(
         `${data.categories.length} categories · ${data.productCount} vetted products`,
       );
