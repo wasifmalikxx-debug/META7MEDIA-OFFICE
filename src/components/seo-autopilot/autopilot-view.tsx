@@ -833,10 +833,10 @@ function SourceCard({
 
           {/* CRITICAL compliance warning — raw AliExpress images get
               auto-flagged by our vision compliance gate as copyrighted /
-              counterfeit (Etsy is strict on this, and the Haiku gate
-              catches stock-photo watermarks + brand logos). Make this
-              IMPOSSIBLE to miss — bright rose, all caps eyebrow, animated
-              icon glow. */}
+              counterfeit (Etsy is strict on this, and the Claude vision
+              gate catches stock-photo watermarks + brand logos). Make
+              this IMPOSSIBLE to miss — bright rose, all caps eyebrow,
+              animated icon glow. */}
           <AliWarningBanner />
 
           <SeoImageUploader

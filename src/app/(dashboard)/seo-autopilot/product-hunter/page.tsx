@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * /seo-autopilot/product-hunter — CEO-only Etsy niche scanner.
  *
- * Wasif enters a seed product type or keyword. Product Hunter asks Haiku
+ * Wasif enters a seed product type or keyword. Product Hunter asks Claude
  * to brainstorm 25 long-tail variants, then hits Etsy live for each
  * one to gather demand + engagement + shop diversity stats. The
  * highest-scoring "underserved" keywords surface at the top — those

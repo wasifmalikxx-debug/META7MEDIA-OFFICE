@@ -164,15 +164,15 @@ export function ProductHunterView({
   return (
     <div className="relative pb-12">
       {/* Full-bleed hero: cancels the <main> p-4 md:p-6 + own top
-          padding so it spans edge to edge under the dashboard header */}
+          padding so it spans edge to edge under the dashboard header.
+          AE status pill lives INSIDE the hero now (next to Hunting
+          hub label) — no separate banner below. */}
       <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
-        <HeroBanner activeTab={activeTab} />
+        <HeroBanner activeTab={activeTab} userRole={userRole} />
       </div>
 
       {/* Constrained content column */}
       <div className="max-w-5xl mx-auto space-y-6">
-        <AliExpressConnectionBanner userRole={userRole} />
-
         <ToolTabsBar active={activeTab} onChange={setActiveTab} />
 
         {activeTab === "manual" && (
@@ -331,7 +331,7 @@ const TAB_COPY: Record<
 > = {
   manual: {
     cells: [
-      { icon: Sparkles, label: "25 variants", sub: "Haiku brainstorm" },
+      { icon: Sparkles, label: "25 variants", sub: "Claude brainstorm" },
       { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
       { icon: Heart, label: "Ranked", sub: "GREAT · GOOD · MAYBE · SKIP" },
     ],
@@ -359,7 +359,13 @@ const TAB_COPY: Record<
   },
 };
 
-function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
+function HeroBanner({
+  activeTab,
+  userRole,
+}: {
+  activeTab: HunterTab;
+  userRole: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
+}) {
   const copy = TAB_COPY[activeTab];
   return (
     <div className="relative overflow-hidden shadow-xl shadow-violet-500/15 ap-stagger-in border-b border-white/10">
@@ -416,6 +422,9 @@ function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
             <Sparkles className="size-3" />
             Hunting hub
           </span>
+          {/* AE status pill — sits right next to "Hunting hub" in the
+              header row. Role-aware (see component). */}
+          <AliExpressHeaderPill userRole={userRole} />
         </div>
 
         <div className="flex items-center gap-4 sm:gap-5">
@@ -591,18 +600,22 @@ interface AliConnectionStatus {
   connectedAt?: string;
 }
 
-function AliExpressConnectionBanner({
+// ─── AE connection pill (lives inside the hero) ─────────────────────
+//
+// CEO asked May 16 2026 to "shift the AliExpress button into the
+// header, right side of Product Hunter (or next to the Hunting hub
+// label)". This is the compact pill version that sits in the hero's
+// status-pill row, replacing the old below-the-hero card.
+//
+// Role behaviour (unchanged):
+//   - SUPER_ADMIN (CEO): connected → green pill with × disconnect;
+//                        disconnected → orange Connect link
+//   - PARTNER: connected → green status-only pill;
+//              disconnected → orange "ask Wasif" info pill
+//   - everyone else: nothing (the tool just works via CEO's token)
+function AliExpressHeaderPill({
   userRole = "SUPER_ADMIN",
 }: {
-  /** Drives the banner's visibility + action buttons:
-   *  - SUPER_ADMIN: full banner with Connect/Disconnect buttons
-   *  - PARTNER:     status-only banner (informational, no actions)
-   *  - all others:  banner is hidden entirely (employees don't need
-   *                 to see AE wiring; the tool just works for them)
-   *
-   * CEO is the only user who can actually attach an AE account — the
-   * OAuth flow happens through their session because every Manual
-   * Hunting call borrows the CEO's stored AE token. */
   userRole?: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
 }) {
   const [status, setStatus] = useState<AliConnectionStatus | null>(null);
@@ -663,44 +676,35 @@ function AliExpressConnectionBanner({
 
   if (loading) return null;
 
+  // DISCONNECTED — orange pill. CEO gets a clickable Connect link;
+  // partner gets an info-only "ask Wasif" pill.
   if (!status || !status.connected) {
-    // DISCONNECTED — content varies by role. CEO sees the Connect
-    // button; Partner sees an informational note pointing to CEO
-    // (only the CEO's OAuth flow can attach an AE account because
-    // every hunt borrows the CEO's stored token).
+    if (isCeo) {
+      return (
+        <a
+          href="/api/aliexpress/auth-start"
+          className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.16em] uppercase bg-gradient-to-r from-orange-500/85 to-rose-600/85 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-orange-300/40 shadow-md shadow-orange-500/25 hover:from-orange-500 hover:to-rose-600 transition-colors"
+          title="Connect your AliExpress account"
+        >
+          <Plug className="size-3" />
+          Connect AliExpress
+        </a>
+      );
+    }
+    // Partner — info pill, no action
     return (
-      <Card className="border border-orange-300/50 dark:border-orange-700/40 bg-orange-50/40 dark:bg-orange-950/15 shadow-none">
-        <CardContent className="p-4 flex items-center gap-3 flex-wrap">
-          <div className="size-9 rounded-xl bg-orange-500/15 ring-1 ring-orange-500/30 flex items-center justify-center shrink-0">
-            <Plug className="size-4 text-orange-600 dark:text-orange-400" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-bold leading-tight">
-              {isCeo
-                ? "Connect AliExpress to unlock full-loop hunting"
-                : "AliExpress not connected"}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-              {isCeo
-                ? "One-time authorization. Once connected, every keyword expands to a ranked AliExpress product list — no more browsing aliexpress.com manually."
-                : "Product previews require AliExpress to be connected by the CEO. Please ask Wasif to connect — it's a one-time auth and the tool will start showing AE previews immediately after."}
-            </p>
-          </div>
-          {isCeo && (
-            <a
-              href="/api/aliexpress/auth-start"
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12px] font-bold tracking-wide bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-md shadow-orange-500/30 hover:opacity-90 transition-opacity"
-            >
-              <Plug className="size-3.5" />
-              Connect AliExpress
-            </a>
-          )}
-        </CardContent>
-      </Card>
+      <span
+        className="inline-flex items-center gap-1.5 text-[10px] font-bold text-orange-100 tracking-[0.16em] uppercase bg-orange-500/20 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-orange-300/30"
+        title="AliExpress not connected — only the CEO can attach an account"
+      >
+        <Plug className="size-3" />
+        AE off · ask Wasif
+      </span>
     );
   }
 
-  // CONNECTED
+  // CONNECTED — green status pill. CEO sees a tiny × to disconnect;
+  // partners see status only.
   const disconnect = async () => {
     if (!confirm("Disconnect AliExpress? You'll need to re-authorize."))
       return;
@@ -710,43 +714,21 @@ function AliExpressConnectionBanner({
   };
 
   return (
-    <Card className="border border-emerald-300/40 dark:border-emerald-700/30 bg-emerald-50/30 dark:bg-emerald-950/10 shadow-none">
-      <CardContent className="p-3 flex items-center gap-2.5">
-        <div className="size-7 rounded-lg bg-emerald-500/15 ring-1 ring-emerald-500/30 flex items-center justify-center shrink-0">
-          <Check
-            className="size-3.5 text-emerald-600 dark:text-emerald-400"
-            strokeWidth={3}
-          />
-        </div>
-        <div className="min-w-0 flex-1 text-[11px] leading-tight">
-          <span className="font-bold text-emerald-700 dark:text-emerald-300">
-            AliExpress connected
-          </span>
-          {status.aliUserNick && (
-            <span className="text-muted-foreground">
-              {" "}
-              · {status.aliUserNick}
-            </span>
-          )}
-          <span className="text-muted-foreground">
-            {" "}
-            · full-loop hunting active
-          </span>
-        </div>
-        {/* Only CEO can disconnect — partners see status only.
-            (Disconnect would break the tool for everyone since every
-            hunt borrows the CEO's stored AE token.) */}
-        {isCeo && (
-          <button
-            type="button"
-            onClick={disconnect}
-            className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground"
-          >
-            Disconnect
-          </button>
-        )}
-      </CardContent>
-    </Card>
+    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-100 tracking-[0.16em] uppercase bg-emerald-500/20 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-emerald-300/30">
+      <Check className="size-3 text-emerald-300" strokeWidth={3} />
+      AliExpress connected
+      {isCeo && (
+        <button
+          type="button"
+          onClick={disconnect}
+          className="ml-0.5 size-3.5 rounded-full hover:bg-white/15 inline-flex items-center justify-center transition-colors -mr-1"
+          title="Disconnect AliExpress"
+          aria-label="Disconnect AliExpress"
+        >
+          <X className="size-2.5" strokeWidth={3} />
+        </button>
+      )}
+    </span>
   );
 }
 

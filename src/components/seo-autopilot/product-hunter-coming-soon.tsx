@@ -29,7 +29,7 @@ export function ProductHunterComingSoon() {
     {
       icon: Sparkles,
       title: "25 long-tail variants",
-      copy: "Haiku brainstorms angles you'd never think of. Specific, niche, rankable.",
+      copy: "Claude brainstorms angles you'd never think of. Specific, niche, rankable.",
     },
     {
       icon: TrendingUp,
