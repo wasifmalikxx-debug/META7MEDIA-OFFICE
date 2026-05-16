@@ -3,6 +3,7 @@ import { z } from "zod";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { huntByNiche } from "@/lib/services/product-hunter.service";
 import { getActiveTokenForUser } from "@/lib/services/aliexpress-api.service";
+import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -17,15 +18,17 @@ import { prisma } from "@/lib/prisma";
  *   - extraCategories (optional)   employee's shop categories to force-include
  *
  * Pipeline:
- *   1. Haiku → niche → 5-8 shop categories
- *   2. Per category (parallel) → Haiku → 4-6 keywords
+ *   1. Claude → niche → 5-8 shop categories
+ *   2. Per category (parallel) → Claude → 4-6 keywords
  *   3. Per keyword (parallel) → Etsy demand + score
  *   4. Per GREAT/GOOD keyword → AliExpress top-3 preview + margin
  *
  * Returns the results organized by category.
  *
- * Access: CEO-only during pilot — same gate as the old hunt-products.
- * AE side uses the CEO's connected token.
+ * Access (May 16 2026 — EM-team rollout): anyone with
+ * canUseRealTool from the shared SEO Autopilot predicate. That's
+ * CEO + Etsy partners + Izaan (EM-4) + EM employees. AE side
+ * always uses the CEO's stored token regardless of caller.
  */
 
 export const dynamic = "force-dynamic";
@@ -44,8 +47,20 @@ const RequestSchema = z.object({
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
-  if (session.user.role !== "SUPER_ADMIN") {
-    return error("Manual Hunting is in CEO-only pilot", 403);
+
+  // Same role gate as the page. Anyone with canUseRealTool can hunt:
+  // CEO + Etsy partners + Izaan + EM employees. Backend-side check
+  // mirrors the UI so a stale bundle can't bypass the gate.
+  const access = await getSeoAutopilotAccess({
+    id: session.user.id,
+    role: session.user.role,
+    employeeId: session.user.employeeId ?? null,
+  });
+  if (!access.canUseRealTool) {
+    return error(
+      "Manual Hunting access is not enabled for your account",
+      403,
+    );
   }
 
   let payload: z.infer<typeof RequestSchema>;
