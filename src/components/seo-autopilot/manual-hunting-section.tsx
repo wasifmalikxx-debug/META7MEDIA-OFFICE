@@ -640,14 +640,9 @@ function NicheInputCard({
       />
 
       <CardContent className="relative p-6 sm:p-8 space-y-7">
-        {/* Slim header — just a centered title. No big icon orb, no
-            description paragraph (the hero banner above already
-            introduces the tool). */}
+        {/* Slim header — just a centered title. */}
         <div className="text-center">
-          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-sky-600 dark:text-sky-400">
-            Start here
-          </p>
-          <h3 className="text-[22px] sm:text-[28px] font-bold tracking-tight leading-tight mt-1">
+          <h3 className="text-[22px] sm:text-[28px] font-bold tracking-tight leading-tight">
             What do you want to hunt?
           </h3>
         </div>
