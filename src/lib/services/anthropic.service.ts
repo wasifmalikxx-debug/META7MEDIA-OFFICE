@@ -731,8 +731,21 @@ const GENDER_ENFORCEMENT: Array<{
     requiresAny: ["women", "female", "girl", "her", "bride", "wife", "girlfriend", "mom", "mother", "lady", "ladies"],
   },
   {
-    triggers: ["kids", "children", "child", "toddler", "baby", "infant"],
-    requiresAny: ["kid", "children", "child", "toddler", "baby", "infant"],
+    // The baby/kid bucket needs to be permissive — for niches like
+    // "Newborn baby clothing", Haiku naturally writes keywords using
+    // "newborn" or "preemie" alone (e.g. "newborn cotton onesie",
+    // "preemie hat soft") without also saying "baby". Previously
+    // those got filtered out because "newborn" and "preemie" weren't
+    // in requiresAny, leaving categories like Hats & Mittens with
+    // just 1 keyword instead of 5-6. Both terms are now accepted.
+    triggers: [
+      "kids", "children", "child", "toddler",
+      "baby", "infant", "newborn", "preemie", "preemies",
+    ],
+    requiresAny: [
+      "kid", "children", "child", "toddler",
+      "baby", "infant", "newborn", "preemie", "nursery",
+    ],
   },
 ];
 
