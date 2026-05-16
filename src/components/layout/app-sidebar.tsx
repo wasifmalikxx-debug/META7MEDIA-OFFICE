@@ -461,28 +461,39 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     </SidebarMenuItem>
                   )}
                   {/* Product Hunter — finds underserved Etsy niches before
-                      sending the team to AliExpress. Opened to the full
-                      EM team May 16 2026 (was CEO-only pilot until then).
-                      All link recipients here see the REAL tool — CEO,
-                      Izaan, EM employees, Etsy partners. Everyone else
-                      doesn't see this link in their sidebar; if they
-                      direct-navigate, they hit the Coming Soon placeholder. */}
-                  {(isCeo || isEmTeam || isEtsyPartner) && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        render={<Link href="/seo-autopilot/product-hunter" />}
-                        isActive={isItemActive(
-                          "/seo-autopilot/product-hunter",
-                        )}
-                      >
-                        <Target className="size-4" />
-                        <span>Product Hunter</span>
-                        <span className="ml-auto inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-950/50 px-1.5 py-0.5 text-[9px] font-bold text-sky-700 dark:text-sky-300 tracking-wider uppercase">
-                          New
+                      sending the team to AliExpress. Shown to everyone in
+                      the Etsy Tools group (gated above by showTools).
+                      Pill differentiates by real-tool access:
+                        - CEO + Izaan + EM employees + Etsy partners →
+                          green "BETA" pill with pulsing dot (real tool).
+                        - HR + AE/ME employees → violet "SOON" pill (lands
+                          on the Coming Soon placeholder).
+                      Mirrors the SEO Autopilot link below. */}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      render={<Link href="/seo-autopilot/product-hunter" />}
+                      isActive={isItemActive(
+                        "/seo-autopilot/product-hunter",
+                      )}
+                    >
+                      <Target className="size-4" />
+                      <span>Product Hunter</span>
+                      {hasAutopilotBeta ? (
+                        <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
+                          <span className="relative flex size-1">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                            <span className="relative inline-flex size-1 rounded-full bg-emerald-500" />
+                          </span>
+                          Beta
                         </span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
+                      ) : (
+                        <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
+                          Soon
+                        </span>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+
                   {/* Reverse Hunt removed from sidebar May 16 — it's
                       now a tab inside the unified Product Hunter hub.
                       Old /reverse-hunt URL redirects to
