@@ -94,7 +94,9 @@ export function TrendingCard({
         </div>
       )}
 
-      {/* Thumbnail */}
+      {/* Thumbnail — chips moved into the body's stat strip for
+          stronger at-a-glance signal (CEO ask May 16 2026). Kept the
+          thumbnail clean so the product image gets full visual weight. */}
       <div className="relative aspect-square bg-muted/40 overflow-hidden">
         {product.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -107,20 +109,6 @@ export function TrendingCard({
         ) : (
           <Package className="size-10 m-auto text-muted-foreground/30 mt-12" />
         )}
-        {/* Order count chip — bottom-left */}
-        {product.ordersCount != null && product.ordersCount > 0 && (
-          <div className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/65 backdrop-blur-md px-2 py-0.5 text-[10px] font-bold text-white tabular-nums">
-            {formatOrders(product.ordersCount)} sold
-          </div>
-        )}
-
-        {/* Rating chip — bottom-right (only when AE returned rating) */}
-        {product.ratingStars != null && product.ratingStars > 0 && (
-          <div className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 backdrop-blur-md px-2 py-0.5 text-[10px] font-bold text-white tabular-nums shadow-sm">
-            <Star className="size-2.5 fill-white" strokeWidth={0} />
-            {product.ratingStars.toFixed(1)}
-          </div>
-        )}
       </div>
 
       {/* Body */}
@@ -128,6 +116,33 @@ export function TrendingCard({
         <p className="text-[12px] font-medium leading-snug line-clamp-2 min-h-[32px]">
           {product.title}
         </p>
+
+        {/* Trust signals strip — prominent rating + sold count.
+            Only renders when at least one signal is present (AE
+            sometimes omits both for low-volume new SKUs). */}
+        {(hasRating(product.ratingStars) ||
+          hasOrders(product.ordersCount)) && (
+          <div className="flex items-center justify-center gap-2 rounded-lg bg-muted/50 ring-1 ring-border/40 py-1.5 px-2 text-[11px] tabular-nums">
+            {hasRating(product.ratingStars) && (
+              <span className="inline-flex items-center gap-0.5 font-bold text-amber-600 dark:text-amber-400">
+                <Star
+                  className="size-3 fill-current"
+                  strokeWidth={0}
+                />
+                {product.ratingStars!.toFixed(1)}
+              </span>
+            )}
+            {hasRating(product.ratingStars) &&
+              hasOrders(product.ordersCount) && (
+                <span className="text-muted-foreground/40">·</span>
+              )}
+            {hasOrders(product.ordersCount) && (
+              <span className="font-bold text-foreground/85">
+                {formatOrders(product.ordersCount!)} sold
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Price block — AE → Etsy + margin chip */}
         <div className="grid grid-cols-2 gap-1.5 text-[11px] tabular-nums">
@@ -232,4 +247,12 @@ function formatOrders(n: number): string {
   if (n >= 10_000) return `${(n / 1000).toFixed(0)}k`;
   if (n >= 1_000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
+}
+
+function hasRating(stars: number | null | undefined): stars is number {
+  return typeof stars === "number" && stars > 0;
+}
+
+function hasOrders(orders: number | null | undefined): orders is number {
+  return typeof orders === "number" && orders > 0;
 }

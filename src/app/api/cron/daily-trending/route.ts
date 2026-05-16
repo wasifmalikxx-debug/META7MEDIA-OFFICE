@@ -2,7 +2,10 @@ import { NextRequest } from "next/server";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { getActiveTokenForUser } from "@/lib/services/aliexpress-api.service";
-import { runDailyTrendingFetch } from "@/lib/services/daily-trending.service";
+import {
+  runDailyTrendingFetch,
+  todayInPkt,
+} from "@/lib/services/daily-trending.service";
 import { getDailyTrendingAccess } from "@/lib/services/daily-trending-access";
 
 /**
@@ -79,7 +82,22 @@ export async function POST() {
     return error("Only the CEO can trigger a manual refresh", 403);
   }
 
+  // Wipe today's UNCLAIMED rows before re-fetching. This makes the
+  // refresh feel like a clean re-run — any newly-tightened filters
+  // (Etsy-friendliness, rating, etc.) apply against an empty bucket
+  // instead of being silently no-op'd by the 7-day dedupe checking
+  // against existing today rows.
+  //
+  // Claimed rows are PRESERVED so the seller doesn't lose their
+  // "I'm listing this" marker when CEO refreshes.
+  const wiped = await prisma.dailyTrendingProduct.deleteMany({
+    where: {
+      fetchDate: todayInPkt(),
+      claimedById: null,
+    },
+  });
+
   const out = await runWithCeoToken();
   if (!out.ok) return error(out.message, out.status);
-  return json({ ok: true, ...out.result });
+  return json({ ok: true, wipedBeforeRefresh: wiped.count, ...out.result });
 }

@@ -90,6 +90,86 @@ const MIN_ORDERS_FRESH = 5;
  * over 200 orders is already a known winner — show it in TRENDING. */
 const MAX_ORDERS_FRESH = 200;
 
+/** Minimum title length. Sub-20-char titles on AE are usually badly
+ * translated stubs or spam SKUs that look broken on Etsy listings. */
+const MIN_TITLE_LENGTH = 20;
+
+// ─── Etsy-friendliness keyword blocklist ────────────────────────────
+//
+// AE's volume sort surfaces mass-market products that don't fit Etsy's
+// handmade/artisan aesthetic — generic tech accessories, branded
+// counterfeits, wholesale bulk packs, industrial tools, etc. Any title
+// containing one of these tokens gets filtered out.
+//
+// Match is case-insensitive substring on the lowercased title.
+// Trailing spaces in some tokens (e.g. "lg ", "1pcs ") are intentional
+// to avoid matching legitimate word fragments ("LGBT" wouldn't match
+// "lg " because of the space).
+//
+// Maintained by hand — add new patterns when AE-junk keeps slipping
+// through. The cron logs filteredOut count per niche so we can spot
+// niches that need more blocklist work.
+
+const ETSY_HOSTILE_TOKENS: ReadonlyArray<string> = [
+  // ─ Brand names (almost always counterfeit on AE) ─
+  "samsung", "apple", "iphone", "ipad", "macbook", "airpod",
+  "huawei", "xiaomi", "redmi", "oppo", "vivo", "honor",
+  "sony", "lg ", "panasonic", "philips", "bosch", "siemens",
+  "nike", "adidas", "puma", "reebok", "champion",
+  "louis vuitton", "gucci", "chanel", "rolex", "burberry",
+  "disney", "marvel", "lego",
+
+  // ─ Tech accessories — wrong aesthetic for Etsy ─
+  "usb", "type-c", "type c ", "hdmi", "ethernet",
+  "led strip", "led light", "led lamp", "led bar", "led ring",
+  "wireless charger", "wifi", "5g ",
+  "bluetooth speaker", "bluetooth earphone",
+  "earphone", "earbud", "headset", "headphone", "airpods",
+  "smartwatch", "smart watch", "fitness band", "fitness tracker",
+  "power bank", "powerbank", "fast charger", "adapter",
+  "router", "modem", "extender",
+  "drone", "projector", "monitor", "webcam",
+  "phone holder", "phone stand", "phone case", "ring light",
+  "car charger", "car mount", "dash cam",
+
+  // ─ Industrial / wholesale signals ─
+  "wholesale", "bulk", "factory", "b2b", "oem",
+  "1pcs ", "10pcs", "100pcs", "5pcs ", "20pcs",
+  "industrial", "professional grade", "heavy duty",
+  "raw material", "loose beads", "loose stones",
+
+  // ─ Mass-market hardware ─
+  "vacuum cleaner", "blender", "mixer ", "juicer", "fryer",
+  "drill", "saw ", "wrench", "screwdriver", "tool kit",
+  "car accessory", "auto part", "motorcycle",
+  "vape", "vaping", "ecig", "e-cig", "shisha", "hookah",
+  "trimmer", "clipper", "razor", "shaver", "epilator",
+  "treadmill", "dumbbell", "barbell",
+
+  // ─ Cheap copies / counterfeit indicators ─
+  "replica", "clone", "fake ", "knockoff", "1:1 copy",
+
+  // ─ Adult / NSFW (off-brand for Etsy in our shops) ─
+  "sex toy", "vibrator", "lingerie", "intimate", "g-spot",
+];
+
+/** Returns true if the title is safe for Etsy listing — clears the
+ * blocklist and basic quality checks. */
+function isEtsyFriendly(title: string): boolean {
+  if (!title) return false;
+  const trimmed = title.trim();
+  if (trimmed.length < MIN_TITLE_LENGTH) return false;
+  // Reject titles with untranslated Chinese characters — they'll look
+  // unprofessional on Etsy. CJK range covers Chinese, Japanese kanji,
+  // and Korean hanja; all three signal a botched translation pipeline.
+  if (/[一-鿿]/.test(trimmed)) return false;
+  const lower = trimmed.toLowerCase();
+  for (const token of ETSY_HOSTILE_TOKENS) {
+    if (lower.includes(token)) return false;
+  }
+  return true;
+}
+
 export interface NicheRunSummary {
   niche: string;
   source: TrendingSource;
@@ -304,7 +384,10 @@ export async function runNiche(opts: {
 
 // ─── Filters ────────────────────────────────────────────────────────
 
-/** Universal field + price-band check. Same for both sources. */
+/** Universal field + price-band + Etsy-friendliness check. Same for
+ * both sources. Etsy-friendliness is a title-only check (we can't
+ * inspect product images at filter time), so it catches the obvious
+ * tech/wholesale/brand pollution but isn't perfect. */
 function passesBasicFilters(p: AliExpressProduct): boolean {
   if (
     !p.productId ||
@@ -317,6 +400,7 @@ function passesBasicFilters(p: AliExpressProduct): boolean {
   ) {
     return false;
   }
+  if (!isEtsyFriendly(p.title)) return false;
   return true;
 }
 
