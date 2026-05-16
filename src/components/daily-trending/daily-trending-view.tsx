@@ -53,9 +53,15 @@ interface FeedResponse {
 export function DailyTrendingView({
   currentUserId,
   isCeo,
+  embedded = false,
 }: {
   currentUserId: string;
   isCeo: boolean;
+  /** When true, the hero is omitted + "Refresh now" moves into the
+   * niche bar. Used when this component is mounted as a tab inside
+   * Product Hunter (which already has its own hero). The standalone
+   * /daily-trending page uses `embedded=false` (default). */
+  embedded?: boolean;
 }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -182,6 +188,71 @@ export function DailyTrendingView({
         day: "numeric",
       })
     : null;
+
+  // When embedded (inside the Product Hunter tab), we skip our own
+  // hero — Product Hunter's hero is already on the page. The standalone
+  // /daily-trending URL still uses the full hero. CEO-only "Refresh
+  // now" lives in the hero when not embedded, otherwise it sits inside
+  // the niche bar so it's always reachable.
+  const content = (
+    <>
+      <NicheRowBar
+        niches={niches}
+        onManage={() => setShowNicheModal(true)}
+        embedded={embedded}
+        isCeo={isCeo}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        totalFresh={totalProducts}
+        lastRefresh={lastRefresh}
+      />
+      {loading ? (
+        <LoadingState />
+      ) : niches.length === 0 ? (
+        <EmptyNichesState onAddFirst={() => setShowNicheModal(true)} />
+      ) : groups.every((g) => g.products.length === 0) ? (
+        <NoTrendingTodayState onRefresh={isCeo ? handleRefresh : undefined} />
+      ) : (
+        <div className="space-y-8">
+          {groups.map((g) => (
+            <NicheGroupSection
+              key={g.niche}
+              group={g}
+              currentUserId={currentUserId}
+              isCeo={isCeo}
+              busyClaimId={busyClaimId}
+              onClaim={handleClaim}
+              onUnclaim={handleUnclaim}
+            />
+          ))}
+        </div>
+      )}
+      {!loading && niches.length > 0 && (
+        <p className="text-center text-[11px] text-muted-foreground italic pt-4">
+          Fresh batch every morning at 5 AM PKT. Yesterday&apos;s trends roll
+          off the page automatically.
+        </p>
+      )}
+    </>
+  );
+
+  // Embedded mode: just the content, no outer hero / margins / max-width
+  // (the parent tab provides those). Hide the original full layout
+  // beneath the early return.
+  if (embedded) {
+    return (
+      <div className="space-y-6">
+        {content}
+        <NicheManagerModal
+          open={showNicheModal}
+          onOpenChange={setShowNicheModal}
+          niches={niches.map((n) => ({ id: n.id, niche: n.niche }))}
+          cap={5}
+          onChanged={fetchFeed}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative pb-12">
@@ -439,9 +510,26 @@ function FeatureCell({
 function NicheRowBar({
   niches,
   onManage,
+  // Optional embedded-mode controls. When `embedded=true` we inline
+  // the "Refresh now" button + a short last-refresh label here, so
+  // the user keeps those controls without the Product Hunter hero
+  // (which doesn't carry them — it's a Hunter-wide hero, not
+  // tab-specific).
+  embedded = false,
+  isCeo = false,
+  refreshing = false,
+  onRefresh,
+  totalFresh,
+  lastRefresh,
 }: {
   niches: Array<{ id: string; niche: string; active: boolean }>;
   onManage: () => void;
+  embedded?: boolean;
+  isCeo?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  totalFresh?: number;
+  lastRefresh?: string | null;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 flex-wrap rounded-2xl border border-border/60 bg-card px-4 py-3">
@@ -468,16 +556,42 @@ function NicheRowBar({
           ))
         )}
       </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={onManage}
-        className="h-8 gap-1.5 text-[11px] shrink-0"
-      >
-        <Settings2 className="size-3.5" />
-        Manage niches
-      </Button>
+      <div className="flex items-center gap-2 shrink-0">
+        {embedded && typeof totalFresh === "number" && (
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground tabular-nums hidden sm:inline">
+            {totalFresh} fresh
+            {lastRefresh ? ` · ${lastRefresh}` : ""}
+          </span>
+        )}
+        {embedded && isCeo && onRefresh && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="h-8 gap-1.5 text-[11px]"
+            title="Force a fresh fetch now (CEO only)"
+          >
+            {refreshing ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            Refresh
+          </Button>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onManage}
+          className="h-8 gap-1.5 text-[11px]"
+        >
+          <Settings2 className="size-3.5" />
+          Manage niches
+        </Button>
+      </div>
     </div>
   );
 }

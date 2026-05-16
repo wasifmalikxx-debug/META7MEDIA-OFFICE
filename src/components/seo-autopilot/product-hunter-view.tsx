@@ -14,11 +14,15 @@ import {
   Hourglass,
   LayoutGrid,
   X,
+  Flame,
+  Bookmark,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ReverseHuntSection } from "./reverse-hunt-section";
 import { ImageHuntSection } from "./image-hunt-section";
 import { ManualHuntingSection } from "./manual-hunting-section";
+import { DailyTrendingView } from "@/components/daily-trending/daily-trending-view";
+import { DailyTrendingTabComingSoon } from "@/components/daily-trending/daily-trending-tab-coming-soon";
 
 // ─── Recent hunts storage (localStorage) ─────────────────────────────
 //
@@ -113,16 +117,18 @@ export function useRecentHunts(): RecentHunt[] {
 /**
  * Tab identifiers for the Product Hunter hub.
  *
- *  - manual   → keyword-brainstorm + Etsy scoring (CEO types a seed,
- *               we brainstorm and score against Etsy demand)
- *  - reverse  → paste an AE URL → Etsy demand verdict + projected margin
- *  - image    → paste an image URL → similar AE products
- *  - soon     → roadmap card (Watchlists, Fresh Finds, etc.)
+ *  - manual    → keyword-brainstorm + Etsy scoring (CEO types a seed,
+ *                we brainstorm and score against Etsy demand)
+ *  - reverse   → paste an AE URL → Etsy demand verdict + projected margin
+ *  - image     → paste an image URL → similar AE products
+ *  - trending  → Daily Trending — morning AE feed scoped to niche book
+ *                (CEO-only during validation phase; others see Coming Soon)
+ *  - soon      → roadmap card (Watchlists, Fresh Finds, etc.)
  *
  * Every future hunting tool we build slots in here as a new tab so the
  * whole team has one URL to remember.
  */
-type HunterTab = "manual" | "reverse" | "image" | "soon";
+type HunterTab = "manual" | "reverse" | "image" | "trending" | "soon";
 
 /**
  * Initial-tab resolver — reads `?tab=X` from window.location.
@@ -136,6 +142,7 @@ function resolveInitialTab(): HunterTab {
     requested === "manual" ||
     requested === "reverse" ||
     requested === "image" ||
+    requested === "trending" ||
     requested === "soon"
   ) {
     return requested;
@@ -145,13 +152,19 @@ function resolveInitialTab(): HunterTab {
 
 export function ProductHunterView({
   userRole = "SUPER_ADMIN",
+  currentUserId,
 }: {
   /** Role gate for the AE connection banner. CEO sees full controls,
    * partners see status-only (no Connect button), everyone else gets
    * the banner hidden entirely. Defaults to SUPER_ADMIN for backward
    * compat with calls that don't pass the prop yet. */
   userRole?: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
+  /** Logged-in user id. Required for the Daily Trending tab so the
+   * claim button can flip cards to "Claimed by you". Optional for
+   * backward compat — falls back to a no-op claim path. */
+  currentUserId?: string;
 }) {
+  const isCeo = userRole === "SUPER_ADMIN";
   const [activeTab, setActiveTab] = useState<HunterTab>(resolveInitialTab);
 
   // Recent hunts now live INSIDE the NicheInputCard (May 16 2026 v3
@@ -178,6 +191,17 @@ export function ProductHunterView({
         {activeTab === "reverse" && <ReverseHuntSection isCeo={true} />}
 
         {activeTab === "image" && <ImageHuntSection />}
+
+        {activeTab === "trending" &&
+          (isCeo && currentUserId ? (
+            <DailyTrendingView
+              currentUserId={currentUserId}
+              isCeo={isCeo}
+              embedded
+            />
+          ) : (
+            <DailyTrendingTabComingSoon />
+          ))}
 
         {activeTab === "soon" && <ComingSoonRoadmap />}
       </div>
@@ -219,6 +243,13 @@ const MODE_TABS: Array<{
     icon: ImageIcon,
     description: "Paste image → find the supplier",
     gradient: "from-violet-500 to-pink-500",
+  },
+  {
+    id: "trending",
+    label: "Daily Trending",
+    icon: Flame,
+    description: "Morning AE feed for your niches",
+    gradient: "from-orange-500 to-rose-500",
   },
   {
     id: "soon",
@@ -335,6 +366,13 @@ const TAB_COPY: Record<
       { icon: ImageIcon, label: "Image input", sub: "Any URL works" },
       { icon: Target, label: "Visual match", sub: "AE image-search API" },
       { icon: TrendingUp, label: "12 sources", sub: "Sorted by orders" },
+    ],
+  },
+  trending: {
+    cells: [
+      { icon: Bookmark, label: "Niche book", sub: "Up to 5 niches" },
+      { icon: Flame, label: "5 AM PKT", sub: "Auto-refresh daily" },
+      { icon: TrendingUp, label: "Pre-priced", sub: "Etsy markup baked in" },
     ],
   },
   soon: {

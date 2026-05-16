@@ -5,20 +5,21 @@ import { prisma } from "@/lib/prisma";
  *
  * Mirrors `getSeoAutopilotAccess` shape so adding a new role is a
  * one-line change instead of a 4-file edit (page + 2 API routes +
- * sidebar). Keep this in sync with the sidebar block below.
+ * sidebar). The role flags below are kept populated for future
+ * expansion — flipping the team back on is a one-line change to
+ * `canUseRealTool` (just OR the desired roles back in).
  *
- * Access policy (May 16 2026 — initial rollout):
- *  - CEO / SUPER_ADMIN                     → unlimited + admin view
- *  - MANAGER (Izaan, EM-4)                 → real tool (own + team niches)
- *  - EM employees (EM-* except EM-4 / 4L)  → real tool, own niches
- *  - AE employees (AE-*)                   → real tool, own niches
- *  - ME employees (ME-*)                   → real tool, own niches
- *  - Etsy PARTNERs (Awais, Mubeen)         → real tool, own niches
- *  - Everyone else (HR / Facebook / Zain)  → Coming Soon placeholder
+ * Access policy (May 16 2026 — CEO solo validation phase):
+ *  - CEO / SUPER_ADMIN                     → real tool, CEO niche book
+ *  - Everyone else (incl. EM team)         → Coming Soon placeholder
  *
- * Why broader than SEO Autopilot? Daily Trending is read-only AE
- * data (no expensive Claude calls), so we can give every Etsy
- * seller access without worrying about per-user quota costs.
+ * Why CEO-only initially? Wasif wants to validate the daily picks
+ * himself before turning the team loose on AE links pulled from a
+ * fully-automated feed. Same rollout pattern Product Hunter
+ * followed: CEO solo → EM team → full team.
+ *
+ * Mounted as a tab inside the Product Hunter hub (May 16 2026 v3) —
+ * the standalone /daily-trending URL redirects to the tab.
  */
 
 export interface DailyTrendingAccess {
@@ -62,13 +63,10 @@ export async function getDailyTrendingAccess(user: {
     );
   }
 
-  const canUseRealTool =
-    isCeo ||
-    isManager ||
-    isEmEmployee ||
-    isAeEmployee ||
-    isMeEmployee ||
-    isEtsyPartner;
+  // CEO-only during the validation phase. To expand later, just OR
+  // in the role flags below (isManager || isEmEmployee || ...) — the
+  // rest of the stack (APIs, page, tab UI) needs no changes.
+  const canUseRealTool = isCeo;
 
   return {
     isCeo,
