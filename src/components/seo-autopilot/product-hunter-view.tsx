@@ -155,36 +155,45 @@ export function ProductHunterView({
     }
   }, []);
 
-  // Layout (May 16 2026, second pass — restored themed hero per CEO):
-  //   1. HeroBanner — dark gradient aurora hero matching SEO Autopilot
-  //   2. AE connection banner (role-aware visibility, see component)
-  //   3. ToolTabsBar — 4 mode cards
-  //   4. Active mode section
-  //   5. Recent hunts strip (kept from Spotlight pass, only on Manual)
+  // Layout (May 16 2026, third pass — full-width hero per CEO):
+  //   1. HeroBanner — FULL-WIDTH (breaks out of <main>'s p-4 md:p-6
+  //      padding via negative margins). Inner text still capped at
+  //      max-w-5xl for readability on wide displays.
+  //   2-5. AE banner, tabs, active mode, recent hunts — all stay
+  //      constrained to the centered max-w-5xl content column.
   return (
-    <div className="relative max-w-5xl mx-auto space-y-6 pb-12">
-      <HeroBanner activeTab={activeTab} />
+    <div className="relative pb-12">
+      {/* Full-bleed hero: cancels the <main> p-4 md:p-6 + own top
+          padding so it spans edge to edge under the dashboard header */}
+      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
+        <HeroBanner activeTab={activeTab} />
+      </div>
 
-      <AliExpressConnectionBanner userRole={userRole} />
+      {/* Constrained content column */}
+      <div className="max-w-5xl mx-auto space-y-6">
+        <AliExpressConnectionBanner userRole={userRole} />
 
-      <ToolTabsBar active={activeTab} onChange={setActiveTab} />
+        <ToolTabsBar active={activeTab} onChange={setActiveTab} />
 
-      {activeTab === "manual" && (
-        <ManualHuntingSection
-          key={prefill?.timestamp ?? "fresh"}
-          initialNiche={prefill?.niche ?? ""}
-          initialStyle={prefill?.style ?? null}
-          initialAudience={prefill?.audience ?? null}
-        />
-      )}
+        {activeTab === "manual" && (
+          <ManualHuntingSection
+            key={prefill?.timestamp ?? "fresh"}
+            initialNiche={prefill?.niche ?? ""}
+            initialStyle={prefill?.style ?? null}
+            initialAudience={prefill?.audience ?? null}
+          />
+        )}
 
-      {activeTab === "reverse" && <ReverseHuntSection isCeo={true} />}
+        {activeTab === "reverse" && <ReverseHuntSection isCeo={true} />}
 
-      {activeTab === "image" && <ImageHuntSection />}
+        {activeTab === "image" && <ImageHuntSection />}
 
-      {activeTab === "soon" && <ComingSoonRoadmap />}
+        {activeTab === "soon" && <ComingSoonRoadmap />}
 
-      {activeTab === "manual" && <RecentHuntsStrip onPick={handlePickRecent} />}
+        {activeTab === "manual" && (
+          <RecentHuntsStrip onPick={handlePickRecent} />
+        )}
+      </div>
     </div>
   );
 }
@@ -362,9 +371,11 @@ const TAB_COPY: Record<
 function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
   const copy = TAB_COPY[activeTab];
   return (
-    <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-violet-500/20 ap-stagger-in">
+    <div className="relative overflow-hidden shadow-xl shadow-violet-500/15 ap-stagger-in border-b border-white/10">
       {/* Base gradient — cool navy → violet → navy to differentiate
-          Product Hunter from SEO Autopilot's warm purple → orange */}
+          Product Hunter from SEO Autopilot's warm purple → orange.
+          Full-bleed (no rounded corners, no side ring) so it spans
+          edge-to-edge under the dashboard header. */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#0d1a2a] via-[#1a1226] to-[#0d1a2a]" />
 
       {/* Animated aurora blobs — cyan + violet */}
@@ -398,7 +409,10 @@ function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
         className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent"
       />
 
-      <div className="relative px-7 sm:px-9 py-8 sm:py-10">
+      {/* Inner content is still constrained to max-w-5xl so headlines
+          don't sprawl across ultrawide displays — only the visual
+          background is full-width. */}
+      <div className="relative max-w-5xl mx-auto px-7 sm:px-9 py-8 sm:py-10">
         <div className="flex items-center gap-2 mb-5 flex-wrap">
           <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 shadow-inner">
             <span className="relative flex size-2">
