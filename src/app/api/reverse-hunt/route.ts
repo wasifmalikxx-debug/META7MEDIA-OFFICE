@@ -23,9 +23,25 @@ export const maxDuration = 30;
 // routinely exceed 500 chars. We only use the URL to extract the
 // product ID via regex, so the rest is ignored. 2000 is comfortable
 // headroom for even the most decorated tracking URLs.
-const RequestSchema = z.object({
-  input: z.string().min(8).max(2000),
-});
+//
+// Added manualProduct on May 17 2026 — for aliexpress.us URLs where
+// both the DS API and HTML scrape fail (Cloudflare / JS-only render).
+// User can paste title + price by hand and still get the verdict.
+const RequestSchema = z
+  .object({
+    input: z.string().min(8).max(2000).optional(),
+    manualProduct: z
+      .object({
+        title: z.string().min(3).max(300),
+        priceUsd: z.number().positive().max(10000),
+        imageUrl: z.string().max(1000).optional().nullable(),
+        productUrl: z.string().max(2000).optional().nullable(),
+      })
+      .optional(),
+  })
+  .refine((data) => Boolean(data.input || data.manualProduct), {
+    message: "Either an AE URL/ID or manual product info is required",
+  });
 
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
@@ -55,8 +71,11 @@ export async function POST(request: NextRequest) {
     return error(err instanceof Error ? err.message : "Invalid payload", 400);
   }
 
+  // Manual mode doesn't need an AE token (we skip the DS API call
+  // entirely). URL mode does need it for the DS API + the scrape
+  // fallback's Etsy keyword extraction would still benefit from it.
   const accessToken = await getActiveTokenForUser(session.user.id);
-  if (!accessToken) {
+  if (!accessToken && !body.manualProduct) {
     return error(
       "AliExpress not connected — connect via /seo-autopilot/product-hunter first",
       409,
@@ -64,7 +83,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await reverseHunt(body.input, accessToken);
+    const result = await reverseHunt(
+      {
+        input: body.input,
+        manualProduct: body.manualProduct ?? undefined,
+      },
+      accessToken ?? "",
+    );
     return json(result);
   } catch (err) {
     return error(

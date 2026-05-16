@@ -60,6 +60,24 @@ const VERDICT_LABELS: Record<ReverseHuntVerdict, string> = {
   NO: "Skip — won't sell",
 };
 
+/** Manual product info — used when auto-fetch isn't available (e.g.
+ * .us regional URLs that Cloudflare blocks). User supplies title +
+ * price by hand and the rest of the pipeline runs as normal. */
+export interface ReverseHuntManualInput {
+  title: string;
+  priceUsd: number;
+  imageUrl?: string | null;
+  productUrl?: string | null;
+}
+
+/** Input modes for reverseHunt — exactly one must be present. */
+export interface ReverseHuntInput {
+  /** AE URL or numeric product ID. */
+  input?: string;
+  /** Manually-entered product data. */
+  manualProduct?: ReverseHuntManualInput;
+}
+
 /**
  * Score on the same dimensions as Product Hunter:
  *   - Demand (Etsy listing count + avg favorites)
@@ -69,73 +87,103 @@ const VERDICT_LABELS: Record<ReverseHuntVerdict, string> = {
  * make a sourcing decision in under 10 seconds.
  */
 export async function reverseHunt(
-  aliUrlOrId: string,
+  input: ReverseHuntInput,
   accessToken: string,
 ): Promise<ReverseHuntResponse> {
   const startedAt = Date.now();
   const accum = createCostAccumulator();
 
-  const trimmed = aliUrlOrId.trim();
-  const productId =
-    /^\d+$/.test(trimmed) ? trimmed : extractProductId(aliUrlOrId);
-  if (!productId) {
-    throw new Error("Couldn't extract product ID from that URL.");
-  }
+  let aliProduct: AliExpressProduct;
 
-  // Detect aliexpress.us / aliexpress.ru / other regional storefronts —
-  // their product IDs (typically starting with "3256") belong to
-  // separate regional catalogs that the global DS API doesn't always
-  // serve. The call still "succeeds" but returns an empty product
-  // (no title, no price), which then produces nonsense downstream
-  // (a $0 cost product with random Etsy search results).
-  //
-  // The .com and .us product ID prefixes:
-  //   - aliexpress.com IDs typically start with "1005" (16 digits)
-  //   - aliexpress.us IDs typically start with "3256" (16 digits)
-  const isUsRegionalId = productId.startsWith("3256");
-  const isUsRegionalUrl = /aliexpress\.(us|ru|fr|de|es|it|pl)/i.test(
-    aliUrlOrId,
-  );
-
-  // Step 1: fetch AliExpress product via DS API
-  let aliProduct = await getProductById(productId, { accessToken });
-
-  // Validate the DS-API response actually contains real product data.
-  // The DS API returns a "successful" empty response for products
-  // outside its catalog (e.g. aliexpress.us regional IDs) — without
-  // this check we'd run the rest of the pipeline on $0 cost + empty
-  // title and produce nonsense Etsy results.
-  const dsHasData =
-    aliProduct &&
-    aliProduct.title &&
-    aliProduct.title.trim().length > 0 &&
-    aliProduct.priceMin &&
-    aliProduct.priceMin > 0;
-
-  // DS API returned empty (common for .us regional URLs). Try the
-  // HTML scrape fallback — fetch the product page directly and
-  // extract title/image/price from meta tags + embedded JSON.
-  // Only attempt when input is a URL (not a bare numeric ID, since
-  // we don't know which storefront to scrape from).
-  if (!dsHasData && /^https?:\/\//i.test(aliUrlOrId.trim())) {
+  if (input.manualProduct) {
+    // Manual entry path — skip all AE fetching. User has supplied
+    // title + price directly (typically for .us URLs where the auto-
+    // fetch path can't get through).
+    const m = input.manualProduct;
+    aliProduct = {
+      productId: 0,
+      title: m.title.trim(),
+      imageUrl: m.imageUrl?.trim() || undefined,
+      productUrl: m.productUrl?.trim() || undefined,
+      priceMin: m.priceUsd,
+      priceMax: m.priceUsd,
+      currency: "USD",
+    };
     console.log(
-      `[reverse-hunt] DS API empty for ${productId} — trying HTML scrape (likely .us URL)`,
+      `[reverse-hunt] manual mode — "${aliProduct.title.slice(0, 60)}" @ $${aliProduct.priceMin}`,
     );
-    const scraped = await fetchAeProductFromHtml(aliUrlOrId.trim());
-    if (scraped) aliProduct = scraped;
-  }
+  } else if (input.input) {
+    // URL / product ID path — try DS API, then HTML scrape fallback
+    const aliUrlOrId = input.input;
+    const trimmed = aliUrlOrId.trim();
+    const productId =
+      /^\d+$/.test(trimmed) ? trimmed : extractProductId(aliUrlOrId);
+    if (!productId) {
+      throw new Error("Couldn't extract product ID from that URL.");
+    }
 
-  // Final validation — if neither path got real data, fail cleanly.
-  const titleOk = aliProduct?.title && aliProduct.title.trim().length > 0;
-  const priceOk = aliProduct?.priceMin && aliProduct.priceMin > 0;
-  if (!aliProduct || !titleOk || !priceOk) {
-    if (isUsRegionalId || isUsRegionalUrl) {
+    // Detect aliexpress.us / aliexpress.ru / other regional
+    // storefronts — their product IDs (typically starting with
+    // "3256") belong to separate regional catalogs that the global
+    // DS API doesn't always serve. The call still "succeeds" but
+    // returns an empty product (no title, no price), which then
+    // produces nonsense downstream (a $0 cost product with random
+    // Etsy search results).
+    //
+    // The .com and .us product ID prefixes:
+    //   - aliexpress.com IDs typically start with "1005" (16 digits)
+    //   - aliexpress.us IDs typically start with "3256" (16 digits)
+    const isUsRegionalId = productId.startsWith("3256");
+    const isUsRegionalUrl = /aliexpress\.(us|ru|fr|de|es|it|pl)/i.test(
+      aliUrlOrId,
+    );
+
+    // Step 1: fetch AliExpress product via DS API
+    let fetched = await getProductById(productId, { accessToken });
+
+    // Validate the DS-API response actually contains real product data.
+    // The DS API returns a "successful" empty response for products
+    // outside its catalog (e.g. aliexpress.us regional IDs) — without
+    // this check we'd run the rest of the pipeline on $0 cost + empty
+    // title and produce nonsense Etsy results.
+    const dsHasData =
+      fetched &&
+      fetched.title &&
+      fetched.title.trim().length > 0 &&
+      fetched.priceMin &&
+      fetched.priceMin > 0;
+
+    // DS API returned empty (common for .us regional URLs). Try the
+    // HTML scrape fallback — fetch the product page directly and
+    // extract title/image/price from meta tags + embedded JSON.
+    // Only attempt when input is a URL (not a bare numeric ID, since
+    // we don't know which storefront to scrape from).
+    if (!dsHasData && /^https?:\/\//i.test(aliUrlOrId.trim())) {
+      console.log(
+        `[reverse-hunt] DS API empty for ${productId} — trying HTML scrape (likely .us URL)`,
+      );
+      const scraped = await fetchAeProductFromHtml(aliUrlOrId.trim());
+      if (scraped) fetched = scraped;
+    }
+
+    // Final validation — if neither path got real data, fail cleanly
+    // with a message that points the user to the manual entry option.
+    const titleOk = fetched?.title && fetched.title.trim().length > 0;
+    const priceOk = fetched?.priceMin && fetched.priceMin > 0;
+    if (!fetched || !titleOk || !priceOk) {
+      if (isUsRegionalId || isUsRegionalUrl) {
+        throw new Error(
+          "Couldn't auto-load this aliexpress.us product (page is blocked or JS-rendered). Switch to manual mode and paste the title + price by hand — the rest of the verdict will still run.",
+        );
+      }
       throw new Error(
-        "Couldn't load this aliexpress.us product. The page may be blocked or require JavaScript. Try the .com equivalent of this product if you can find it.",
+        "AliExpress returned no usable data for this product — switch to manual mode and paste the title + price by hand.",
       );
     }
+    aliProduct = fetched;
+  } else {
     throw new Error(
-      "AliExpress returned no usable data for this product — it may be unlisted, restricted, or removed.",
+      "Either an AE URL/ID or manual product info is required.",
     );
   }
 

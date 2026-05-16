@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Loader2,
   ExternalLink,
@@ -17,6 +18,8 @@ import {
   Star,
   DollarSign,
   Package,
+  Link2,
+  PenLine,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -102,29 +105,72 @@ const VERDICT_THEME: Record<
   },
 };
 
+type HuntMode = "url" | "manual";
+
 export function ReverseHuntSection({ isCeo }: { isCeo: boolean }) {
+  const [mode, setMode] = useState<HuntMode>("url");
   const [input, setInput] = useState("");
+  // Manual mode state (used when AE.us URL won't auto-fetch)
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
+  const [manualImageUrl, setManualImageUrl] = useState("");
+  const [manualSourceUrl, setManualSourceUrl] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<HuntResult | null>(null);
 
+  function canSubmit(): boolean {
+    if (loading) return false;
+    if (mode === "url") return input.trim().length >= 8;
+    return manualTitle.trim().length >= 3 && Number(manualPrice) > 0;
+  }
+
   async function handleHunt() {
-    if (input.trim().length < 8 || loading) return;
+    if (!canSubmit()) return;
     setLoading(true);
     setResult(null);
+
+    // Build request body for the chosen mode
+    const body =
+      mode === "url"
+        ? { input: input.trim() }
+        : {
+            manualProduct: {
+              title: manualTitle.trim(),
+              priceUsd: Number(manualPrice),
+              imageUrl: manualImageUrl.trim() || null,
+              productUrl: manualSourceUrl.trim() || null,
+            },
+          };
+
     try {
       const res = await fetch("/api/reverse-hunt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: input.trim() }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
+        const respBody = await res.json().catch(() => ({}));
         if (res.status === 409) {
           throw new Error(
             "AliExpress not connected — use the Connect button above.",
           );
         }
-        throw new Error(body?.error ?? `Failed (${res.status})`);
+        const msg = respBody?.error ?? `Failed (${res.status})`;
+        // If auto-fetch failed (502 from URL mode), flip to manual
+        // mode so the user can paste title + price by hand without
+        // losing their URL (we carry it over as the source link).
+        if (mode === "url" && res.status === 502) {
+          setMode("manual");
+          setManualSourceUrl(input.trim());
+          toast.error("Couldn't auto-load — switched to manual mode", {
+            description:
+              "Paste the title + price from the AE page and click Run again.",
+            duration: 7000,
+          });
+          return;
+        }
+        throw new Error(msg);
       }
       const data = (await res.json()) as HuntResult;
       setResult(data);
@@ -151,32 +197,188 @@ export function ReverseHuntSection({ isCeo }: { isCeo: boolean }) {
                 Will it sell?
               </p>
               <h3 className="text-[16px] font-bold leading-tight">
-                Paste an AliExpress product URL
+                {mode === "url"
+                  ? "Paste an AliExpress product URL"
+                  : "Enter product info manually"}
               </h3>
             </div>
           </div>
 
-          <Input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && input.trim().length >= 8 && !loading)
-                handleHunt();
-            }}
-            placeholder="https://www.aliexpress.com/item/1005006123456789.html"
-            disabled={loading}
-            className="h-12 text-sm bg-muted/20 border-border/70 focus-visible:border-emerald-500/60 focus-visible:ring-emerald-500/15"
-          />
-          <p className="text-[11px] text-muted-foreground/80">
-            Tip: any AliExpress product URL works. Numeric product ID
-            (e.g. <code className="px-1 py-0.5 rounded bg-muted/40 text-[10px]">1005006123456789</code>) also works.
-          </p>
+          {/* Mode toggle — URL (auto-fetch) vs Manual (paste title + price) */}
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-1 ring-1 ring-border/40">
+            <button
+              type="button"
+              onClick={() => setMode("url")}
+              disabled={loading}
+              className={`relative rounded-lg px-3 py-2 text-left transition-all ${
+                mode === "url"
+                  ? "bg-card shadow-sm ring-1 ring-border/60"
+                  : "hover:bg-card/60 disabled:opacity-50"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className={`size-7 rounded-md flex items-center justify-center ${
+                    mode === "url"
+                      ? "bg-gradient-to-br from-emerald-500 to-orange-500 text-white"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <Link2 className="size-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p
+                    className={`text-[11px] font-bold ${
+                      mode === "url" ? "text-foreground" : "text-foreground/70"
+                    }`}
+                  >
+                    Paste URL
+                  </p>
+                  <p className="text-[9px] text-muted-foreground leading-tight">
+                    Auto-fetch (.com)
+                  </p>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("manual")}
+              disabled={loading}
+              className={`relative rounded-lg px-3 py-2 text-left transition-all ${
+                mode === "manual"
+                  ? "bg-card shadow-sm ring-1 ring-border/60"
+                  : "hover:bg-card/60 disabled:opacity-50"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className={`size-7 rounded-md flex items-center justify-center ${
+                    mode === "manual"
+                      ? "bg-gradient-to-br from-violet-500 to-pink-500 text-white"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <PenLine className="size-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p
+                    className={`text-[11px] font-bold ${
+                      mode === "manual"
+                        ? "text-foreground"
+                        : "text-foreground/70"
+                    }`}
+                  >
+                    Manual entry
+                  </p>
+                  <p className="text-[9px] text-muted-foreground leading-tight">
+                    Works for .us URLs
+                  </p>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* URL mode input */}
+          {mode === "url" && (
+            <>
+              <Input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canSubmit()) handleHunt();
+                }}
+                placeholder="https://www.aliexpress.com/item/1005006123456789.html"
+                disabled={loading}
+                className="h-12 text-sm bg-muted/20 border-border/70 focus-visible:border-emerald-500/60 focus-visible:ring-emerald-500/15"
+              />
+              <p className="text-[11px] text-muted-foreground/80">
+                Tip: any AliExpress product URL works. Numeric product ID
+                (e.g. <code className="px-1 py-0.5 rounded bg-muted/40 text-[10px]">1005006123456789</code>) also works.
+                <br />
+                <strong>aliexpress.us URLs</strong> often need manual
+                mode (Cloudflare blocks our scraper).
+              </p>
+            </>
+          )}
+
+          {/* Manual mode inputs */}
+          {mode === "manual" && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="manual-title"
+                  className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground"
+                >
+                  Product title <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="manual-title"
+                  type="text"
+                  value={manualTitle}
+                  onChange={(e) => setManualTitle(e.target.value)}
+                  placeholder="e.g. Boho silver moon ring vintage handmade"
+                  disabled={loading}
+                  maxLength={300}
+                  className="h-10 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="manual-price"
+                    className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground"
+                  >
+                    AE price (USD) <span className="text-rose-500">*</span>
+                  </Label>
+                  <Input
+                    id="manual-price"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={manualPrice}
+                    onChange={(e) => setManualPrice(e.target.value)}
+                    placeholder="0.00"
+                    disabled={loading}
+                    className="h-10 text-sm tabular-nums"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="manual-image"
+                    className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground"
+                  >
+                    Image URL <span className="text-muted-foreground/50 font-normal">(optional)</span>
+                  </Label>
+                  <Input
+                    id="manual-image"
+                    type="text"
+                    value={manualImageUrl}
+                    onChange={(e) => setManualImageUrl(e.target.value)}
+                    placeholder="https://..."
+                    disabled={loading}
+                    className="h-10 text-sm"
+                  />
+                </div>
+              </div>
+              {manualSourceUrl && (
+                <div className="text-[10px] text-muted-foreground italic truncate">
+                  Source URL preserved: {manualSourceUrl.slice(0, 80)}
+                  {manualSourceUrl.length > 80 ? "…" : ""}
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground/80">
+                Tip: copy the product title from the AE.us page header and
+                paste the visible price. Image URL is optional but makes
+                the result card look nicer.
+              </p>
+            </div>
+          )}
 
           <Button
             type="button"
             onClick={handleHunt}
-            disabled={input.trim().length < 8 || loading}
+            disabled={!canSubmit()}
             className="w-full h-12 bg-gradient-to-r from-emerald-500 to-orange-500 hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/30 disabled:opacity-40"
           >
             {loading ? (
