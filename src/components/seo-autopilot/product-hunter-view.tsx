@@ -171,6 +171,8 @@ export function ProductHunterView({
 
       {/* Constrained content column */}
       <div className="max-w-5xl mx-auto space-y-6">
+        <HeroDescription activeTab={activeTab} />
+
         <AliExpressConnectionBanner userRole={userRole} />
 
         <ToolTabsBar active={activeTab} onChange={setActiveTab} />
@@ -441,9 +443,9 @@ function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
             <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-[1.05]">
               Product Hunter
             </h1>
-            <p className="text-[13px] sm:text-sm text-white/75 mt-2 leading-relaxed max-w-2xl">
-              {copy.description}
-            </p>
+            {/* Description used to live here; moved out of the hero so
+                it reads as a standalone intro paragraph below the
+                banner (CEO ask May 16 2026). See <HeroDescription>. */}
           </div>
         </div>
 
@@ -459,6 +461,18 @@ function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// Description paragraph that lives JUST BELOW the hero banner. Swaps
+// based on the active tab so the intro copy always matches whichever
+// hunting mode the user is on. Rendered inside the constrained
+// content column for readability — no full-bleed.
+function HeroDescription({ activeTab }: { activeTab: HunterTab }) {
+  return (
+    <p className="text-[13px] sm:text-sm text-muted-foreground/85 leading-relaxed max-w-3xl px-1 ap-stagger-in">
+      {TAB_COPY[activeTab].description}
+    </p>
   );
 }
 
