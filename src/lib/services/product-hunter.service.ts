@@ -743,6 +743,34 @@ export async function huntByNiche(opts: {
   // Diagnostic: how many keywords needed the category-name fallback?
   let categoryFallbackCount = 0;
 
+  /**
+   * When the keyword search returns 0, fall back to a much broader
+   * search. The OLD behaviour was to search the full category name
+   * (e.g. "Decorative & Statement Lamps") — but that's also a niche
+   * phrase, often returning 0 too. The shortest single-word anchor
+   * (e.g. "lamp") is virtually guaranteed to hit thousands of AE
+   * products, giving PASS 3 something to surface.
+   *
+   * Order of preference:
+   *   1. Shortest single-word anchor (e.g. "lamp", "earring")
+   *   2. First two-word anchor (e.g. "wall art")
+   *   3. Bare category name (last resort)
+   */
+  function pickFallbackQuery(
+    anchors: string[],
+    categoryName: string,
+  ): string {
+    const singleWords = anchors
+      .filter((a) => !a.includes(" ") && a.length >= 3)
+      .sort((a, b) => a.length - b.length);
+    if (singleWords.length > 0) return singleWords[0];
+    const twoWords = anchors.filter(
+      (a) => a.includes(" ") && a.length <= 25,
+    );
+    if (twoWords.length > 0) return twoWords[0];
+    return categoryName;
+  }
+
   const fetchPreview = async (pair: { category: string; keyword: string }) => {
     if (!opts.accessToken) return null;
     const anchors = perCategory.find((c) => c.category === pair.category)
@@ -750,59 +778,69 @@ export async function huntByNiche(opts: {
     const tStart = Date.now();
 
     const fetchPromise = (async (): Promise<KeywordPreview | null> => {
+      // Primary keyword search. We isolate this try/catch so that an
+      // EXCEPTION on the primary doesn't skip the fallback (which is
+      // what was happening before — the outer try caught the primary
+      // throw and we never got to the broader retry).
+      let res: Awaited<ReturnType<typeof searchProductsByKeyword>> | null =
+        null;
       try {
-        // Primary: search AE with the actual keyword.
-        // 15 candidates gives the relevance filter a wider net so we
-        // almost always find at least one anchor-matching product.
-        let res = await searchProductsByKeyword(pair.keyword, {
+        res = await searchProductsByKeyword(pair.keyword, {
           accessToken: opts.accessToken!,
           pageSize: 15,
           sortBy: "orders_desc",
         });
+      } catch (err) {
+        console.warn(
+          `[hunt-preview] primary search threw for "${pair.keyword}" (${Date.now() - tStart}ms):`,
+          err instanceof Error ? err.message : String(err),
+        );
+        // Don't return — fall through to the fallback.
+      }
 
-        // CATEGORY-NAME FALLBACK — when keyword returns 0 products,
-        // AE genuinely has nothing for the specific phrasing Haiku
-        // generated (e.g. "minimalist hammered gold drop earrings").
-        // Retry with just the category name, which is broad enough
-        // to always return popular sellers in that category. The
-        // PASS 3 picker will rank them by orders so we surface the
-        // top-selling product as a visual reference.
-        if (res.products.length === 0) {
-          categoryFallbackCount++;
-          console.log(
-            `[hunt-preview] "${pair.keyword}" returned 0 — falling back to category "${pair.category}"`,
-          );
-          res = await searchProductsByKeyword(pair.category, {
+      // BROAD-ANCHOR FALLBACK — when the keyword search returned 0
+      // OR threw, retry with the simplest product noun from the
+      // category's anchor list. "lamp" finds millions of AE products;
+      // "Decorative & Statement Lamps" might find zero. The shortest
+      // anchor is the most search-friendly.
+      if (!res || res.products.length === 0) {
+        const fallbackQuery = pickFallbackQuery(anchors, pair.category);
+        categoryFallbackCount++;
+        console.log(
+          `[hunt-preview] "${pair.keyword}" needs fallback → searching "${fallbackQuery}" (anchors: [${anchors.join(", ")}])`,
+        );
+        try {
+          res = await searchProductsByKeyword(fallbackQuery, {
             accessToken: opts.accessToken!,
             pageSize: 15,
             sortBy: "orders_desc",
           });
-        }
-
-        if (res.products.length === 0) {
-          zeroProductCount++;
-          console.log(
-            `[hunt-preview] FAIL "${pair.keyword}" — both keyword and category "${pair.category}" returned 0 products (${Date.now() - tStart}ms)`,
+        } catch (err) {
+          errorCount++;
+          console.warn(
+            `[hunt-preview] EXCEPTION fallback "${fallbackQuery}" for "${pair.keyword}" (${Date.now() - tStart}ms):`,
+            err instanceof Error ? err.message : String(err),
           );
           return null;
         }
+      }
 
-        const preview = pickBestPreview(res.products, pair.keyword, anchors);
-        if (!preview) {
-          noAnchorMatchCount++;
-          console.log(
-            `[hunt-preview] FAIL "${pair.keyword}" — ${res.products.length} AE products but none had valid title/image/price (${Date.now() - tStart}ms)`,
-          );
-        }
-        return preview;
-      } catch (err) {
-        errorCount++;
-        console.warn(
-          `[hunt-preview] EXCEPTION "${pair.keyword}" (${Date.now() - tStart}ms):`,
-          err instanceof Error ? err.message : String(err),
+      if (!res || res.products.length === 0) {
+        zeroProductCount++;
+        console.log(
+          `[hunt-preview] FAIL "${pair.keyword}" — both primary AND broad-anchor fallback returned 0 products (${Date.now() - tStart}ms)`,
         );
         return null;
       }
+
+      const preview = pickBestPreview(res.products, pair.keyword, anchors);
+      if (!preview) {
+        noAnchorMatchCount++;
+        console.log(
+          `[hunt-preview] FAIL "${pair.keyword}" — ${res.products.length} AE products but none had valid title/image/price (${Date.now() - tStart}ms)`,
+        );
+      }
+      return preview;
     })();
 
     const timeoutPromise = new Promise<null>((resolve) =>
