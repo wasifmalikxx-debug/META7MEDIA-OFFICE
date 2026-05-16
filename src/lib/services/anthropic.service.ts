@@ -292,7 +292,7 @@ OTHER RULES:
 4. NOT already in the seller's existing tag list (avoid duplicates / near-duplicates)
 5. NO brand names or trademarks (Disney, Marvel, Nike, etc.)
 6. NO risky / Etsy-flag words: sexy, sensual, erotic, nude, weed, gun, etc. Use neutral descriptors instead.
-7. NO buyer-customization wording (we sell ready stock): no "personalized", "monogram", "engraved", "made to order", "custom made", "bespoke". Handcraft descriptors like "handmade" / "hand knit" / "hand stitched" ARE allowed though — those are material/marketing words.
+7. NO buyer-data-on-product wording (we sell ready stock, no input field): no "personalized" / "personalised", no "customisable" / "customizable", no "monogram" / "monogrammed", no "with name" / "your name on". Everything else is fine — handmade, hand knit, hand stitched, custom made, made to order, bespoke, engraved are all ALLOWED (marketing/feature words, not buyer-data promises).
 8. Vary in approach across the 6: niche-specific, expanded-context (gift/occasion), stylistic (material/aesthetic), audience-targeted, use-case, etc.
 
 OUTPUT FORMAT — strict JSON, no prose. Output exactly 6 candidates so the seller has options:
@@ -899,26 +899,27 @@ KEYWORDS — CRITICAL rules:
 - NO brand names or trademarks (Disney, Nike, etc.)
 - NO duplicates
 
-🚫 NO BUYER-CUSTOMIZATION WORDING:
-META7MEDIA sells ready-stock from a supplier — buyers can't request
-custom changes (no name input, no monogram, no sizing-to-order). Etsy
-flags listings that promise these. NEVER include these in keywords:
-  ❌ "personalized" / "personalised" — implies buyer custom text/name
-  ❌ "monogram" / "monogrammed" / "engraved"
-  ❌ "made to order" / "custom made" / "custom order" / "custom sized"
-  ❌ "bespoke"
+🚫 NO BUYER-DATA-ON-PRODUCT WORDING:
+META7MEDIA ships ready-stock from a supplier — there is NO input
+field where the buyer types their own name, date, or message. Etsy
+flags listings that promise these. NEVER include keywords like:
+  ❌ "personalized" / "personalised" / "personalisation"
+  ❌ "customisable" / "customizable" / "customization"
+  ❌ "monogram" / "monogrammed" (= buyer's initials)
+  ❌ "with name" / "with your name" / "printed with name"
+  ❌ "your name on" / "name on it"
 
-NOTE — these handcraft descriptors are EXPLICITLY ALLOWED because
-they're marketing language matching how the products visually look:
-  ✅ "hand stitched" / "hand-stitched"
-  ✅ "hand knit" / "hand-knit"
-  ✅ "hand crafted" / "handcrafted" / "handmade"
-  ✅ "hand sewn"
+EVERYTHING ELSE IS FINE. These are marketing/material descriptors,
+not buyer-data promises:
+  ✅ "handmade" / "hand-crafted" / "hand knit" / "hand stitched" / "hand sewn"
+  ✅ "custom made" / "custom order" / "custom sized" / "custom fit" — marketing
+  ✅ "made to order" / "MTO" — marketing wording
+  ✅ "bespoke" — premium-feel descriptor
+  ✅ "engraved" — product can ship with pre-engraved decorative designs
 
-If you want to convey personalization vibes safely, use neutral
-giftability words instead:
-  ✅ "keepsake" (instead of "personalized") — gift-y without commitment
-  ✅ "memento" / "heirloom" — sentimental without custom-input promise
+If you want to convey gift-personalization vibes safely, use words
+that don't imply buyer-supplied text:
+  ✅ "keepsake" / "memento" / "heirloom" — sentimental without input promise
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
@@ -996,12 +997,12 @@ Return 6-8 proven-selling categories, each with exactly 7 long-tail buyer-intent
             const cat = name.toLowerCase();
             if (cat.includes(words[0]) && cat.includes(words[1])) return false;
           }
-          // Buyer-customization backstop — META7MEDIA sells ready-
-          // stock, so keywords that promise per-buyer customization
-          // (personalized, monogram, made-to-order, bespoke) are
-          // TOS-risky on Etsy. Mirror the same filter used on tag
-          // generation. Handcraft descriptors (handmade, hand-knit,
-          // hand-stitched) are NOT banned — see MTO_PATTERNS comment.
+          // Buyer-data-on-product backstop — META7MEDIA ships ready-
+          // stock with no input field for buyer text. Keywords that
+          // promise personalisation / customisation / monogram are
+          // TOS-risky on Etsy. Custom made / made-to-order / bespoke
+          // / engraved / handmade are NOT banned — those are
+          // marketing words. See MTO_PATTERNS comment for full policy.
           if (tagLooksLikeMto(k)) return false;
           // Gender / audience enforcement — drop keywords missing the
           // niche's required market-segment tokens.
@@ -1356,24 +1357,23 @@ CORE RULES
       "Christmas Gift for Mom", "Mother's Day Gift")
    • Title length sweet spot: 100-140 chars (more chars = more keyword surface)
 
-   NEVER use BUYER-CUSTOMIZATION wording in the title. We sell
-   ready-stock from a supplier — buyers can't request custom names,
-   monograms, sizing-to-order, or any per-buyer changes. Banned:
-   • "Made to Order" / "Made-to-Order" / "MTO"
-   • "Custom Made" / "Custom Order" / "Custom-Made"
-   • "Custom Sized" / "Custom Fit" / "Sized to Order"
-   • "Personalized" / "Personalised"
-   • "Monogram" / "Monogrammed" / "Engraved"
-   • "Bespoke"
-   These all imply the buyer can request changes, which we can't fulfil.
+   NEVER use BUYER-DATA-ON-PRODUCT wording in the title. There's no
+   input field for the buyer to type their own name/date/message,
+   so promising it would mislead. Banned:
+   • "Personalized" / "Personalised" / "Personalisation"
+   • "Customisable" / "Customizable" / "Customization"
+   • "Monogram" / "Monogrammed" (= buyer's initials)
+   • "With Name" / "With Your Name" / "Printed With Name"
+   • "Your Name On" / "Name On It"
 
-   ALLOWED handcraft descriptors (these are marketing/material words
-   that match how the products visually look — totally fine to use):
-   • "Handmade" / "Hand-Crafted" / "Hand-Made"
-   • "Hand Knit" / "Hand-Knit"
-   • "Hand Stitched" / "Hand-Stitched"
-   • "Hand Sewn" / "Hand-Sewn"
-   • "Artisan" / "Crafted"
+   ALLOWED — these are marketing/material/descriptive words, NOT
+   buyer-data promises. Use them freely if they fit the product:
+   • Handcraft: "Handmade" / "Hand-Crafted" / "Hand Knit" / "Hand Stitched" / "Hand Sewn"
+   • Production: "Custom Made" / "Custom Order" / "Custom Sized" /
+     "Custom Fit" / "Made to Order" / "MTO"
+   • Premium: "Bespoke" / "Artisan" / "Crafted"
+   • Surface: "Engraved" (product can ship with pre-engraved
+     decorative designs — that's a feature, not buyer-input)
 
 3. TAGS:
    • Exactly 13. Each ≤ 20 characters.
@@ -1434,19 +1434,19 @@ CORE RULES
 GOOD vs BAD TITLE EXAMPLES
 ============================================================
 
-❌ BAD (commas, generic, made-to-order wording):
-   "Pretty Dress, Off Shoulder, for Women, Custom Made to Order"
+❌ BAD (commas split phrases, generic, buyer-data promise):
+   "Pretty Dress, Off Shoulder, for Women, Personalised With Name"
 
 ✅ GOOD (anchor "off shoulder prom dress" front-loaded, "|" separators,
-        audience/occasion intent hook, NO production wording):
+        audience/occasion intent hook, no buyer-data promises):
    "Off Shoulder Prom Dress | Pearl Sweetheart Neckline Formal Gown | Wedding Guest Style Bridesmaid Dress"
 
-❌ BAD tags (duplicates wasting slots, made-to-order wording):
+❌ BAD tags (duplicates wasting slots, buyer-data promises):
    ["dress", "dresses", "prom dress", "prom dresses",
-    "made to order dress", "custom prom dress", ...]
+    "personalised dress", "monogrammed dress", "customisable prom", ...]
 
 ✅ GOOD tags (mix of volumes, no dupes, anchor keywords prioritized,
-        NO custom/MTO/personalized tags — but handmade/handcraft descriptors ARE allowed):
+        no personalised/customisable/monogram tags):
    ["off shoulder dress", "prom dress", "sweetheart gown", "pearl bodice",
     "wedding guest dress", "satin prom gown", "formal evening dress",
     "bridesmaid dress", "elegant prom gown", "ball gown dress",
@@ -1757,24 +1757,33 @@ function safeParseJson<T>(raw: string): T {
   }
 }
 
-// Phrases that imply BUYER CUSTOMIZATION or made-to-order production.
-// META7MEDIA is a READY-MADE dropshipping operation — these are
-// TOS-conflicting + always wrong on our listings.
+// Phrases that imply BUYER-SUPPLIED PERSONAL DATA on the product
+// (the buyer types their name, date, message, etc. and we put it
+// on the item). META7MEDIA ships ready-stock — there's no input
+// field for this, so promising it would mislead the buyer.
 //
-// IMPORTANT (May 16 2026 policy clarification from CEO):
-//   "Hand knit" / "hand stitched" / "hand crafted" / "handmade" are
-//   ALLOWED — those are marketing/material descriptors that match how
-//   our AliExpress products visually look. Only words that imply the
-//   BUYER can request customization (personalized, custom-made,
-//   monogram, made-to-order, bespoke) are banned.
+// IMPORTANT (May 16 2026 final CEO policy after two corrections):
+// The KEY question is "does the buyer supply their own text/name?"
+//
+//   ✅ ALLOWED (marketing / feature wording, NOT buyer-data promises):
+//      handmade, hand-knit, hand-stitched, hand-crafted, hand-sewn,
+//      custom made, custom order, custom sized, custom fit,
+//      made to order, MTO, bespoke, engraved, artisan
+//
+//   ❌ BANNED (buyer-data-on-product promises):
+//      personalised / personalized / personalisation
+//      customisable / customizable / customization
+//      monogram / monogrammed (= buyer's initials)
+//      "with name" / "with your name" / "printed with name"
+//      "your name on" / "name on" (as in "your name on it")
 const MTO_PATTERNS = [
-  /\b(made[\s-]to[\s-]order)\b/gi,
-  /\bMTO\b/g,
-  /\b(custom[\s-]?made|custom[\s-]?order|custom[\s-]?sized|custom[\s-]?fit|made[\s-]custom|sized[\s-]to[\s-]order)\b/gi,
   /\b(personali[sz]ed?|personali[sz]ation)\b/gi,
+  /\b(customi[sz]able|customi[sz]ation)\b/gi,
   /\b(monogram|monogrammed|monograms)\b/gi,
-  /\b(engraved|engraving)\b/gi,
-  /\b(bespoke)\b/gi,
+  /\bwith[\s-]your[\s-]name\b/gi,
+  /\bwith[\s-]name\b/gi,
+  /\bprinted[\s-]with[\s-]name\b/gi,
+  /\byour[\s-]name[\s-]on\b/gi,
 ];
 
 function stripMtoFromTitle(title: string): string {
@@ -1802,11 +1811,11 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
   const title = stripMtoFromTitle(rawTitle).slice(0, ETSY_LIMITS.TITLE_MAX);
 
   // Tags: lowercase, trim, dedupe, clamp length, slice to 13.
-  // Also drop any tag containing buyer-customization wording (MTO,
-  // custom-made, personalized, monogram, engraved, bespoke) — we sell
-  // ready-stock so those tags would mislead buyers. Handcraft words
-  // (handmade, hand-knit, hand-stitched) are NOT in MTO_PATTERNS so
-  // they pass through fine — those are marketing language, not promises.
+  // Also drop any tag containing buyer-data-on-product wording
+  // (personalised, customisable, monogram, "with name", etc.) — we
+  // sell ready-stock with no input field so those tags would mislead
+  // buyers. Everything else (handmade, hand-knit, custom made, made
+  // to order, bespoke, engraved, etc.) is allowed — see MTO_PATTERNS.
   const seen = new Set<string>();
   const tags: string[] = [];
   for (const raw of out.tags ?? []) {
