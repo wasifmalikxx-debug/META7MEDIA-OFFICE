@@ -145,10 +145,13 @@ const ETSY_HOSTILE_TOKENS: ReadonlyArray<string> = [
   "car charger", "car mount", "dash cam",
 
   // ─ Industrial / wholesale signals ─
+  // Note: bulk-pack counts (15 PC, 50 pcs, etc.) are caught by the
+  // regex pattern list below — no need to enumerate every "Npcs" here.
   "wholesale", "bulk", "factory", "b2b", "oem",
-  "1pcs ", "10pcs", "100pcs", "5pcs ", "20pcs",
   "industrial", "professional grade", "heavy duty",
   "raw material", "loose beads", "loose stones",
+  "spare part", "replacement part", "replacement leather",
+  "luggage wheel", "suitcase wheel",
 
   // ─ Mass-market hardware ─
   "vacuum cleaner", "blender", "mixer ", "juicer", "fryer",
@@ -169,11 +172,15 @@ const ETSY_HOSTILE_TOKENS: ReadonlyArray<string> = [
   // Added May 16 2026 after "Full Face Protective Safe Mask, Anti Fog,
   // Anti Impact" slipped through the face-mask niche. Cloth/decorative
   // face masks are fine for Etsy; industrial respirators are not.
+  // "facial shield" and "work protection" added same-day after
+  // "Work Protection Mask Transparent Facial Shield" slipped through.
   "ppe", "hazmat", "respirator", "n95", "kn95", "n99",
   "welding", "welder", "grinder",
-  "face shield", "safety mask", "protective mask",
+  "face shield", "facial shield", "transparent shield",
+  "safety mask", "protective mask", "work protection",
   "full face protective", "full face safety",
   "anti fog", "anti-fog", "anti impact", "anti splash",
+  "anti droplet", "anti-droplet", "anti virus", "anti-virus",
   "dust mask", "gas mask", "chemical mask",
   "safety glasses", "safety goggles",
   "safety helmet", "hard hat",
@@ -191,8 +198,27 @@ const ETSY_HOSTILE_TOKENS: ReadonlyArray<string> = [
   "sexy ", " sexy", "see through", "see-through", "fetish",
 ];
 
+/**
+ * Regex patterns that catch dynamic junk indicators the static
+ * substring list can't enumerate (every possible bulk-pack count,
+ * randomized-pack signals, etc.). Case-insensitive.
+ *
+ * Added May 16 2026 after "Random 15 PC" + similar slipped through —
+ * the substring list had "1pcs", "10pcs", "100pcs" but couldn't
+ * cover every number that appears between them.
+ */
+const ETSY_HOSTILE_PATTERNS: ReadonlyArray<RegExp> = [
+  // Bulk pack counts — "1pc", "15 PC", "100PCS", "50 pieces", etc.
+  /\b\d+\s?pcs?\b/i,
+  /\b\d+\s?pieces?\b/i,
+  // "Random pack/color/set/mix" → commodity bulk indicator
+  /\brandom\s+(pack|color|colors|set|mix|pcs?)\b/i,
+  // Stock-count indicators that suggest commodity SKUs
+  /\b(in stock|out of stock|min order)\b/i,
+];
+
 /** Returns true if the title is safe for Etsy listing — clears the
- * blocklist and basic quality checks. */
+ * blocklist (substring + regex) and basic quality checks. */
 function isEtsyFriendly(title: string): boolean {
   if (!title) return false;
   const trimmed = title.trim();
@@ -202,8 +228,14 @@ function isEtsyFriendly(title: string): boolean {
   // and Korean hanja; all three signal a botched translation pipeline.
   if (/[一-鿿]/.test(trimmed)) return false;
   const lower = trimmed.toLowerCase();
+  // Cheap substring scan first — most rejections happen here.
   for (const token of ETSY_HOSTILE_TOKENS) {
     if (lower.includes(token)) return false;
+  }
+  // Then regex patterns for dynamic indicators (bulk-pack counts,
+  // random-pack signals, etc.).
+  for (const pattern of ETSY_HOSTILE_PATTERNS) {
+    if (pattern.test(trimmed)) return false;
   }
   return true;
 }
