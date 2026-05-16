@@ -71,11 +71,13 @@ const RequestSchema = z.object({
   // length is allowed but the UI nudges the seller to fill at least one).
   // `variants` was renamed from `colors` — it covers any choice the buyer
   // makes (color, phone model, design, material, scent).
-  // Per-label cap raised 50 → 100 (May 16) — 50 was rejecting legit
-  // descriptive sizes like "Free Size for Petite, Average, and Plus
-  // figures" that some AliExpress listings ship with.
-  sizes: z.array(z.string().min(1).max(100)).max(30).default([]),
-  variants: z.array(z.string().min(1).max(100)).max(30).default([]),
+  // Per-label cap raised 100 → 250 (May 16, second pass) — 100 was
+  // rejecting full-dimension size strings like "Length 120cm, Width
+  // 80cm, Height 45cm, Diameter 22cm, Inside cavity depth 35cm" that
+  // some AliExpress products ship with. 250 fits any reasonable
+  // dimension write-up + leaves room for material/finish qualifiers.
+  sizes: z.array(z.string().min(1).max(250)).max(30).default([]),
+  variants: z.array(z.string().min(1).max(250)).max(30).default([]),
 });
 
 export async function POST(request: NextRequest) {

@@ -90,10 +90,13 @@ function ChipBox({
         onBlur={() => draft.trim() && commit(draft)}
         placeholder={values.length === 0 ? placeholder : ""}
         disabled={disabled}
-        // 100-char cap matches the server-side Zod schema. Browsers hard-stop
-        // typing at this length, so employees can't accidentally trigger
-        // a "too long" validation error on the generate API.
-        maxLength={100}
+        // 250-char cap matches the server-side Zod schema. Bumped
+        // 100 → 250 (May 16, second pass) because employees were
+        // hitting the limit on full-dimension size strings like
+        // "Length 120cm, Width 80cm, Height 45cm, Diameter 22cm,
+        // Inside cavity depth 35cm" that some AliExpress products
+        // ship with. 250 fits any reasonable dimension write-up.
+        maxLength={250}
         className="flex-1 min-w-[120px] bg-transparent outline-none text-sm placeholder:text-muted-foreground/60 py-1"
       />
     </div>

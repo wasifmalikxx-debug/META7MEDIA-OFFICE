@@ -227,6 +227,24 @@ export interface TagReplacement {
   reason: string;
 }
 
+// Tags Etsy flags as risky / policy-borderline. We drop any
+// suggestion that hits one of these so the seller never sees
+// suggestions like "sexy lace dress" that could trigger a review.
+// Conservative list — only words that are universally risky on
+// Etsy regardless of category. "lingerie" / "boudoir" stay because
+// they're legitimate Etsy categories.
+const RISKY_TAG_PATTERNS = [
+  /\b(nude|naked|erotic|porn|xxx|fetish|kink|bdsm)\b/i,
+  /\b(sexy|sensual|seductive|provocative|lewd)\b/i,
+  /\b(weed|marijuana|cannabis|cocaine|meth|heroin|drug)\b/i,
+  /\b(gun|rifle|pistol|firearm|ammo|bullet)\b/i,
+  /\b(nazi|swastika|kkk|terrorist)\b/i,
+];
+
+function tagLooksRisky(tag: string): boolean {
+  return RISKY_TAG_PATTERNS.some((re) => re.test(tag));
+}
+
 export async function suggestTagReplacements(
   opts: {
     currentTag: string;
@@ -242,22 +260,48 @@ export async function suggestTagReplacements(
     ? `Reason for swapping: ${opts.reason}`
     : "Reason for swapping: the seller wants a fresh take on this tag (often because it's too saturated to rank for).";
 
+  // Ask Haiku for 6 candidates (was 3). Some will fail the post-
+  // filters (>20 chars, risky words, dupes), and we want to be able
+  // to return 3 GOOD ones after filtering. Asking for 6 gives a
+  // 2× buffer against rejections.
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR, // Haiku — cheap, good at this kind of task
-    max_tokens: 400,
+    max_tokens: 600,
     temperature: 0.4,
-    system: `You are an Etsy SEO expert. Given a tag a seller wants to REPLACE, suggest 3 alternative tags that:
-1. Are ≤20 characters each, lowercase, no punctuation
-2. Cover SIMILAR buyer intent to the one being replaced
-3. Lean LONGER and more SPECIFIC (long-tail beats short-tail for new shops)
-4. Are NOT already in the seller's existing tag list (avoid duplicates / near-duplicates)
-5. NO brand names or trademarks (Disney, Marvel, Nike, etc.)
-6. Vary in approach: one go-after-niche (very specific), one expanded-context (gift / occasion / recipient), one stylistic (material / aesthetic)
+    system: `You are an Etsy SEO expert. Given a tag a seller wants to REPLACE, suggest 6 alternative tags.
 
-OUTPUT FORMAT — strict JSON, no prose:
+🚫 ABSOLUTE HARD RULE — TAG LENGTH ≤20 CHARACTERS:
+Etsy rejects any tag over 20 characters TOTAL (every letter + every space counts). You MUST count characters before outputting. If your candidate is 21+ chars, REWRITE it shorter or pick a completely different tag — NEVER output a tag over 20 chars even partially. Truncated phrases are USELESS to the seller.
+
+Character counting examples (count every char including spaces):
+  ✅ "boho earrings" = 13 chars — OK
+  ✅ "wooden key holder" = 17 chars — OK
+  ✅ "rustic key shelf" = 16 chars — OK
+  ❌ "rustic key holder shelf" = 23 chars — TOO LONG, drop or shorten
+  ❌ "minimalist gold drop" = 20 chars — OK at exactly 20
+  ❌ "wooden wall key storage" = 23 chars — TOO LONG
+
+If a long-tail phrase you want to suggest exceeds 20, either:
+  (a) pick a tighter 2-3 word version that fits, or
+  (b) abandon it entirely and choose a different angle.
+
+OTHER RULES:
+1. lowercase, no punctuation
+2. Cover SIMILAR buyer intent to the one being replaced
+3. Lean LONGER and more SPECIFIC (long-tail beats short-tail for new shops) — but STILL ≤20 chars
+4. NOT already in the seller's existing tag list (avoid duplicates / near-duplicates)
+5. NO brand names or trademarks (Disney, Marvel, Nike, etc.)
+6. NO risky / Etsy-flag words: sexy, sensual, erotic, nude, weed, gun, etc. Use neutral descriptors instead.
+7. NO made-to-order / custom / handmade / personalized wording (we sell ready stock).
+8. Vary in approach across the 6: niche-specific, expanded-context (gift/occasion), stylistic (material/aesthetic), audience-targeted, use-case, etc.
+
+OUTPUT FORMAT — strict JSON, no prose. Output exactly 6 candidates so the seller has options:
 {
   "replacements": [
     { "tag": "...", "reason": "1-line why this is a better choice" },
+    { "tag": "...", "reason": "..." },
+    { "tag": "...", "reason": "..." },
+    { "tag": "...", "reason": "..." },
     { "tag": "...", "reason": "..." },
     { "tag": "...", "reason": "..." }
   ]
@@ -275,7 +319,7 @@ ${reasonLine}
 Existing tag list (don't duplicate any of these):
 ${opts.existingTags.map((t) => `- ${t}`).join("\n")}
 
-Suggest 3 replacement tags.`,
+Suggest 6 replacement tags. Remember: every tag must be ≤20 chars. Count carefully before outputting.`,
       },
       { role: "assistant", content: "{" },
     ],
@@ -288,18 +332,43 @@ Suggest 3 replacement tags.`,
     const existingLower = new Set(
       opts.existingTags.map((t) => t.toLowerCase()),
     );
-    return (parsed.replacements ?? [])
+    const currentLower = opts.currentTag.toLowerCase();
+
+    // NO MORE TRUNCATION. Previously this was `.slice(0, 20)` which
+    // silently chopped "wooden wall key storage" → "wooden wall key stor"
+    // — garbage. Now we REJECT anything over 20 chars and rely on the
+    // 2× buffer (asking for 6 to land 3) to absorb the loss.
+    const cleaned = (parsed.replacements ?? [])
       .map((r) => ({
-        tag: (r.tag ?? "").toString().trim().toLowerCase().slice(0, 20),
+        tag: (r.tag ?? "")
+          .toString()
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, "") // Etsy: letters, digits, spaces, hyphens
+          .replace(/\s+/g, " ")
+          .trim(),
         reason: (r.reason ?? "").toString().trim().slice(0, 150),
       }))
-      .filter(
-        (r) =>
-          r.tag.length >= 3 &&
-          !existingLower.has(r.tag) &&
-          r.tag !== opts.currentTag.toLowerCase(),
-      )
-      .slice(0, 3);
+      .filter((r) => {
+        if (r.tag.length < 3) return false;
+        if (r.tag.length > 20) return false; // ← reject, no truncation
+        if (existingLower.has(r.tag)) return false;
+        if (r.tag === currentLower) return false;
+        if (tagLooksRisky(r.tag)) return false; // sexy/nude/weed/etc.
+        if (tagLooksLikeMto(r.tag)) return false; // made-to-order/custom/etc.
+        return true;
+      });
+
+    // Dedupe within the cleaned set (Haiku sometimes repeats itself)
+    const seen = new Set<string>();
+    const deduped: TagReplacement[] = [];
+    for (const r of cleaned) {
+      if (seen.has(r.tag)) continue;
+      seen.add(r.tag);
+      deduped.push(r);
+    }
+
+    return deduped.slice(0, 3);
   } catch {
     return [];
   }
@@ -1352,6 +1421,64 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
   }
 }`;
 
+// ─── Writing-voice variety ───────────────────────────────────────
+//
+// Same product + same Sonnet model = nearly identical output every
+// time. Two employees generating the same listing got 80% overlap
+// in title/description/tags. To break that uniformity, every
+// generation picks a random voice from this list and tells Sonnet
+// to write in that tone. Lives in the USER prompt (not system) so
+// it doesn't invalidate the system-prompt cache.
+
+const GENERATOR_VOICES: { name: string; instruction: string }[] = [
+  {
+    name: "warm-storyteller",
+    instruction:
+      "WARM STORYTELLING. Lead the description with an emotional hook — paint the moment when this item arrives, who it's for, why they'll smile when they unbox it. Use sensory language (texture, weight, warmth). The opening section should feel like the start of a small story.",
+  },
+  {
+    name: "lifestyle-aspirational",
+    instruction:
+      "ASPIRATIONAL LIFESTYLE. Show the buyer the scene this product creates — the morning ritual, the dinner-party moment, the daily upgrade. Lead with the *life* this enables, not the product specs. Make them want to BE that person.",
+  },
+  {
+    name: "practical-specs-first",
+    instruction:
+      "PRACTICAL SPECS-FIRST. Lead the description with concrete features — material, dimensions, what makes it functionally distinct. Buyer-confidence comes from clarity. Direct, no fluff, no purple prose.",
+  },
+  {
+    name: "designer-aesthetic",
+    instruction:
+      "DESIGNER AESTHETIC. Focus on materials, color story, texture, silhouette, the visual language. Use words a fashion editor or interior designer would actually use. Detail-oriented and sophisticated, never generic.",
+  },
+  {
+    name: "playful-casual",
+    instruction:
+      "PLAYFUL CASUAL. Friendly, conversational, like a recommendation from a stylish friend. Use 'you' freely. Drop the formal tone — have personality. Make the reader smirk a little.",
+  },
+  {
+    name: "premium-minimalist",
+    instruction:
+      "PREMIUM MINIMALIST. Short sentences. Punchy bullets. Confident. Quality over quantity in every line. Skip filler words. The kind of copy that appears on a luxury brand's product page — restrained and assured.",
+  },
+  {
+    name: "occasion-focused",
+    instruction:
+      "OCCASION-FOCUSED. Lead with WHEN the buyer would use this — gift moments, life events, daily rituals. Recipient-centric: think about who this is for, not just what it is. Make the description feel like a gift-guide entry.",
+  },
+  {
+    name: "detail-expert",
+    instruction:
+      "DETAILED EXPERT. Comprehensive feature breakdown, construction details, materials vocabulary. The buyer wants confidence that the product is well-made and the seller knows what they're talking about. Authoritative and thorough.",
+  },
+];
+
+function pickGeneratorVoice(): { name: string; instruction: string } {
+  return GENERATOR_VOICES[
+    Math.floor(Math.random() * GENERATOR_VOICES.length)
+  ];
+}
+
 function buildGeneratorUserPrompt(input: GenerationInput): string {
   // Top 10 competitors, titles only. We used to send 20 + each one's full
   // tag array — but the ANCHOR KEYWORDS block already distils both into
@@ -1427,7 +1554,17 @@ ${input.buyerVariants
     variationsBlock.push(`Available variants: ${input.variants.join(", ")}`);
   }
 
-  return `# Source title
+  // Pick a random writing voice for this generation. See
+  // GENERATOR_VOICES above — this is what breaks the "every listing
+  // sounds the same" problem.
+  const voice = pickGeneratorVoice();
+
+  return `# Writing voice for THIS listing — ${voice.name}
+${voice.instruction}
+
+(This voice is randomly assigned per generation so the shop's listings sound varied instead of all using the same template phrasing. Still follow every CORE RULE in the system prompt — voice changes tone, not structure or output format.)
+
+# Source title
 ${input.productBrief}
 
 # Target Etsy category
@@ -1446,7 +1583,7 @@ ${competitorBlock || "(no competitor data — generate based on the brief alone)
 # Output count expected
 - altTexts: ${input.images.length || 1} items
 
-Now produce the listing JSON.`;
+Now produce the listing JSON in the assigned voice.`;
 }
 
 export async function generateListing(
@@ -1467,7 +1604,11 @@ export async function generateListing(
   const msg = await client().messages.create({
     model: MODEL_GENERATOR,
     max_tokens: 3000,
-    temperature: 0.65,
+    // Bumped 0.65 -> 0.85 so two employees generating the same
+    // product get more varied output. Combined with the per-gen
+    // voice picker (see GENERATOR_VOICES), this addresses the
+    // "two employees got 80% identical listings" complaint.
+    temperature: 0.85,
     // Same caching strategy as the compliance call — the generator
     // system prompt is large + static (~3k tokens). Cache hit cuts
     // input cost to ~10%.

@@ -127,5 +127,17 @@ export async function POST(request: NextRequest) {
     }),
   );
 
-  return json({ suggestions: enriched });
+  // Stage 3 — drop dead-tag suggestions (under 30 Etsy listings = no
+  // buyer demand exists for this phrase). The CEO flagged getting
+  // suggestions like "wooden wall key stor" with 1 listing — those
+  // are useless. We keep niche tags (30-1k listings) since those are
+  // exactly what we want sellers to use, just not the truly dead ones.
+  //
+  // If filtering would leave us with zero suggestions, return what we
+  // have anyway so the seller sees SOMETHING (better than empty).
+  const MIN_LISTINGS = 30;
+  const alive = enriched.filter((s) => s.totalListings >= MIN_LISTINGS);
+  const finalSuggestions = alive.length > 0 ? alive : enriched;
+
+  return json({ suggestions: finalSuggestions });
 }
