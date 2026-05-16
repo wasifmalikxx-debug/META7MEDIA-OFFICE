@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/components/common/page-header";
 import { PriceCalculatorView } from "@/components/price-calculator/price-calculator-view";
+import { PriceCalculatorHero } from "@/components/price-calculator/price-calculator-hero";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export default async function PriceCalculatorPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const user = session.user as any;
+  const user = session.user;
   const isAdmin = user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN";
   const isPartner = user.role === "PARTNER";
   const isManager = user.employeeId === "EM-4";
@@ -63,12 +63,17 @@ export default async function PriceCalculatorPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Etsy Price Calculator"
-        description="Convert an Ali Express cost into the recommended Etsy listing price using the team's stepped markup table."
-      />
-      <PriceCalculatorView />
+    <div className="relative pb-12">
+      {/* Full-bleed hero — escapes the dashboard <main>'s p-4 md:p-6
+          padding so it spans edge-to-edge under the header. Matches
+          the SEO Autopilot + Product Hunter hero family. */}
+      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
+        <PriceCalculatorHero />
+      </div>
+
+      <div className="max-w-5xl mx-auto">
+        <PriceCalculatorView />
+      </div>
     </div>
   );
 }

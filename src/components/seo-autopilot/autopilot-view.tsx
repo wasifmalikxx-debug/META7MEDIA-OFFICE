@@ -438,22 +438,26 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
       {/* Page background — radial gradient + dot mesh that's barely there */}
       <PageBackdrop />
 
+      {/* Full-bleed hero — escapes the page wrapper + the dashboard
+          <main>'s p-4 md:p-6 padding so it spans edge-to-edge under
+          the dashboard header. Same pattern as Product Hunter and
+          Price Calculator (May 16 2026 unified header treatment). */}
+      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6 relative">
+        <HeroBanner
+          generating={generating}
+          hasResult={!!result}
+          usage={usage}
+        />
+      </div>
+
       {/* Page width adapts based on state — narrow for input/cinema
           (focused single-column flow), wider once a result lands so the
           insights sidebar has room on desktop without crowding. */}
       <div
-        className={`relative mx-auto space-y-6 pb-16 pt-1 transition-[max-width] ${
+        className={`relative mx-auto space-y-6 pb-16 transition-[max-width] ${
           showResult ? "max-w-6xl" : "max-w-3xl"
         }`}
       >
-        <div className={showResult ? "max-w-3xl mx-auto" : ""}>
-          <HeroBanner
-            generating={generating}
-            hasResult={!!result}
-            usage={usage}
-          />
-        </div>
-
         {/* ──────────────── INPUT ──────────────── */}
         {showInput && (
           <div className="max-w-3xl mx-auto space-y-5 ap-stagger-in" style={{ animationDelay: "120ms" }}>
@@ -589,8 +593,10 @@ function HeroBanner({
   usage: UsageSummary | null;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-orange-500/20 ap-stagger-in">
-      {/* Base gradient + dark wash so the aurora pops */}
+    <div className="relative overflow-hidden shadow-xl shadow-orange-500/15 ap-stagger-in border-b border-white/10">
+      {/* Base gradient + dark wash so the aurora pops. Full-bleed —
+          no rounded corners, no side ring (those don't make sense
+          edge-to-edge). border-b separates from content below. */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#1a0d1f] via-[#2a1612] to-[#1a0d1f]" />
 
       {/* Animated aurora blobs */}
@@ -636,7 +642,10 @@ function HeroBanner({
         className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent"
       />
 
-      <div className="relative px-7 sm:px-9 py-8 sm:py-10">
+      {/* Inner content constrained to max-w-5xl so headlines / status
+          pills don't sprawl on ultrawide displays — only the gradient
+          background goes full width. */}
+      <div className="relative max-w-5xl mx-auto px-7 sm:px-9 py-8 sm:py-10">
         {/* Status pills */}
         <div className="flex items-center gap-2 mb-5 flex-wrap">
           <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 shadow-inner">
