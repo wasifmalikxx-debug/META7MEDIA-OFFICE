@@ -204,7 +204,160 @@ const ETSY_HOSTILE_TOKENS: ReadonlyArray<string> = [
   // through sexy shirt" slipped through mens-clothing niche).
   "sex toy", "vibrator", "lingerie", "intimate", "g-spot",
   "sexy ", " sexy", "see through", "see-through", "fetish",
+
+  // ─ Halloween / horror / scary masks (off-brand for the artisan-
+  // face-mask niche the CEO actually wants — cloth / wedding /
+  // fashion masks). Added May 16 2026 after silicone "creepy old
+  // man" masks slipped into the face-masks niche.
+  "halloween mask", "horror mask", "scary mask", "zombie mask",
+  "latex mask", "silicone mask", "realistic mask",
+  "old man mask", "evil mask", "monster mask", "demon mask",
+  "ghost mask",
+
+  // ─ Weapons (Etsy restricts most; AE-mass-produced knives are not
+  // artisan anyway). Added May 16 2026 after knife sheaths in the
+  // leather-accessories niche surfaced actual knives in photos.
+  // Note: "axe" / "hatchet" intentionally NOT blocked — handcrafted
+  // leather axe sheaths are legit Etsy decorative items.
+  "knife", "blade ", "sword", "machete", "dagger", "katana",
+  "weapon", "bayonet", "tactical",
 ];
+
+// ─── Niche query expansions ─────────────────────────────────────────
+//
+// Problem: AE search on broad nouns like "face masks" returns mostly
+// industrial PPE + halloween latex + medical surgical — wrong
+// inventory for Etsy. Even with our blocklist, the survivors are
+// still off-brand because the SEARCH itself biased wrong.
+//
+// Solution: when the user picks a broad/ambiguous niche, run the cron
+// with the original keyword PLUS 2-3 Etsy-friendly variants and merge
+// the results. AE returns a much richer candidate pool because each
+// variant biases toward handmade/artisan/fashion inventory.
+//
+// Example:
+//   user picks "face masks"
+//   cron searches AE for:
+//     - "face masks"               (original — kept for diversity)
+//     - "cloth face mask handmade" (Etsy variant)
+//     - "fashion face mask boho"   (Etsy variant)
+//     - "wedding face mask"        (Etsy variant)
+//   merges all results, dedupes by aeProductId, applies filters
+//
+// All AE calls run in parallel so the cron stays fast. Cost: ~3x
+// AE calls per expanded niche, well within the 5K daily cap.
+//
+// Maintained by hand — add new entries when a niche needs help. If a
+// niche keyword isn't matched here, only the original query is used.
+
+interface NicheExpansion {
+  matches: RegExp;
+  /** Additional queries to run alongside the original niche keyword. */
+  variations: string[];
+}
+
+const NICHE_QUERY_EXPANSIONS: ReadonlyArray<NicheExpansion> = [
+  // Face masks → cloth / fashion / wedding (NOT PPE / halloween)
+  {
+    matches: /\bface\s?mask(s)?\b/i,
+    variations: [
+      "cloth face mask handmade",
+      "fashion face mask boho",
+      "wedding face mask",
+    ],
+  },
+  // Pet accessories / supplies → handmade collars, tags, bandanas
+  {
+    matches: /\bpet\s+(accessor|suppl)/i,
+    variations: [
+      "pet collar handmade",
+      "pet bandana cute",
+      "personalized pet tag",
+    ],
+  },
+  // Women clothing → boho / linen / vintage (NOT lingerie / fast fashion)
+  {
+    matches: /\bwomen('?s)?\s+clothing\b/i,
+    variations: [
+      "women boho dress",
+      "women linen blouse",
+      "women vintage shirt",
+    ],
+  },
+  // Mens clothing → graphic / vintage / cotton (NOT counterfeit branded)
+  {
+    matches: /\bmen('?s)?\s+clothing\b/i,
+    variations: [
+      "mens graphic tee vintage",
+      "mens cotton hoodie",
+      "mens linen shirt",
+    ],
+  },
+  // Women nails → press-on / decals / wraps (NOT LED nail lamps)
+  {
+    matches: /\bwomen('?s)?\s+nail(s)?\b/i,
+    variations: ["press on nails", "nail decals", "nail wraps"],
+  },
+  // Office/study mats → desk mats / mouse pads (NOT industrial mats)
+  {
+    matches: /\b(office|study|desk)\s.*\bmat(s)?\b/i,
+    variations: ["desk mat leather", "mouse pad cute", "desk pad cork"],
+  },
+  // Leather accessories — broad term that AE returns mixed for.
+  // Push toward handmade keychains, bracelets, wallets (away from
+  // luggage parts / industrial leather)
+  {
+    matches: /\bleather\s+accessor(y|ies)\b/i,
+    variations: [
+      "leather keychain handmade",
+      "leather bracelet boho",
+      "leather wallet minimalist",
+    ],
+  },
+  // Women leather shoes/heels — narrow toward styled footwear
+  {
+    matches: /\bwomen.*\bleather\s+(shoes?|heels?|sandals?)\b/i,
+    variations: [
+      "women leather sandals boho",
+      "women leather ballet flats",
+      "women vintage leather shoes",
+    ],
+  },
+  // Generic catch-all for ambiguous "X jewelry" → push artisan signals
+  {
+    matches: /\bjewelry\b/i,
+    variations: [], // intentional no-op — "jewelry" niches already work
+  },
+  // Decor — push toward boho/cottagecore aesthetic
+  {
+    matches: /\bdecor\b/i,
+    variations: [], // niches like "boho decor" / "cottagecore decor" already specific
+  },
+];
+
+/**
+ * Expand a niche keyword into the set of AE search queries the cron
+ * should run for it. Returns [original, ...variations] — original
+ * always first so it gets the prime AE relevance ranking.
+ */
+function expandNicheQueries(niche: string): string[] {
+  const queries: string[] = [niche];
+  const seen = new Set([niche.toLowerCase()]);
+  for (const exp of NICHE_QUERY_EXPANSIONS) {
+    if (exp.matches.test(niche)) {
+      for (const v of exp.variations) {
+        if (!seen.has(v.toLowerCase())) {
+          queries.push(v);
+          seen.add(v.toLowerCase());
+        }
+      }
+      // First match wins to avoid query explosion when multiple
+      // patterns happen to fire for the same niche.
+      break;
+    }
+  }
+  return queries;
+}
 
 /**
  * Regex patterns that catch dynamic junk indicators the static
@@ -356,19 +509,70 @@ export async function runNiche(opts: {
 }): Promise<NicheRunSummary> {
   const { niche, source, accessToken, fetchDate } = opts;
 
-  // Pick the AE sort + pageSize for this source
-  let ae: ProductSearchResponse;
-  if (source === "TRENDING") {
-    ae = await searchByVolumeDesc(niche, {
-      accessToken,
-      pageSize: PAGE_SIZE_TRENDING,
-    });
-  } else {
-    ae = await searchByVolumeAsc(niche, {
-      accessToken,
-      pageSize: PAGE_SIZE_FRESH,
-    });
+  // Expand the niche into multiple AE search queries when applicable
+  // (face masks → +cloth/+wedding/+fashion variants, etc.). Broad
+  // niches get richer Etsy-aligned candidate pools this way.
+  const queries = expandNicheQueries(niche);
+  console.log(
+    `[daily-trending] ${niche} (${source}) running ${queries.length} ${queries.length === 1 ? "query" : "queries"}: ${queries.map((q) => `"${q}"`).join(", ")}`,
+  );
+
+  // Pick the AE search helper + pageSize for this source. Per-query
+  // pageSize is moderate (not 80) because multiple-query niches
+  // would otherwise return 3×80=240 candidates per niche per source
+  // which is more than the filter pipeline needs.
+  const perQuerySize = queries.length === 1
+    ? PAGE_SIZE_TRENDING
+    : Math.min(PAGE_SIZE_TRENDING, 40);
+
+  const searchFn =
+    source === "TRENDING" ? searchByVolumeDesc : searchByVolumeAsc;
+  const targetPageSize =
+    source === "TRENDING" ? perQuerySize : PAGE_SIZE_FRESH;
+
+  // Fetch all queries in PARALLEL so wall time stays low even when a
+  // niche expands to 4 variants. Failures on individual queries don't
+  // kill the niche — we collect what succeeded.
+  const queryResults = await Promise.allSettled(
+    queries.map((q) =>
+      searchFn(q, {
+        accessToken,
+        pageSize: targetPageSize,
+      }),
+    ),
+  );
+
+  // Merge + dedupe by AE product ID (same SKU often appears across
+  // variants, e.g. a generic boho jewelry piece comes up for both
+  // "boho jewelry" and "vintage boho jewelry"). First occurrence
+  // wins so original-query ranking is preserved.
+  const seenIds = new Set<number>();
+  const merged: AliExpressProduct[] = [];
+  let totalFetched = 0;
+  for (const result of queryResults) {
+    if (result.status !== "fulfilled") {
+      console.warn(
+        `[daily-trending] ${niche} (${source}) query failed:`,
+        result.reason instanceof Error
+          ? result.reason.message
+          : result.reason,
+      );
+      continue;
+    }
+    totalFetched += result.value.products.length;
+    for (const p of result.value.products) {
+      if (!p.productId || seenIds.has(p.productId)) continue;
+      seenIds.add(p.productId);
+      merged.push(p);
+    }
   }
+
+  // Synthesize an ae-like response object so the rest of the function
+  // (filtering, dedupe, insert) reads as a single-source flow.
+  const ae: ProductSearchResponse = {
+    totalResults: totalFetched,
+    products: merged,
+  };
 
   // First pass: strict filters (4★ rating, source-specific orders).
   // For TRENDING we then progressively soften the rating threshold
