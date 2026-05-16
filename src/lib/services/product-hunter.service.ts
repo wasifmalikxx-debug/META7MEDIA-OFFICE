@@ -740,26 +740,20 @@ export async function huntByNiche(opts: {
   let timeoutCount = 0;
   let errorCount = 0;
 
-  // Diagnostic: how many keywords needed the category-name fallback?
+  // Diagnostic: how many keywords fell back to the category pool?
   let categoryFallbackCount = 0;
 
   /**
-   * Build an ORDERED list of fallback search queries to try when the
-   * primary keyword search returns 0 products. We try them sequentially
+   * Build an ORDERED list of fallback search queries for ONE category's
+   * product pool. We try them sequentially when pre-fetching the pool
    * and stop at the first one that returns >0 products.
    *
-   * Why multiple instead of just one: a single fallback is a single
-   * point of failure. The previous "shortest single-word anchor"
-   * picked "led" (3 chars) for "String & Fairy Lights" and AE handles
-   * 3-letter acronym queries weirdly, returning 0. With multiple
-   * tiers we fall through to "lamp" / "fairy" / "light" — at least
-   * ONE of those will hit AE's catalogue.
-   *
-   * Order of priority:
    *   1. 4+ char single-word anchors, shortest first ("lamp", "fairy")
    *   2. Multi-word anchors ("fairy light", "string light")
-   *   3. Bare category name (last resort, may still fail for weird
-   *      category names with special chars)
+   *   3. Bare category name (last resort)
+   *
+   * Min 4 chars on single-word to skip 3-letter acronyms like "led"
+   * which AE handles weirdly (returns 0).
    */
   function pickFallbackQueries(
     anchors: string[],
@@ -772,12 +766,68 @@ export async function huntByNiche(opts: {
       (a) => a.includes(" ") && a.length <= 30,
     );
     const queries = [
-      ...singleWords.slice(0, 3), // up to 3 shortest single-word anchors
-      ...multiWords.slice(0, 1), // 1 multi-word anchor
-      categoryName, // bare category name as last resort
+      ...singleWords.slice(0, 3),
+      ...multiWords.slice(0, 1),
+      categoryName,
     ];
-    // Dedupe + drop empties
     return Array.from(new Set(queries.filter((q) => q && q.length >= 3)));
+  }
+
+  // ─── Pre-fetch CATEGORY PRODUCT POOLS ─────────────────────────────
+  //
+  // The new bulletproof approach: before we fan out 48 keyword-specific
+  // searches, we first fetch ONE pool of products per category using
+  // the broadest anchor query that works. Every keyword in that
+  // category then has a guaranteed fallback pool to draw from.
+  //
+  // Before this, certain categories ("Chandeliers", "Accent &
+  // Decorative Lamps") had ALL 6 keywords come back empty because the
+  // multi-tier per-keyword fallback couldn't recover for whatever
+  // AE-internal reason. With pre-fetched pools, the pool either
+  // succeeds for the whole category (8/8 keywords have a preview) or
+  // fails for the whole category (visibility into the AE issue).
+  //
+  // Cost: 8 extra AE calls per hunt (one per category). Trivial.
+  const categoryPools = new Map<string, AliExpressProduct[]>();
+  if (opts.accessToken) {
+    const tPoolStart = Date.now();
+    await Promise.all(
+      perCategory.map(async (cat) => {
+        const queries = pickFallbackQueries(
+          cat.productAnchors,
+          cat.category,
+        );
+        for (const q of queries) {
+          try {
+            const res = await searchProductsByKeyword(q, {
+              accessToken: opts.accessToken!,
+              pageSize: 20,
+              sortBy: "orders_desc",
+            });
+            if (res.products.length > 0) {
+              categoryPools.set(cat.category, res.products);
+              console.log(
+                `[hunt-pool] "${cat.category}" → "${q}" pool: ${res.products.length} products`,
+              );
+              return;
+            }
+          } catch (err) {
+            console.warn(
+              `[hunt-pool] "${cat.category}" → "${q}" threw:`,
+              err instanceof Error ? err.message : String(err),
+            );
+          }
+        }
+        // Every fallback query failed — pool stays empty.
+        categoryPools.set(cat.category, []);
+        console.error(
+          `[hunt-pool] "${cat.category}" — EVERY fallback query returned 0. Tried: [${queries.join(", ")}]`,
+        );
+      }),
+    );
+    console.log(
+      `[hunt-by-niche] category pools done in ${Date.now() - tPoolStart}ms (${categoryPools.size} categories, ${Array.from(categoryPools.values()).filter((p) => p.length > 0).length} non-empty)`,
+    );
   }
 
   const fetchPreview = async (pair: { category: string; keyword: string }) => {
@@ -787,84 +837,58 @@ export async function huntByNiche(opts: {
     const tStart = Date.now();
 
     const fetchPromise = (async (): Promise<KeywordPreview | null> => {
-      // Primary keyword search. We isolate this try/catch so that an
-      // EXCEPTION on the primary doesn't skip the fallback (which is
-      // what was happening before — the outer try caught the primary
-      // throw and we never got to the broader retry).
-      let res: Awaited<ReturnType<typeof searchProductsByKeyword>> | null =
-        null;
+      // Primary keyword search. Isolated try/catch so an exception on
+      // the primary doesn't skip the pool fallback.
+      let products: AliExpressProduct[] = [];
       let hadAnyError = false;
+      let usedPool = false;
       try {
-        res = await searchProductsByKeyword(pair.keyword, {
+        const res = await searchProductsByKeyword(pair.keyword, {
           accessToken: opts.accessToken!,
           pageSize: 15,
           sortBy: "orders_desc",
         });
+        products = res.products;
       } catch (err) {
         hadAnyError = true;
         console.warn(
           `[hunt-preview] primary search threw for "${pair.keyword}" (${Date.now() - tStart}ms):`,
           err instanceof Error ? err.message : String(err),
         );
-        // Don't return — fall through to the fallback.
+        // Don't return — fall through to the pool.
       }
 
-      // MULTI-TIER FALLBACK — when the primary keyword search returned
-      // 0 (or threw), try each fallback query in order until one
-      // returns products. A single fallback ("led" for the String &
-      // Fairy Lights category) is a single point of failure; trying
-      // 3-4 progressively broader queries virtually guarantees a hit.
-      if (!res || res.products.length === 0) {
-        const fallbackQueries = pickFallbackQueries(anchors, pair.category);
-        categoryFallbackCount++;
-        console.log(
-          `[hunt-preview] "${pair.keyword}" needs fallback → trying [${fallbackQueries.map((q) => `"${q}"`).join(", ")}] (anchors: [${anchors.join(", ")}])`,
-        );
-        for (const q of fallbackQueries) {
-          try {
-            const fbRes = await searchProductsByKeyword(q, {
-              accessToken: opts.accessToken!,
-              pageSize: 15,
-              sortBy: "orders_desc",
-            });
-            if (fbRes.products.length > 0) {
-              res = fbRes;
-              console.log(
-                `[hunt-preview] "${pair.keyword}" recovered via fallback "${q}" (${fbRes.products.length} products)`,
-              );
-              break;
-            }
-            console.log(
-              `[hunt-preview] fallback "${q}" for "${pair.keyword}" also returned 0 — trying next`,
-            );
-          } catch (err) {
-            hadAnyError = true;
-            console.warn(
-              `[hunt-preview] fallback "${q}" for "${pair.keyword}" threw:`,
-              err instanceof Error ? err.message : String(err),
-            );
-            // continue to next fallback
-          }
+      // POOL FALLBACK — when the keyword-specific search returns 0 OR
+      // throws, use the pre-fetched category pool. This pool was
+      // fetched up-front via the broadest anchor query, so it's
+      // virtually guaranteed to have products. No more sequential
+      // multi-tier retry storms.
+      if (products.length === 0) {
+        const pool = categoryPools.get(pair.category) ?? [];
+        if (pool.length > 0) {
+          products = pool;
+          usedPool = true;
+          categoryFallbackCount++;
         }
       }
 
-      if (!res || res.products.length === 0) {
+      if (products.length === 0) {
         if (hadAnyError) {
           errorCount++;
         } else {
           zeroProductCount++;
         }
         console.log(
-          `[hunt-preview] FAIL "${pair.keyword}" — primary AND every fallback returned 0 products${hadAnyError ? " (with errors along the way)" : ""} (${Date.now() - tStart}ms)`,
+          `[hunt-preview] FAIL "${pair.keyword}" — primary returned 0 AND category "${pair.category}" pool is empty${hadAnyError ? " (with errors along the way)" : ""} (${Date.now() - tStart}ms)`,
         );
         return null;
       }
 
-      const preview = pickBestPreview(res.products, pair.keyword, anchors);
+      const preview = pickBestPreview(products, pair.keyword, anchors);
       if (!preview) {
         noAnchorMatchCount++;
         console.log(
-          `[hunt-preview] FAIL "${pair.keyword}" — ${res.products.length} AE products but none had valid title/image/price (${Date.now() - tStart}ms)`,
+          `[hunt-preview] FAIL "${pair.keyword}" — ${products.length} AE products${usedPool ? " (from pool)" : ""} but none had valid title/image/price (${Date.now() - tStart}ms)`,
         );
       }
       return preview;
