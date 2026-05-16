@@ -18,8 +18,13 @@ import { reverseHunt } from "@/lib/services/reverse-hunt.service";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+// Bumped max from 500 → 2000 chars on May 16 2026 — real AE URLs with
+// affiliate tracking / click IDs / session params / btsid / aem_p4p
+// routinely exceed 500 chars. We only use the URL to extract the
+// product ID via regex, so the rest is ignored. 2000 is comfortable
+// headroom for even the most decorated tracking URLs.
 const RequestSchema = z.object({
-  input: z.string().min(8).max(500),
+  input: z.string().min(8).max(2000),
 });
 
 export async function POST(request: NextRequest) {
@@ -34,6 +39,19 @@ export async function POST(request: NextRequest) {
   try {
     body = RequestSchema.parse(await request.json());
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      // Friendly translation of the Zod issue array — beats showing
+      // the raw "[ { 'origin': 'string', 'code': 'too_big', ... } ]"
+      // JSON in a toast.
+      const issue = err.issues[0];
+      const friendly =
+        issue?.code === "too_big"
+          ? "URL is too long — try copying the URL without affiliate parameters, or just the product ID."
+          : issue?.code === "too_small"
+            ? "Please paste a full AliExpress URL or product ID."
+            : issue?.message ?? "Invalid input";
+      return error(friendly, 400);
+    }
     return error(err instanceof Error ? err.message : "Invalid payload", 400);
   }
 
