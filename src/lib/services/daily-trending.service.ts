@@ -365,6 +365,50 @@ const NICHE_QUERY_EXPANSIONS: ReadonlyArray<NicheExpansion> = [
 ];
 
 /**
+ * Cap a fetch promise at `timeoutMs`. Returns null if the inner
+ * promise doesn't settle in time.
+ *
+ * Background: AE's text-search API occasionally hangs on individual
+ * queries (no response, no error — just nothing). Without this cap,
+ * Promise.allSettled would wait forever on that one query, blocking
+ * the entire niche run, and the cron would run out of its 300s budget
+ * before reaching the niches later in the queue. CEO screenshot
+ * showed this exact pattern: top niches full, bottom niches empty.
+ *
+ * 20s is enough headroom for AE's 2-attempt retry + HTTP latency.
+ */
+async function fetchWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race<T | null>([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => {
+          console.warn(
+            `[daily-trending] ${label} timed out after ${timeoutMs}ms — skipping this query`,
+          );
+          resolve(null);
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    console.warn(
+      `[daily-trending] ${label} failed:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+const AE_QUERY_TIMEOUT_MS = 20_000;
+
+/**
  * Sanitize a query string before sending to AE search. AE's text
  * search treats `/`, `|`, and `\` as operators or separators, so a
  * niche like "women leather shoes/heels" returns garbage results
@@ -581,14 +625,21 @@ export async function runNiche(opts: {
     source === "TRENDING" ? perQuerySize : PAGE_SIZE_FRESH;
 
   // Fetch all queries in PARALLEL so wall time stays low even when a
-  // niche expands to 4 variants. Failures on individual queries don't
-  // kill the niche — we collect what succeeded.
-  const queryResults = await Promise.allSettled(
+  // niche expands to 6 variants. Each query is capped at
+  // AE_QUERY_TIMEOUT_MS so a single hanging AE call can't block the
+  // whole batch (this was the root cause of the "bottom niches
+  // empty" pattern — one slow query blocked everything downstream).
+  // Failures + timeouts return null; we collect what succeeded.
+  const queryResults = await Promise.all(
     queries.map((q) =>
-      searchFn(q, {
-        accessToken,
-        pageSize: targetPageSize,
-      }),
+      fetchWithTimeout(
+        searchFn(q, {
+          accessToken,
+          pageSize: targetPageSize,
+        }),
+        AE_QUERY_TIMEOUT_MS,
+        `${niche} (${source}) "${q}"`,
+      ),
     ),
   );
 
@@ -599,22 +650,21 @@ export async function runNiche(opts: {
   const seenIds = new Set<number>();
   const merged: AliExpressProduct[] = [];
   let totalFetched = 0;
+  let successfulQueries = 0;
   for (const result of queryResults) {
-    if (result.status !== "fulfilled") {
-      console.warn(
-        `[daily-trending] ${niche} (${source}) query failed:`,
-        result.reason instanceof Error
-          ? result.reason.message
-          : result.reason,
-      );
-      continue;
-    }
-    totalFetched += result.value.products.length;
-    for (const p of result.value.products) {
+    if (!result) continue; // timed out or failed
+    successfulQueries += 1;
+    totalFetched += result.products.length;
+    for (const p of result.products) {
       if (!p.productId || seenIds.has(p.productId)) continue;
       seenIds.add(p.productId);
       merged.push(p);
     }
+  }
+  if (successfulQueries < queries.length) {
+    console.log(
+      `[daily-trending] ${niche} (${source}) — ${successfulQueries}/${queries.length} queries succeeded`,
+    );
   }
 
   // Synthesize an ae-like response object so the rest of the function
@@ -648,16 +698,17 @@ export async function runNiche(opts: {
     }
   }
 
-  // Hail Mary — TRENDING only. If after the full rating-softening loop
-  // we STILL have nothing, drop the orders threshold too and accept
-  // any product that passes basic + Etsy filters. Better to show a
-  // few unverified-but-on-brand products than to show an empty niche.
-  // Skipped for FRESH because FRESH already has wider order bands.
+  // Hail Mary — TRENDING only. If after the full rating-softening
+  // loop we STILL have nothing, drop the orders threshold AND the
+  // basic-filter strictness (title length, price floor) too. Only
+  // the Etsy-friendly check survives — that's the user's hard rule.
+  // Better to show a few unverified-but-on-brand products than to
+  // show an empty niche.
   if (source === "TRENDING" && candidates.length === 0) {
     console.log(
-      `[daily-trending] ${niche} (${source}) Hail Mary — dropping rating + orders thresholds`,
+      `[daily-trending] ${niche} (${source}) Hail Mary — dropping all quality filters except Etsy`,
     );
-    const hailMary = ae.products.filter((p) => passesBasicFilters(p));
+    const hailMary = ae.products.filter((p) => passesMinimalFilters(p));
     candidates = hailMary;
     filteredOut = ae.products.length - candidates.length;
   }
@@ -824,6 +875,25 @@ function passesBasicFilters(p: AliExpressProduct): boolean {
     !p.priceMin ||
     p.priceMin < MIN_PRICE_FLOOR ||
     p.priceMin > MAX_PRICE_CEILING
+  ) {
+    return false;
+  }
+  if (!isEtsyFriendly(p.title)) return false;
+  return true;
+}
+
+/** Minimal filter used by the Hail Mary fallback. Drops the title
+ * minimum length and price band so we surface SOMETHING when a niche
+ * is empty, but KEEPS the Etsy-friendly check (which is the user's
+ * hard rule and must never soften). */
+function passesMinimalFilters(p: AliExpressProduct): boolean {
+  if (
+    !p.productId ||
+    !p.title ||
+    !p.productUrl ||
+    !p.imageUrl ||
+    !p.priceMin ||
+    p.priceMin <= 0
   ) {
     return false;
   }

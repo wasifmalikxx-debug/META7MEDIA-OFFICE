@@ -134,9 +134,29 @@ export function DailyTrendingView({
         ok: boolean;
         nichesScanned: number;
         productsAdded: number;
+        perNiche?: Array<{
+          niche: string;
+          source: string;
+          added: number;
+          error?: string;
+        }>;
       };
+      // Summarize per-niche so CEO can see at a glance which niches
+      // came back thin/empty (often the AE-side issue, not our filters)
+      const trendingPerNiche = (data.perNiche ?? []).filter(
+        (n) => n.source === "TRENDING",
+      );
+      const failedNiches = trendingPerNiche.filter(
+        (n) => n.added === 0 || n.error,
+      );
+      const description =
+        failedNiches.length === 0
+          ? `All ${trendingPerNiche.length} niches populated.`
+          : `${trendingPerNiche.length - failedNiches.length} populated, ${failedNiches.length} empty: ${failedNiches.map((n) => n.niche).join(", ")}`;
+
       toast.success(
-        `Refreshed — ${data.productsAdded} new products across ${data.nichesScanned} niches.`,
+        `Refreshed — ${data.productsAdded} products across ${data.nichesScanned} niches`,
+        { description, duration: 8000 },
       );
       // Re-fetch the feed to pick up the new rows
       await fetchFeed();
