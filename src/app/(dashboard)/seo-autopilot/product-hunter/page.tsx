@@ -50,7 +50,10 @@ export default async function ProductHunterPage() {
     return <ProductHunterView userRole={user.role} />;
   }
 
-  // HR Admin / AE / ME employees see the placeholder (real tool will
-  // open to them when we validate cost + quota at EM-team scale).
+  // Everyone else (HR Admin, AE/ME employees, EM-4L, Facebook team,
+  // anyone direct-navigating without access) sees the Coming Soon
+  // placeholder rather than a hard redirect — informative + friendly.
+  // No sidebar link is rendered for these users, so they only land
+  // here intentionally (e.g. via a shared URL).
   return <ProductHunterComingSoon />;
 }

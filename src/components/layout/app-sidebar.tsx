@@ -461,10 +461,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     </SidebarMenuItem>
                   )}
                   {/* Product Hunter — finds underserved Etsy niches before
-                      sending the team to AliExpress. CEO sees the live tool
-                      (sky "New" pill); SEO Autopilot users (Izaan, EM, Etsy
-                      partners) see a Coming Soon page (violet "Soon" pill)
-                      so they know it's on the roadmap. */}
+                      sending the team to AliExpress. Opened to the full
+                      EM team May 16 2026 (was CEO-only pilot until then).
+                      All link recipients here see the REAL tool — CEO,
+                      Izaan, EM employees, Etsy partners. Everyone else
+                      doesn't see this link in their sidebar; if they
+                      direct-navigate, they hit the Coming Soon placeholder. */}
                   {(isCeo || isEmTeam || isEtsyPartner) && (
                     <SidebarMenuItem>
                       <SidebarMenuButton
@@ -475,15 +477,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       >
                         <Target className="size-4" />
                         <span>Product Hunter</span>
-                        {isCeo ? (
-                          <span className="ml-auto inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-950/50 px-1.5 py-0.5 text-[9px] font-bold text-sky-700 dark:text-sky-300 tracking-wider uppercase">
-                            New
-                          </span>
-                        ) : (
-                          <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
-                            Soon
-                          </span>
-                        )}
+                        <span className="ml-auto inline-flex items-center rounded-full bg-sky-100 dark:bg-sky-950/50 px-1.5 py-0.5 text-[9px] font-bold text-sky-700 dark:text-sky-300 tracking-wider uppercase">
+                          New
+                        </span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
