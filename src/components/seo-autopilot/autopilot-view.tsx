@@ -689,11 +689,8 @@ function HeroBanner({
             <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-[1.05]">
               SEO Autopilot
             </h1>
-            <p className="text-[13px] sm:text-sm text-white/75 mt-2 leading-relaxed max-w-xl">
-              Drop your AliExpress title + 2 product photos. Autopilot
-              researches live Etsy data, checks compliance, then writes the
-              complete listing for you to paste into Etsy.
-            </p>
+            {/* Description paragraph removed May 16 2026 to match
+                Product Hunter and Calculator — heroes are title-only. */}
           </div>
         </div>
 
