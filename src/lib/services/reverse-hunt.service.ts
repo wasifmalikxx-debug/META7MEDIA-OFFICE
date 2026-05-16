@@ -5,6 +5,11 @@
  * search Etsy for matching listings → score "will it sell".
  *
  * Output: { aliProduct, etsyDemand, verdict, estimatedMargin }
+ *
+ * Data source priority (May 16 2026):
+ *   1. AliExpress DS API (works for .com global catalog)
+ *   2. HTML scrape fallback (works for .us regional catalog, where
+ *      the global DS API returns empty)
  */
 
 import {
@@ -92,29 +97,45 @@ export async function reverseHunt(
     aliUrlOrId,
   );
 
-  // Step 1: fetch AliExpress product
-  const aliProduct = await getProductById(productId, { accessToken });
-  if (!aliProduct) {
-    throw new Error(
-      "AliExpress product not found — it may be unlisted or restricted.",
-    );
-  }
+  // Step 1: fetch AliExpress product via DS API
+  let aliProduct = await getProductById(productId, { accessToken });
 
-  // Validate the AE response actually contains real product data.
+  // Validate the DS-API response actually contains real product data.
   // The DS API returns a "successful" empty response for products
   // outside its catalog (e.g. aliexpress.us regional IDs) — without
   // this check we'd run the rest of the pipeline on $0 cost + empty
   // title and produce nonsense Etsy results.
-  const titleOk = aliProduct.title && aliProduct.title.trim().length > 0;
-  const priceOk = aliProduct.priceMin && aliProduct.priceMin > 0;
-  if (!titleOk || !priceOk) {
+  const dsHasData =
+    aliProduct &&
+    aliProduct.title &&
+    aliProduct.title.trim().length > 0 &&
+    aliProduct.priceMin &&
+    aliProduct.priceMin > 0;
+
+  // DS API returned empty (common for .us regional URLs). Try the
+  // HTML scrape fallback — fetch the product page directly and
+  // extract title/image/price from meta tags + embedded JSON.
+  // Only attempt when input is a URL (not a bare numeric ID, since
+  // we don't know which storefront to scrape from).
+  if (!dsHasData && /^https?:\/\//i.test(aliUrlOrId.trim())) {
+    console.log(
+      `[reverse-hunt] DS API empty for ${productId} — trying HTML scrape (likely .us URL)`,
+    );
+    const scraped = await fetchAeProductFromHtml(aliUrlOrId.trim());
+    if (scraped) aliProduct = scraped;
+  }
+
+  // Final validation — if neither path got real data, fail cleanly.
+  const titleOk = aliProduct?.title && aliProduct.title.trim().length > 0;
+  const priceOk = aliProduct?.priceMin && aliProduct.priceMin > 0;
+  if (!aliProduct || !titleOk || !priceOk) {
     if (isUsRegionalId || isUsRegionalUrl) {
       throw new Error(
-        "This is an aliexpress.us URL — those use a separate regional catalog that our API can't read. Find the same product on aliexpress.com (product ID usually starts with 1005…) and paste that URL instead.",
+        "Couldn't load this aliexpress.us product. The page may be blocked or require JavaScript. Try the .com equivalent of this product if you can find it.",
       );
     }
     throw new Error(
-      "AliExpress returned empty data for this product — it may be unlisted, restricted, or unavailable in the global catalog.",
+      "AliExpress returned no usable data for this product — it may be unlisted, restricted, or removed.",
     );
   }
 
@@ -253,4 +274,129 @@ export async function reverseHunt(
     totalCostUsd: accum.totalCostUsd,
     durationMs: Date.now() - startedAt,
   };
+}
+
+// ─── HTML scrape fallback (for aliexpress.us regional catalog) ──────
+//
+// The global DS API doesn't serve the .us regional catalog. For those
+// URLs we fetch the product page HTML directly and extract title +
+// image + price from the embedded meta tags + JSON.
+//
+// AE product pages reliably ship the following in the initial HTML
+// (i.e. before JS execution), which is what we need to parse:
+//   - <meta property="og:title" content="...">
+//   - <meta property="og:image" content="...">
+//   - embedded JSON with "salePrice" / "appSalePrice" / "targetSalePrice"
+//
+// Scraping is best-effort — returns null on any failure (HTTP error,
+// missing fields, Cloudflare challenge, etc.) and the caller falls
+// through to the friendly "couldn't load" error.
+
+const SCRAPE_TIMEOUT_MS = 10_000;
+
+async function fetchAeProductFromHtml(
+  productUrl: string,
+): Promise<AliExpressProduct | null> {
+  const startedAt = Date.now();
+  let html: string;
+  try {
+    const res = await fetch(productUrl, {
+      headers: {
+        // Look like a real browser so AE doesn't serve a stripped
+        // bot variant of the page.
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      console.warn(
+        `[reverse-hunt] HTML scrape: HTTP ${res.status} in ${Date.now() - startedAt}ms`,
+      );
+      return null;
+    }
+    html = await res.text();
+  } catch (err) {
+    console.warn(
+      `[reverse-hunt] HTML scrape failed:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+
+  // og:title — works on virtually every AE product page
+  const titleRaw = html
+    .match(
+      /<meta[^>]+(?:property|name)=["']og:title["'][^>]*content=["']([^"']+)["']/i,
+    )?.[1]
+    ?.trim();
+  // og:image — used for the card thumbnail
+  const imageUrl = html
+    .match(
+      /<meta[^>]+(?:property|name)=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+    )?.[1]
+    ?.trim();
+
+  // Price — AE embeds in __INIT_DATA__ / window.runParams JSON. Try
+  // several known shapes in order of likelihood.
+  const priceMatch =
+    html.match(/"salePrice"\s*:\s*"?([0-9]+\.?[0-9]*)"?/) ??
+    html.match(/"appSalePrice"\s*:[^{]*"value"\s*:\s*"?([0-9]+\.?[0-9]*)/) ??
+    html.match(/"app_sale_price"\s*:\s*"([0-9]+\.?[0-9]*)"/) ??
+    html.match(/"targetSalePrice"\s*:\s*"?([0-9]+\.?[0-9]*)"?/) ??
+    html.match(/"actMinPrice"\s*:\s*"?([0-9]+\.?[0-9]*)"?/);
+
+  if (!titleRaw) {
+    console.warn(`[reverse-hunt] HTML scrape: no og:title found`);
+    return null;
+  }
+  if (!priceMatch) {
+    console.warn(`[reverse-hunt] HTML scrape: no price pattern matched`);
+    return null;
+  }
+
+  const price = parseFloat(priceMatch[1]);
+  if (!isFinite(price) || price <= 0 || price > 10000) {
+    console.warn(
+      `[reverse-hunt] HTML scrape: invalid price "${priceMatch[1]}"`,
+    );
+    return null;
+  }
+
+  // Numeric product ID from the URL path
+  const productIdMatch = productUrl.match(/\/item\/(\d+)/);
+  const productId = productIdMatch ? Number(productIdMatch[1]) : 0;
+
+  const title = decodeHtmlEntities(titleRaw);
+  console.log(
+    `[reverse-hunt] HTML scrape success in ${Date.now() - startedAt}ms — "${title.slice(0, 60)}" @ $${price}`,
+  );
+
+  return {
+    productId,
+    title,
+    imageUrl,
+    productUrl,
+    priceMin: price,
+    priceMax: price,
+    currency: "USD",
+  };
+}
+
+/** Minimal HTML entity decoder for the title field. */
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
+      String.fromCodePoint(parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
 }
