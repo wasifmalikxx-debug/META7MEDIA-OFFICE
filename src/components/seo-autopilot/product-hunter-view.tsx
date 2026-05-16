@@ -171,8 +171,6 @@ export function ProductHunterView({
 
       {/* Constrained content column */}
       <div className="max-w-5xl mx-auto space-y-6">
-        <HeroDescription activeTab={activeTab} />
-
         <AliExpressConnectionBanner userRole={userRole} />
 
         <ToolTabsBar active={activeTab} onChange={setActiveTab} />
@@ -328,13 +326,10 @@ function ToolTabsBar({
 const TAB_COPY: Record<
   HunterTab,
   {
-    description: string;
     cells: Array<{ icon: typeof Sparkles; label: string; sub: string }>;
   }
 > = {
   manual: {
-    description:
-      "Manual hunting — type a seed product type or niche, we brainstorm 25 long-tail variants and score each one against live Etsy demand, engagement, and shop diversity. You stay in control; the system surfaces the angles worth listing.",
     cells: [
       { icon: Sparkles, label: "25 variants", sub: "Haiku brainstorm" },
       { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
@@ -342,8 +337,6 @@ const TAB_COPY: Record<
     ],
   },
   reverse: {
-    description:
-      "Already eyeing a product on AliExpress? Paste the link — we'll fetch it, check Etsy demand, project your margin, and tell you in plain English: source it or skip it.",
     cells: [
       { icon: Sparkles, label: "AE source", sub: "Live price + rating" },
       { icon: TrendingUp, label: "Etsy demand", sub: "Listings + favorites" },
@@ -351,8 +344,6 @@ const TAB_COPY: Record<
     ],
   },
   image: {
-    description:
-      "See a competitor's winning Etsy listing? Drop their image URL here — AliExpress image search finds the supplier(s) selling that exact product. Turn their wins into your pipeline.",
     cells: [
       { icon: ImageIcon, label: "Image input", sub: "Any URL works" },
       { icon: Target, label: "Visual match", sub: "AE image-search API" },
@@ -360,8 +351,6 @@ const TAB_COPY: Record<
     ],
   },
   soon: {
-    description:
-      "Hunting tools in the pipeline — Watchlists, Fresh Finds, Bulk URL Checker, Source Health Monitor. Every new tool we build slots in as a tab on this page.",
     cells: [
       { icon: LayoutGrid, label: "Watchlists", sub: "Auto-fetch your niches" },
       { icon: Sparkles, label: "Fresh Finds", sub: "Early but credible" },
@@ -461,18 +450,6 @@ function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
         </div>
       </div>
     </div>
-  );
-}
-
-// Description paragraph that lives JUST BELOW the hero banner. Swaps
-// based on the active tab so the intro copy always matches whichever
-// hunting mode the user is on. Rendered inside the constrained
-// content column for readability — no full-bleed.
-function HeroDescription({ activeTab }: { activeTab: HunterTab }) {
-  return (
-    <p className="text-[13px] sm:text-sm text-muted-foreground/85 leading-relaxed max-w-3xl px-1 ap-stagger-in">
-      {TAB_COPY[activeTab].description}
-    </p>
   );
 }
 
