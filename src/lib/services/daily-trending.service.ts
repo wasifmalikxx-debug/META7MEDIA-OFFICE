@@ -103,6 +103,16 @@ const MIN_ORDERS_TRENDING = 5;
  * — bad-fit products stay blocked even when the niche is thin. */
 const MIN_ITEMS_PER_NICHE = 5;
 
+/** Per-niche maximum item count we display. We still STORE more than
+ * this (the cron writes whatever survives all the filters), so the
+ * CEO admin view + analytics keep the full record. The page just
+ * slices to the top-N after sorting by combined trend score.
+ *
+ * 8 is the CEO's chosen browse-comfortable number — enough variety
+ * per niche to scan in one glance, not so many that the page becomes
+ * a wall of products. */
+const MAX_ITEMS_PER_NICHE_DISPLAY = 8;
+
 /** FRESH: lower bound = some real demand validation. Softened 5 → 3. */
 const MIN_ORDERS_FRESH = 3;
 
@@ -909,8 +919,11 @@ export async function getTodaysTrendingGrouped(
       list.push({ ...row, source: row.source as TrendingSource });
   }
 
-  // Sort each group by: unclaimed first → trend score desc → cheapest
-  for (const [, products] of groups.entries()) {
+  // Sort each group by: unclaimed first → trend score desc → cheapest,
+  // then cap at MAX_ITEMS_PER_NICHE_DISPLAY (8) for a clean browse view.
+  // The DB still holds more than 8 (cron writes everything that passes
+  // filters) — the cap is purely a display preference.
+  for (const [niche, products] of groups.entries()) {
     products.sort((a, b) => {
       // Unclaimed (claimedAt = null) sorts before claimed
       const aClaimed = a.claimedAt ? 1 : 0;
@@ -922,6 +935,9 @@ export async function getTodaysTrendingGrouped(
       // Tiebreaker: cheaper first (easier listing, faster sale)
       return a.priceUsd - b.priceUsd;
     });
+    if (products.length > MAX_ITEMS_PER_NICHE_DISPLAY) {
+      groups.set(niche, products.slice(0, MAX_ITEMS_PER_NICHE_DISPLAY));
+    }
   }
 
   return [...groups.entries()].map(([niche, products]) => ({
