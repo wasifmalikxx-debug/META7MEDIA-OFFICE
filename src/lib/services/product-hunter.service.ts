@@ -744,31 +744,40 @@ export async function huntByNiche(opts: {
   let categoryFallbackCount = 0;
 
   /**
-   * When the keyword search returns 0, fall back to a much broader
-   * search. The OLD behaviour was to search the full category name
-   * (e.g. "Decorative & Statement Lamps") — but that's also a niche
-   * phrase, often returning 0 too. The shortest single-word anchor
-   * (e.g. "lamp") is virtually guaranteed to hit thousands of AE
-   * products, giving PASS 3 something to surface.
+   * Build an ORDERED list of fallback search queries to try when the
+   * primary keyword search returns 0 products. We try them sequentially
+   * and stop at the first one that returns >0 products.
    *
-   * Order of preference:
-   *   1. Shortest single-word anchor (e.g. "lamp", "earring")
-   *   2. First two-word anchor (e.g. "wall art")
-   *   3. Bare category name (last resort)
+   * Why multiple instead of just one: a single fallback is a single
+   * point of failure. The previous "shortest single-word anchor"
+   * picked "led" (3 chars) for "String & Fairy Lights" and AE handles
+   * 3-letter acronym queries weirdly, returning 0. With multiple
+   * tiers we fall through to "lamp" / "fairy" / "light" — at least
+   * ONE of those will hit AE's catalogue.
+   *
+   * Order of priority:
+   *   1. 4+ char single-word anchors, shortest first ("lamp", "fairy")
+   *   2. Multi-word anchors ("fairy light", "string light")
+   *   3. Bare category name (last resort, may still fail for weird
+   *      category names with special chars)
    */
-  function pickFallbackQuery(
+  function pickFallbackQueries(
     anchors: string[],
     categoryName: string,
-  ): string {
+  ): string[] {
     const singleWords = anchors
-      .filter((a) => !a.includes(" ") && a.length >= 3)
+      .filter((a) => !a.includes(" ") && a.length >= 4)
       .sort((a, b) => a.length - b.length);
-    if (singleWords.length > 0) return singleWords[0];
-    const twoWords = anchors.filter(
-      (a) => a.includes(" ") && a.length <= 25,
+    const multiWords = anchors.filter(
+      (a) => a.includes(" ") && a.length <= 30,
     );
-    if (twoWords.length > 0) return twoWords[0];
-    return categoryName;
+    const queries = [
+      ...singleWords.slice(0, 3), // up to 3 shortest single-word anchors
+      ...multiWords.slice(0, 1), // 1 multi-word anchor
+      categoryName, // bare category name as last resort
+    ];
+    // Dedupe + drop empties
+    return Array.from(new Set(queries.filter((q) => q && q.length >= 3)));
   }
 
   const fetchPreview = async (pair: { category: string; keyword: string }) => {
@@ -784,6 +793,7 @@ export async function huntByNiche(opts: {
       // throw and we never got to the broader retry).
       let res: Awaited<ReturnType<typeof searchProductsByKeyword>> | null =
         null;
+      let hadAnyError = false;
       try {
         res = await searchProductsByKeyword(pair.keyword, {
           accessToken: opts.accessToken!,
@@ -791,6 +801,7 @@ export async function huntByNiche(opts: {
           sortBy: "orders_desc",
         });
       } catch (err) {
+        hadAnyError = true;
         console.warn(
           `[hunt-preview] primary search threw for "${pair.keyword}" (${Date.now() - tStart}ms):`,
           err instanceof Error ? err.message : String(err),
@@ -798,37 +809,53 @@ export async function huntByNiche(opts: {
         // Don't return — fall through to the fallback.
       }
 
-      // BROAD-ANCHOR FALLBACK — when the keyword search returned 0
-      // OR threw, retry with the simplest product noun from the
-      // category's anchor list. "lamp" finds millions of AE products;
-      // "Decorative & Statement Lamps" might find zero. The shortest
-      // anchor is the most search-friendly.
+      // MULTI-TIER FALLBACK — when the primary keyword search returned
+      // 0 (or threw), try each fallback query in order until one
+      // returns products. A single fallback ("led" for the String &
+      // Fairy Lights category) is a single point of failure; trying
+      // 3-4 progressively broader queries virtually guarantees a hit.
       if (!res || res.products.length === 0) {
-        const fallbackQuery = pickFallbackQuery(anchors, pair.category);
+        const fallbackQueries = pickFallbackQueries(anchors, pair.category);
         categoryFallbackCount++;
         console.log(
-          `[hunt-preview] "${pair.keyword}" needs fallback → searching "${fallbackQuery}" (anchors: [${anchors.join(", ")}])`,
+          `[hunt-preview] "${pair.keyword}" needs fallback → trying [${fallbackQueries.map((q) => `"${q}"`).join(", ")}] (anchors: [${anchors.join(", ")}])`,
         );
-        try {
-          res = await searchProductsByKeyword(fallbackQuery, {
-            accessToken: opts.accessToken!,
-            pageSize: 15,
-            sortBy: "orders_desc",
-          });
-        } catch (err) {
-          errorCount++;
-          console.warn(
-            `[hunt-preview] EXCEPTION fallback "${fallbackQuery}" for "${pair.keyword}" (${Date.now() - tStart}ms):`,
-            err instanceof Error ? err.message : String(err),
-          );
-          return null;
+        for (const q of fallbackQueries) {
+          try {
+            const fbRes = await searchProductsByKeyword(q, {
+              accessToken: opts.accessToken!,
+              pageSize: 15,
+              sortBy: "orders_desc",
+            });
+            if (fbRes.products.length > 0) {
+              res = fbRes;
+              console.log(
+                `[hunt-preview] "${pair.keyword}" recovered via fallback "${q}" (${fbRes.products.length} products)`,
+              );
+              break;
+            }
+            console.log(
+              `[hunt-preview] fallback "${q}" for "${pair.keyword}" also returned 0 — trying next`,
+            );
+          } catch (err) {
+            hadAnyError = true;
+            console.warn(
+              `[hunt-preview] fallback "${q}" for "${pair.keyword}" threw:`,
+              err instanceof Error ? err.message : String(err),
+            );
+            // continue to next fallback
+          }
         }
       }
 
       if (!res || res.products.length === 0) {
-        zeroProductCount++;
+        if (hadAnyError) {
+          errorCount++;
+        } else {
+          zeroProductCount++;
+        }
         console.log(
-          `[hunt-preview] FAIL "${pair.keyword}" — both primary AND broad-anchor fallback returned 0 products (${Date.now() - tStart}ms)`,
+          `[hunt-preview] FAIL "${pair.keyword}" — primary AND every fallback returned 0 products${hadAnyError ? " (with errors along the way)" : ""} (${Date.now() - tStart}ms)`,
         );
         return null;
       }
