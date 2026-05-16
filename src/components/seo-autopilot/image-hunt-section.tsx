@@ -40,13 +40,7 @@ interface ImageSearchResult {
   products: AliProductLite[];
 }
 
-export function ImageHuntSection({
-  isCeo = false,
-}: {
-  /** CEO sees AE prices on result cards; employees don't (CEO ask
-   * May 17 2026 — hide sourcing-cost info from team). */
-  isCeo?: boolean;
-} = {}) {
+export function ImageHuntSection() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImageSearchResult | null>(null);
@@ -184,13 +178,9 @@ export function ImageHuntSection({
                     <p className="text-[11px] leading-snug line-clamp-2">
                       {p.title}
                     </p>
-                    {/* AE price CEO-only. Rating stays visible (quality
-                        signal, not a cost). */}
-                    {isCeo && (
-                      <p className="text-[12px] font-bold tabular-nums mt-1 text-emerald-700 dark:text-emerald-400">
-                        ${p.priceMin.toFixed(2)}
-                      </p>
-                    )}
+                    <p className="text-[12px] font-bold tabular-nums mt-1 text-emerald-700 dark:text-emerald-400">
+                      ${p.priceMin.toFixed(2)}
+                    </p>
                     {p.rating !== undefined && (
                       <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5 inline-flex items-center gap-0.5">
                         <Star

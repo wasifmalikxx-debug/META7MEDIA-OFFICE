@@ -522,7 +522,6 @@ export function ManualHuntingSection({
                   verdictFilter={verdictFilter}
                   sortKey={sortKey}
                   viewMode={viewMode}
-                  isCeo={isCeo}
                   registerRef={(el) => {
                     sectionRefs.current[idx] = el;
                   }}
@@ -1324,7 +1323,6 @@ function CategorySection({
   verdictFilter,
   sortKey,
   viewMode,
-  isCeo,
   registerRef,
 }: {
   category: NicheCategoryResult;
@@ -1332,7 +1330,6 @@ function CategorySection({
   verdictFilter: VerdictFilter;
   sortKey: SortKey;
   viewMode: ViewMode;
-  isCeo: boolean;
   registerRef: (el: HTMLElement | null) => void;
 }) {
   const visible = useMemo(() => {
@@ -1390,13 +1387,13 @@ function CategorySection({
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
           {visible.map((kw) => (
-            <KeywordCard key={kw.keyword} keyword={kw} isCeo={isCeo} />
+            <KeywordCard key={kw.keyword} keyword={kw} />
           ))}
         </div>
       ) : (
         <div className="space-y-2">
           {visible.map((kw) => (
-            <KeywordRow key={kw.keyword} keyword={kw} isCeo={isCeo} />
+            <KeywordRow key={kw.keyword} keyword={kw} />
           ))}
         </div>
       )}
@@ -1412,13 +1409,7 @@ function CategorySection({
 // below. Built for the 2-3 column grid layout so several cards live
 // side-by-side instead of stacking vertically.
 
-function KeywordCard({
-  keyword,
-  isCeo,
-}: {
-  keyword: NicheKeywordResult;
-  isCeo: boolean;
-}) {
+function KeywordCard({ keyword }: { keyword: NicheKeywordResult }) {
   const verdictStyle = VERDICT_STYLE[keyword.verdict];
 
   const aliExpressUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(keyword.keyword)}`;
@@ -1466,16 +1457,12 @@ function KeywordCard({
           </span>
         </div>
 
-        {/* Price / rating / sold ribbon (bottom of image). AE price
-            CEO-only; rating + sold count visible to everyone (they're
-            quality signals, not sourcing-cost info). */}
+        {/* Price / rating / sold ribbon (bottom of image) */}
         {keyword.preview && (
           <div className="absolute bottom-0 inset-x-0 px-2.5 py-1.5 bg-gradient-to-t from-black/85 via-black/45 to-transparent flex items-center gap-2.5 text-[10px] text-white tabular-nums">
-            {isCeo && (
-              <span className="text-[12px] font-bold text-emerald-300">
-                ${keyword.preview.priceUsd.toFixed(2)}
-              </span>
-            )}
+            <span className="text-[12px] font-bold text-emerald-300">
+              ${keyword.preview.priceUsd.toFixed(2)}
+            </span>
             {keyword.preview.rating !== undefined && (
               <span className="inline-flex items-center gap-0.5">
                 <Star
@@ -1552,13 +1539,7 @@ function KeywordCard({
 // All on a single line on desktop. On narrow screens the Etsy stats
 // hide first, then the preview meta drops to a second line.
 
-function KeywordRow({
-  keyword,
-  isCeo,
-}: {
-  keyword: NicheKeywordResult;
-  isCeo: boolean;
-}) {
+function KeywordRow({ keyword }: { keyword: NicheKeywordResult }) {
   const verdictStyle = VERDICT_STYLE[keyword.verdict];
   const aliExpressUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(keyword.keyword)}`;
   const etsyUrl = `https://www.etsy.com/search?q=${encodeURIComponent(keyword.keyword)}`;
@@ -1626,14 +1607,9 @@ function KeywordRow({
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground tabular-nums mt-0.5">
             {keyword.preview ? (
               <>
-                {/* AE preview price — CEO-only. Rating + sold count
-                    visible to everyone (they're quality signals, not
-                    sourcing-cost info). */}
-                {isCeo && (
-                  <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                    ${keyword.preview.priceUsd.toFixed(2)}
-                  </span>
-                )}
+                <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                  ${keyword.preview.priceUsd.toFixed(2)}
+                </span>
                 {keyword.preview.rating !== undefined && (
                   <span className="inline-flex items-center gap-0.5">
                     <Star

@@ -189,9 +189,12 @@ export function ProductHunterView({
       <div className="max-w-5xl mx-auto space-y-6">
         <ToolTabsBar active={activeTab} onChange={setActiveTab} />
 
+        {/* ManualHuntingSection still gets isCeo so it can hide the
+            Claude API "Cost: $X.XXXX" footer in the result hero
+            (CEO-only) — AE product prices stay visible to everyone. */}
         {activeTab === "manual" && <ManualHuntingSection isCeo={isCeo} />}
 
-        {activeTab === "image" && <ImageHuntSection isCeo={isCeo} />}
+        {activeTab === "image" && <ImageHuntSection />}
 
         {activeTab === "trending" &&
           (isCeo && currentUserId ? (
