@@ -29,7 +29,7 @@ export default async function ProductHunterPage() {
 
   const user = session.user;
   if (user.role === "SUPER_ADMIN") {
-    return <ProductHunterView />;
+    return <ProductHunterView userRole="SUPER_ADMIN" />;
   }
 
   // Anyone with SEO Autopilot access (Izaan, EM employees, Etsy partners)

@@ -132,7 +132,15 @@ function resolveInitialTab(): HunterTab {
   return "manual";
 }
 
-export function ProductHunterView() {
+export function ProductHunterView({
+  userRole = "SUPER_ADMIN",
+}: {
+  /** Role gate for the AE connection banner. CEO sees full controls,
+   * partners see status-only (no Connect button), everyone else gets
+   * the banner hidden entirely. Defaults to SUPER_ADMIN for backward
+   * compat with calls that don't pass the prop yet. */
+  userRole?: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
+}) {
   const [activeTab, setActiveTab] = useState<HunterTab>(resolveInitialTab);
 
   // Prefill state — when a recent-hunt card is clicked, this gets set
@@ -142,23 +150,24 @@ export function ProductHunterView() {
   const [prefill, setPrefill] = useState<RecentHunt | null>(null);
   const handlePickRecent = useCallback((hunt: RecentHunt) => {
     setPrefill(hunt);
-    // Scroll the input back into view in case we were scrolled down on
-    // an old result page.
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, []);
 
-  // Spotlight layout (May 16 2026 redesign):
-  //   1. Compact HeaderStrip — logo + mode pills + AE badge in one line
-  //   2. AE banner (only when NOT connected — prompts the user to auth)
-  //   3. Active mode section (the tool itself, full focus)
-  //   4. Recent hunts strip (only on Manual mode, click to prefill)
+  // Layout (May 16 2026, second pass — restored themed hero per CEO):
+  //   1. HeroBanner — dark gradient aurora hero matching SEO Autopilot
+  //   2. AE connection banner (role-aware visibility, see component)
+  //   3. ToolTabsBar — 4 mode cards
+  //   4. Active mode section
+  //   5. Recent hunts strip (kept from Spotlight pass, only on Manual)
   return (
-    <div className="relative max-w-5xl mx-auto space-y-5 pb-12">
-      <HeaderStrip active={activeTab} onChange={setActiveTab} />
+    <div className="relative max-w-5xl mx-auto space-y-6 pb-12">
+      <HeroBanner activeTab={activeTab} />
 
-      <AliExpressConnectionBanner compactWhenConnected />
+      <AliExpressConnectionBanner userRole={userRole} />
+
+      <ToolTabsBar active={activeTab} onChange={setActiveTab} />
 
       {activeTab === "manual" && (
         <ManualHuntingSection
@@ -175,59 +184,56 @@ export function ProductHunterView() {
 
       {activeTab === "soon" && <ComingSoonRoadmap />}
 
-      {/* Recent hunts only on Manual Hunting — the other modes are
-          input-driven (URL / image) and don't benefit from a history
-          carousel yet. */}
       {activeTab === "manual" && <RecentHuntsStrip onPick={handlePickRecent} />}
     </div>
   );
 }
 
-// ─── Header strip (Spotlight layout, May 16 2026) ───────────────────
+// ─── Tool tabs bar (4-card mode picker) ─────────────────────────────
 //
-// One-line header that combines what used to be a 350px-tall
-// HeroBanner + a 4-card ToolTabsBar + AE banner. Saves ~280px of
-// vertical space so the actual tool (the niche input) lands above
-// the fold on every screen size.
-//
-// Layout:
-//   [logo · "Product Hunter"]   [Manual] [Reverse] [Image] [Soon]   [✓ AE]
-//
-// On narrow screens the mode tabs wrap to a second row underneath.
+// Restored from the original (pre-Spotlight) design — full-width cards
+// with icon + label + description. Each tab keeps its own state inside
+// its child section component, so flipping back to "Manual Hunting"
+// preserves any in-progress scan results.
 
 const MODE_TABS: Array<{
   id: HunterTab;
   label: string;
   icon: typeof Target;
+  description: string;
   gradient: string;
 }> = [
   {
     id: "manual",
     label: "Manual Hunting",
     icon: Target,
+    description: "Type a seed → find underserved Etsy keywords",
     gradient: "from-sky-500 to-violet-500",
   },
   {
     id: "reverse",
     label: "Reverse Hunt",
     icon: Link2,
+    description: "Paste AE URL → will it sell?",
     gradient: "from-emerald-500 to-orange-500",
   },
   {
     id: "image",
     label: "Image Hunt",
     icon: ImageIcon,
+    description: "Paste image → find the supplier",
     gradient: "from-violet-500 to-pink-500",
   },
   {
     id: "soon",
     label: "More Soon",
     icon: LayoutGrid,
+    description: "Watchlists · Fresh Finds",
     gradient: "from-amber-500 to-rose-500",
   },
 ];
 
-function HeaderStrip({
+function ToolTabsBar({
   active,
   onChange,
 }: {
@@ -235,67 +241,232 @@ function HeaderStrip({
   onChange: (t: HunterTab) => void;
 }) {
   return (
-    <div className="relative ap-stagger-in">
-      <div className="rounded-2xl bg-card/95 ring-1 ring-border/60 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_12px_36px_-12px_rgba(0,0,0,0.5)] p-3 sm:p-3.5">
-        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-          {/* Logo + name */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="relative">
-              <span
-                aria-hidden
-                className="absolute -inset-1 rounded-xl bg-gradient-to-br from-sky-400/30 to-violet-500/30 blur-md"
-              />
-              <div className="relative size-9 rounded-xl bg-gradient-to-br from-sky-500 to-violet-600 ring-1 ring-violet-700/30 flex items-center justify-center shadow-md shadow-violet-500/25">
-                <Target className="size-4 text-white" />
-              </div>
-            </div>
-            <div>
-              <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-muted-foreground leading-tight">
-                Hunting hub
-              </p>
-              <h1 className="text-[15px] font-bold tracking-tight leading-tight">
-                Product Hunter
-              </h1>
-            </div>
-          </div>
-
-          {/* Mode tabs — flex-1 row, wraps on mobile */}
-          <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto pb-0.5 snap-x">
-            {MODE_TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = active === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => onChange(tab.id)}
-                  className={`relative shrink-0 snap-start inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg ring-1 transition-all overflow-hidden text-[11px] font-bold tracking-tight ${
+    <div className="relative">
+      {/* py-1 + -my-1 below preserves a 4px breathing margin so the
+          leftmost / rightmost card's outer ring isn't clipped by the
+          scroll container (CEO flagged the "Manual Hunting button is
+          cropped" issue). */}
+      <div className="flex gap-2 overflow-x-auto px-1 py-1 -mx-1 -my-1 snap-x">
+        {MODE_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = active === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onChange(tab.id)}
+              className={`relative flex-1 min-w-[180px] snap-start rounded-2xl ring-1 transition-all overflow-hidden ${
+                isActive
+                  ? "ring-foreground/30 bg-card shadow-md"
+                  : "ring-border/50 bg-card/60 hover:ring-border hover:bg-card"
+              }`}
+            >
+              {isActive && (
+                <span
+                  aria-hidden
+                  className={`absolute inset-0 bg-gradient-to-br ${tab.gradient} opacity-[0.06]`}
+                />
+              )}
+              <div className="relative flex items-center gap-3 p-3">
+                <div
+                  className={`size-9 rounded-lg flex items-center justify-center shrink-0 ring-1 ${
                     isActive
-                      ? "ring-foreground/30 bg-card shadow"
-                      : "ring-border/40 bg-muted/15 hover:ring-border hover:bg-muted/30 text-foreground/75"
+                      ? `bg-gradient-to-br ${tab.gradient} ring-white/20 shadow-md`
+                      : "bg-muted/60 ring-border/40"
                   }`}
                 >
-                  {isActive && (
-                    <span
-                      aria-hidden
-                      className={`absolute inset-0 bg-gradient-to-br ${tab.gradient} opacity-[0.08]`}
-                    />
-                  )}
                   <Icon
-                    className={`relative size-3 ${
-                      isActive ? "text-foreground" : "text-muted-foreground"
+                    className={`size-4 ${
+                      isActive ? "text-white" : "text-muted-foreground"
                     }`}
                   />
-                  <span className="relative">{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
+                </div>
+                <div className="min-w-0 text-left">
+                  <p
+                    className={`text-[12px] font-bold tracking-tight leading-tight ${
+                      isActive ? "text-foreground" : "text-foreground/85"
+                    }`}
+                  >
+                    {tab.label}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 truncate">
+                    {tab.description}
+                  </p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
-          {/* AE compact badge sits on the far right — rendered by
-              AliExpressConnectionBanner itself when connected (compact
-              mode). When disconnected, the full banner renders below. */}
+// ─── Hero banner ────────────────────────────────────────────────────
+//
+// Dark gradient hero with animated aurora blobs — matches the SEO
+// Autopilot hero structurally but uses a COOL (navy → violet → cyan)
+// palette to differentiate Product Hunter from the WARM (purple →
+// orange) palette of SEO Autopilot. CEO restored this on May 16
+// after the Spotlight attempt didn't match the rest of the SEO
+// Autopilot family.
+//
+// Description text + 3 stat cells swap based on the active mode so
+// the hero adapts to whichever tool the user picked.
+
+const TAB_COPY: Record<
+  HunterTab,
+  {
+    description: string;
+    cells: Array<{ icon: typeof Sparkles; label: string; sub: string }>;
+  }
+> = {
+  manual: {
+    description:
+      "Manual hunting — type a seed product type or niche, we brainstorm 25 long-tail variants and score each one against live Etsy demand, engagement, and shop diversity. You stay in control; the system surfaces the angles worth listing.",
+    cells: [
+      { icon: Sparkles, label: "25 variants", sub: "Haiku brainstorm" },
+      { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
+      { icon: Heart, label: "Ranked", sub: "GREAT · GOOD · MAYBE · SKIP" },
+    ],
+  },
+  reverse: {
+    description:
+      "Already eyeing a product on AliExpress? Paste the link — we'll fetch it, check Etsy demand, project your margin, and tell you in plain English: source it or skip it.",
+    cells: [
+      { icon: Sparkles, label: "AE source", sub: "Live price + rating" },
+      { icon: TrendingUp, label: "Etsy demand", sub: "Listings + favorites" },
+      { icon: Heart, label: "Verdict", sub: "STRONG YES · YES · MAYBE · NO" },
+    ],
+  },
+  image: {
+    description:
+      "See a competitor's winning Etsy listing? Drop their image URL here — AliExpress image search finds the supplier(s) selling that exact product. Turn their wins into your pipeline.",
+    cells: [
+      { icon: ImageIcon, label: "Image input", sub: "Any URL works" },
+      { icon: Target, label: "Visual match", sub: "AE image-search API" },
+      { icon: TrendingUp, label: "12 sources", sub: "Sorted by orders" },
+    ],
+  },
+  soon: {
+    description:
+      "Hunting tools in the pipeline — Watchlists, Fresh Finds, Bulk URL Checker, Source Health Monitor. Every new tool we build slots in as a tab on this page.",
+    cells: [
+      { icon: LayoutGrid, label: "Watchlists", sub: "Auto-fetch your niches" },
+      { icon: Sparkles, label: "Fresh Finds", sub: "Early but credible" },
+      { icon: TrendingUp, label: "Bulk tools", sub: "50 URLs at a time" },
+    ],
+  },
+};
+
+function HeroBanner({ activeTab }: { activeTab: HunterTab }) {
+  const copy = TAB_COPY[activeTab];
+  return (
+    <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10 shadow-2xl shadow-violet-500/20 ap-stagger-in">
+      {/* Base gradient — cool navy → violet → navy to differentiate
+          Product Hunter from SEO Autopilot's warm purple → orange */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0d1a2a] via-[#1a1226] to-[#0d1a2a]" />
+
+      {/* Animated aurora blobs — cyan + violet */}
+      <div
+        aria-hidden
+        className="absolute -top-32 -left-20 size-[420px] rounded-full blur-3xl ap-aurora-1"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(34,211,238,0.55), rgba(34,211,238,0) 70%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="absolute -bottom-40 right-0 size-[520px] rounded-full blur-3xl ap-aurora-2"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(168,85,247,0.55), rgba(168,85,247,0) 70%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.08]"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle, rgba(255,255,255,0.6) 1px, transparent 1px)",
+          backgroundSize: "18px 18px",
+        }}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent"
+      />
+
+      <div className="relative px-7 sm:px-9 py-8 sm:py-10">
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 shadow-inner">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-80" />
+              <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+            </span>
+            CEO admin · Beta
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
+            <Sparkles className="size-3" />
+            Hunting hub
+          </span>
         </div>
+
+        <div className="flex items-center gap-4 sm:gap-5">
+          <div className="relative shrink-0">
+            <span
+              aria-hidden
+              className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-sky-400/40 to-violet-500/40 blur-lg ap-orb-pulse"
+            />
+            <div className="relative size-16 sm:size-[68px] rounded-2xl bg-gradient-to-br from-white/20 to-white/5 ring-1 ring-white/30 flex items-center justify-center backdrop-blur-md shadow-2xl shadow-sky-900/40">
+              <Target className="size-7 sm:size-8 text-white drop-shadow-lg" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-[1.05]">
+              Product Hunter
+            </h1>
+            <p className="text-[13px] sm:text-sm text-white/75 mt-2 leading-relaxed max-w-2xl">
+              {copy.description}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-7 pt-5 border-t border-white/10">
+          {copy.cells.map((cell) => (
+            <FeatureCell
+              key={cell.label}
+              icon={cell.icon}
+              label={cell.label}
+              sub={cell.sub}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeatureCell({
+  icon: Icon,
+  label,
+  sub,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  sub: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 min-w-0">
+      <div className="size-8 rounded-lg bg-white/10 ring-1 ring-white/15 flex items-center justify-center shrink-0">
+        <Icon className="size-4 text-white/90" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] sm:text-[12px] font-semibold text-white leading-tight truncate">
+          {label}
+        </p>
+        <p className="text-[10px] text-white/55 leading-tight truncate">{sub}</p>
       </div>
     </div>
   );
@@ -416,13 +587,24 @@ interface AliConnectionStatus {
 }
 
 function AliExpressConnectionBanner({
-  compactWhenConnected = false,
+  userRole = "SUPER_ADMIN",
 }: {
-  compactWhenConnected?: boolean;
+  /** Drives the banner's visibility + action buttons:
+   *  - SUPER_ADMIN: full banner with Connect/Disconnect buttons
+   *  - PARTNER:     status-only banner (informational, no actions)
+   *  - all others:  banner is hidden entirely (employees don't need
+   *                 to see AE wiring; the tool just works for them)
+   *
+   * CEO is the only user who can actually attach an AE account — the
+   * OAuth flow happens through their session because every Manual
+   * Hunting call borrows the CEO's stored AE token. */
+  userRole?: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
 }) {
   const [status, setStatus] = useState<AliConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // IMPORTANT: hooks MUST be called unconditionally — the role gate
+  // happens AFTER all hooks (early return below).
   useEffect(() => {
     let cancelled = false;
 
@@ -467,9 +649,20 @@ function AliExpressConnectionBanner({
     };
   }, []);
 
+  // Role gating happens AFTER hooks. Only CEO + Partner ever see the
+  // banner. Everyone else gets nothing — the tool just works for them
+  // because Manual Hunting borrows the CEO's stored AE token server-side.
+  const isCeo = userRole === "SUPER_ADMIN";
+  const isPartner = userRole === "PARTNER";
+  if (!isCeo && !isPartner) return null;
+
   if (loading) return null;
 
   if (!status || !status.connected) {
+    // DISCONNECTED — content varies by role. CEO sees the Connect
+    // button; Partner sees an informational note pointing to CEO
+    // (only the CEO's OAuth flow can attach an AE account because
+    // every hunt borrows the CEO's stored token).
     return (
       <Card className="border border-orange-300/50 dark:border-orange-700/40 bg-orange-50/40 dark:bg-orange-950/15 shadow-none">
         <CardContent className="p-4 flex items-center gap-3 flex-wrap">
@@ -478,26 +671,31 @@ function AliExpressConnectionBanner({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-bold leading-tight">
-              Connect AliExpress to unlock full-loop hunting
+              {isCeo
+                ? "Connect AliExpress to unlock full-loop hunting"
+                : "AliExpress not connected"}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-              One-time authorization. Once connected, every keyword expands to a
-              ranked AliExpress product list — no more browsing aliexpress.com manually.
+              {isCeo
+                ? "One-time authorization. Once connected, every keyword expands to a ranked AliExpress product list — no more browsing aliexpress.com manually."
+                : "Product previews require AliExpress to be connected by the CEO. Please ask Wasif to connect — it's a one-time auth and the tool will start showing AE previews immediately after."}
             </p>
           </div>
-          <a
-            href="/api/aliexpress/auth-start"
-            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12px] font-bold tracking-wide bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-md shadow-orange-500/30 hover:opacity-90 transition-opacity"
-          >
-            <Plug className="size-3.5" />
-            Connect AliExpress
-          </a>
+          {isCeo && (
+            <a
+              href="/api/aliexpress/auth-start"
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12px] font-bold tracking-wide bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-md shadow-orange-500/30 hover:opacity-90 transition-opacity"
+            >
+              <Plug className="size-3.5" />
+              Connect AliExpress
+            </a>
+          )}
         </CardContent>
       </Card>
     );
   }
 
-  // Connected
+  // CONNECTED
   const disconnect = async () => {
     if (!confirm("Disconnect AliExpress? You'll need to re-authorize."))
       return;
@@ -505,38 +703,6 @@ function AliExpressConnectionBanner({
     setStatus({ connected: false });
     toast.success("Disconnected from AliExpress");
   };
-
-  // In the Spotlight layout the AE-connected state collapses to a
-  // single-line ultra-compact strip so it doesn't compete with the
-  // tool input below. When disconnected we always show the full
-  // CTA banner because the user needs to act.
-  if (compactWhenConnected) {
-    return (
-      <div className="flex items-center justify-between gap-3 px-3 py-1.5 rounded-lg bg-emerald-50/40 dark:bg-emerald-950/10 ring-1 ring-emerald-300/40 dark:ring-emerald-700/30 text-[11px]">
-        <div className="inline-flex items-center gap-1.5 min-w-0">
-          <Check
-            className="size-3 text-emerald-600 dark:text-emerald-400"
-            strokeWidth={3}
-          />
-          <span className="font-bold text-emerald-700 dark:text-emerald-300">
-            AliExpress connected
-          </span>
-          {status.aliUserNick && (
-            <span className="text-muted-foreground truncate">
-              · {status.aliUserNick}
-            </span>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={disconnect}
-          className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
-        >
-          Disconnect
-        </button>
-      </div>
-    );
-  }
 
   return (
     <Card className="border border-emerald-300/40 dark:border-emerald-700/30 bg-emerald-50/30 dark:bg-emerald-950/10 shadow-none">
@@ -562,13 +728,18 @@ function AliExpressConnectionBanner({
             · full-loop hunting active
           </span>
         </div>
-        <button
-          type="button"
-          onClick={disconnect}
-          className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground"
-        >
-          Disconnect
-        </button>
+        {/* Only CEO can disconnect — partners see status only.
+            (Disconnect would break the tool for everyone since every
+            hunt borrows the CEO's stored AE token.) */}
+        {isCeo && (
+          <button
+            type="button"
+            onClick={disconnect}
+            className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground"
+          >
+            Disconnect
+          </button>
+        )}
       </CardContent>
     </Card>
   );
