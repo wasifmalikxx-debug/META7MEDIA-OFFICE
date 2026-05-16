@@ -56,11 +56,11 @@ export function todayInPkt(): Date {
 }
 
 /** How many AE products to ask for per niche per source. Bumped May 16
- * 2026 (from 20/30) — generic-category niches like "women clothing" /
- * "pet accessories" have a low survival rate after rating + Etsy +
- * price filters; we need a wider candidate pool so each niche still
- * surfaces something. AE rate budget easily absorbs 4x larger pages. */
-const PAGE_SIZE_TRENDING = 40;
+ * 2026 (from 20/30 → 40/60 → 80/60) — TRENDING needs the largest pool
+ * because after the Etsy-friendly blocklist + rating + min-orders
+ * filters, only ~20-30% of AE's volume-desc top survives. 80 candidates
+ * gives us comfortable headroom to hit the 5-per-niche target. */
+const PAGE_SIZE_TRENDING = 80;
 const PAGE_SIZE_FRESH = 60;
 
 /** Keep AE products in the dedupe window for this many days. A product
@@ -68,16 +68,16 @@ const PAGE_SIZE_FRESH = 60;
  * volume — keeps the daily batch genuinely fresh. */
 const DEDUPE_WINDOW_DAYS = 7;
 
-/** Drop anything cheaper than $5. Originally $0.50 → bumped to $10
- * (May 16 morning) → softened to $5 (May 16 same day) because the $10
- * floor combined with rating + Etsy filters left most generic-category
- * niches (women clothing, women nails, leather accessories) entirely
- * empty.
+/** Price floor — CEO removed the meaningful filter (was $5) on May 16
+ * 2026. Rationale: TRENDING should surface what's actually selling
+ * regardless of cost. A $2 candle holder with 10k orders and 4.8 stars
+ * is a more valuable signal than a $40 niche item with 12 orders.
+ * Etsy markup formula handles the cost-to-price math elsewhere.
  *
- * $5 still filters the absolute sub-bargain commodity SKUs ($0.50-$4
- * range = mostly bulk stickers, charms, tiny accessories) but leaves
- * enough candidates for niches where AE inventory clusters at $5-9. */
-const MIN_PRICE_FLOOR = 5;
+ * $0.50 kept as a sanity floor only — sub-50¢ AE listings are almost
+ * always test SKUs, scams, or "1 cent + shipping" tricks that would
+ * crash our pricing math. */
+const MIN_PRICE_FLOOR = 0.5;
 
 /** Drop anything more expensive than this — over-$300 items rarely make
  * sense for Etsy dropship and skew the page towards luxury outliers. */
@@ -89,11 +89,19 @@ const MAX_PRICE_CEILING = 300;
  * reviews yet). */
 const MIN_RATING_STARS = 4.0;
 
-/** TRENDING: proven best-seller floor. Softened from 50 → 20 (May 16
- * 2026) so generic-category niches still surface something — many
- * niches have plenty of $5-15 products with 20-50 orders that are
- * solid winners but were getting filtered by the stricter floor. */
-const MIN_ORDERS_TRENDING = 20;
+/** TRENDING: minimum order count. Softened over the day 50 → 20 → 5.
+ * At 5+ orders we have ~some demand validation, which combined with
+ * the rating ≥ 4★ check is enough quality signal — the sort-by-score
+ * pass at the end of runNiche pushes the actual best-sellers to the
+ * top anyway, so a low floor just widens the pool. */
+const MIN_ORDERS_TRENDING = 5;
+
+/** Per-niche minimum item count we try to hit for TRENDING. If strict
+ * filters leave us under this, we progressively soften the rating
+ * threshold (4.0 → 3.5 → 3.0 → no rating filter) until we reach the
+ * target or exhaust attempts. Etsy-friendly filter is NEVER softened
+ * — bad-fit products stay blocked even when the niche is thin. */
+const MIN_ITEMS_PER_NICHE = 5;
 
 /** FRESH: lower bound = some real demand validation. Softened 5 → 3. */
 const MIN_ORDERS_FRESH = 3;
@@ -325,12 +333,20 @@ export async function runDailyTrendingFetch(opts: {
 }
 
 /**
- * Single (niche, source) fetch + dedupe + insert. Exposed for tests +
+ * Single (niche, source) fetch + filter + insert. Exposed for tests +
  * the "Refresh now" button on the page (CEO-only).
  *
  * Filter behaviour depends on `source`:
- *   TRENDING → high-volume + 4★+
- *   FRESH    → low-but-validated volume + 4★+
+ *   TRENDING → high-volume best-sellers. Adaptive rating threshold
+ *              (4.0 → 3.5 → 3.0 → none) so we always hit the per-niche
+ *              minimum if AE has enough candidates. NO cross-day dedupe
+ *              — same top sellers reappear daily, which is what the
+ *              "trending" mental model expects.
+ *   FRESH    → low-but-validated volume. Strict 4★ rating. 7-day
+ *              dedupe so the page only shows genuinely new arrivals.
+ *
+ * Etsy-friendly blocklist is ALWAYS strict — bad-fit products never
+ * surface regardless of how thin the niche is.
  */
 export async function runNiche(opts: {
   niche: string;
@@ -354,49 +370,68 @@ export async function runNiche(opts: {
     });
   }
 
-  // Apply hard filters — basic field checks, price band, rating + orders
-  const candidates: AliExpressProduct[] = [];
-  let filteredOut = 0;
-  for (const p of ae.products) {
-    if (!passesBasicFilters(p)) {
-      filteredOut += 1;
-      continue;
+  // First pass: strict filters (4★ rating, source-specific orders).
+  // For TRENDING we then progressively soften the rating threshold
+  // if we don't have at least MIN_ITEMS_PER_NICHE survivors. The
+  // Etsy-friendly blocklist + basic field checks NEVER soften.
+  let candidates = filterCandidates(ae.products, source, MIN_RATING_STARS);
+  let filteredOut = ae.products.length - candidates.length;
+
+  if (source === "TRENDING" && candidates.length < MIN_ITEMS_PER_NICHE) {
+    for (const softerMin of [3.5, 3.0, 0]) {
+      const next = filterCandidates(ae.products, source, softerMin);
+      if (next.length >= MIN_ITEMS_PER_NICHE || softerMin === 0) {
+        const gained = next.length - candidates.length;
+        if (gained > 0) {
+          console.log(
+            `[daily-trending] ${niche} (${source}) softened rating to ${softerMin} → +${gained} items (now ${next.length})`,
+          );
+          filteredOut -= gained;
+        }
+        candidates = next;
+        if (candidates.length >= MIN_ITEMS_PER_NICHE) break;
+      }
     }
-    if (!passesQualityFilters(p, source)) {
-      filteredOut += 1;
-      continue;
-    }
-    candidates.push(p);
   }
 
-  // Dedupe against the last DEDUPE_WINDOW_DAYS for THIS niche+source.
-  // Sources are deduped independently — a product that was in TRENDING
-  // last Tuesday can still appear in FRESH this Monday (and vice versa).
-  const cutoff = new Date(
-    fetchDate.getTime() - DEDUPE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
-  );
-  const aeIds = candidates.map((p) => String(p.productId));
-  const recentRows = aeIds.length
-    ? await prisma.dailyTrendingProduct.findMany({
-        where: {
-          niche,
-          source,
-          aeProductId: { in: aeIds },
-          fetchDate: { gte: cutoff },
-        },
-        select: { aeProductId: true },
-      })
-    : [];
-  const recentIds = new Set(recentRows.map((r) => r.aeProductId));
-
-  const fresh = candidates.filter((p) => !recentIds.has(String(p.productId)));
-  const dedupedOut = candidates.length - fresh.length;
+  // Dedupe against the last DEDUPE_WINDOW_DAYS for this niche+source.
+  // Applied to FRESH only — FRESH shows truly new arrivals, so a
+  // product seen in the last week is intentionally hidden.
+  //
+  // TRENDING skips dedupe entirely: "show me today's best-sellers"
+  // is the user expectation, and a product that's been #1 for 3 days
+  // running should still appear on day 3. The page query filters by
+  // fetchDate=today, so old rows naturally roll off.
+  let toInsert = candidates;
+  let dedupedOut = 0;
+  if (source === "FRESH") {
+    const cutoff = new Date(
+      fetchDate.getTime() - DEDUPE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    );
+    const aeIds = candidates.map((p) => String(p.productId));
+    const recentRows = aeIds.length
+      ? await prisma.dailyTrendingProduct.findMany({
+          where: {
+            niche,
+            source,
+            aeProductId: { in: aeIds },
+            fetchDate: { gte: cutoff },
+          },
+          select: { aeProductId: true },
+        })
+      : [];
+    const recentIds = new Set(recentRows.map((r) => r.aeProductId));
+    toInsert = candidates.filter(
+      (p) => !recentIds.has(String(p.productId)),
+    );
+    dedupedOut = candidates.length - toInsert.length;
+  }
 
   // Upsert on the 4-col unique key (niche, aeProductId, fetchDate, source).
   // Re-runs of the same source on the same day refresh live fields without
   // breaking the claim state.
   let added = 0;
-  for (const p of fresh) {
+  for (const p of toInsert) {
     const pricing = calculateEtsyPrice(p.priceMin);
     const ratingStars = normalizeRatingToStars(p.rating);
     try {
@@ -424,8 +459,6 @@ export async function runNiche(opts: {
           fetchDate,
         },
         update: {
-          // Re-fetch may show a price tick or order-count update — keep
-          // the row but refresh the live fields. Claim state is preserved.
           priceUsd: p.priceMin,
           ordersCount: p.orderCount ?? null,
           ratingStars,
@@ -452,6 +485,62 @@ export async function runNiche(opts: {
   };
 }
 
+/**
+ * Shared candidate-filter helper. Returns products that pass:
+ *   1. Basic field checks + price floor + Etsy-friendly blocklist
+ *   2. Rating threshold (when AE provides rating; null ratings pass IFF
+ *      ratingMin is 0, i.e. the final softening pass)
+ *   3. Source-specific order-count gate
+ *
+ * Called multiple times by runNiche to apply progressively softer
+ * rating thresholds when a niche is thin.
+ */
+function filterCandidates(
+  products: AliExpressProduct[],
+  source: TrendingSource,
+  ratingMin: number,
+): AliExpressProduct[] {
+  const out: AliExpressProduct[] = [];
+  for (const p of products) {
+    if (!passesBasicFilters(p)) continue;
+    if (!passesQualityFiltersWithRating(p, source, ratingMin)) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+/** Variant of passesQualityFilters that takes an explicit rating
+ * threshold (so runNiche can progressively soften it). */
+function passesQualityFiltersWithRating(
+  p: AliExpressProduct,
+  source: TrendingSource,
+  ratingMin: number,
+): boolean {
+  const stars = normalizeRatingToStars(p.rating);
+
+  // Rating gate: when AE provides rating, require >= threshold.
+  // When AE doesn't provide rating, allow only if threshold is 0
+  // (final softening pass) — otherwise we'd surface unverified SKUs.
+  if (stars !== null && stars < ratingMin) return false;
+  if (stars === null && ratingMin > 0) {
+    // No rating data — only let through if we have orders to back it
+    const ord = p.orderCount;
+    if (ord === null || ord === undefined || ord < 20) return false;
+  }
+
+  const orders = p.orderCount;
+  if (orders === null || orders === undefined) {
+    // No order data — already partially handled above. Pass at this
+    // point only if rating is present (covered by the early return).
+    return stars !== null;
+  }
+
+  if (source === "TRENDING") {
+    return orders >= MIN_ORDERS_TRENDING;
+  }
+  return orders >= MIN_ORDERS_FRESH && orders <= MAX_ORDERS_FRESH;
+}
+
 // ─── Filters ────────────────────────────────────────────────────────
 
 /** Universal field + price-band + Etsy-friendliness check. Same for
@@ -474,34 +563,12 @@ function passesBasicFilters(p: AliExpressProduct): boolean {
   return true;
 }
 
-/** Source-specific rating + orders gate. */
-function passesQualityFilters(
-  p: AliExpressProduct,
-  source: TrendingSource,
-): boolean {
-  // Rating filter: when AE didn't return rating, we keep the product
-  // (some legit new SKUs have no reviews yet). When it did, demand 4★+.
-  const stars = normalizeRatingToStars(p.rating);
-  if (stars !== null && stars < MIN_RATING_STARS) return false;
-
-  // Order filter: when AE didn't return order count, we keep the
-  // product if rating is good enough (4★+ is decent quality signal
-  // even without order history). When we DO have order count, apply
-  // the source-specific threshold. Avoids over-filtering AE responses
-  // that omit volume data for newer SKUs.
-  const orders = p.orderCount;
-  if (orders === null || orders === undefined) {
-    // No order data — rely on rating. If rating is also missing, the
-    // product is too unverified to surface.
-    return stars !== null;
-  }
-
-  if (source === "TRENDING") {
-    return orders >= MIN_ORDERS_TRENDING;
-  }
-  // FRESH — band: some validation, not yet popular
-  return orders >= MIN_ORDERS_FRESH && orders <= MAX_ORDERS_FRESH;
-}
+// Note: the source-specific quality gate now lives in
+// passesQualityFiltersWithRating above, which takes an explicit
+// rating threshold so runNiche can progressively soften it for thin
+// niches. The old fixed-threshold passesQualityFilters was removed
+// (May 16 2026) — its only caller was migrated to the rating-aware
+// variant.
 
 /**
  * Normalize AE's mixed rating formats into a 0-5 star scale.
@@ -555,12 +622,41 @@ export interface NicheGroup {
 }
 
 /**
- * Fetch today's batch for the given niches + source, grouped by niche.
- * Within each niche, unclaimed products surface first (CEO chose "stay
- * visible with badge" — unclaimed at the top keeps focus on what's
- * still up for grabs).
+ * Compute a single "trend score" combining sales volume + rating.
+ * Higher score = better trending pick.
  *
- * If `niches` is empty, returns an empty array (employee hasn't picked
+ *   score = ordersCount × (ratingStars / 5)
+ *
+ * A 1000-sales × 4.5★ product scores 900.
+ * A 500-sales × 5★   product scores 500.
+ * A 50-sales × 5★    product scores 50.
+ *
+ * Missing rating defaults to 4.0 (so a missing-rating product isn't
+ * unfairly killed by being multiplied by zero). Missing orders defaults
+ * to 0 (we should never surface a 0-orders product above one with orders).
+ */
+function trendScore(p: {
+  ordersCount: number | null;
+  ratingStars: number | null;
+}): number {
+  const orders = p.ordersCount ?? 0;
+  const rating = p.ratingStars ?? 4.0;
+  return orders * (rating / 5);
+}
+
+/**
+ * Fetch today's batch for the given niches + source, grouped by niche.
+ *
+ * Sort order within each niche:
+ *   1. Unclaimed first (claimed sinks so user focuses on what's free)
+ *   2. By combined sales × rating score, desc (best trending up top)
+ *   3. Cheapest first as tiebreaker
+ *
+ * Sorting happens in Node (not Prisma) because the combined score
+ * isn't a DB column. Result sets are small (~30 rows × 8 niches max),
+ * so the sort cost is trivial.
+ *
+ * If `niches` is empty, returns an empty array (user hasn't picked
  * any niches yet — page shows the empty state).
  */
 export async function getTodaysTrendingGrouped(
@@ -576,18 +672,9 @@ export async function getTodaysTrendingGrouped(
       source,
       niche: { in: niches },
     },
-    orderBy: [
-      // Unclaimed first (NULLs sort first by default in Postgres,
-      // but Prisma defers — explicit ordering).
-      { claimedAt: { sort: "asc", nulls: "first" } },
-      // TRENDING: most-sold first (proven winners up top)
-      // FRESH:    cheapest first (lowest barrier-to-list up top —
-      //           order count is intentionally low across the board,
-      //           so it's not a strong differentiator within fresh)
-      ...(source === "TRENDING"
-        ? ([{ ordersCount: "desc" as const }, { priceUsd: "asc" as const }])
-        : ([{ priceUsd: "asc" as const }, { ordersCount: "desc" as const }])),
-    ],
+    // Initial DB sort is just a stable order; the real sort happens
+    // below in Node by combined trend score.
+    orderBy: [{ ordersCount: "desc" }],
     select: {
       id: true,
       niche: true,
@@ -617,6 +704,22 @@ export async function getTodaysTrendingGrouped(
     if (list)
       list.push({ ...row, source: row.source as TrendingSource });
   }
+
+  // Sort each group by: unclaimed first → trend score desc → cheapest
+  for (const [, products] of groups.entries()) {
+    products.sort((a, b) => {
+      // Unclaimed (claimedAt = null) sorts before claimed
+      const aClaimed = a.claimedAt ? 1 : 0;
+      const bClaimed = b.claimedAt ? 1 : 0;
+      if (aClaimed !== bClaimed) return aClaimed - bClaimed;
+      // Combined trend score (higher = better)
+      const scoreDiff = trendScore(b) - trendScore(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      // Tiebreaker: cheaper first (easier listing, faster sale)
+      return a.priceUsd - b.priceUsd;
+    });
+  }
+
   return [...groups.entries()].map(([niche, products]) => ({
     niche,
     products,
