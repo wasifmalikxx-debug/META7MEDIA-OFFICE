@@ -887,7 +887,7 @@ KEYWORDS — CRITICAL rules:
   ✅ "groomsmen leather wallet"  (when category is Wallets)
 - Cover at least 3 of these intent buckets across the 5 keywords:
   1. Aesthetic — y2k, indie sleaze, cottagecore, dark academia, mob wife, coastal grandma, soft girl, alt grunge, clean girl, brat summer, minimalist
-  2. Material/Finish — sterling silver, polymer clay, freshwater pearl, vintage denim, organic linen, hand-stitched, embroidered, distressed
+  2. Material/Finish — sterling silver, polymer clay, freshwater pearl, vintage denim, organic linen, embroidered, distressed, ribbed, knit, woven (NO "hand-stitched" / "hand-knit" / "hand-crafted" — those imply handmade-on-demand)
   3. Occasion — wedding, anniversary, birthday, valentine, baby shower, bridal, graduation, christmas, summer festival, everyday
   4. Recipient — sister, mom, groomsmen, bridesmaid, teen, men, women, boyfriend, dad
   5. Product Specifics — huggie, drop, stud (jewelry); oversized, cropped, baggy, slim fit (clothing); 3d, embossed (decor)
@@ -898,6 +898,22 @@ KEYWORDS — CRITICAL rules:
 - NO "[adjective] [category]" generic patterns (e.g. don't return "boho earrings" if category is Earrings)
 - NO brand names or trademarks (Disney, Nike, etc.)
 - NO duplicates
+
+🚫 NO MTO / HANDMADE / PERSONALIZED WORDING:
+META7MEDIA sells ready-stock from a supplier — we cannot personalize,
+hand-make, or custom-craft anything. Etsy can flag listings that
+promise these. NEVER include these words / patterns in keywords:
+  ❌ "personalized" / "personalised" — buyer expects custom text/name
+  ❌ "hand stitched" / "hand-stitched" / "hand sewn" / "hand knit"
+  ❌ "hand crafted" / "handcrafted" / "handmade"
+  ❌ "made to order" / "custom made" / "custom order" / "bespoke"
+  ❌ "monogram" / "monogrammed" / "engraved" (unless product literally
+     supports it — ours doesn't)
+
+If you want to convey a similar vibe, use neutral descriptors instead:
+  ✅ "keepsake" (instead of "personalized") — implies giftability, not customization
+  ✅ "embroidered" / "ribbed" / "knit" (instead of "hand-knit")
+  ✅ "artisan" / "craft" / "boutique" — feel without committing to MTO
 
 OUTPUT FORMAT — strict JSON, no prose:
 {
@@ -975,6 +991,12 @@ Return 6-8 proven-selling categories, each with exactly 7 long-tail buyer-intent
             const cat = name.toLowerCase();
             if (cat.includes(words[0]) && cat.includes(words[1])) return false;
           }
+          // MTO / handmade / personalized backstop — META7MEDIA sells
+          // ready-stock, so keywords that promise customization or
+          // handcraft are TOS-risky on Etsy. Mirror the same filter
+          // we use on tag generation. The prompt forbids these too,
+          // but Haiku drifts so this is the safety net.
+          if (tagLooksLikeMto(k)) return false;
           // Gender / audience enforcement — drop keywords missing the
           // niche's required market-segment tokens.
           if (!keywordMatchesGenderRequirement(k, genderRequirements)) {
