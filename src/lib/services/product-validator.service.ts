@@ -229,13 +229,22 @@ export async function validateProduct(
 //
 // AE's DS API doesn't serve the .us regional catalog. For those URLs
 // we fetch the product page HTML directly and extract title + image +
-// price from meta tags + embedded JSON.
+// price from:
+//   1. JSON-LD structured data (most reliable — required for Google
+//      Shopping rich results, so AE includes it)
+//   2. og:title + og:image meta tags (universal SEO)
+//   3. <title> tag (last-resort fallback)
+//   4. Embedded JSON for the price (window.runParams / __INIT_DATA__)
 //
-// Best-effort — returns null on any failure (HTTP error, missing
-// fields, Cloudflare challenge, etc.) and the caller falls through
-// to either the friendly error or manual entry.
+// Tries multiple URL variants + browser identities to defeat
+// Cloudflare bot detection that flagged our first attempts:
+//   a. Desktop Chrome User-Agent on the canonical URL
+//   b. Mobile Chrome User-Agent on the m. subdomain
+//   c. Googlebot identity (often whitelisted for SEO)
+//
+// Stops as soon as ANY variant successfully extracts a title.
 
-const SCRAPE_TIMEOUT_MS = 10_000;
+const SCRAPE_TIMEOUT_MS = 12_000;
 
 interface ScrapedProduct {
   title: string;
@@ -243,80 +252,261 @@ interface ScrapedProduct {
   priceUsd: number;
 }
 
+interface ScrapeAttempt {
+  url: string;
+  headers: Record<string, string>;
+  label: string;
+}
+
+function buildScrapeAttempts(productUrl: string): ScrapeAttempt[] {
+  const desktopChrome =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+  const mobileChrome =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1";
+  const googleBot =
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+
+  // Build a realistic browser request — modern Cloudflare bot scoring
+  // expects these headers from real Chrome.
+  const browserHeaders = {
+    "User-Agent": desktopChrome,
+    Accept:
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
+    "Sec-Ch-Ua":
+      '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"macOS"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "cross-site",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    // Coming from Google search makes us look like a real user click
+    Referer: "https://www.google.com/",
+  };
+
+  // Mobile variant — same product on m.aliexpress.us (lighter HTML,
+  // sometimes serves through a different Cloudflare config).
+  const mobileUrl = productUrl
+    .replace(/^https?:\/\/(www\.)?/i, "https://m.")
+    .replace("m.aliexpress.us", "m.aliexpress.us")
+    .replace("m.aliexpress.com", "m.aliexpress.com");
+
+  return [
+    {
+      label: "desktop-chrome",
+      url: productUrl,
+      headers: browserHeaders,
+    },
+    {
+      label: "mobile-chrome",
+      url: mobileUrl,
+      headers: { ...browserHeaders, "User-Agent": mobileChrome, "Sec-Ch-Ua-Mobile": "?1", "Sec-Ch-Ua-Platform": '"iOS"' },
+    },
+    {
+      label: "googlebot",
+      url: productUrl,
+      headers: { "User-Agent": googleBot, Accept: "text/html,*/*" },
+    },
+  ];
+}
+
 async function fetchAeProductFromHtml(
   productUrl: string,
 ): Promise<ScrapedProduct | null> {
-  const startedAt = Date.now();
-  let html: string;
-  try {
-    const res = await fetch(productUrl, {
-      headers: {
-        // Look like a real browser so AE doesn't serve a stripped bot variant
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
-    });
-    if (!res.ok) {
+  const attempts = buildScrapeAttempts(productUrl);
+
+  for (const attempt of attempts) {
+    const startedAt = Date.now();
+    try {
+      const res = await fetch(attempt.url, {
+        headers: attempt.headers,
+        signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
+        redirect: "follow",
+      });
+      if (!res.ok) {
+        console.warn(
+          `[product-validator] HTML scrape (${attempt.label}): HTTP ${res.status} in ${Date.now() - startedAt}ms`,
+        );
+        continue;
+      }
+      const html = await res.text();
+      const extracted = extractProductFromHtml(html);
+      if (extracted) {
+        console.log(
+          `[product-validator] HTML scrape (${attempt.label}) ok in ${Date.now() - startedAt}ms — "${extracted.title.slice(0, 60)}"`,
+        );
+        return extracted;
+      }
       console.warn(
-        `[product-validator] HTML scrape: HTTP ${res.status} in ${Date.now() - startedAt}ms`,
+        `[product-validator] HTML scrape (${attempt.label}): page loaded (${html.length} bytes) but couldn't extract product`,
       );
-      return null;
+    } catch (err) {
+      console.warn(
+        `[product-validator] HTML scrape (${attempt.label}) failed:`,
+        err instanceof Error ? err.message : err,
+      );
     }
-    html = await res.text();
-  } catch (err) {
-    console.warn(
-      `[product-validator] HTML scrape failed:`,
-      err instanceof Error ? err.message : err,
-    );
-    return null;
   }
 
-  // og:title — works on virtually every AE product page
-  const titleRaw = html
-    .match(
-      /<meta[^>]+(?:property|name)=["']og:title["'][^>]*content=["']([^"']+)["']/i,
-    )?.[1]
-    ?.trim();
+  return null;
+}
 
-  // og:image — used for the card thumbnail
-  const imageUrlMatch = html
-    .match(
-      /<meta[^>]+(?:property|name)=["']og:image["'][^>]*content=["']([^"']+)["']/i,
-    )?.[1]
-    ?.trim();
+/**
+ * Try multiple extraction strategies in order of reliability.
+ *
+ * 1. JSON-LD <script type="application/ld+json"> — schema.org Product
+ *    structured data. Google Shopping requires this so AE includes it
+ *    on every product page. Most reliable extraction path.
+ * 2. og:title + og:image meta tags — universal SEO tags.
+ * 3. <title> tag — last resort, often noisy with site branding suffix.
+ *
+ * Price is extracted from JSON-LD or embedded window.runParams JSON
+ * patterns.
+ */
+function extractProductFromHtml(html: string): ScrapedProduct | null {
+  // Path 1: JSON-LD Product schema
+  const fromJsonLd = extractFromJsonLd(html);
+  if (fromJsonLd) return fromJsonLd;
 
-  // Price — AE embeds in __INIT_DATA__ / window.runParams JSON
+  // Path 2: og:title + og:image
+  const ogTitleMatch = html.match(
+    /<meta[^>]+(?:property|name)=["']og:title["'][^>]*content=["']([^"']+)["']/i,
+  );
+  const ogImageMatch = html.match(
+    /<meta[^>]+(?:property|name)=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+  );
+
+  // Path 3: <title> tag (strip ' - AliExpress' or similar suffix)
+  const titleTagMatch = html.match(/<title>([^<]+)<\/title>/i);
+
+  const rawTitle =
+    ogTitleMatch?.[1]?.trim() ??
+    titleTagMatch?.[1]?.replace(/\s*[-|–]\s*AliExpress.*$/i, "").trim();
+
+  if (!rawTitle || rawTitle.length < 5) return null;
+
+  const price = extractPriceFromHtml(html);
+
+  return {
+    title: decodeHtmlEntities(rawTitle),
+    imageUrl: ogImageMatch?.[1]?.trim() ?? null,
+    priceUsd: price,
+  };
+}
+
+/**
+ * Parse all JSON-LD blocks looking for a schema.org Product object.
+ * AE wraps product data in this format for Google Shopping eligibility.
+ */
+function extractFromJsonLd(html: string): ScrapedProduct | null {
+  const blocks = html.matchAll(
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+  );
+  for (const m of blocks) {
+    const jsonText = m[1].trim();
+    try {
+      const parsed = JSON.parse(jsonText);
+      const products = collectJsonLdProducts(parsed);
+      for (const p of products) {
+        const name =
+          typeof p.name === "string"
+            ? p.name
+            : Array.isArray(p.name) && typeof p.name[0] === "string"
+              ? p.name[0]
+              : null;
+        if (!name || name.length < 5) continue;
+
+        const image =
+          typeof p.image === "string"
+            ? p.image
+            : Array.isArray(p.image) && typeof p.image[0] === "string"
+              ? p.image[0]
+              : typeof p.image === "object" && p.image && "url" in p.image
+                ? (p.image as { url: string }).url
+                : null;
+
+        // Price — JSON-LD offers can be a single object or array
+        let price = 0;
+        const offers = p.offers;
+        if (offers) {
+          const first = Array.isArray(offers) ? offers[0] : offers;
+          const priceVal =
+            first?.price ?? first?.lowPrice ?? first?.priceSpecification?.price;
+          if (priceVal != null) {
+            const n = parseFloat(String(priceVal));
+            if (isFinite(n) && n > 0 && n < 50_000) price = n;
+          }
+        }
+
+        return {
+          title: decodeHtmlEntities(name),
+          imageUrl: image,
+          priceUsd: price,
+        };
+      }
+    } catch {
+      // bad JSON in this block — try next
+    }
+  }
+  return null;
+}
+
+interface JsonLdProduct {
+  "@type"?: string | string[];
+  name?: string | string[];
+  image?: string | string[] | { url: string };
+  offers?:
+    | { price?: string | number; lowPrice?: string | number; priceSpecification?: { price?: string | number } }
+    | Array<{ price?: string | number; lowPrice?: string | number; priceSpecification?: { price?: string | number } }>;
+}
+
+/**
+ * JSON-LD blocks can contain a single object, an array of objects, or a
+ * @graph wrapper. Walks the structure and yields anything that's a
+ * Product or could be one.
+ */
+function collectJsonLdProducts(node: unknown): JsonLdProduct[] {
+  const out: JsonLdProduct[] = [];
+  function walk(n: unknown): void {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) {
+      for (const item of n) walk(item);
+      return;
+    }
+    const obj = n as JsonLdProduct & { "@graph"?: unknown };
+    const type = obj["@type"];
+    const isProduct =
+      type === "Product" ||
+      (Array.isArray(type) && type.includes("Product"));
+    if (isProduct && obj.name) out.push(obj);
+    // Some pages nest products under @graph
+    if (obj["@graph"]) walk(obj["@graph"]);
+  }
+  walk(node);
+  return out;
+}
+
+/**
+ * Extract price from any of AE's known embedded-JSON patterns. The
+ * pattern varies by AE page version + storefront, so we try several.
+ */
+function extractPriceFromHtml(html: string): number {
   const priceMatch =
     html.match(/"salePrice"\s*:\s*"?([0-9]+\.?[0-9]*)"?/) ??
     html.match(/"appSalePrice"\s*:[^{]*"value"\s*:\s*"?([0-9]+\.?[0-9]*)/) ??
     html.match(/"app_sale_price"\s*:\s*"([0-9]+\.?[0-9]*)"/) ??
     html.match(/"targetSalePrice"\s*:\s*"?([0-9]+\.?[0-9]*)"?/) ??
-    html.match(/"actMinPrice"\s*:\s*"?([0-9]+\.?[0-9]*)"?/);
+    html.match(/"actMinPrice"\s*:\s*"?([0-9]+\.?[0-9]*)"?/) ??
+    html.match(/"minActivityAmount"\s*:[^{]*"value"\s*:\s*"?([0-9]+\.?[0-9]*)/);
 
-  if (!titleRaw) {
-    console.warn(`[product-validator] HTML scrape: no og:title found`);
-    return null;
-  }
-
-  // Price is optional for the validator — we only need the title for
-  // rule matching. Missing price is fine, we just display "—".
-  const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
-  const validPrice = isFinite(price) && price > 0 && price < 10000 ? price : 0;
-
-  const title = decodeHtmlEntities(titleRaw);
-  console.log(
-    `[product-validator] HTML scrape ok in ${Date.now() - startedAt}ms — "${title.slice(0, 60)}"`,
-  );
-
-  return {
-    title,
-    imageUrl: imageUrlMatch ?? null,
-    priceUsd: validPrice,
-  };
+  if (!priceMatch) return 0;
+  const price = parseFloat(priceMatch[1]);
+  return isFinite(price) && price > 0 && price < 50_000 ? price : 0;
 }
 
 /** Minimal HTML entity decoder for the title field. */
