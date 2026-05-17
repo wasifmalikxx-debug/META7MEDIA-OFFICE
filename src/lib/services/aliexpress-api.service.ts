@@ -191,7 +191,15 @@ export async function aliExpressCall<T = unknown>(
   method: string,
   params: Record<string, string | number | boolean> = {},
   accessToken?: string,
-  options: { bodyMode?: boolean } = {},
+  options: {
+    bodyMode?: boolean;
+    /** Use multipart/form-data instead of x-www-form-urlencoded.
+     * Required for endpoints that need real file uploads or that
+     * silently reject urlencoded bodies (e.g. image.search rejected
+     * urlencoded with "MissingParameter: image_file_bytes" even
+     * though the param was present + signed correctly). */
+    formDataMode?: boolean;
+  } = {},
 ): Promise<T> {
   if (!APP_KEY || !APP_SECRET) {
     throw new Error("AliExpress credentials not configured");
@@ -211,21 +219,37 @@ export async function aliExpressCall<T = unknown>(
   }
   stringifiedParams.sign = signRequest(stringifiedParams);
 
-  // bodyMode = send params in the POST body (form-encoded) instead of
-  // URL query string. Required when any single param is too large for
-  // a URL (e.g. base64-encoded image bytes for aliexpress.ds.image.
-  // search where image_file_bytes can be 50-200KB). The signing logic
-  // is param-based, not URL-based, so the signature is identical
-  // regardless of transport.
-  const url = options.bodyMode
-    ? API_BASE
-    : `${API_BASE}?${new URLSearchParams(stringifiedParams).toString()}`;
-  const body = options.bodyMode
-    ? new URLSearchParams(stringifiedParams).toString()
-    : undefined;
-  const headers = options.bodyMode
-    ? { "Content-Type": "application/x-www-form-urlencoded" }
-    : undefined;
+  // Three transport modes:
+  //   - default       → params in URL query string (smallest payloads)
+  //   - bodyMode      → params in x-www-form-urlencoded body
+  //   - formDataMode  → params in multipart/form-data body (required
+  //                     for AE endpoints that reject urlencoded
+  //                     bodies, e.g. aliexpress.ds.image.search)
+  //
+  // Signing is param-based not URL-based, so the signature is
+  // identical regardless of transport.
+  let url: string;
+  let body: BodyInit | undefined;
+  let headers: Record<string, string> | undefined;
+
+  if (options.formDataMode) {
+    url = API_BASE;
+    const form = new FormData();
+    for (const [k, v] of Object.entries(stringifiedParams)) {
+      form.append(k, v);
+    }
+    body = form;
+    // Don't set Content-Type — fetch sets it with the multipart boundary.
+    headers = undefined;
+  } else if (options.bodyMode) {
+    url = API_BASE;
+    body = new URLSearchParams(stringifiedParams).toString();
+    headers = { "Content-Type": "application/x-www-form-urlencoded" };
+  } else {
+    url = `${API_BASE}?${new URLSearchParams(stringifiedParams).toString()}`;
+    body = undefined;
+    headers = undefined;
+  }
 
   // Reduced from 4 → 2 attempts with halved backoff. The original
   // 4-attempt × 800ms-base backoff could waste up to 12s per failing
@@ -814,8 +838,10 @@ export async function searchProductsByImage(
     throw new Error("Either imageUrl or imageBase64 is required.");
   }
 
-  // Send to AE via POST body (bodyMode) — base64 image is too large
-  // for URL query string transport.
+  // Send to AE via multipart/form-data. This endpoint silently rejected
+  // x-www-form-urlencoded bodies with "MissingParameter: image_file_bytes"
+  // even though the param was present + correctly signed. Multipart is
+  // the format AE expects for file-upload endpoints.
   const raw = await aliExpressCall<Record<string, unknown>>(
     "aliexpress.ds.image.search",
     {
@@ -830,7 +856,7 @@ export async function searchProductsByImage(
       ship_to_country: "US",
     },
     options.accessToken,
-    { bodyMode: true },
+    { formDataMode: true },
   );
   return parseProductSearch(raw);
 }
