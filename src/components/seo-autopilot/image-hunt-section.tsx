@@ -47,9 +47,20 @@ interface ImageSearchResult {
   products: AliProductLite[];
 }
 
-// 5MB cap on uploaded image (matches the AE-side limit). Validated
-// at three layers: client (here), API route schema, AE service.
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+// 8MB cap on the RAW uploaded image (before resize). We always
+// downscale below this to under 1024×1024 + JPEG quality 0.85, so
+// the request body stays well under Vercel's 4.5MB serverless
+// function limit even after base64 expansion (~33% overhead).
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+// Largest dimension we send to AE. AE's image search works fine on
+// thumbnails — 1024px is plenty of detail. Anything larger just
+// inflates the POST body without helping match quality.
+const RESIZE_MAX_DIMENSION = 1024;
+
+// JPEG quality for the resized output. 0.85 is the visual sweet spot
+// — virtually indistinguishable from the original, ~5× smaller file.
+const RESIZE_JPEG_QUALITY = 0.85;
 
 export function ImageHuntSection() {
   // URL input mode
@@ -100,17 +111,25 @@ export function ImageHuntSection() {
     }
     if (file.size > MAX_UPLOAD_BYTES) {
       toast.error("Image too large", {
-        description: `${(file.size / 1024 / 1024).toFixed(1)} MB — max 5 MB.`,
+        description: `${(file.size / 1024 / 1024).toFixed(1)} MB — max 8 MB raw (we'll resize it).`,
       });
       return;
     }
     try {
-      const dataUrl = await readFileAsDataURL(file);
+      // Always resize client-side. Even small images get re-encoded
+      // as JPEG @ 0.85 quality so the payload stays well under
+      // Vercel's 4.5MB serverless function body limit. Without this
+      // step, a 4MB upload becomes 5.3MB base64 and hits HTTP 413.
+      const { dataUrl, finalBytes } = await resizeImageToDataUrl(
+        file,
+        RESIZE_MAX_DIMENSION,
+        RESIZE_JPEG_QUALITY,
+      );
       setPreviewSrc(dataUrl);
       setImageBase64(dataUrl); // includes the data URI prefix; backend strips it
       setImageMeta({
         name: file.name || "pasted-image",
-        sizeBytes: file.size,
+        sizeBytes: finalBytes,
       });
       // Clear URL input when we get a file-based image — they're
       // mutually exclusive search inputs.
@@ -452,13 +471,81 @@ function ImagePreviewBlock({
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function readFileAsDataURL(file: File): Promise<string> {
+/**
+ * Resize an image File into a data URL, capped at `maxDim` on the
+ * longest side and re-encoded as JPEG at `quality` (0..1).
+ *
+ * Why this exists: Vercel serverless functions cap request bodies at
+ * ~4.5MB. A 4MB JPEG becomes ~5.3MB base64 and trips HTTP 413. By
+ * resizing client-side we guarantee the final base64 stays under 1MB
+ * for typical product photos, which is plenty of detail for AE's
+ * image-search to match against.
+ *
+ * Falls back to passing the original through when the browser can't
+ * load it as an Image (e.g. unsupported format) — the API will
+ * surface a proper error instead of silently failing here.
+ */
+async function resizeImageToDataUrl(
+  file: File,
+  maxDim: number,
+  quality: number,
+): Promise<{ dataUrl: string; finalBytes: number }> {
+  // Step 1: load the file into a bitmap. Modern browsers support
+  // createImageBitmap from a File directly — it's faster than the
+  // Image-element route and handles EXIF orientation. Fall back to
+  // Image element for older browsers.
+  let bitmap: ImageBitmap | HTMLImageElement;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    bitmap = await loadImageElement(file);
+  }
+
+  const srcWidth = "width" in bitmap ? bitmap.width : 0;
+  const srcHeight = "height" in bitmap ? bitmap.height : 0;
+  if (!srcWidth || !srcHeight) {
+    throw new Error("Couldn't read image dimensions.");
+  }
+
+  // Step 2: compute target dimensions (preserve aspect ratio).
+  let targetW = srcWidth;
+  let targetH = srcHeight;
+  if (srcWidth > maxDim || srcHeight > maxDim) {
+    const ratio = Math.min(maxDim / srcWidth, maxDim / srcHeight);
+    targetW = Math.round(srcWidth * ratio);
+    targetH = Math.round(srcHeight * ratio);
+  }
+
+  // Step 3: draw into a canvas at the target size.
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Couldn't initialise canvas context.");
+  ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+
+  // Step 4: re-encode as JPEG. JPEG always smaller than PNG for
+  // product photos — even when the source was a PNG screenshot.
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  // Rough byte estimate from base64 length: (n * 3) / 4
+  const base64Len = dataUrl.length - dataUrl.indexOf(",") - 1;
+  const finalBytes = Math.floor((base64Len * 3) / 4);
+  return { dataUrl, finalBytes };
+}
+
+function loadImageElement(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result;
-      if (typeof result === "string") resolve(result);
-      else reject(new Error("Unexpected reader result"));
+      if (typeof result !== "string") {
+        reject(new Error("Unexpected reader result"));
+        return;
+      }
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Image failed to decode"));
+      img.src = result;
     };
     reader.onerror = () => reject(reader.error ?? new Error("Read failed"));
     reader.readAsDataURL(file);

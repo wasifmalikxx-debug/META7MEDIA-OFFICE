@@ -26,9 +26,12 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-// Body size cap — base64-encoded 5MB image is ~7MB string. Allow 10MB
-// here for headroom; the service layer enforces the actual 5MB cap.
-const MAX_BASE64_CHARS = 10 * 1024 * 1024;
+// Body size cap — must stay UNDER Vercel's serverless 4.5MB body limit.
+// Client resizes any uploaded image to ≤1024×1024 JPEG @ 0.85, which
+// yields ~100-500KB base64. 3MB cap here is comfortable headroom; if
+// anything close to this hits the API it's almost certainly an attack
+// or a misconfigured client.
+const MAX_BASE64_CHARS = 3 * 1024 * 1024;
 
 const RequestSchema = z
   .object({
