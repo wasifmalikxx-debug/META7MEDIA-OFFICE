@@ -26,6 +26,12 @@ import {
   ListChecks,
   Check,
   MapPin,
+  Ban,
+  HardHat,
+  Palette,
+  ChevronRight,
+  Clock,
+  FileCheck2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -194,7 +200,20 @@ export function ProductValidatorView() {
   function canSubmit(): boolean {
     if (loading) return false;
     if (mode === "url") return urlInput.trim().length >= 8;
-    return manualTitle.trim().length >= 3;
+    // Manual check requires both a title and at least one reference photo.
+    return manualTitle.trim().length >= 3 && manualImages.length >= 1;
+  }
+
+  /**
+   * Inline checklist of what is still missing in manual check mode.
+   * Surfaced under the run button so the reason the button is disabled
+   * is never ambiguous.
+   */
+  function manualMissing(): string[] {
+    const missing: string[] = [];
+    if (manualTitle.trim().length < 3) missing.push("product title");
+    if (manualImages.length < 1) missing.push("at least one reference photo");
+    return missing;
   }
 
   /**
@@ -322,7 +341,7 @@ export function ProductValidatorView() {
                   <h3 className="text-[16px] font-bold leading-tight">
                     {mode === "url"
                       ? "Paste an aliexpress.com product URL"
-                      : "Enter the product manually"}
+                      : "Submit the product manually"}
                   </h3>
                 </div>
               </div>
@@ -335,7 +354,7 @@ export function ProductValidatorView() {
                   disabled={loading}
                   icon={Link2}
                   gradient="from-violet-500 to-emerald-500"
-                  label="Paste URL"
+                  label="URL check"
                   sub="aliexpress.com only"
                 />
                 <ModeButton
@@ -344,8 +363,8 @@ export function ProductValidatorView() {
                   disabled={loading}
                   icon={PenLine}
                   gradient="from-emerald-500 to-amber-500"
-                  label="Manual entry"
-                  sub="Title and photos"
+                  label="Manual check"
+                  sub="Title + reference photos"
                 />
               </div>
 
@@ -397,8 +416,9 @@ export function ProductValidatorView() {
                   <div className="space-y-1.5">
                     <Label className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
                       Reference photos{" "}
+                      <span className="text-rose-500">*</span>{" "}
                       <span className="text-muted-foreground/50 font-normal">
-                        (up to 2)
+                        (1 required, 2 recommended)
                       </span>
                     </Label>
                     <SeoImageUploader
@@ -408,23 +428,30 @@ export function ProductValidatorView() {
                       maxImages={2}
                     />
                     <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
-                      AliExpress blocks image downloads. Take a screenshot of
+                      AliExpress blocks image downloads. Take screenshots of
                       the product photos and upload them here so the result
-                      card shows the product you validated.
+                      card shows the product that was validated.
                     </p>
                   </div>
                 </div>
               )}
 
-              <Button
-                type="button"
-                onClick={handleValidate}
-                disabled={!canSubmit()}
-                className="w-full h-12 bg-gradient-to-r from-violet-500 to-emerald-500 hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-violet-500/30 disabled:opacity-40"
-              >
-                <Sparkles className="size-4 mr-2" />
-                Run validation
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  onClick={handleValidate}
+                  disabled={!canSubmit()}
+                  className="w-full h-12 bg-gradient-to-r from-violet-500 to-emerald-500 hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-violet-500/30 disabled:opacity-40"
+                >
+                  <Sparkles className="size-4 mr-2" />
+                  Run validation
+                </Button>
+                {mode === "manual" && manualMissing().length > 0 && (
+                  <p className="text-[11px] text-muted-foreground/80 text-center">
+                    Still required: {manualMissing().join(" + ")}.
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -463,192 +490,573 @@ function UsUrlNotice() {
 }
 
 // ─── Result panel ───────────────────────────────────────────────────
+//
+// Composed from four sections, each a self-contained component:
+//   1. VerdictHero        — gradient banner sized to the verdict
+//   2. CheckedProductCard — what was validated (image + title + source)
+//   3. PolicyMatrix       — 4-up grid showing status of each Etsy policy
+//   4. Findings / Cleared — flag cards or success confirmation
+// Footer cites the rule source.
+
+const POLICY_CATEGORIES: Array<{
+  key: "prohibited" | "ip" | "ppe" | "creativity";
+  label: string;
+  shortLabel: string;
+  icon: typeof Ban;
+  /** Policy fields on the flag object that belong in this bucket. */
+  policies: string[];
+}> = [
+  {
+    key: "prohibited",
+    label: "Prohibited items",
+    shortLabel: "Prohibited",
+    icon: Ban,
+    policies: [
+      "prohibited",
+      "hate",
+      "adult",
+      "animals",
+      "drugs",
+      "weapons",
+      "violence",
+    ],
+  },
+  {
+    key: "ip",
+    label: "IP & trademark",
+    shortLabel: "IP",
+    icon: Scale,
+    policies: ["ip"],
+  },
+  {
+    key: "ppe",
+    label: "PPE policy",
+    shortLabel: "PPE",
+    icon: HardHat,
+    policies: ["ppe"],
+  },
+  {
+    key: "creativity",
+    label: "Creativity standards",
+    shortLabel: "Creativity",
+    icon: Palette,
+    policies: ["creativity"],
+  },
+];
+
+type CategoryStatus = "pass" | "review" | "block";
+
+function categoryStatus(
+  flags: ValidationFlag[],
+  policies: string[],
+): { status: CategoryStatus; count: number } {
+  const matches = flags.filter((f) => policies.includes(f.policy));
+  if (matches.length === 0) return { status: "pass", count: 0 };
+  const status: CategoryStatus = matches.some((f) => f.severity === "block")
+    ? "block"
+    : "review";
+  return { status, count: matches.length };
+}
 
 function ResultPanel({ result }: { result: ValidatorResult }) {
-  const theme = VERDICT_THEME[result.verdict];
-  const Icon = theme.icon;
-
   return (
     <div className="space-y-4 ap-stagger-in">
-      {/* Verdict header */}
-      <Card className={`border-2 ${theme.ring} ring-2 shadow-lg`}>
-        <CardContent className="p-5">
-          <div className="flex items-start gap-4">
-            <div
-              className={`size-14 rounded-2xl ${theme.bg} text-white flex items-center justify-center shadow-lg ring-2 ring-white/40 shrink-0`}
-            >
-              <Icon className="size-7" strokeWidth={2.5} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                Verdict
-              </p>
-              <h2
-                className={`text-2xl font-bold tracking-tight ${theme.text}`}
-              >
-                {theme.label}
-              </h2>
-              <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">
-                {result.summary}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Product preview */}
-      <Card className="border border-border/60 shadow-none">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-4">
-            <div className="size-24 rounded-lg bg-muted/40 overflow-hidden shrink-0 flex items-center justify-center ring-1 ring-border/40">
-              {result.product.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={result.product.imageUrl}
-                  alt=""
-                  className="size-full object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <Package className="size-8 text-muted-foreground/40" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground mb-1 inline-flex items-center gap-2">
-                <SourceBadge source={result.product.source} />
-                <span className="text-muted-foreground/60 tabular-nums">
-                  · {(result.durationMs / 1000).toFixed(1)}s
-                </span>
-              </p>
-              <p className="text-[13px] font-medium leading-snug line-clamp-3">
-                {result.product.title}
-              </p>
-              <div className="flex items-center gap-3 mt-2 flex-wrap text-[11px] tabular-nums text-muted-foreground">
-                {result.product.priceUsd != null &&
-                  result.product.priceUsd > 0 && (
-                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                      ${result.product.priceUsd.toFixed(2)}
-                    </span>
-                  )}
-                {result.product.productUrl && (
-                  <a
-                    href={result.product.productUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-bold text-violet-700 dark:text-violet-400 hover:underline"
-                  >
-                    Open on AliExpress
-                    <ExternalLink className="size-3" />
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Flag list */}
-      {result.flags.length === 0 ? (
-        <Card className="border border-emerald-300/40 dark:border-emerald-700/30 bg-emerald-50/40 dark:bg-emerald-950/15 shadow-none">
-          <CardContent className="p-5 flex items-start gap-3">
-            <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">
-                No policy issues detected
-              </p>
-              <p className="text-[12px] text-emerald-800/80 dark:text-emerald-200/80 mt-1 leading-relaxed">
-                The product title did not match any encoded Etsy rules
-                across Prohibited Items, IP and Trademark, PPE, or
-                Creativity Standards. The listing is cleared.
-              </p>
-              <p className="text-[11px] text-emerald-700/70 dark:text-emerald-300/70 italic mt-2">
-                Note: this check covers the title only. Brand logos and
-                character likenesses inside product photos are not
-                analysed. Confirm the images do not contain protected
-                marks before publishing.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      <VerdictHero result={result} />
+      <CheckedProductCard result={result} />
+      <PolicyMatrix flags={result.flags} verdict={result.verdict} />
+      {result.flags.length > 0 ? (
+        <FindingsSection flags={result.flags} />
       ) : (
-        <Card className="border border-border/60 shadow-none">
-          <CardContent className="p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                {result.flags.length} policy{" "}
-                {result.flags.length === 1 ? "flag" : "flags"} raised
-              </p>
-            </div>
-            <div className="space-y-3">
-              {result.flags.map((flag, i) => (
-                <FlagRow key={i} flag={flag} />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <ClearedConfirmation />
       )}
-
-      <p className="text-center text-[11px] text-muted-foreground italic">
-        Rules sourced from Etsy&apos;s published Prohibited Items, IP and
-        Trademark, PPE, and Creativity Standards policies. Updated when
-        Etsy revises its policy pages.
-      </p>
+      <RuleSourceFooter />
     </div>
   );
 }
 
-function FlagRow({ flag }: { flag: ValidationFlag }) {
-  const isBlock = flag.severity === "block";
-  const Icon = isBlock ? XCircle : AlertTriangle;
-  const colorClasses = isBlock
-    ? "bg-rose-50 dark:bg-rose-950/30 ring-rose-300/50 dark:ring-rose-800/40 text-rose-700 dark:text-rose-300"
-    : "bg-amber-50 dark:bg-amber-950/30 ring-amber-300/50 dark:ring-amber-800/40 text-amber-700 dark:text-amber-300";
+// ─── Verdict hero ───────────────────────────────────────────────────
+
+function VerdictHero({ result }: { result: ValidatorResult }) {
+  const theme = VERDICT_THEME[result.verdict];
+  const Icon = theme.icon;
+
+  const heroBg = {
+    SAFE: "from-emerald-500/15 via-emerald-500/5 to-transparent",
+    REVIEW: "from-amber-500/15 via-amber-500/5 to-transparent",
+    BLOCKED: "from-rose-500/15 via-rose-500/5 to-transparent",
+  }[result.verdict];
+
+  const accentRing = {
+    SAFE: "ring-emerald-500/30",
+    REVIEW: "ring-amber-500/30",
+    BLOCKED: "ring-rose-500/30",
+  }[result.verdict];
+
+  const iconGlow = {
+    SAFE: "shadow-emerald-500/40",
+    REVIEW: "shadow-amber-500/40",
+    BLOCKED: "shadow-rose-500/40",
+  }[result.verdict];
+
+  const blockCount = result.flags.filter((f) => f.severity === "block").length;
+  const reviewCount = result.flags.filter((f) => f.severity === "review").length;
 
   return (
-    <div className={`rounded-xl ring-1 ${colorClasses} p-4`}>
-      <div className="flex items-start gap-3">
-        <Icon className="size-5 shrink-0 mt-0.5" strokeWidth={2.5} />
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <p className="text-[13px] font-bold leading-tight">
-                {flag.label}
-              </p>
-              <p className="text-[10px] font-bold uppercase tracking-wider opacity-70 mt-0.5">
-                {flag.policyClause}
-              </p>
+    <Card
+      className={`relative overflow-hidden border-2 ${accentRing} ring-1 shadow-xl`}
+    >
+      <div
+        aria-hidden
+        className={`absolute inset-0 bg-gradient-to-br ${heroBg} pointer-events-none`}
+      />
+      <CardContent className="relative p-6 sm:p-7">
+        <div className="flex items-start gap-5">
+          <div className="relative shrink-0">
+            <span
+              aria-hidden
+              className={`absolute -inset-2 rounded-3xl ${theme.bg} opacity-30 blur-xl`}
+            />
+            <div
+              className={`relative size-16 sm:size-[68px] rounded-2xl ${theme.bg} text-white flex items-center justify-center ring-2 ring-white/50 shadow-2xl ${iconGlow}`}
+            >
+              <Icon className="size-8" strokeWidth={2.4} />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/60 dark:bg-black/30 ring-1 ring-current/30 shrink-0 tabular-nums">
-              Matched: &ldquo;{flag.matchedText}&rdquo;
-            </span>
           </div>
-          <p className="text-[12px] leading-relaxed text-foreground/85">
-            {flag.explanation}
-          </p>
-          {flag.suggestion && (
-            <p className="text-[12px] leading-relaxed text-foreground/70 italic inline-flex items-start gap-1.5">
-              <Info className="size-3 mt-0.5 shrink-0" />
-              <span>
-                <strong>Recommendation:</strong> {flag.suggestion}
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground/80">
+                Validation verdict
               </span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground/70 tabular-nums">
+                <Clock className="size-3" />
+                {(result.durationMs / 1000).toFixed(1)}s
+              </span>
+            </div>
+            <h2
+              className={`text-2xl sm:text-[28px] font-bold tracking-tight leading-[1.1] ${theme.text}`}
+            >
+              {theme.label}
+            </h2>
+            <p className="text-[13px] text-foreground/75 mt-2 leading-relaxed max-w-2xl">
+              {result.summary}
             </p>
-          )}
+
+            {/* Outcome metrics */}
+            <div className="flex items-center gap-2 mt-4 flex-wrap">
+              <MetricChip
+                tone={result.verdict === "SAFE" ? "good" : "neutral"}
+                icon={FileCheck2}
+                label={`${POLICY_CATEGORIES.length} policies checked`}
+              />
+              {blockCount > 0 && (
+                <MetricChip
+                  tone="bad"
+                  icon={XCircle}
+                  label={`${blockCount} blocking ${blockCount === 1 ? "issue" : "issues"}`}
+                />
+              )}
+              {reviewCount > 0 && (
+                <MetricChip
+                  tone="warn"
+                  icon={AlertTriangle}
+                  label={`${reviewCount} review ${reviewCount === 1 ? "flag" : "flags"}`}
+                />
+              )}
+              {result.flags.length === 0 && (
+                <MetricChip
+                  tone="good"
+                  icon={CheckCircle2}
+                  label="No policy flags"
+                />
+              )}
+            </div>
+          </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricChip({
+  tone,
+  icon: Icon,
+  label,
+}: {
+  tone: "good" | "warn" | "bad" | "neutral";
+  icon: typeof FileCheck2;
+  label: string;
+}) {
+  const toneClasses = {
+    good: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30",
+    warn: "bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-500/30",
+    bad: "bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-500/30",
+    neutral:
+      "bg-muted/60 text-muted-foreground ring-border/60",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full ring-1 ${toneClasses}`}
+    >
+      <Icon className="size-3" />
+      {label}
+    </span>
+  );
+}
+
+// ─── Checked product card ───────────────────────────────────────────
+
+function CheckedProductCard({ result }: { result: ValidatorResult }) {
+  return (
+    <Card className="border border-border/60 shadow-none overflow-hidden">
+      <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          Product validated
+        </p>
+        <SourceBadge source={result.product.source} />
+      </div>
+      <CardContent className="px-5 pb-5 pt-2">
+        <div className="flex items-start gap-4">
+          <div className="size-24 sm:size-28 rounded-xl bg-muted/40 overflow-hidden shrink-0 flex items-center justify-center ring-1 ring-border/50">
+            {result.product.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={result.product.imageUrl}
+                alt=""
+                className="size-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <Package className="size-8 text-muted-foreground/40" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1 space-y-3">
+            <p className="text-[14px] font-semibold leading-snug text-foreground/95">
+              {result.product.title}
+            </p>
+            <div className="flex items-center gap-3 flex-wrap text-[11px]">
+              {result.product.priceUsd != null &&
+                result.product.priceUsd > 0 && (
+                  <span className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                    AliExpress price ${result.product.priceUsd.toFixed(2)}
+                  </span>
+                )}
+              {result.product.productUrl && (
+                <a
+                  href={result.product.productUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-bold text-violet-700 dark:text-violet-400 hover:underline"
+                >
+                  Open on AliExpress
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Policy coverage matrix ─────────────────────────────────────────
+
+function PolicyMatrix({
+  flags,
+  verdict,
+}: {
+  flags: ValidationFlag[];
+  verdict: Verdict;
+}) {
+  return (
+    <Card className="border border-border/60 shadow-none">
+      <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          Policy coverage
+        </p>
+        <p className="text-[10px] font-semibold text-muted-foreground/70">
+          {verdict === "SAFE"
+            ? "All four policies cleared"
+            : "Status by policy area"}
+        </p>
+      </div>
+      <CardContent className="px-5 pb-5 pt-2">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {POLICY_CATEGORIES.map((cat) => {
+            const { status, count } = categoryStatus(flags, cat.policies);
+            return (
+              <PolicyCell
+                key={cat.key}
+                label={cat.label}
+                shortLabel={cat.shortLabel}
+                icon={cat.icon}
+                status={status}
+                count={count}
+              />
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PolicyCell({
+  label,
+  icon: Icon,
+  status,
+  count,
+}: {
+  label: string;
+  shortLabel: string;
+  icon: typeof Ban;
+  status: CategoryStatus;
+  count: number;
+}) {
+  const theme = {
+    pass: {
+      iconBg:
+        "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 ring-emerald-500/30",
+      pillBg:
+        "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30",
+      pillLabel: "Cleared",
+      cardBg: "bg-emerald-50/40 dark:bg-emerald-950/15 ring-emerald-500/15",
+      PillIcon: CheckCircle2,
+    },
+    review: {
+      iconBg:
+        "bg-amber-500/15 text-amber-700 dark:text-amber-400 ring-amber-500/30",
+      pillBg:
+        "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30",
+      pillLabel: count === 1 ? "1 review" : `${count} reviews`,
+      cardBg: "bg-amber-50/50 dark:bg-amber-950/15 ring-amber-500/20",
+      PillIcon: AlertTriangle,
+    },
+    block: {
+      iconBg:
+        "bg-rose-500/15 text-rose-700 dark:text-rose-400 ring-rose-500/30",
+      pillBg:
+        "bg-rose-500/15 text-rose-700 dark:text-rose-300 ring-rose-500/30",
+      pillLabel: count === 1 ? "1 block" : `${count} blocks`,
+      cardBg: "bg-rose-50/50 dark:bg-rose-950/15 ring-rose-500/20",
+      PillIcon: XCircle,
+    },
+  }[status];
+
+  const PillIcon = theme.PillIcon;
+
+  return (
+    <div
+      className={`rounded-xl ring-1 p-3 flex items-center gap-3 ${theme.cardBg}`}
+    >
+      <div
+        className={`size-9 rounded-lg ring-1 flex items-center justify-center shrink-0 ${theme.iconBg}`}
+      >
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="text-[11px] font-bold leading-tight truncate">{label}</p>
+        <span
+          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ring-1 ${theme.pillBg}`}
+        >
+          <PillIcon className="size-2.5" strokeWidth={3} />
+          {theme.pillLabel}
+        </span>
       </div>
     </div>
+  );
+}
+
+// ─── Findings section (flags present) ───────────────────────────────
+
+function FindingsSection({ flags }: { flags: ValidationFlag[] }) {
+  const blocks = flags.filter((f) => f.severity === "block");
+  const reviews = flags.filter((f) => f.severity === "review");
+
+  return (
+    <Card className="border border-border/60 shadow-none">
+      <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          Findings
+        </p>
+        <p className="text-[10px] font-semibold text-muted-foreground/70 tabular-nums">
+          {flags.length} {flags.length === 1 ? "flag" : "flags"} ·{" "}
+          {blocks.length} blocking · {reviews.length} review
+        </p>
+      </div>
+      <CardContent className="px-5 pb-5 pt-2 space-y-3">
+        {flags.map((flag, i) => (
+          <FlagCard key={i} flag={flag} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FlagCard({ flag }: { flag: ValidationFlag }) {
+  const isBlock = flag.severity === "block";
+  const Icon = isBlock ? XCircle : AlertTriangle;
+
+  const theme = isBlock
+    ? {
+        wrap: "ring-rose-300/50 dark:ring-rose-800/40",
+        bar: "bg-rose-500",
+        iconBg: "bg-rose-500 text-white",
+        severityPill:
+          "bg-rose-500 text-white",
+        severityLabel: "Blocking",
+        matchedBg:
+          "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 ring-rose-300/50 dark:ring-rose-800/40",
+        suggestionBg:
+          "bg-rose-50/60 dark:bg-rose-950/20 text-rose-800/90 dark:text-rose-200/80",
+      }
+    : {
+        wrap: "ring-amber-300/50 dark:ring-amber-800/40",
+        bar: "bg-amber-500",
+        iconBg: "bg-amber-500 text-white",
+        severityPill:
+          "bg-amber-500 text-white",
+        severityLabel: "Review",
+        matchedBg:
+          "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 ring-amber-300/50 dark:ring-amber-800/40",
+        suggestionBg:
+          "bg-amber-50/60 dark:bg-amber-950/20 text-amber-800/90 dark:text-amber-200/80",
+      };
+
+  return (
+    <div
+      className={`relative rounded-xl ring-1 overflow-hidden bg-card ${theme.wrap}`}
+    >
+      {/* Severity color bar */}
+      <div
+        aria-hidden
+        className={`absolute inset-y-0 left-0 w-1 ${theme.bar}`}
+      />
+
+      <div className="p-4 pl-5 space-y-3">
+        {/* Header row */}
+        <div className="flex items-start gap-3">
+          <div
+            className={`size-9 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${theme.iconBg}`}
+          >
+            <Icon className="size-4" strokeWidth={2.5} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+              <span
+                className={`inline-flex items-center text-[9px] font-bold uppercase tracking-[0.16em] px-2 py-0.5 rounded-full ${theme.severityPill}`}
+              >
+                {theme.severityLabel}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
+                {flag.policyClause}
+              </span>
+            </div>
+            <p className="text-[14px] font-bold leading-tight">{flag.label}</p>
+          </div>
+        </div>
+
+        {/* Matched text */}
+        <div
+          className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-md ring-1 ${theme.matchedBg}`}
+        >
+          <span className="text-[9px] uppercase tracking-wider opacity-70 font-sans font-bold">
+            Matched
+          </span>
+          <span className="font-semibold">&ldquo;{flag.matchedText}&rdquo;</span>
+        </div>
+
+        {/* Explanation */}
+        <p className="text-[12.5px] leading-relaxed text-foreground/85">
+          {flag.explanation}
+        </p>
+
+        {/* Recommendation */}
+        {flag.suggestion && (
+          <div
+            className={`rounded-lg px-3 py-2.5 flex items-start gap-2 ${theme.suggestionBg}`}
+          >
+            <ChevronRight className="size-3.5 mt-0.5 shrink-0" />
+            <p className="text-[12px] leading-relaxed">
+              <span className="font-bold uppercase text-[10px] tracking-wider opacity-80 mr-1.5">
+                Recommendation
+              </span>
+              {flag.suggestion}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Cleared confirmation (no flags) ────────────────────────────────
+
+function ClearedConfirmation() {
+  return (
+    <Card className="border border-emerald-300/40 dark:border-emerald-700/30 bg-gradient-to-br from-emerald-50/60 via-emerald-50/30 to-transparent dark:from-emerald-950/25 dark:via-emerald-950/10 shadow-none overflow-hidden">
+      <CardContent className="p-5 sm:p-6">
+        <div className="flex items-start gap-4">
+          <div className="relative shrink-0">
+            <span
+              aria-hidden
+              className="absolute -inset-1.5 rounded-2xl bg-emerald-500/30 blur-md"
+            />
+            <div className="relative size-12 rounded-2xl bg-emerald-500 ring-2 ring-white/60 dark:ring-emerald-200/20 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+              <CheckCircle2 className="size-6 text-white" strokeWidth={2.4} />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="text-[15px] font-bold text-emerald-900 dark:text-emerald-100 leading-tight">
+              No policy issues detected
+            </p>
+            <p className="text-[12.5px] text-emerald-900/80 dark:text-emerald-100/80 leading-relaxed">
+              The product title did not match any encoded Etsy rules across
+              Prohibited Items, IP and Trademark, PPE, or Creativity
+              Standards. The listing is cleared for publication.
+            </p>
+            <div className="rounded-lg bg-white/60 dark:bg-emerald-950/30 ring-1 ring-emerald-500/20 px-3 py-2.5 mt-2 flex items-start gap-2.5">
+              <Info className="size-3.5 text-emerald-700 dark:text-emerald-300 mt-0.5 shrink-0" />
+              <p className="text-[11.5px] leading-relaxed text-emerald-900/85 dark:text-emerald-100/85">
+                <span className="font-bold">Visual review still required.</span>{" "}
+                This check covers the title only. Brand logos and character
+                likenesses inside the product photos are not analysed.
+                Inspect the images and confirm they do not contain protected
+                marks before publishing on Etsy.
+              </p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Rule source footer ─────────────────────────────────────────────
+
+function RuleSourceFooter() {
+  return (
+    <p className="text-center text-[11px] text-muted-foreground italic px-4">
+      Rules sourced from Etsy&apos;s published Prohibited Items, IP and
+      Trademark, PPE, and Creativity Standards policies. Updated when
+      Etsy revises its policy pages.
+    </p>
   );
 }
 
 function SourceBadge({ source }: { source: "com" | "manual" }) {
   if (source === "manual") {
     return (
-      <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30">
-        Manual entry
+      <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30">
+        <PenLine className="size-2.5" />
+        Manual check
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30">
+    <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30">
+      <Link2 className="size-2.5" />
       Aliexpress.com
     </span>
   );
