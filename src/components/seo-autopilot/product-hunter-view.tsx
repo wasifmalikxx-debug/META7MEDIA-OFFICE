@@ -9,7 +9,6 @@ import {
   Target,
   Heart,
   Plug,
-  Image as ImageIcon,
   Hourglass,
   LayoutGrid,
   X,
@@ -17,7 +16,6 @@ import {
   Bookmark,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ImageHuntSection } from "./image-hunt-section";
 import { ManualHuntingSection } from "./manual-hunting-section";
 import { DailyTrendingView } from "@/components/daily-trending/daily-trending-view";
 import { DailyTrendingTabComingSoon } from "@/components/daily-trending/daily-trending-tab-coming-soon";
@@ -117,34 +115,36 @@ export function useRecentHunts(): RecentHunt[] {
  *
  *  - manual    → keyword-brainstorm + Etsy scoring (CEO types a seed,
  *                we brainstorm and score against Etsy demand)
- *  - image     → paste an image URL → similar AE products
  *  - trending  → Daily Trending — morning AE feed scoped to niche book
  *                (CEO-only during validation phase; others see Coming Soon)
  *  - soon      → roadmap card (Watchlists, Fresh Finds, etc.)
  *
- * Removed May 17 2026:
- *  - reverse   → Reverse Hunt (paste AE URL → verdict). CEO call:
- *                ".us URLs don't work and the .com flow was already
- *                covered by Manual Hunting." Files purged with the
- *                tab.
+ * Removed:
+ *  - reverse (May 17 2026) — Reverse Hunt (paste AE URL → verdict).
+ *    CEO call: ".us URLs don't work and the .com flow was already
+ *    covered by Manual Hunting."
+ *  - image (May 17 2026) — Image Hunt (paste image → AE matches).
+ *    AE's image search endpoint rejected every request format we
+ *    tried (5 attempts, all MissingParameter), and the workaround
+ *    via Claude vision would add per-search cost. CEO chose to
+ *    remove rather than spend on it.
  *
  * Every future hunting tool we build slots in here as a new tab so the
  * whole team has one URL to remember.
  */
-type HunterTab = "manual" | "image" | "trending" | "soon";
+type HunterTab = "manual" | "trending" | "soon";
 
 /**
  * Initial-tab resolver — reads `?tab=X` from window.location.
  * Computed once during useState lazy init so we don't violate React 19's
- * "no setState in useEffect" rule. Legacy `?tab=reverse` quietly
- * falls back to "manual" since Reverse Hunt was removed.
+ * "no setState in useEffect" rule. Legacy `?tab=reverse` and
+ * `?tab=image` quietly fall back to "manual" (those tabs were removed).
  */
 function resolveInitialTab(): HunterTab {
   if (typeof window === "undefined") return "manual";
   const requested = new URLSearchParams(window.location.search).get("tab");
   if (
     requested === "manual" ||
-    requested === "image" ||
     requested === "trending" ||
     requested === "soon"
   ) {
@@ -194,8 +194,6 @@ export function ProductHunterView({
             (CEO-only) — AE product prices stay visible to everyone. */}
         {activeTab === "manual" && <ManualHuntingSection isCeo={isCeo} />}
 
-        {activeTab === "image" && <ImageHuntSection />}
-
         {activeTab === "trending" &&
           (isCeo && currentUserId ? (
             <DailyTrendingView
@@ -233,13 +231,6 @@ const MODE_TABS: Array<{
     icon: Target,
     description: "Type a seed → find underserved Etsy keywords",
     gradient: "from-sky-500 to-violet-500",
-  },
-  {
-    id: "image",
-    label: "Image Hunt",
-    icon: ImageIcon,
-    description: "Paste image → find the supplier",
-    gradient: "from-violet-500 to-pink-500",
   },
   {
     id: "trending",
@@ -349,13 +340,6 @@ const TAB_COPY: Record<
       { icon: Sparkles, label: "25 variants", sub: "Claude brainstorm" },
       { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
       { icon: Heart, label: "Ranked", sub: "GREAT · GOOD · MAYBE · SKIP" },
-    ],
-  },
-  image: {
-    cells: [
-      { icon: ImageIcon, label: "Image input", sub: "Any URL works" },
-      { icon: Target, label: "Visual match", sub: "AE image-search API" },
-      { icon: TrendingUp, label: "12 sources", sub: "Sorted by orders" },
     ],
   },
   trending: {

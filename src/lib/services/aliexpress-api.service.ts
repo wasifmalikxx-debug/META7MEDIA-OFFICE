@@ -191,15 +191,6 @@ export async function aliExpressCall<T = unknown>(
   method: string,
   params: Record<string, string | number | boolean> = {},
   accessToken?: string,
-  options: {
-    bodyMode?: boolean;
-    /** Use multipart/form-data instead of x-www-form-urlencoded.
-     * Required for endpoints that need real file uploads or that
-     * silently reject urlencoded bodies (e.g. image.search rejected
-     * urlencoded with "MissingParameter: image_file_bytes" even
-     * though the param was present + signed correctly). */
-    formDataMode?: boolean;
-  } = {},
 ): Promise<T> {
   if (!APP_KEY || !APP_SECRET) {
     throw new Error("AliExpress credentials not configured");
@@ -219,37 +210,12 @@ export async function aliExpressCall<T = unknown>(
   }
   stringifiedParams.sign = signRequest(stringifiedParams);
 
-  // Three transport modes:
-  //   - default       → params in URL query string (smallest payloads)
-  //   - bodyMode      → params in x-www-form-urlencoded body
-  //   - formDataMode  → params in multipart/form-data body (required
-  //                     for AE endpoints that reject urlencoded
-  //                     bodies, e.g. aliexpress.ds.image.search)
-  //
-  // Signing is param-based not URL-based, so the signature is
-  // identical regardless of transport.
-  let url: string;
-  let body: BodyInit | undefined;
-  let headers: Record<string, string> | undefined;
-
-  if (options.formDataMode) {
-    url = API_BASE;
-    const form = new FormData();
-    for (const [k, v] of Object.entries(stringifiedParams)) {
-      form.append(k, v);
-    }
-    body = form;
-    // Don't set Content-Type — fetch sets it with the multipart boundary.
-    headers = undefined;
-  } else if (options.bodyMode) {
-    url = API_BASE;
-    body = new URLSearchParams(stringifiedParams).toString();
-    headers = { "Content-Type": "application/x-www-form-urlencoded" };
-  } else {
-    url = `${API_BASE}?${new URLSearchParams(stringifiedParams).toString()}`;
-    body = undefined;
-    headers = undefined;
-  }
+  // All params go in the URL query string — every endpoint we use
+  // (text.search, product.get, recommend.feed.get, auth.*) accepts
+  // this and the payloads are tiny. Body-mode + multipart-mode
+  // variants were removed May 17 2026 along with Image Hunt — they
+  // were only ever needed for the (broken) image search endpoint.
+  const url = `${API_BASE}?${new URLSearchParams(stringifiedParams).toString()}`;
 
   // Reduced from 4 → 2 attempts with halved backoff. The original
   // 4-attempt × 800ms-base backoff could waste up to 12s per failing
@@ -267,7 +233,7 @@ export async function aliExpressCall<T = unknown>(
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await fetch(url, { method: "POST", headers, body });
+      const res = await fetch(url, { method: "POST" });
       if (!res.ok) {
         if (res.status === 429 || res.status >= 500) {
           lastErr = new Error(`AliExpress ${res.status}`);
@@ -758,197 +724,13 @@ export async function getProductById(
   }
 }
 
-/**
- * Image search — Play 4. Two input modes:
- *   1. Public image URL → fetched server-side, base64-encoded
- *   2. Pre-encoded base64 bytes → sent directly (faster + handles
- *      file uploads / clipboard pastes from the client)
- *
- * AE's `aliexpress.ds.image.search` is a file-upload endpoint. It
- * rejects both URL-query and form-urlencoded transports — only
- * multipart/form-data with the image as an actual binary file works.
- * The signature is computed over text params only (image bytes are
- * NOT included in the sign — that's the standard AE file-upload
- * pattern, distinct from non-upload endpoints where ALL params go
- * into the sign).
- *
- * May 17 2026 evolution:
- *   1. URL-encoded body → MissingParameter
- *   2. Multipart with base64 string field → MissingParameter
- *   3. Multipart with binary Blob file → THIS APPROACH
- */
-export async function searchProductsByImage(
-  input: { imageUrl?: string; imageBase64?: string },
-  options: {
-    accessToken: string;
-    pageSize?: number;
-  },
-): Promise<ProductSearchResponse> {
-  let imageBytes: Buffer;
-
-  if (input.imageBase64) {
-    // Direct bytes path — caller already has the image data
-    // (file upload, clipboard paste, etc.). Strip optional data-URI
-    // prefix so we get raw base64.
-    const stripped = input.imageBase64.replace(
-      /^data:image\/[a-z]+;base64,/i,
-      "",
-    );
-    if (stripped.length < 200) {
-      throw new Error("Image data is too small or invalid.");
-    }
-    imageBytes = Buffer.from(stripped, "base64");
-  } else if (input.imageUrl) {
-    // URL path — fetch the image server-side first
-    try {
-      const imageRes = await fetch(input.imageUrl, {
-        headers: {
-          // Look like a real browser so Etsy/AE CDN don't 403 the request
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "image/*,*/*",
-        },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!imageRes.ok) {
-        throw new Error(
-          `Image URL returned HTTP ${imageRes.status} — make sure the URL is publicly accessible.`,
-        );
-      }
-      imageBytes = Buffer.from(await imageRes.arrayBuffer());
-    } catch (err) {
-      throw new Error(
-        `Couldn't fetch image: ${err instanceof Error ? err.message : "unknown"}`,
-      );
-    }
-  } else {
-    throw new Error("Either imageUrl or imageBase64 is required.");
-  }
-
-  const sizeMb = imageBytes.byteLength / 1024 / 1024;
-  if (sizeMb > 5) {
-    throw new Error(
-      `Image too large (${sizeMb.toFixed(1)} MB). Max 5 MB.`,
-    );
-  }
-  if (imageBytes.byteLength < 100) {
-    throw new Error("Image is empty or invalid.");
-  }
-
-  // Direct multipart upload to AE — bypass aliExpressCall because
-  // this endpoint requires the binary-file pattern (image NOT in the
-  // sign, sent as a Blob with filename + content-type).
-  const raw = await aliExpressImageUploadCall(
-    "aliexpress.ds.image.search",
-    {
-      pageSize: options.pageSize ?? 12,
-      currency: "USD",
-      target_currency: "USD",
-      local: "en_US",
-      target_language: "en",
-      countryCode: "US",
-      shpt_to: "US",
-      ship_to_country: "US",
-    },
-    imageBytes,
-    options.accessToken,
-  );
-  return parseProductSearch(raw);
-}
-
-/**
- * Specialized AE call for file-upload endpoints. Differs from
- * `aliExpressCall` in two important ways:
- *   1. Signs over TEXT params only — file bytes are excluded
- *   2. Sends the image as a binary Blob via multipart/form-data
- *      with proper filename + content-type (not a base64 string)
- *
- * Why a separate function: most AE endpoints compute the sign over
- * ALL params including any base64 file content. File-upload endpoints
- * use a different convention — the binary file isn't part of the
- * sign, just the metadata params. Mixing the two in one function
- * gets fragile fast.
- */
-async function aliExpressImageUploadCall<T = unknown>(
-  method: string,
-  textParams: Record<string, string | number | boolean>,
-  imageBytes: Buffer,
-  accessToken: string,
-): Promise<T> {
-  if (!APP_KEY || !APP_SECRET) {
-    throw new Error("AliExpress credentials not configured");
-  }
-
-  const stringifiedParams: Record<string, string> = {
-    method,
-    app_key: APP_KEY,
-    sign_method: "sha256",
-    timestamp: String(Date.now()),
-    session: accessToken,
-  };
-  for (const [k, v] of Object.entries(textParams)) {
-    if (v !== undefined && v !== null && v !== "") {
-      stringifiedParams[k] = String(v);
-    }
-  }
-  // Sign over text params ONLY — binary file is not in the signature.
-  stringifiedParams.sign = signRequest(stringifiedParams);
-
-  // Build multipart body with text fields + binary image
-  const form = new FormData();
-  for (const [k, v] of Object.entries(stringifiedParams)) {
-    form.append(k, v);
-  }
-  // image_file_bytes as a real file — AE recognizes this as the
-  // image upload, ignores it for sign validation.
-  const blob = new Blob([new Uint8Array(imageBytes)], { type: "image/jpeg" });
-  form.append("image_file_bytes", blob, "image.jpg");
-
-  await acquireSlot();
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await fetch(API_BASE, {
-        method: "POST",
-        body: form,
-        // Don't set Content-Type — fetch adds the multipart boundary
-      });
-      if (!res.ok) {
-        if (res.status === 429 || res.status >= 500) {
-          lastErr = new Error(`AliExpress ${res.status}`);
-          await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
-          continue;
-        }
-        throw new Error(
-          `AliExpress ${method} failed: ${res.status} ${await res.text()}`,
-        );
-      }
-      const json = await res.json();
-      if (json?.error_response) {
-        const err = json.error_response;
-        console.error(
-          `[aliexpress] ${method} error_response:`,
-          JSON.stringify(err).slice(0, 400),
-        );
-        throw new Error(
-          `AliExpress error ${err.code}: ${err.sub_msg ?? err.msg ?? "unknown"}`,
-        );
-      }
-      const bodyPreview = JSON.stringify(json).slice(0, 2000);
-      console.log(
-        `[aliexpress] ${method} (multipart upload) ok — body: ${bodyPreview}`,
-      );
-      return json as T;
-    } catch (err) {
-      lastErr = err;
-      if (attempt === 1) break;
-      await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
-    }
-  }
-  throw lastErr instanceof Error
-    ? lastErr
-    : new Error(`AliExpress ${method} failed after retries`);
-}
+// Note: searchProductsByImage + aliExpressImageUploadCall were
+// removed May 17 2026 along with the Image Hunt tab. AE's image
+// search endpoint rejected every request format we tried (URL query,
+// form-urlencoded body, multipart with base64 string, multipart with
+// binary Blob — all returned MissingParameter for image_file_bytes).
+// Without a working AE endpoint and no permission UI to enable it,
+// CEO chose to remove the feature rather than work around it.
 
 /**
  * Extract product ID from a typical AliExpress URL.
