@@ -507,16 +507,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
                   {/* Product Validator — pre-listing Etsy policy check.
                       Paste an AE URL, get SAFE/REVIEW/BLOCKED verdict
-                      with per-rule citations. Live for the whole Etsy
-                      team; HR/FB see a Coming Soon placeholder. */}
+                      with per-rule citations. Tightened to CEO-only on
+                      May 18 2026 while the rule set is being tuned —
+                      everyone else sees Coming Soon. Reopen by
+                      restoring the wider predicate (kept as a comment
+                      in product-validator-access.ts). */}
                   {(() => {
-                    const hasValidator =
-                      isCeo ||
-                      isIzaan ||
-                      isEmEmployee ||
-                      isEtsyPartner ||
-                      user.employeeId?.startsWith("AE") ||
-                      user.employeeId?.startsWith("ME");
+                    const hasValidator = isCeo;
                     return (
                       <SidebarMenuItem>
                         <SidebarMenuButton

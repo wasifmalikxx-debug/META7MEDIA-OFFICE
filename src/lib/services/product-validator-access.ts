@@ -3,18 +3,19 @@ import { prisma } from "@/lib/prisma";
 /**
  * Single source of truth for the Product Validator role gate.
  *
- * Access policy (May 17 2026 — launch):
+ * Access policy (May 18 2026 — tightened to CEO-only while we tune):
  *  - CEO / SUPER_ADMIN                     → real tool
- *  - MANAGER (Izaan, EM-4)                 → real tool
- *  - EM employees (EM-* except EM-4 / 4L)  → real tool
- *  - AE employees (AE-*)                   → real tool
- *  - ME employees (ME-*)                   → real tool
- *  - Etsy PARTNERs (Awais, Mubeen)         → real tool
- *  - HR / Facebook / Zain                  → Coming Soon placeholder
+ *  - Everyone else                         → Coming Soon placeholder
  *
- * Rationale: the validator is a $0/check pre-listing safety tool —
- * every Etsy seller should have it before they post a single listing,
- * to stop shop strikes before they happen. No reason to gate it.
+ * The Etsy team rollout is paused while the tool's rule set is being
+ * tuned. Reopen access by adding back the role/employee checks below.
+ *
+ * Earlier policy kept here as a comment for fast revert:
+ *   isManager        empId === "EM-4"
+ *   isEmEmployee     empId startsWith "EM" and !== "EM-4" / "EM-4L"
+ *   isAeEmployee     empId startsWith "AE"
+ *   isMeEmployee     empId startsWith "ME"
+ *   isEtsyPartner    PARTNER role on an EM/AE/ME team
  */
 
 export interface ProductValidatorAccess {
@@ -35,6 +36,10 @@ export async function getProductValidatorAccess(user: {
 }): Promise<ProductValidatorAccess> {
   const isCeo = user.role === "SUPER_ADMIN";
   const empId = user.employeeId;
+
+  // Role/team flags are still computed so the rest of the app (sidebar
+  // pill copy, dashboards) keeps reading them, but they no longer
+  // affect access. canUseRealTool gates only on isCeo for now.
   const isManager = empId === "EM-4"; // Izaan
   const isEmEmployee =
     typeof empId === "string" &&
@@ -58,13 +63,7 @@ export async function getProductValidatorAccess(user: {
     );
   }
 
-  const canUseRealTool =
-    isCeo ||
-    isManager ||
-    isEmEmployee ||
-    isAeEmployee ||
-    isMeEmployee ||
-    isEtsyPartner;
+  const canUseRealTool = isCeo;
 
   return {
     isCeo,
