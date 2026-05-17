@@ -115,6 +115,28 @@ export function ProductValidatorView() {
     return manualTitle.trim().length >= 3;
   }
 
+  /**
+   * Handle URL input changes. If the user pastes an aliexpress.us URL,
+   * auto-switch to manual mode immediately — server-side scraping for
+   * .us URLs is blocked by AE's Cloudflare and the user would otherwise
+   * wait ~60s for 5 attempts to fail before being told to enter manually.
+   * Skipping that wait is the difference between "tool works" and
+   * "tool wastes my time."
+   */
+  function handleUrlChange(value: string) {
+    setUrlInput(value);
+    const isUsUrl =
+      /aliexpress\.us/i.test(value) && !/aliexpress\.com/i.test(value);
+    if (isUsUrl && mode === "url" && value.length >= 20) {
+      setMode("manual");
+      toast.info("Switched to manual entry", {
+        description:
+          "aliexpress.us URLs can't auto-load (Cloudflare blocks our server). Paste the title from the AE page below.",
+        duration: 6000,
+      });
+    }
+  }
+
   async function handleValidate(): Promise<void> {
     if (!canSubmit()) return;
     setLoading(true);
@@ -226,7 +248,7 @@ export function ProductValidatorView() {
                 <Input
                   type="text"
                   value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
+                  onChange={(e) => handleUrlChange(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && canSubmit()) handleValidate();
                   }}
@@ -235,10 +257,10 @@ export function ProductValidatorView() {
                   className="h-12 text-sm bg-muted/20 border-border/70 focus-visible:border-violet-500/60 focus-visible:ring-violet-500/15"
                 />
                 <p className="text-[11px] text-muted-foreground/80">
-                  Works with <strong>aliexpress.com</strong> and{" "}
-                  <strong>aliexpress.us</strong> URLs. If the .us URL
-                  doesn&apos;t auto-load, you&apos;ll be switched to manual
-                  entry automatically.
+                  Best for <strong>aliexpress.com</strong> URLs (auto-fetches
+                  the title). If you paste an <strong>aliexpress.us</strong>{" "}
+                  URL we&apos;ll auto-switch to manual entry — Cloudflare
+                  blocks server-side scraping for that domain.
                 </p>
               </>
             )}
@@ -246,21 +268,58 @@ export function ProductValidatorView() {
             {/* Manual mode inputs */}
             {mode === "manual" && (
               <div className="space-y-3">
+                {/* Quick action: if user has a source URL, give them
+                    a one-click "Open AE page" button so they can grab
+                    the title in 2 clicks (open page → copy title).
+                    Speeds the typical .us workflow dramatically. */}
+                {urlInput.trim().length >= 10 && (
+                  <div className="rounded-lg bg-violet-500/10 ring-1 ring-violet-500/30 px-3 py-2.5 flex items-center gap-3">
+                    <div className="size-8 rounded-md bg-violet-500/20 ring-1 ring-violet-500/30 flex items-center justify-center shrink-0">
+                      <Link2 className="size-4 text-violet-700 dark:text-violet-300" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-bold text-violet-800 dark:text-violet-200 leading-tight">
+                        Step 1: open the AE page and copy the title
+                      </p>
+                      <p className="text-[10px] text-violet-700/70 dark:text-violet-300/70 truncate">
+                        {urlInput.trim().slice(0, 80)}
+                        {urlInput.trim().length > 80 ? "…" : ""}
+                      </p>
+                    </div>
+                    <a
+                      href={urlInput.trim()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold transition-colors"
+                    >
+                      Open page
+                      <ExternalLink className="size-3" />
+                    </a>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <Label
                     htmlFor="manual-title"
                     className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground"
                   >
-                    Product title <span className="text-rose-500">*</span>
+                    {urlInput.trim().length >= 10
+                      ? "Step 2: paste the product title here "
+                      : "Product title "}
+                    <span className="text-rose-500">*</span>
                   </Label>
                   <Input
                     id="manual-title"
                     type="text"
                     value={manualTitle}
                     onChange={(e) => setManualTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && canSubmit()) handleValidate();
+                    }}
                     placeholder="Copy-paste the product title exactly as it appears on AE"
                     disabled={loading}
                     maxLength={500}
+                    autoFocus
                     className="h-10 text-sm"
                   />
                 </div>
@@ -307,8 +366,9 @@ export function ProductValidatorView() {
                   </div>
                 </div>
                 <p className="text-[11px] text-muted-foreground/80">
-                  Tip: only the title is checked against Etsy policy rules.
-                  Image URL + source URL are just for the result card.
+                  Only the <strong>title</strong> is checked against Etsy
+                  policy rules. Image URL + source URL just decorate the
+                  result card.
                 </p>
               </div>
             )}
