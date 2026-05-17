@@ -735,64 +735,87 @@ export async function getProductById(
 }
 
 /**
- * Image search — Play 4. Accepts a public image URL, fetches it
- * server-side, base64-encodes the bytes, and sends them to AE's
- * `aliexpress.ds.image.search` endpoint.
+ * Image search — Play 4. Two input modes:
+ *   1. Public image URL → fetched server-side, base64-encoded
+ *   2. Pre-encoded base64 bytes → sent directly (faster + handles
+ *      file uploads / clipboard pastes from the client)
  *
- * AE doesn't accept a remote URL — it demands the actual image
- * bytes via `image_file_bytes`. May 17 2026 hardening:
- *   1. Added shpt_to (required for ship-to country)
- *   2. Fetch the image server-side and base64-encode it
- *   3. Send all params via POST body (bodyMode) because base64 of a
- *      typical product image (50-200KB) exceeds URL length limits
+ * AE's `aliexpress.ds.image.search` demands the actual image bytes
+ * via `image_file_bytes` (not a remote URL). All params go via POST
+ * body (bodyMode) because base64 of a typical product image is
+ * 50-200KB — way over URL length limits.
+ *
+ * May 17 2026:
+ *   - Added shpt_to (required for ship-to country)
+ *   - Server-side fetch for URL input
+ *   - Direct bytes input for file upload / clipboard paste
  */
 export async function searchProductsByImage(
-  imageUrl: string,
+  input: { imageUrl?: string; imageBase64?: string },
   options: {
     accessToken: string;
     pageSize?: number;
   },
 ): Promise<ProductSearchResponse> {
-  // 1. Fetch the image from the URL the user supplied
-  let imageBuffer: ArrayBuffer;
-  try {
-    const imageRes = await fetch(imageUrl, {
-      headers: {
-        // Look like a real browser so Etsy/AE CDN don't 403 the request
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: "image/*,*/*",
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!imageRes.ok) {
+  let base64: string;
+
+  if (input.imageBase64) {
+    // Direct bytes path — caller already has the image data
+    // (file upload, clipboard paste, etc.). Strip optional data-URI
+    // prefix so we send raw base64 to AE.
+    base64 = input.imageBase64.replace(/^data:image\/[a-z]+;base64,/i, "");
+    if (base64.length < 200) {
+      throw new Error("Image data is too small or invalid.");
+    }
+    // Rough byte size from base64 length (4 base64 chars = 3 bytes)
+    const approxBytes = (base64.length * 3) / 4;
+    if (approxBytes > 5 * 1024 * 1024) {
       throw new Error(
-        `Image URL returned HTTP ${imageRes.status} — make sure the URL is publicly accessible.`,
+        `Image too large (${(approxBytes / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`,
       );
     }
-    imageBuffer = await imageRes.arrayBuffer();
-  } catch (err) {
-    throw new Error(
-      `Couldn't fetch image: ${err instanceof Error ? err.message : "unknown"}`,
-    );
+  } else if (input.imageUrl) {
+    // URL path — fetch the image server-side first
+    let imageBuffer: ArrayBuffer;
+    try {
+      const imageRes = await fetch(input.imageUrl, {
+        headers: {
+          // Look like a real browser so Etsy/AE CDN don't 403 the request
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "image/*,*/*",
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!imageRes.ok) {
+        throw new Error(
+          `Image URL returned HTTP ${imageRes.status} — make sure the URL is publicly accessible.`,
+        );
+      }
+      imageBuffer = await imageRes.arrayBuffer();
+    } catch (err) {
+      throw new Error(
+        `Couldn't fetch image: ${err instanceof Error ? err.message : "unknown"}`,
+      );
+    }
+    const sizeMb = imageBuffer.byteLength / 1024 / 1024;
+    if (sizeMb > 5) {
+      throw new Error(
+        `Image too large (${sizeMb.toFixed(1)} MB). Max 5 MB — try a smaller image or use the AE thumbnail URL.`,
+      );
+    }
+    if (imageBuffer.byteLength < 100) {
+      throw new Error(
+        "Image is empty or invalid — make sure the URL points to an actual image file.",
+      );
+    }
+    base64 = Buffer.from(imageBuffer).toString("base64");
+  } else {
+    throw new Error("Either imageUrl or imageBase64 is required.");
   }
 
-  // 2. Validate size — AE caps at 5MB and very large images make the
-  // POST body slow to upload from Vercel.
-  const sizeMb = imageBuffer.byteLength / 1024 / 1024;
-  if (sizeMb > 5) {
-    throw new Error(
-      `Image too large (${sizeMb.toFixed(1)} MB). Max 5 MB — try a smaller image or use the AE thumbnail URL.`,
-    );
-  }
-  if (imageBuffer.byteLength < 100) {
-    throw new Error(
-      "Image is empty or invalid — make sure the URL points to an actual image file.",
-    );
-  }
-
-  // 3. Base64 encode and send to AE via POST body (bodyMode)
-  const base64 = Buffer.from(imageBuffer).toString("base64");
+  // Send to AE via POST body (bodyMode) — base64 image is too large
+  // for URL query string transport.
   const raw = await aliExpressCall<Record<string, unknown>>(
     "aliexpress.ds.image.search",
     {

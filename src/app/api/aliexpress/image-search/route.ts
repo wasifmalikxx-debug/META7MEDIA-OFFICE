@@ -11,35 +11,54 @@ import {
  *
  * Play 4 — Image-based competitor mining.
  *
- * Accepts:
- *  - { imageUrl: "https://..." } — direct URL (e.g. an Etsy listing image)
+ * Accepts one of:
+ *  - { imageUrl: "https://..." }   — direct URL (e.g. Etsy listing image)
+ *  - { imageBase64: "..." }        — file upload or clipboard paste,
+ *                                    sent as a base64-encoded data URI
+ *                                    or raw base64 string
  *
  * Returns the top similar products from AliExpress.
  *
  * Access: CEO-only during pilot. Powers the Image Hunt tab inside
- * the Product Hunter hub. (Was originally paired with the now-deleted
- * Reverse Hunt feature — same access gate.)
+ * the Product Hunter hub.
  */
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const RequestSchema = z.object({
-  imageUrl: z.string().url().max(500),
-});
+// Body size cap — base64-encoded 5MB image is ~7MB string. Allow 10MB
+// here for headroom; the service layer enforces the actual 5MB cap.
+const MAX_BASE64_CHARS = 10 * 1024 * 1024;
+
+const RequestSchema = z
+  .object({
+    imageUrl: z.string().url().max(500).optional(),
+    imageBase64: z.string().max(MAX_BASE64_CHARS).optional(),
+  })
+  .refine((d) => Boolean(d.imageUrl || d.imageBase64), {
+    message: "Either imageUrl or imageBase64 is required",
+  });
 
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
   if (session.user.role !== "SUPER_ADMIN") {
-    return error("Reverse Hunt is in CEO-only pilot", 403);
+    return error("Image Hunt is in CEO-only pilot", 403);
   }
 
   let body: z.infer<typeof RequestSchema>;
   try {
     body = RequestSchema.parse(await request.json());
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return error(
+        err.issues
+          .map((i) => `${i.path.join(".") || "input"}: ${i.message}`)
+          .join(" · "),
+        400,
+      );
+    }
     return error(err instanceof Error ? err.message : "Invalid payload", 400);
   }
 
@@ -52,10 +71,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await searchProductsByImage(body.imageUrl, {
-      accessToken,
-      pageSize: 12,
-    });
+    const result = await searchProductsByImage(
+      {
+        imageUrl: body.imageUrl,
+        imageBase64: body.imageBase64,
+      },
+      {
+        accessToken,
+        pageSize: 12,
+      },
+    );
     return json(result);
   } catch (err) {
     return error(
