@@ -504,6 +504,45 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       (CEO call: ".us URLs don't work and the .com flow
                       was already covered by Manual Hunting"). The
                       /reverse-hunt route + tab + service are deleted. */}
+
+                  {/* Product Validator — pre-listing Etsy policy check.
+                      Paste an AE URL, get SAFE/REVIEW/BLOCKED verdict
+                      with per-rule citations. Live for the whole Etsy
+                      team; HR/FB see a Coming Soon placeholder. */}
+                  {(() => {
+                    const hasValidator =
+                      isCeo ||
+                      isIzaan ||
+                      isEmEmployee ||
+                      isEtsyPartner ||
+                      user.employeeId?.startsWith("AE") ||
+                      user.employeeId?.startsWith("ME");
+                    return (
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          render={<Link href="/product-validator" />}
+                          isActive={isItemActive("/product-validator")}
+                        >
+                          <ShieldCheck className="size-4" />
+                          <span>Product Validator</span>
+                          {hasValidator ? (
+                            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
+                              <span className="relative flex size-1">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                                <span className="relative inline-flex size-1 rounded-full bg-emerald-500" />
+                              </span>
+                              New
+                            </span>
+                          ) : (
+                            <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
+                              Soon
+                            </span>
+                          )}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })()}
+
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/price-calculator" />}
