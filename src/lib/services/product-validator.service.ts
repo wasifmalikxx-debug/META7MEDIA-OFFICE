@@ -301,8 +301,16 @@ function buildScrapeAttempts(productUrl: string): ScrapeAttempt[] {
   // HTML to us. AE's Cloudflare instance treats them as separate
   // origin requests, often allowing what it blocks for Vercel.
   // Both are no-signup, no-credit, totally free.
+  //
+  // NOTE: format quirks differ between proxies —
+  //   AllOrigins:  ?url=<ENCODED>      (standard query param)
+  //   CorsProxy:   ?<RAW_URL>          (URL appended raw, NOT encoded —
+  //                                     encoding makes corsproxy return
+  //                                     its OWN homepage instead of
+  //                                     fetching the target → that was
+  //                                     the May 17 false-SAFE bug)
   const allOriginsUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(productUrl)}`;
-  const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(productUrl)}`;
+  const corsProxyUrl = `https://corsproxy.io/?${productUrl}`;
 
   return [
     {
@@ -390,8 +398,16 @@ async function fetchAeProductFromHtml(
  *
  * Price is extracted from JSON-LD or embedded window.runParams JSON
  * patterns.
+ *
+ * GATED by looksLikeAliExpressPage() — without this gate, a proxy
+ * returning its OWN homepage (e.g. CorsProxy's "CORSPROXY — Fix
+ * CORS Errors" page after we mangled the URL format) would be parsed
+ * as a product and give the user a dangerous false-SAFE verdict on
+ * completely wrong data. Added May 17 2026 after exactly that bug.
  */
 function extractProductFromHtml(html: string): ScrapedProduct | null {
+  if (!looksLikeAliExpressPage(html)) return null;
+
   // Path 1: JSON-LD Product schema
   const fromJsonLd = extractFromJsonLd(html);
   if (fromJsonLd) return fromJsonLd;
@@ -420,6 +436,71 @@ function extractProductFromHtml(html: string): ScrapedProduct | null {
     imageUrl: ogImageMatch?.[1]?.trim() ?? null,
     priceUsd: price,
   };
+}
+
+/**
+ * Verify the fetched HTML actually IS an AliExpress product page —
+ * not a proxy's own homepage, a Cloudflare challenge, a 404, etc.
+ *
+ * Two-step check:
+ *   1. HARD REJECT: known proxy/error markers in the first 5KB of HTML.
+ *      If we see "CORSPROXY", "AllOrigins", Cloudflare challenge text,
+ *      or generic "access denied" / "404" indicators, the response
+ *      is definitely not the product we asked for.
+ *   2. POSITIVE SIGNAL: must contain at least 2 AliExpress-specific
+ *      markers (string "aliexpress" + product-page elements like
+ *      "free shipping" / "buyer protection" / AE-specific CSS classes).
+ *
+ * If both checks pass we can safely run extraction. If either fails
+ * we return null and the caller falls through to the next attempt.
+ */
+function looksLikeAliExpressPage(html: string): boolean {
+  // Step 1: hard-reject known proxy/error pages
+  const lowerSnippet = html.slice(0, 5000).toLowerCase();
+  const rejectMarkers = [
+    "corsproxy",
+    "allorigins",
+    "cors anywhere",
+    "just a moment...", // Cloudflare challenge
+    "checking your browser before accessing", // Cloudflare interstitial
+    "error 1020", // Cloudflare access denied (banned IP)
+    "error 1015", // Cloudflare rate limit
+    "error 1006", // Cloudflare access denied (banned country)
+    "error 1009",
+    "<title>access denied</title>",
+    "<title>403 forbidden</title>",
+    "<title>404 not found</title>",
+    "<title>page not found</title>",
+  ];
+  for (const marker of rejectMarkers) {
+    if (lowerSnippet.includes(marker)) {
+      console.warn(
+        `[product-validator] page rejected — matched proxy/error marker: "${marker}"`,
+      );
+      return false;
+    }
+  }
+
+  // Step 2: positive AE markers — need at least 2 of these to count
+  const aeMarkers = [
+    /aliexpress/i,
+    /buyer protection|free shipping|store rating|ship from|sold by/i,
+    /pdp-|fp-content|spm-anchor-id|sku-/i,
+    /"productId"|"itemId"|"ae_item/i,
+    /og:image[^>]*alicdn|og:image[^>]*aliexpress/i,
+  ];
+  let matches = 0;
+  for (const re of aeMarkers) {
+    if (re.test(html)) matches += 1;
+  }
+  if (matches < 2) {
+    console.warn(
+      `[product-validator] page rejected — only ${matches} AE markers matched (need 2+)`,
+    );
+    return false;
+  }
+
+  return true;
 }
 
 /**
