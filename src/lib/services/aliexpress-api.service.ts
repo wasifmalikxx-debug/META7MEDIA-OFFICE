@@ -191,6 +191,7 @@ export async function aliExpressCall<T = unknown>(
   method: string,
   params: Record<string, string | number | boolean> = {},
   accessToken?: string,
+  options: { bodyMode?: boolean } = {},
 ): Promise<T> {
   if (!APP_KEY || !APP_SECRET) {
     throw new Error("AliExpress credentials not configured");
@@ -210,7 +211,21 @@ export async function aliExpressCall<T = unknown>(
   }
   stringifiedParams.sign = signRequest(stringifiedParams);
 
-  const url = `${API_BASE}?${new URLSearchParams(stringifiedParams).toString()}`;
+  // bodyMode = send params in the POST body (form-encoded) instead of
+  // URL query string. Required when any single param is too large for
+  // a URL (e.g. base64-encoded image bytes for aliexpress.ds.image.
+  // search where image_file_bytes can be 50-200KB). The signing logic
+  // is param-based, not URL-based, so the signature is identical
+  // regardless of transport.
+  const url = options.bodyMode
+    ? API_BASE
+    : `${API_BASE}?${new URLSearchParams(stringifiedParams).toString()}`;
+  const body = options.bodyMode
+    ? new URLSearchParams(stringifiedParams).toString()
+    : undefined;
+  const headers = options.bodyMode
+    ? { "Content-Type": "application/x-www-form-urlencoded" }
+    : undefined;
 
   // Reduced from 4 → 2 attempts with halved backoff. The original
   // 4-attempt × 800ms-base backoff could waste up to 12s per failing
@@ -228,7 +243,7 @@ export async function aliExpressCall<T = unknown>(
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await fetch(url, { method: "POST" });
+      const res = await fetch(url, { method: "POST", headers, body });
       if (!res.ok) {
         if (res.status === 429 || res.status >= 500) {
           lastErr = new Error(`AliExpress ${res.status}`);
@@ -720,14 +735,16 @@ export async function getProductById(
 }
 
 /**
- * Image search — Play 4. Accepts a public image URL (or pre-uploaded
- * AliExpress image_id). Returns top similar products.
+ * Image search — Play 4. Accepts a public image URL, fetches it
+ * server-side, base64-encodes the bytes, and sends them to AE's
+ * `aliexpress.ds.image.search` endpoint.
  *
- * `aliexpress.ds.image.search` is the documented method. AE rejects
- * the call with `MissingParameter: shpt_to` when ship-to country
- * isn't supplied — fixed May 17 2026 by sending `shpt_to: "US"` (the
- * other ship-to param-name variants we already sent — `countryCode`,
- * `ship_to_country` — were ignored by this specific endpoint).
+ * AE doesn't accept a remote URL — it demands the actual image
+ * bytes via `image_file_bytes`. May 17 2026 hardening:
+ *   1. Added shpt_to (required for ship-to country)
+ *   2. Fetch the image server-side and base64-encode it
+ *   3. Send all params via POST body (bodyMode) because base64 of a
+ *      typical product image (50-200KB) exceeds URL length limits
  */
 export async function searchProductsByImage(
   imageUrl: string,
@@ -736,23 +753,61 @@ export async function searchProductsByImage(
     pageSize?: number;
   },
 ): Promise<ProductSearchResponse> {
+  // 1. Fetch the image from the URL the user supplied
+  let imageBuffer: ArrayBuffer;
+  try {
+    const imageRes = await fetch(imageUrl, {
+      headers: {
+        // Look like a real browser so Etsy/AE CDN don't 403 the request
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "image/*,*/*",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!imageRes.ok) {
+      throw new Error(
+        `Image URL returned HTTP ${imageRes.status} — make sure the URL is publicly accessible.`,
+      );
+    }
+    imageBuffer = await imageRes.arrayBuffer();
+  } catch (err) {
+    throw new Error(
+      `Couldn't fetch image: ${err instanceof Error ? err.message : "unknown"}`,
+    );
+  }
+
+  // 2. Validate size — AE caps at 5MB and very large images make the
+  // POST body slow to upload from Vercel.
+  const sizeMb = imageBuffer.byteLength / 1024 / 1024;
+  if (sizeMb > 5) {
+    throw new Error(
+      `Image too large (${sizeMb.toFixed(1)} MB). Max 5 MB — try a smaller image or use the AE thumbnail URL.`,
+    );
+  }
+  if (imageBuffer.byteLength < 100) {
+    throw new Error(
+      "Image is empty or invalid — make sure the URL points to an actual image file.",
+    );
+  }
+
+  // 3. Base64 encode and send to AE via POST body (bodyMode)
+  const base64 = Buffer.from(imageBuffer).toString("base64");
   const raw = await aliExpressCall<Record<string, unknown>>(
     "aliexpress.ds.image.search",
     {
-      imageUrl,
+      image_file_bytes: base64,
       pageSize: options.pageSize ?? 12,
       currency: "USD",
       target_currency: "USD",
       local: "en_US",
       target_language: "en",
       countryCode: "US",
-      // The required parameter that was missing — image.search uses
-      // this specific name (other AE methods accept ship_to_country
-      // or countryCode, but this endpoint demands shpt_to).
       shpt_to: "US",
       ship_to_country: "US",
     },
     options.accessToken,
+    { bodyMode: true },
   );
   return parseProductSearch(raw);
 }
