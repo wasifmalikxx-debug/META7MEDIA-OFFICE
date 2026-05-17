@@ -9,11 +9,12 @@ import { getProductValidatorAccess } from "@/lib/services/product-validator-acce
 /**
  * POST /api/product-validator
  *
- * Body: { url?: string, manualTitle?: string, manualImageUrl?: string }
- *   - Pass `url` for auto-fetch (works for .com URLs, often for .us
- *     via HTML scrape fallback).
- *   - Pass `manualTitle` (+ optional manualImageUrl) when auto-fetch
- *     fails or the user has the title in hand already.
+ * Body: { url?: string, manualTitle?: string }
+ *   - Pass `url` for auto-fetch. Only aliexpress.com URLs are accepted.
+ *     Regional storefronts (.us / .ru / .de etc.) are rejected — sellers
+ *     must switch their AliExpress region to Pakistan to get .com links.
+ *   - Pass `manualTitle` when the seller has the title in hand and is
+ *     uploading reference photos locally.
  *
  * Returns: { verdict, summary, flags, product, fetchPath, durationMs }
  *
@@ -28,11 +29,27 @@ const RequestSchema = z
   .object({
     url: z.string().min(8).max(2000).optional(),
     manualTitle: z.string().min(3).max(500).optional(),
-    manualImageUrl: z.string().max(1000).optional().nullable(),
   })
   .refine((d) => Boolean(d.url || d.manualTitle), {
     message: "Either a product URL or a manual title is required",
-  });
+  })
+  .refine(
+    (d) => {
+      if (!d.url) return true;
+      const u = d.url.trim();
+      // Pure numeric product IDs are accepted.
+      if (/^\d+$/.test(u)) return true;
+      // Reject any regional AliExpress storefront — must be .com.
+      if (/aliexpress\.(us|ru|fr|de|es|it|pl|nl|co\.kr|co\.jp)/i.test(u)) {
+        return false;
+      }
+      return /aliexpress\.com/i.test(u);
+    },
+    {
+      message:
+        "Only aliexpress.com URLs are accepted. On AliExpress, change the shipping region from United States to Pakistan to view the same product on the .com storefront.",
+    },
+  );
 
 export async function POST(request: NextRequest) {
   const session = await requireAuth();
@@ -84,7 +101,6 @@ export async function POST(request: NextRequest) {
       {
         url: body.url,
         manualTitle: body.manualTitle,
-        manualImageUrl: body.manualImageUrl ?? undefined,
       },
       { accessToken },
     );

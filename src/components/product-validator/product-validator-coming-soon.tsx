@@ -21,23 +21,23 @@ export function ProductValidatorComingSoon() {
   const features = [
     {
       icon: Link2,
-      title: "Paste any AliExpress URL",
-      copy: "Works with both aliexpress.com and aliexpress.us product links — no manual title entry needed for most products.",
+      title: "Paste an aliexpress.com URL",
+      copy: "The validator accepts aliexpress.com product links. Sellers on the United States region should switch AliExpress to Pakistan to view the .com version of any product.",
     },
     {
       icon: ShieldCheck,
-      title: "Full Etsy policy check",
-      copy: "Validates against the Prohibited Items Policy, IP/Trademark rules, PPE policy, and Creativity Standards in one pass.",
+      title: "Full Etsy policy coverage",
+      copy: "Runs every product against the Prohibited Items Policy, IP and Trademark rules, PPE policy, and Creativity Standards in a single pass.",
     },
     {
       icon: Sparkles,
-      title: "Instant verdict",
-      copy: "SAFE / REVIEW / BLOCKED in under 3 seconds. Per-rule citations show you exactly which Etsy policy section applies.",
+      title: "Clear verdict per listing",
+      copy: "Returns Safe, Review, or Do not list. Each flagged rule cites the exact Etsy policy clause that applies.",
     },
     {
       icon: CheckCircle2,
-      title: "Prevent shop strikes",
-      copy: "Catch policy violations BEFORE you list, not after Etsy removes the listing and dings your shop's reputation.",
+      title: "Built to prevent shop strikes",
+      copy: "Surface policy violations before a product is listed — well before Etsy removes the listing and applies a strike to the shop record.",
     },
   ];
 
@@ -79,7 +79,7 @@ export function ProductValidatorComingSoon() {
               <span className="relative inline-flex size-1.5 rounded-full bg-violet-300" />
             </span>
             <span className="text-[10px] font-bold text-violet-100 uppercase tracking-[0.18em]">
-              Etsy sellers only
+              Etsy team access
             </span>
           </div>
 
@@ -97,16 +97,16 @@ export function ProductValidatorComingSoon() {
             Product Validator
           </h1>
           <p className="mt-3 text-[13px] sm:text-sm text-white/75 max-w-xl mx-auto leading-relaxed">
-            A pre-listing safety check that catches Etsy policy violations
+            A pre-listing policy check that flags Etsy violations
             <strong className="text-white font-semibold">
-              {" "}before you list
-            </strong>{" "}
-            — stopping shop strikes before they happen.
+              {" "}before a product is listed
+            </strong>
+            , so the shop avoids removals and strikes.
           </p>
 
           <div className="mt-6 inline-flex items-center gap-2 text-xs text-white/65">
             <Hourglass className="size-3.5" />
-            <span>Built for the Etsy team · live now for sellers</span>
+            <span>Built for the Etsy team · live for sellers today</span>
           </div>
         </div>
       </div>
@@ -146,12 +146,13 @@ export function ProductValidatorComingSoon() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-amber-900 dark:text-amber-200 leading-tight">
-              Etsy team only
+              Etsy team access only
             </p>
             <p className="text-[12px] text-amber-800/85 dark:text-amber-200/80 mt-1 leading-relaxed">
-              The Product Validator is built for sellers actively listing on
-              Etsy (EM, AE, ME teams + Izaan + Etsy partners). Other roles
-              don&apos;t have an Etsy shop to validate against.
+              The Product Validator is restricted to sellers actively
+              listing on Etsy (EM, AE, and ME teams, Izaan, and Etsy
+              partners). Other roles do not have an Etsy shop to validate
+              against.
             </p>
           </div>
         </CardContent>
