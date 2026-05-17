@@ -296,6 +296,14 @@ function buildScrapeAttempts(productUrl: string): ScrapeAttempt[] {
     .replace("m.aliexpress.us", "m.aliexpress.us")
     .replace("m.aliexpress.com", "m.aliexpress.com");
 
+  // Free public CORS proxies — these fetch the URL from THEIR
+  // infrastructure (different IP than Vercel) and return the raw
+  // HTML to us. AE's Cloudflare instance treats them as separate
+  // origin requests, often allowing what it blocks for Vercel.
+  // Both are no-signup, no-credit, totally free.
+  const allOriginsUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(productUrl)}`;
+  const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(productUrl)}`;
+
   return [
     {
       label: "desktop-chrome",
@@ -305,12 +313,27 @@ function buildScrapeAttempts(productUrl: string): ScrapeAttempt[] {
     {
       label: "mobile-chrome",
       url: mobileUrl,
-      headers: { ...browserHeaders, "User-Agent": mobileChrome, "Sec-Ch-Ua-Mobile": "?1", "Sec-Ch-Ua-Platform": '"iOS"' },
+      headers: {
+        ...browserHeaders,
+        "User-Agent": mobileChrome,
+        "Sec-Ch-Ua-Mobile": "?1",
+        "Sec-Ch-Ua-Platform": '"iOS"',
+      },
     },
     {
       label: "googlebot",
       url: productUrl,
       headers: { "User-Agent": googleBot, Accept: "text/html,*/*" },
+    },
+    {
+      label: "allorigins-proxy",
+      url: allOriginsUrl,
+      headers: { "User-Agent": desktopChrome },
+    },
+    {
+      label: "corsproxy-io",
+      url: corsProxyUrl,
+      headers: { "User-Agent": desktopChrome },
     },
   ];
 }
