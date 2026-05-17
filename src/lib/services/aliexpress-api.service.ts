@@ -700,28 +700,36 @@ export async function searchByVolumeAsc(
 
 /**
  * Fetch a single product by ID. Used by Play 2 (reverse hunt) +
- * Play 5 (margin calc).
+ * Play 5 (margin calc) + the Product Validator.
+ *
+ * Errors are propagated so the caller can surface a meaningful message
+ * (auth failures, rate limits, permission denial). A null return ONLY
+ * means the parse came back empty — likely a deleted / region-locked
+ * product. Distinguishing these two failure modes was important enough
+ * to stop swallowing thrown errors here (May 18 2026 fix).
  */
 export async function getProductById(
   productId: string | number,
   options: { accessToken: string; targetCurrency?: string },
 ): Promise<AliExpressProduct | null> {
-  try {
-    const raw = await aliExpressCall<Record<string, unknown>>(
-      "aliexpress.ds.product.get",
-      {
-        product_id: productId,
-        target_currency: options.targetCurrency ?? "USD",
-        target_language: "en",
-        ship_to_country: "US",
-      },
-      options.accessToken,
+  const raw = await aliExpressCall<Record<string, unknown>>(
+    "aliexpress.ds.product.get",
+    {
+      product_id: productId,
+      target_currency: options.targetCurrency ?? "USD",
+      target_language: "en",
+      ship_to_country: "US",
+    },
+    options.accessToken,
+  );
+  const parsed = parseSingleProduct(raw);
+  if (!parsed) {
+    console.warn(
+      `[aliexpress] product.get returned data but parser found no title for ${productId}. ` +
+        `Top-level keys: ${Object.keys(raw ?? {}).join(", ")}`,
     );
-    return parseSingleProduct(raw);
-  } catch (err) {
-    console.error("[aliexpress] product.get failed:", err);
-    return null;
   }
+  return parsed;
 }
 
 // Note: searchProductsByImage + aliExpressImageUploadCall were
@@ -984,18 +992,121 @@ function findProductArrayDeep(
   return null;
 }
 
+/**
+ * Parse the response from `aliexpress.ds.product.get`.
+ *
+ * AE returns a multi-DTO shape under `result`:
+ *
+ *   aliexpress_ds_product_get_response.result.{
+ *     ae_item_base_info_dto: { subject, product_id, category_id, ... },
+ *     ae_item_properties:    { ae_item_property: [...] },
+ *     ae_item_sku_info_dtos: { ae_item_sku_info_d_t_o: [{ sku_price,
+ *                              offer_sale_price, currency_code, ... }] },
+ *     ae_multimedia_info_dto: { image_urls: "url1;url2;...", video_url },
+ *     logistics_info_dto:    { ... },
+ *     package_info_dto:      { ... },
+ *   }
+ *
+ * The title lives at `ae_item_base_info_dto.subject`, image URLs at
+ * `ae_multimedia_info_dto.image_urls` (semicolon-separated string), and
+ * price in the first `ae_item_sku_info_dtos.ae_item_sku_info_d_t_o[]`
+ * entry. The pre-May-18 parser used `findFirst("ae_item_*")` which
+ * returned whichever DTO key happened to come first in AE's serialized
+ * key order — that often landed on `ae_item_sku_info_dtos`, missing
+ * `subject` entirely and surfacing as "AliExpress returned no usable
+ * data". Now we drill into each DTO by exact key.
+ *
+ * Falls back to the generic parser for non-DS payload shapes (older
+ * affiliate-style or search-shaped responses) so this stays compatible
+ * with anything that previously worked.
+ */
 function parseSingleProduct(raw: unknown): AliExpressProduct | null {
   const root = raw as Record<string, unknown>;
   const wrapper = findFirst(root, (k) => k.endsWith("_response"));
   const resp = findFirst(wrapper ?? root, (k) => k === "resp_result") ?? wrapper;
   const result = findFirst(resp ?? root, (k) => k === "result") ?? resp;
-  const productNode =
-    findFirst(result as Record<string, unknown>, (k) =>
-      k.startsWith("ae_item_") || k.includes("product"),
-    ) ?? result;
 
+  if (!result || typeof result !== "object") return null;
+  const r = result as Record<string, unknown>;
+
+  // ── Fast path: DS product.get shape ──────────────────────────────
+  const baseInfo = r["ae_item_base_info_dto"] as
+    | Record<string, unknown>
+    | undefined;
+  const multimedia = r["ae_multimedia_info_dto"] as
+    | Record<string, unknown>
+    | undefined;
+  const skuDtos = r["ae_item_sku_info_dtos"] as
+    | Record<string, unknown>
+    | undefined;
+
+  if (baseInfo && typeof baseInfo === "object") {
+    const title =
+      (typeof baseInfo.subject === "string" && baseInfo.subject) ||
+      (typeof baseInfo.product_title === "string" && baseInfo.product_title) ||
+      "";
+
+    const productId = Number(
+      baseInfo.product_id ?? baseInfo.productId ?? 0,
+    );
+
+    // image_urls is a single string like "https://.../a.jpg;https://.../b.jpg"
+    let imageUrl: string | undefined;
+    if (multimedia && typeof multimedia.image_urls === "string") {
+      const first = multimedia.image_urls
+        .split(";")
+        .map((s) => s.trim())
+        .find((s) => s.length > 0);
+      imageUrl = first || undefined;
+    }
+
+    // Price from the first SKU. Prefer offer_sale_price (current selling
+    // price); fall back to sku_price (list price).
+    let priceMin = 0;
+    let currency = "USD";
+    if (skuDtos && typeof skuDtos === "object") {
+      const skuList = (skuDtos.ae_item_sku_info_d_t_o ??
+        skuDtos.ae_item_sku_info_dto) as unknown;
+      const skuArr = Array.isArray(skuList) ? skuList : null;
+      if (skuArr && skuArr.length > 0) {
+        const first = skuArr[0] as Record<string, unknown>;
+        const candidate =
+          first.offer_sale_price ??
+          first.sku_price ??
+          first.offerSalePrice ??
+          first.skuPrice ??
+          0;
+        const n = Number(candidate);
+        if (isFinite(n) && n > 0) priceMin = n;
+        if (typeof first.currency_code === "string") currency = first.currency_code;
+      }
+    }
+
+    if (title.trim().length > 0) {
+      return {
+        productId,
+        title,
+        imageUrl,
+        productUrl: undefined,
+        priceMin,
+        priceMax: priceMin,
+        currency,
+      };
+    }
+  }
+
+  // ── Fallback: legacy / search-style shape ────────────────────────
+  // For older affiliate-style responses or any shape where the DS
+  // fast-path doesn't apply, fall back to the generic field walker.
+  const productNode =
+    findFirst(r, (k) => k.startsWith("ae_item_") || k.includes("product")) ??
+    r;
   if (!productNode || typeof productNode !== "object") return null;
-  return normalizeProduct(productNode as RawProduct);
+  const normalized = normalizeProduct(productNode as RawProduct);
+  if (!normalized.title || normalized.title.trim().length === 0) {
+    return null;
+  }
+  return normalized;
 }
 
 function findFirst(

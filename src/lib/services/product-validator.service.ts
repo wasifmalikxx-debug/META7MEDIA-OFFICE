@@ -130,18 +130,38 @@ export async function validateProduct(
       );
     }
 
+    // getProductById now throws on API failures (auth, rate-limit,
+    // permission) and only returns null for empty-parse results. We
+    // surface each failure mode with a distinct message so the seller
+    // knows whether to retry, switch tools, or use manual entry.
     let aeProduct: AliExpressProduct | null = null;
     try {
       aeProduct = await getProductById(productId, {
         accessToken: options.accessToken,
       });
     } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
       console.warn(
-        `[product-validator] DS API error for ${productId}:`,
-        err instanceof Error ? err.message : err,
+        `[product-validator] DS API error for ${productId}: ${raw}`,
       );
+
+      if (/InvalidAccessToken|AccessTokenExpired|invalid_token|expired/i.test(raw)) {
+        throw new Error(
+          "AliExpress connection expired. Ask Wasif to reconnect on Product Hunter, then retry.",
+        );
+      }
+      if (/InsufficientPermission|Permission/i.test(raw)) {
+        throw new Error(
+          "AliExpress denied access to this product. Use manual entry to validate.",
+        );
+      }
+      if (/429|rate.?limit|FrequencyExceeded/i.test(raw)) {
+        throw new Error(
+          "AliExpress rate limit hit. Wait a few seconds and retry, or use manual entry.",
+        );
+      }
       throw new Error(
-        "AliExpress did not return data for this product. Use manual entry to validate the title.",
+        `AliExpress lookup failed (${raw.slice(0, 120)}). Use manual entry to validate.`,
       );
     }
 
@@ -151,8 +171,20 @@ export async function validateProduct(
       aeProduct && aeProduct.title && aeProduct.title.trim().length > 0;
 
     if (!hasTitle || !aeProduct) {
+      console.warn(
+        `[product-validator] DS API returned no title for product ${productId}` +
+          (aeProduct
+            ? ` (got fields: ${Object.keys(aeProduct as unknown as Record<string, unknown>)
+                .filter(
+                  (k) =>
+                    (aeProduct as unknown as Record<string, unknown>)[k] !=
+                    null,
+                )
+                .join(", ")})`
+            : " (null parse)"),
+      );
       throw new Error(
-        "AliExpress returned no usable data for this product. Use manual entry to validate.",
+        `AliExpress returned no usable data for product ${productId}. The product may be deleted, region-locked, or temporarily unavailable. Use manual entry to validate.`,
       );
     }
 
