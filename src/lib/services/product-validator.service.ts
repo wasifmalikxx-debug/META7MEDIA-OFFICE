@@ -14,9 +14,14 @@
  *   2. Extract product ID and call AE DS API `getProductById`.
  *   3. Run the title against ETSY_POLICY_RULES → list of hits.
  *   4. Roll up to a verdict: BLOCKED / REVIEW / SAFE.
+ *   5. For REVIEW verdicts only, call Claude Haiku 4.5 with the four
+ *      Etsy policies as system context to produce Etsy-safe listing
+ *      guidance + photo-regen coaching (see product-validator-reframe).
  *
- * Cost: zero. No Claude calls, only the AE DS API (free under our
- * 5K/day quota).
+ * Cost:
+ *   - SAFE   $0    (rule engine only, no AI call)
+ *   - BLOCKED $0   (rule engine only, hard category bans)
+ *   - REVIEW ~$0.006 (one Haiku call with vision)
  *
  * Tone: balanced advisor — only flag what is likely to actually get a
  * listing removed. Don't drown the seller in warnings about every
@@ -84,6 +89,14 @@ export interface ProductValidatorResult {
    * SAFE products don't need a reframe either.
    */
   reframe: ReframeResult | null;
+  /**
+   * Set when the reframe step was attempted but failed (timeout,
+   * Anthropic 5xx, malformed JSON). The verdict + flags are still
+   * valid; the UI shows a small fallback note where the reframe panel
+   * would otherwise render. Null when reframe wasn't attempted at all
+   * (SAFE / BLOCKED) or when it succeeded.
+   */
+  reframeError: string | null;
   /** Diagnostics for the toast: how the product was fetched. */
   fetchPath: "ds_api" | "manual";
   durationMs: number;
@@ -282,6 +295,7 @@ export async function validateProduct(
   // by category, no clever wording saves them. SAFE products don't
   // need one. REVIEW is where the work happens.
   let reframe: ReframeResult | null = null;
+  let reframeError: string | null = null;
   if (verdict === "REVIEW") {
     try {
       reframe = await reframeForEtsy({
@@ -295,12 +309,11 @@ export async function validateProduct(
       );
     } catch (err) {
       // Reframe failure is non-fatal — return the rule verdict with
-      // no reframe attached and let the UI fall back to the rule
-      // suggestions. The seller still gets actionable output.
-      console.warn(
-        "[product-validator] reframe failed:",
-        err instanceof Error ? err.message : err,
-      );
+      // a captured error message so the UI can render a fallback
+      // note instead of a silent gap where the reframe panel would
+      // have been.
+      reframeError = err instanceof Error ? err.message : String(err);
+      console.warn("[product-validator] reframe failed:", reframeError);
     }
   }
 
@@ -316,6 +329,7 @@ export async function validateProduct(
       source,
     },
     reframe,
+    reframeError,
     fetchPath,
     durationMs: Date.now() - startedAt,
   };

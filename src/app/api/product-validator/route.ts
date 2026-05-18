@@ -26,8 +26,15 @@ export const dynamic = "force-dynamic";
 // Reframe adds one Haiku call (~3-5s). 30s is plenty.
 export const maxDuration = 30;
 
+// 800K chars of base64 ≈ 600KB raw per image. The SeoImageUploader
+// resizes to 768px / JPEG 0.85 so real-world uploads are 150-400KB —
+// the cap leaves plenty of headroom. Earlier cap was 3M chars which
+// allowed total payloads (2 images + JSON) to exceed Vercel's 4.5MB
+// serverless body limit; requests would be rejected by the platform
+// with a 413 before our handler ran, and the user saw a generic
+// failure with no log trail.
 const ManualImageSchema = z.object({
-  base64: z.string().min(100).max(3_000_000), // ~2.2 MB max after b64 expansion
+  base64: z.string().min(100).max(800_000),
   mediaType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]),
 });
 
@@ -89,6 +96,9 @@ export async function POST(request: NextRequest) {
 
   // Borrow the CEO's AE token for the DS API call. Manual mode doesn't
   // need it — we go straight to rule matching with the supplied title.
+  // If accessToken is still undefined when the service runs the URL
+  // path, the service throws "AliExpress connection is not available"
+  // and the route surfaces it as a 502.
   let accessToken: string | undefined;
   if (!body.manualTitle) {
     const ceoUser = await prisma.user.findFirst({
@@ -98,10 +108,6 @@ export async function POST(request: NextRequest) {
     if (ceoUser) {
       accessToken = (await getActiveTokenForUser(ceoUser.id)) ?? undefined;
     }
-    // If accessToken is still undefined, the service will fall back to
-    // the HTML scrape path (which works for many .com URLs too). No
-    // need to hard-fail — the worst case is "couldn't auto-load, try
-    // manual entry."
   }
 
   try {

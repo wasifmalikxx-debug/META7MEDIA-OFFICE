@@ -100,6 +100,7 @@ interface ValidatorResult {
     source: "com" | "manual";
   };
   reframe: ReframeData | null;
+  reframeError: string | null;
   fetchPath: "ds_api" | "manual";
   durationMs: number;
 }
@@ -213,9 +214,11 @@ export function ProductValidatorView() {
   const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<ValidatorResult | null>(null);
 
-  // Drive the visible stage timeline while loading. Each step is paced
-  // at 2 seconds so the full sequence completes in 10s — the minimum
-  // perceived effort window we want the seller to see.
+  // Drive the visible stage timeline while loading. MIN_LOADING_MS is
+  // spread across STAGE_ORDER.length stages — currently 14s ÷ 6 stages
+  // = ~2.3s per stage. The stage interval auto-scales if either is
+  // bumped, so changes to MIN_LOADING_MS or STAGE_ORDER don't desync
+  // the timing from the visible labels.
   useEffect(() => {
     if (!loading) {
       setStage("idle");
@@ -610,10 +613,18 @@ function ResultPanel({ result }: { result: ValidatorResult }) {
         <ClearedConfirmation />
       )}
       {/* AI reframe — only shown for REVIEW verdicts, never for hard
-          blocks (no reframe possible) or SAFE (no reframe needed). */}
+          blocks (no reframe possible) or SAFE (no reframe needed).
+          When the reframe step failed (timeout, Anthropic 5xx,
+          malformed JSON), render a small fallback note so the user
+          isn't staring at a silent gap. */}
       {result.verdict === "REVIEW" && result.reframe && (
         <ReframePanel reframe={result.reframe} />
       )}
+      {result.verdict === "REVIEW" &&
+        !result.reframe &&
+        result.reframeError && (
+          <ReframeFallback message={result.reframeError} />
+        )}
       <RuleSourceFooter />
     </div>
   );
@@ -1341,6 +1352,34 @@ function ClearedConfirmation() {
 }
 
 // ─── Rule source footer ─────────────────────────────────────────────
+
+// ─── Reframe fallback (shown when AI reframe failed) ────────────────
+
+function ReframeFallback({ message }: { message: string }) {
+  return (
+    <Card className="border border-amber-300/40 dark:border-amber-700/30 bg-amber-50/40 dark:bg-amber-950/15 shadow-none">
+      <CardContent className="p-5 flex items-start gap-3">
+        <div className="size-9 rounded-xl bg-amber-500/15 ring-1 ring-amber-500/30 flex items-center justify-center shrink-0">
+          <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div className="min-w-0 space-y-1">
+          <p className="text-[13px] font-bold text-amber-900 dark:text-amber-200 leading-tight">
+            AI listing guidance unavailable for this run
+          </p>
+          <p className="text-[12px] text-amber-800/85 dark:text-amber-200/80 leading-relaxed">
+            The verdict and policy flags above are accurate, but the
+            Etsy-safe listing strategy did not generate this time. Use
+            the recommendations under each flag in Findings, or retry
+            the validation.
+          </p>
+          <p className="text-[10px] text-amber-700/60 dark:text-amber-300/60 italic pt-1">
+            Reason: {message.slice(0, 160)}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function RuleSourceFooter() {
   return (

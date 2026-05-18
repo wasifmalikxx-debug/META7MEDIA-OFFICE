@@ -62,14 +62,26 @@ const WEAPON_RULES: PolicyRule[] = [
     id: "weapons-firearms",
     policy: "weapons",
     severity: "block",
-    matchType: "substring",
+    matchType: "regex",
     patterns: [
-      "firearm", "pistol", "rifle", "shotgun", "handgun", "revolver",
-      "ammunition", " ammo ", "magazine clip",
-      "gun barrel", "gun stock", "trigger assembly",
-      // Note: "bullet" removed — false-positives on "bullet journal"
-      // (legitimate huge Etsy category). "ammunition" + "ammo" cover
-      // the real weapon angle.
+      // \b word boundaries catch start/end-of-title and avoid common
+      // false positives. Previously these used " ammo " (padded) which
+      // missed "Ammo Box" at the start of a title.
+      "\\bfirearm",
+      "\\bpistol",
+      "\\brifle",
+      "\\bshotgun",
+      "\\bhandgun",
+      "\\brevolver",
+      "\\bammunition\\b",
+      "\\bammo\\b",
+      "\\bmagazine clip\\b",
+      "\\bgun barrel\\b",
+      "\\bgun stock\\b",
+      "\\btrigger assembly\\b",
+      // Note: "bullet" excluded — false-positives on "bullet journal"
+      // (huge legit Etsy category). "ammunition" + "ammo" cover the
+      // real weapon angle.
     ],
     label: "Firearms / ammunition",
     policyClause: "Prohibited Items Policy § 3 — Dangerous Items",
@@ -104,12 +116,20 @@ const WEAPON_RULES: PolicyRule[] = [
     id: "weapons-misc",
     policy: "weapons",
     severity: "block",
-    matchType: "substring",
+    matchType: "regex",
     patterns: [
-      "brass knuckles", "knuckle duster", "taser", "stun gun",
-      "pepper spray", "tear gas",
-      "explosive", "firework", "gunpowder", " c4 ",
-      "smoke bomb", "molotov",
+      "brass knuckles",
+      "knuckle duster",
+      "\\btaser\\b",
+      "\\bstun gun\\b",
+      "\\bpepper spray\\b",
+      "\\btear gas\\b",
+      "\\bexplosive",
+      "\\bfirework",
+      "\\bgunpowder\\b",
+      "\\bc4 explosive\\b",
+      "\\bsmoke bomb\\b",
+      "\\bmolotov\\b",
     ],
     label: "Other dangerous weapons",
     policyClause: "Prohibited Items Policy § 3 — Dangerous Items",
@@ -140,13 +160,23 @@ const DRUG_RULES: PolicyRule[] = [
     id: "drugs-substance",
     policy: "drugs",
     severity: "block",
-    matchType: "substring",
+    matchType: "regex",
     patterns: [
-      "marijuana", "cannabis", " thc ", " cbd ",
-      "cbd oil", "thc oil", "delta-8", "delta 8", "delta-9",
-      "psilocybin", "shroom",
-      "cocaine", "heroin", "meth ",
-      "prescription drug", "pharmaceutical",
+      "\\bmarijuana\\b",
+      "\\bcannabis\\b",
+      "\\bthc\\b",
+      "\\bcbd\\b",
+      "\\bcbd oil\\b",
+      "\\bthc oil\\b",
+      "delta-?8",
+      "delta-?9",
+      "\\bpsilocybin\\b",
+      "\\bshroom",
+      "\\bcocaine\\b",
+      "\\bheroin\\b",
+      "\\bmethamphetamine\\b",
+      "\\bprescription drug",
+      "\\bpharmaceutical",
     ],
     label: "Controlled substances",
     policyClause: "Prohibited Items Policy § 1 — Alcohol, Drugs & Paraphernalia",
@@ -177,7 +207,8 @@ const HATE_RULES: PolicyRule[] = [
     matchType: "substring",
     patterns: [
       "nazi", "swastika", "ss insignia",
-      "kkk", "ku klux klan", "klan ",
+      "kkk", "ku klux klan",
+      "klansman", "klan hood", "klan robe",
       "white power", "white pride", "white nationalist",
       "13/52", "1488", "blood and soil",
     ],
@@ -337,13 +368,26 @@ const IP_RULES: PolicyRule[] = [
     id: "ip-tech-brands",
     policy: "ip",
     severity: "review",
-    matchType: "substring",
+    matchType: "regex",
     patterns: [
-      "apple iphone", "apple watch", "macbook", "airpods",
-      "samsung galaxy", "samsung s2", "samsung note",
-      "sony playstation", "playstation ", "ps5 ", "ps4 ",
-      "nintendo switch", "nintendo ds", "xbox ",
-      "google pixel", "amazon echo", "amazon alexa",
+      // \b boundaries replace the older trailing-space hack so
+      // brand names at the start or end of a title still match.
+      "\\bapple iphone\\b",
+      "\\bapple watch\\b",
+      "\\bmacbook\\b",
+      "\\bairpods\\b",
+      "\\bsamsung galaxy\\b",
+      "\\bsamsung note\\b",
+      "\\bsony playstation\\b",
+      "\\bplaystation\\b",
+      "\\bps5\\b",
+      "\\bps4\\b",
+      "\\bnintendo switch\\b",
+      "\\bnintendo ds\\b",
+      "\\bxbox\\b",
+      "\\bgoogle pixel\\b",
+      "\\bamazon echo\\b",
+      "\\bamazon alexa\\b",
     ],
     label: "Tech brand counterfeit",
     policyClause: "Prohibited Items Policy § 5 — IP Infringement",
@@ -356,20 +400,66 @@ const IP_RULES: PolicyRule[] = [
     id: "ip-fashion-brands",
     policy: "ip",
     severity: "review",
-    matchType: "substring",
+    matchType: "regex",
     patterns: [
-      "nike ", "adidas", "puma ", "reebok", "champion brand",
-      "under armour", "lululemon",
-      "louis vuitton", "gucci", "chanel", "hermes", "prada",
-      "versace", "balenciaga", "dior", "fendi", "burberry",
-      "rolex", "cartier", "omega watch", "tag heuer",
+      // Sportswear
+      "\\bnike\\b", "\\badidas\\b", "\\bpuma\\b", "\\breebok\\b",
+      "\\bchampion brand\\b", "\\bunder armour\\b", "\\blululemon\\b",
+      "\\bnew balance brand\\b", "\\bvans brand\\b", "\\bconverse brand\\b",
+      "\\bjordan brand\\b", "air jordan",
+      // Luxury fashion
+      "louis vuitton", "\\bgucci\\b", "\\bchanel\\b",
+      "\\bhermes\\b", "\\bprada\\b", "\\bversace\\b",
+      "\\bbalenciaga\\b", "\\bdior\\b", "\\bfendi\\b",
+      "\\bburberry\\b", "\\bvalentino\\b", "\\bgivenchy\\b",
+      "\\bsaint laurent\\b", "ysl bag", "ysl wallet",
+      "\\bbottega veneta\\b", "off-white brand",
+      // Mass fashion
       "ralph lauren", "tommy hilfiger", "calvin klein",
-      "zara ", " h&m ", "uniqlo brand",
+      "\\bzara\\b", "\\bh&m\\b", "\\buniqlo\\b",
+      // Watches — May 18 niche tuning for $50-$150 Watches cluster
+      "\\brolex\\b", "\\bcartier\\b", "\\bomega watch\\b",
+      "\\btag heuer\\b", "patek philippe", "audemars piguet",
+      "\\biwc watch\\b", "\\bbreitling\\b", "\\bhublot\\b",
+      "richard mille", "vacheron constantin",
+      // Wedding-dress designers — May 18 niche tuning for Wedding
+      // Dresses cluster (a $50-150 wedding listing reading "Vera Wang
+      // inspired" gets removed within hours)
+      "vera wang", "pronovias", "monique lhuillier",
+      "oscar de la renta", "carolina herrera", "\\bmarchesa\\b",
+      // Lamps — May 18 niche tuning for Wall Hanging Lamps cluster
+      "tiffany lamp", "tiffany style lamp",
     ],
     label: "Fashion brand counterfeit",
     policyClause: "Prohibited Items Policy § 5 — IP Infringement",
     explanation: "Fashion brand names = likely counterfeit. Etsy removes these quickly.",
     suggestion: "Reframe as generic / unbranded. Remove brand names from the title.",
+  },
+  {
+    id: "ip-car-brands",
+    policy: "ip",
+    severity: "review",
+    matchType: "regex",
+    patterns: [
+      // May 18 niche addition — Car Accessories cluster sources branded
+      // emblems / floor mats / steering wheel covers from AE constantly.
+      // Etsy enforces vehicle marks aggressively for accessories that
+      // could be mistaken for OEM parts.
+      "\\bbmw\\b", "\\bmercedes\\b", "mercedes-benz",
+      "\\baudi\\b", "\\bporsche\\b", "\\blamborghini\\b",
+      "\\bferrari\\b", "\\bmaserati\\b", "\\bbentley\\b",
+      "rolls royce", "\\baston martin\\b",
+      "\\btesla\\b", "tesla model",
+      "\\bford mustang\\b", "\\bchevrolet\\b", "\\bcadillac\\b",
+      "\\btoyota\\b", "\\bhonda accord\\b", "\\bnissan gtr\\b",
+      "jeep wrangler",
+    ],
+    label: "Vehicle brand / emblem",
+    policyClause: "Prohibited Items Policy § 5 — IP Infringement",
+    explanation:
+      "Car brand names + emblems on accessories signal counterfeit OEM parts. Etsy removes these.",
+    suggestion:
+      "Drop the car brand name. Position as a universal-fit accessory if it physically is.",
   },
   {
     id: "ip-characters",
@@ -379,39 +469,93 @@ const IP_RULES: PolicyRule[] = [
     patterns: [
       // Studios & franchises (catches generic-named products)
       "disney", "pixar", "marvel", "dc comics",
-      "star wars", "harry potter", "lord of the rings", "lotr ",
+      "star wars", "harry potter", "lord of the rings", "lotr",
 
-      // Disney / Pixar characters
+      // Disney / Pixar characters — princesses + family classics
+      // (May 18 niche tuning: kids clothing + cosplay teams source
+      // these constantly, original list only had Frozen Elsa + Moana)
       "mickey mouse", "minnie mouse", "donald duck", "goofy",
-      "frozen elsa", "moana", "lion king",
+      "frozen elsa", "elsa frozen", "anna frozen", "olaf snowman",
+      "moana", "lion king", "simba", "nala",
+      "cinderella", "snow white", "ariel mermaid",
+      "belle beauty", "aurora princess", "tiana princess",
+      "mulan disney", "rapunzel tangled", "jasmine aladdin",
+      "encanto", "mirabel encanto",
+      "winnie pooh", "winnie the pooh",
+      "buzz lightyear", "woody toy story",
 
-      // Marvel characters (added May 18 — Deadpool / Wolverine / X-Men
-      // were missed by the original list, causing a false-SAFE on a
-      // Deadpool costume listing)
+      // Marvel characters
       "batman", "superman", "spider-man", "spiderman", "spider man",
       "iron man", "ironman", "captain america",
       "wonder woman", "wonderwoman",
       "deadpool", "dead pool", "wolverine", "x-men", "x men",
       "black panther", "doctor strange", "ant-man", "antman",
-      "venom symbiote", "groot ", "rocket raccoon",
+      "venom symbiote", "rocket raccoon",
       "loki marvel", "scarlet witch", "doctor doom",
-      // Note: "thor", "hulk", "joker" still excluded — false-positives
-      // on "thoroughly", "hulking", playing-card "joker". The broader
-      // "marvel" + "dc comics" patterns catch products that name them.
+      "black widow marvel", "hawkeye marvel",
+      // Note: "thor", "hulk", "joker", "groot" excluded — false
+      // positives on "thoroughly", "hulking", playing-card "joker",
+      // "ground" / "ingrown". The broader "marvel" / "dc comics"
+      // patterns catch products that explicitly name them.
 
       // DC characters
       "harley quinn", "harleyquinn", "the flash dc", "aquaman",
       "green lantern", "robin batman", "catwoman dc",
 
+      // Star Wars characters (May 18 niche addition — cosplay team
+      // sources these and the original list only had the franchise
+      // name, not the characters)
+      "darth vader", "darthvader", "luke skywalker",
+      "princess leia", "han solo",
+      "yoda", "baby yoda", "grogu", "the mandalorian", "mandalorian helmet",
+      "stormtrooper", "kylo ren", "rey jedi",
+
+      // Harry Potter characters (the franchise name is already flagged
+      // but specific character/house names trip Etsy's automated scans
+      // more aggressively)
+      "hermione", "dumbledore", "voldemort", "hogwarts",
+      "gryffindor", "slytherin", "ravenclaw", "hufflepuff",
+
+      // Kids cartoons — HUGE on AE, completely missed by the original
+      // list. These power the Kids Clothing + Plush Toys + Pet
+      // Clothing niches.
+      "paw patrol", "pawpatrol",
+      "peppa pig", "george peppa",
+      "bluey heeler", "bingo heeler",
+      "cocomelon",
+      "baby shark song",
+      "lol surprise", "lol dolls",
+      "octonauts", "blippi",
+      "thomas the tank", "thomas tank engine",
+      "dora the explorer", "diego dora",
+      "ben 10", "powerpuff girls",
+
+      // Christmas IP (powers the Christmas Clothing + Event Decor
+      // niches — Grinch and Elf on the Shelf are big AE Christmas
+      // sellers under copyright)
+      "the grinch", "grinch christmas",
+      "elf on the shelf", "elf on a shelf",
+      "santa claus disney", // Disney Christmas merch only
+
       // Anime / video game / cartoon IPs
-      "pokemon", "pikachu", "naruto", "dragon ball", " goku ",
+      "pokemon", "pikachu", "naruto",
+      "dragon ball", "vegeta dbz", "saiyan", "kakarot",
       "sonic the hedgehog", "super mario", "mario bros",
+      "luigi mario", "princess peach", "bowser mario",
+      "zelda", "link zelda", "ganondorf",
       "minecraft", "fortnite",
       "barbie", "lego",
-      "hello kitty", "sanrio",
-      "studio ghibli", "totoro",
-      "one piece luffy", "demon slayer", "tanjiro",
-      "attack on titan", "my hero academia",
+      "hello kitty", "sanrio", "kuromi", "cinnamoroll", "my melody",
+      "studio ghibli", "totoro", "spirited away",
+      "one piece luffy", "luffy one piece", "zoro pirate",
+      "demon slayer", "tanjiro", "nezuko", "zenitsu",
+      "attack on titan", "eren yeager", "mikasa",
+      "my hero academia", "deku boku no hero", "bakugo",
+      "jujutsu kaisen", "gojo satoru", "yuji itadori",
+      "hatsune miku", "vocaloid",
+      "genshin impact", "honkai star rail",
+      "league of legends",
+      "valorant agent",
     ],
     label: "Copyrighted characters",
     policyClause: "Prohibited Items Policy § 5 — IP Infringement",
@@ -487,12 +631,19 @@ const CREATIVITY_RULES: PolicyRule[] = [
     id: "creativity-wholesale",
     policy: "creativity",
     severity: "review",
-    matchType: "substring",
+    matchType: "regex",
     patterns: [
-      "wholesale", "bulk supply", "factory direct",
-      " oem ", " b2b ",
-      "random color", "random pack", "random set",
-      "in stock available",
+      "\\bwholesale\\b",
+      "\\bbulk supply\\b",
+      "\\bfactory direct\\b",
+      "\\boem\\b",
+      "\\bb2b\\b",
+      "\\brandom color\\b",
+      "\\brandom pack\\b",
+      "\\brandom set\\b",
+      "\\bin stock available\\b",
+      "\\bdrop ?ship",
+      "\\bready stock\\b",
     ],
     label: "Wholesale / commodity tells",
     policyClause: "Creativity Standards — Made by a Seller",
@@ -500,6 +651,51 @@ const CREATIVITY_RULES: PolicyRule[] = [
       "Wholesale/factory language signals a mass-produced reseller item, not handmade or designed.",
     suggestion:
       "Remove wholesale wording from the title. Frame as an artisan or curated item.",
+  },
+  {
+    id: "creativity-personalised",
+    policy: "creativity",
+    severity: "review",
+    matchType: "regex",
+    patterns: [
+      // The META7MEDIA workflow ships ready-stock from AliExpress — the
+      // team cannot deliver buyer-supplied names / dates / monograms on
+      // products. Etsy listings promising this would be misleading and
+      // risk negative reviews / removals.
+      //
+      // KEY question per CEO policy: does the buyer supply their own
+      // text/name on the product?
+      //
+      //   ✅ ALLOWED (marketing wording, no buyer-data promise):
+      //      "handmade", "hand-knit", "hand-stitched", "hand-crafted",
+      //      "artisan", "bespoke", "engraved" (when pre-engraved by the
+      //      shop, not the buyer)
+      //
+      //   ❌ FLAGGED (buyer-data-on-product promises):
+      //      "personalised" / "personalized" / "personalisation"
+      //      "customisable" / "customizable" / "customization"
+      //      "monogram" / "monogrammed" (= buyer's initials)
+      //      "with name" / "with your name"
+      //      "your name on" / "name on it"
+      "\\bpersonali[sz]ed?\\b",
+      "\\bpersonali[sz]ation\\b",
+      "\\bcustomi[sz]able\\b",
+      "\\bcustomi[sz]ation\\b",
+      "\\bmonogram\\b",
+      "\\bmonogrammed\\b",
+      "\\bwith your name\\b",
+      "\\bwith own name\\b",
+      "your name on it",
+      "\\bname on it\\b",
+      "\\bengraved with name\\b",
+      "\\badd your name\\b",
+    ],
+    label: "Buyer-supplied data promise",
+    policyClause: "Creativity Standards — Made by a Seller",
+    explanation:
+      "The team ships ready-stock — listings promising personalised / monogrammed / buyer-named products would be misleading, since AE products arrive pre-printed without buyer data.",
+    suggestion:
+      "Strip personalisation wording. Frame as a designed / curated piece in fixed colourways and patterns.",
   },
   {
     id: "creativity-generic-tech",
@@ -549,6 +745,9 @@ export const ETSY_POLICY_RULES: ReadonlyArray<PolicyRule> = [
   ...VIOLENCE_RULES,
   ...CREATIVITY_RULES,
 ];
+
+/** Convenience counts surfaced by tests / docs. */
+export const RULE_COUNT = ETSY_POLICY_RULES.length;
 
 /**
  * Check a product title against all rules. Returns every rule that

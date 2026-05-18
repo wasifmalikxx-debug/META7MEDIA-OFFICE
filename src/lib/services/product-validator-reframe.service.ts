@@ -85,6 +85,32 @@ export interface ReframeResult {
 const ETSY_POLICIES_SYSTEM = `You are an Etsy compliance advisor for a dropshipping team in Pakistan.
 The team sources products from AliExpress, regenerates all product photos with new identity shots before listing, and writes their own listing content (or uses an SEO-generation tool) before posting on Etsy.
 
+TEAM NICHE BOOK (what they actually source) — use this to pick the right audience + occasion framing per product:
+
+  CLOTHING (adult)        Women / Mens / Linen / Beachwear / Swimsuits / Shapewear / Couple Matching Outfits / Wedding Dresses / Prom Dresses / Hats
+  CLOTHING (kids/baby)    Newborn Baby Clothes / Blankets / Beds, Kids Clothing, Kids Leather Garments
+  COSPLAY                 Cosplay costumes, Cosplay Face Masks, Leather Masks (high IP risk — Marvel/DC/Disney/Star Wars/anime)
+  LEATHER                 Women Leather Clothing, Women Leather Heels/Shoes, Mens Leather Bracelets/Belts, Leather Accessories
+  FOOTWEAR                Women Footwear, Womens Heels, Womens/Mens Slippers
+  JEWELRY                 Jewelry, Couple Matching Jewelry, Birth Flower Jewelry, Nose Rings/Pins, Mens Leather Bracelets/Belts
+  ACCESSORIES             Hats, Mens/Womens Handbags, Womens Nails
+  PET                     Pet Store, Pet Clothing, Pet Accessories
+  HOME DECOR              Motivational Wall Frames, Home Decor, Couple Decor, Table/Desk Decor, Vase, Book Stands, Event Decor, Plush Toys
+  WOODEN                  Wooden Decor, Wooden Kitchen, Wooden Shelves/Organisers, Kitchen Wooden Items
+  LIGHTING                Wall Hanging Lamps
+  OFFICE                  Office & Study Mats, Organiser Boxes, Jewelry/Makeup Organisers
+  WATCHES                 $50-$150 Watches (high counterfeit risk — Rolex / Apple / AP)
+  TUMBLERS                Tumblers (HIGH risk of buyer-personalisation wording)
+  CHRISTMAS               Christmas Clothing, Event Decor (Grinch / Elf on the Shelf / Disney Christmas)
+  CAR ACCESSORIES         Car Accessories (HIGH risk of branded emblems — BMW / Ford / Tesla)
+  GADGETS                 Home Improvement Gadgets
+
+When the product is obviously from one of these clusters, lead the listingApproach with the appropriate audience + occasion language. Examples:
+  - Plush Toy that hits Pokemon IP → "Frame as a generic cute cartoon plush for nursery decor / gifts"
+  - Christmas costume that hits Grinch IP → "Frame as a green fuzzy character costume for Christmas parties"
+  - Car accessory with BMW logo → "Frame as a universal-fit interior accessory; drop the emblem from photos"
+  - Tumbler with 'personalised' wording → "Reframe as a fixed-design boho tumbler; remove all personalisation promises"
+
 Your job: when an AliExpress product has policy flags, produce STRATEGIC GUIDANCE that tells the team HOW to write a safe Etsy listing for this product. You DO NOT write the actual title, tags, or description — you give the rules and direction the team will follow when they write the content themselves.
 
 ETSY'S FOUR POLICIES — full context:
@@ -244,10 +270,27 @@ interface FetchedImage {
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
 }
 
+// Anthropic API supported image formats. AVIF and HEIC are NOT
+// supported — alicdn.com serves AVIF for some products, so we must
+// explicitly detect and skip those rather than lying about the MIME
+// type and crashing the whole reframe call.
+const SUPPORTED_IMAGE_TYPES: Array<FetchedImage["mediaType"]> = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
+
 /**
  * Fetch an AE image URL and convert to a base64 payload Anthropic
  * can ingest. Failures resolve to null — the reframe still runs in
  * text-only mode if the image can't be loaded.
+ *
+ * Two ways the fetch can return null:
+ *   - HTTP failure / timeout / oversized
+ *   - Unsupported MIME (AVIF / HEIC / TIFF) — Anthropic rejects these.
+ *     We detect and skip rather than mis-labeling the bytes as JPEG,
+ *     which would crash the Anthropic call and silently lose vision.
  */
 async function fetchImageForVision(
   imageUrl: string,
@@ -261,7 +304,25 @@ async function fetchImageForVision(
       },
     });
     if (!res.ok) return null;
-    const contentType = res.headers.get("content-type") ?? "image/jpeg";
+
+    const contentType = (
+      res.headers.get("content-type") ?? "image/jpeg"
+    ).toLowerCase();
+
+    // Reject unsupported formats before downloading the bytes — the
+    // Anthropic call would reject them and crash the reframe.
+    if (
+      contentType.includes("avif") ||
+      contentType.includes("heic") ||
+      contentType.includes("heif") ||
+      contentType.includes("tiff")
+    ) {
+      console.warn(
+        `[reframe] image format ${contentType} not supported by Anthropic — skipping vision`,
+      );
+      return null;
+    }
+
     const mediaType: FetchedImage["mediaType"] = contentType.includes("png")
       ? "image/png"
       : contentType.includes("webp")
@@ -269,9 +330,12 @@ async function fetchImageForVision(
         : contentType.includes("gif")
           ? "image/gif"
           : "image/jpeg";
+
+    if (!SUPPORTED_IMAGE_TYPES.includes(mediaType)) return null;
+
     const buf = Buffer.from(await res.arrayBuffer());
-    // Cap at ~2MB raw to stay well inside Anthropic's request limit.
     if (buf.length > 2_500_000) return null;
+
     return {
       base64: buf.toString("base64"),
       mediaType,

@@ -9,16 +9,22 @@ export const dynamic = "force-dynamic";
 /**
  * /product-validator — Etsy policy pre-listing safety check.
  *
- * Seller pastes an AliExpress URL (.com or .us). The tool fetches the
- * product, runs the title against ~30 encoded Etsy policy rules
- * (Prohibited Items, IP, PPE, Creativity Standards), and returns a
- * verdict: SAFE / REVIEW / BLOCKED with per-rule citations.
+ * Seller pastes an aliexpress.com URL (regional storefronts like .us
+ * are rejected; sellers switch their AE region to Pakistan to access
+ * the .com link). The tool fetches the product, runs the title against
+ * the encoded Etsy policy rules (Prohibited Items, IP, PPE, Creativity
+ * Standards), and returns one of three verdicts:
+ *
+ *   - Cleared for listing  — no flags, list as-is
+ *   - Listable with care   — soft flags; AI generates listing guidance
+ *                            + photo-regen coaching
+ *   - Cannot be listed     — hard category ban; no reframe possible
  *
  * Goal: prevent Etsy shop strikes by catching policy-violating
  * sourcing decisions BEFORE the listing goes live.
  *
- * Access: every Etsy team member (see getProductValidatorAccess).
- * HR / Facebook / Zain see a Coming Soon placeholder.
+ * Access: currently CEO-only while the rule set is being tuned (see
+ * getProductValidatorAccess). Etsy team rollout to follow.
  */
 export default async function ProductValidatorPage() {
   const session = await auth();
