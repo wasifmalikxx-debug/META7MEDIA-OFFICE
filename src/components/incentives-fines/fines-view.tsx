@@ -244,8 +244,10 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
         )}
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      {/* Summary Cards — matches the admin-dashboard breakpoint ladder so
+          the 5 cards don't crush their text-2xl PKR amounts at medium
+          widths. Stacks 2-cols on mobile, 3 on md, then 5 on lg+. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <Card className="border-0 shadow-sm bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-800">
           <CardContent className="py-3.5 px-4">
             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Fines</p>

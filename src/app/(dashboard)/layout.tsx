@@ -55,7 +55,14 @@ export default async function DashboardLayout({
         <AppSidebar user={user} />
         <SidebarInset>
           <Header />
-          <main className="flex-1 p-4 md:p-6">{children}</main>
+          {/* min-w-0 is critical: <main> sits in a flex row next to the
+              sidebar. Without it, wide content (5-card stat grids, long
+              table rows, etc.) pushes <main> past the viewport's right
+              edge and gets clipped. Daily Activities specifically tripped
+              this. min-w-0 lets the flex item shrink so its children
+              honor their own responsive breakpoints instead of forcing
+              the parent wider. */}
+          <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>
     </SessionProvider>
