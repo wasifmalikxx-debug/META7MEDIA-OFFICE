@@ -430,15 +430,29 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       where: { createdAt: { gte: sevenDaysAgo } },
       include: { user: { select: userSelect } },
     }),
-    // All-time + MTD aggregation source. We project only the fields we
-    // need (userId, cost, verdict, createdAt) so the row payload stays
-    // small even at scale. Same SELECT for tag-swap rows below.
+    // All-time + MTD aggregation source. We project only what we need
+    // and include a minimal user join so we can (a) skip orphan rows
+    // whose user has been deleted — keeping global totals reconciled
+    // with the sum of per-user totals — and (b) synthesize entries for
+    // users with logs older than 7 days who therefore aren't in the
+    // 7-day `byUser` map yet. Without (b) those users' lifetime spend
+    // would show in the global "All-time" cell but disappear from
+    // their employee row and their team's rollup.
+    //
+    // PERF NOTE (deferred): at thousands of log rows this will read
+    // more than necessary. Future optimization is to swap both calls
+    // for `prisma.*.groupBy({ by: ['userId', 'verdict'], _sum, _count })`
+    // — one without a where for all-time, one with `createdAt: { gte:
+    // monthStart }` for MTD. Then resolve userIds via a single
+    // `findMany` for user details. Fine at current scale (~days-old
+    // tool with <1k rows).
     prisma.seoAutopilotLog.findMany({
       select: {
         userId: true,
         actualCostUsd: true,
         verdict: true,
         createdAt: true,
+        user: { select: userSelect },
       },
     }),
     prisma.seoAutopilotTagSwapLog.findMany({
@@ -446,6 +460,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         userId: true,
         actualCostUsd: true,
         createdAt: true,
+        user: { select: userSelect },
       },
     }),
   ]);
@@ -713,15 +728,31 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
 
   // ─── MTD + all-time pass over the projected log rows ─────────────
   // Separate from the 7-day pass because we need a much wider window.
-  // We project only userId/cost/verdict/createdAt to keep the payload
-  // small. Same actual-cost-with-estimate-fallback rule the 7-day pass
-  // uses, so cost numbers across all windows stay consistent.
+  // Same actual-cost-with-estimate-fallback rule the 7-day pass uses,
+  // so cost numbers across all windows stay consistent.
+  //
+  // CONTRACT: globals tracked here (costAllTimeUsd, countAllTime, etc.)
+  // are always reconciled against the sum of per-user entries — every
+  // log we add to a global counter MUST also land on a per-user entry.
+  // To guarantee that:
+  //   1. Orphan rows (no user) are skipped entirely (matches the 7-day
+  //      pass).
+  //   2. Logs whose user isn't in byUser yet — because they've only
+  //      generated outside the 7-day window — get a synthesized entry
+  //      with name/dept/role from the joined user record. Their
+  //      7-day fields stay zero, but countAllTime / costAllTimeUsd /
+  //      countMtd / costMtdUsd land on the row.
   let costMtdUsd = 0;
   let costAllTimeUsd = 0;
   let countMtd = 0;
   let countAllTime = 0;
 
   for (const log of allLogRows) {
+    // Bug-1/2 guard: skip orphan rows so global totals stay reconciled
+    // with the sum of per-user totals. If user was deleted we can't
+    // attribute the cost anywhere, so it doesn't go in either bucket.
+    if (!log.user) continue;
+
     const logCost =
       typeof log.actualCostUsd === "number" && log.actualCostUsd > 0
         ? log.actualCostUsd
@@ -735,27 +766,51 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       countMtd += 1;
     }
 
-    const entry = byUser.get(log.userId);
-    if (entry) {
-      entry.costAllTimeUsd += logCost;
-      entry.countAllTime += 1;
-      if (isMtd) {
-        entry.costMtdUsd += logCost;
-        entry.countMtd += 1;
-      }
+    // Ensure a per-user entry exists. Synthesize from log.user when
+    // missing (user with only pre-7-day activity).
+    let entry = byUser.get(log.userId);
+    if (!entry) {
+      entry = {
+        employeeId: log.user.employeeId,
+        name: `${log.user.firstName} ${log.user.lastName}`.trim(),
+        role: log.user.role,
+        department: resolveDepartmentLabel(
+          log.user.department?.name,
+          log.user.employeeId,
+        ),
+        countToday: 0,
+        countYesterday: 0,
+        count7Day: 0,
+        countMtd: 0,
+        countAllTime: 0,
+        allowedCount: 0,
+        reviewCount: 0,
+        blockedCount: 0,
+        lastGeneratedAt: null,
+        costTodayUsd: 0,
+        cost7DayUsd: 0,
+        costMtdUsd: 0,
+        costAllTimeUsd: 0,
+      };
+      byUser.set(log.userId, entry);
     }
-    // If no entry yet for this user, they have older log rows but no
-    // 7-day activity → we still want them visible. Synthesize a
-    // minimal entry; we'll fill name/dept later if a usage row shows
-    // up. For now stub with what the log has.
-    else {
-      // We don't have user details on allLogRows (no include) — skip
-      // for now. They'll appear in the 7-day window the next time they
-      // generate. This matches the dashboard's "last 7d activity" lens.
+
+    entry.costAllTimeUsd += logCost;
+    entry.countAllTime += 1;
+    if (isMtd) {
+      entry.costMtdUsd += logCost;
+      entry.countMtd += 1;
+    }
+    // Update lastGeneratedAt for older rows too — keeps the "Last seen"
+    // column accurate for synthesized entries.
+    if (!entry.lastGeneratedAt || log.createdAt > entry.lastGeneratedAt) {
+      entry.lastGeneratedAt = log.createdAt;
     }
   }
 
   for (const swap of allSwapRows) {
+    if (!swap.user) continue; // Bug-3 guard, same reasoning as logs
+
     const swapCost =
       typeof swap.actualCostUsd === "number" && swap.actualCostUsd > 0
         ? swap.actualCostUsd
@@ -766,11 +821,34 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     costAllTimeUsd += swapCost;
     if (isMtd) costMtdUsd += swapCost;
 
-    const entry = byUser.get(swap.userId);
-    if (entry) {
-      entry.costAllTimeUsd += swapCost;
-      if (isMtd) entry.costMtdUsd += swapCost;
+    let entry = byUser.get(swap.userId);
+    if (!entry) {
+      entry = {
+        employeeId: swap.user.employeeId,
+        name: `${swap.user.firstName} ${swap.user.lastName}`.trim(),
+        role: swap.user.role,
+        department: resolveDepartmentLabel(
+          swap.user.department?.name,
+          swap.user.employeeId,
+        ),
+        countToday: 0,
+        countYesterday: 0,
+        count7Day: 0,
+        countMtd: 0,
+        countAllTime: 0,
+        allowedCount: 0,
+        reviewCount: 0,
+        blockedCount: 0,
+        lastGeneratedAt: null,
+        costTodayUsd: 0,
+        cost7DayUsd: 0,
+        costMtdUsd: 0,
+        costAllTimeUsd: 0,
+      };
+      byUser.set(swap.userId, entry);
     }
+    entry.costAllTimeUsd += swapCost;
+    if (isMtd) entry.costMtdUsd += swapCost;
   }
 
   const entries: TeamUsageEntry[] = Array.from(byUser.entries())

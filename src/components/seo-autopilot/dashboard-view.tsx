@@ -363,7 +363,7 @@ function CostBreakdownStrip({ stats }: { stats: TeamStats }) {
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 border-t border-border/40">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 border-t border-border/40">
           {cells.map((cell, i) => (
             <CostCell
               key={cell.label}
@@ -430,8 +430,13 @@ function CostCell({
 // ─── Loading skeleton ───────────────────────────────────────────────
 
 function DashboardSkeleton() {
+  // Mirrors the real layout so we don't shape-shift when stats land:
+  // header → 7-card KPI row → 5-cell cost strip → chart pair →
+  // dept grid → employees table → activity feed. Each block is a
+  // pulsing rectangle sized to roughly match the live component.
   return (
     <div className="space-y-6">
+      {/* Header */}
       <Card className="ap-stagger-in">
         <CardContent className="p-6 flex items-center gap-4">
           <div className="size-12 rounded-2xl bg-muted/40 animate-pulse" />
@@ -441,18 +446,58 @@ function DashboardSkeleton() {
           </div>
         </CardContent>
       </Card>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[0, 1, 2, 3].map((i) => (
+
+      {/* KPI hero row */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
           <div
             key={i}
             className="h-24 rounded-xl bg-muted/30 animate-pulse ap-stagger-in"
-            style={{ animationDelay: `${i * 60}ms` }}
+            style={{ animationDelay: `${i * 40}ms` }}
+          />
+        ))}
+      </div>
+
+      {/* Cost breakdown strip */}
+      <div
+        className="rounded-xl border border-border/60 ap-stagger-in p-4"
+        style={{ animationDelay: "260ms" }}
+      >
+        <div className="h-3 w-40 bg-muted/40 rounded animate-pulse mb-3" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="h-16 rounded-lg bg-muted/30 animate-pulse"
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+        <div
+          className="lg:col-span-3 h-64 rounded-xl bg-muted/30 animate-pulse ap-stagger-in"
+          style={{ animationDelay: "320ms" }}
+        />
+        <div
+          className="lg:col-span-2 h-64 rounded-xl bg-muted/30 animate-pulse ap-stagger-in"
+          style={{ animationDelay: "360ms" }}
+        />
+      </div>
+
+      {/* Departments (2 cols) + Employees table */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 ap-stagger-in" style={{ animationDelay: "420ms" }}>
+        {[0, 1].map((i) => (
+          <div
+            key={i}
+            className="h-44 rounded-xl bg-muted/30 animate-pulse"
           />
         ))}
       </div>
       <div
-        className="h-64 rounded-xl bg-muted/30 animate-pulse ap-stagger-in"
-        style={{ animationDelay: "300ms" }}
+        className="h-80 rounded-xl bg-muted/30 animate-pulse ap-stagger-in"
+        style={{ animationDelay: "500ms" }}
       />
     </div>
   );
@@ -1400,7 +1445,7 @@ function EmployeesSection({
                   <tr>
                     <td className="px-3 py-2.5 text-left">
                       <span className="uppercase tracking-[0.16em] text-[10px] text-muted-foreground">
-                        Totals
+                        {filter ? "Filtered totals" : "Totals"}
                       </span>
                     </td>
                     <td className="px-3 py-2.5" colSpan={2} />
