@@ -524,9 +524,8 @@ export async function searchProductsByKeyword(
     accessToken: string;
     pageSize?: number;
     pageNo?: number;
-    // orders_asc added May 16 2026 for Daily Trending's FRESH mode —
-    // surfaces low-volume listings (new arrivals + duds; daily-trending
-    // filters duds via rating + min-orders floor).
+    // orders_asc surfaces low-volume listings (new arrivals + duds).
+    // Callers can filter the duds via rating + min-orders floor.
     sortBy?:
       | "orders_desc"
       | "orders_asc"
@@ -667,19 +666,18 @@ export async function searchByVolumeDesc(
 /**
  * Search AliExpress for new / early-momentum listings in a niche.
  *
- * Used by Daily Trending's FRESH mode — surfaces products that have
- * SOME validation (a handful of orders + good rating) but haven't yet
- * gone viral. The point: list these on Etsy before the rest of the
- * dropship community discovers them.
+ * Surfaces products that have SOME validation (a handful of orders +
+ * good rating) but haven't yet gone viral.
  *
  * AE DS API doesn't expose a "newest" sort directly. The closest
  * proxy is volume-asc — products with the FEWEST recent orders are
- * either brand-new SKUs or duds. Daily-trending then filters out
- * the duds via rating + an orders-count floor (5+) so only legit
- * new arrivals survive.
+ * either brand-new SKUs or duds. Callers filter the duds via rating +
+ * an orders-count floor (5+) so only legit new arrivals survive.
  *
- * Wider pageSize than TRENDING (~30) because the post-filter survival
- * rate is lower — many low-volume products have no rating data yet.
+ * Note: searchByVolumeAsc has no active caller after Daily Trending
+ * was removed on May 18 2026. Kept exported so future hunting tools
+ * (Fresh Finds, watchlists) can pick it back up without re-deriving
+ * the AE sort semantics.
  */
 export async function searchByVolumeAsc(
   keyword: string,

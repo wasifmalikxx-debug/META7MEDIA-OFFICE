@@ -494,16 +494,14 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
 
-                  {/* Daily Trending moved INTO the Product Hunter hub
-                      as the "Trending" tab on May 16 2026 — no longer
-                      a standalone sidebar entry. Old /daily-trending
-                      URL redirects to /seo-autopilot/product-hunter?tab=trending.
-                      Access is CEO-only during the validation phase. */}
-
-                  {/* Reverse Hunt was removed entirely on May 17 2026
-                      (CEO call: ".us URLs don't work and the .com flow
-                      was already covered by Manual Hunting"). The
-                      /reverse-hunt route + tab + service are deleted. */}
+                  {/* Removed sub-tools (kept here as a trail for future
+                      contributors):
+                        - Reverse Hunt    (May 17 2026)
+                        - Image Hunt      (May 17 2026)
+                        - Daily Trending  (May 18 2026)
+                        - "More Soon"     (May 18 2026)
+                      Product Hunter is now a single-pane tool — no tabs,
+                      no sub-routes. */}
 
                   {/* Product Validator — pre-listing Etsy policy check.
                       Paste an AE URL, get SAFE/REVIEW/BLOCKED verdict

@@ -46,11 +46,8 @@ export default async function ProductHunterPage() {
   if (access.canUseRealTool) {
     // Pass the user.role through so the in-hero AE pill renders the
     // right variant: CEO → connect/disconnect, partner → status only,
-    // everyone else → hidden. Pass user.id so the Daily Trending tab
-    // can wire up the per-user claim button.
-    return (
-      <ProductHunterView userRole={user.role} currentUserId={user.id} />
-    );
+    // everyone else → hidden.
+    return <ProductHunterView userRole={user.role} />;
   }
 
   // Everyone else (HR Admin, AE/ME employees, EM-4L, Facebook team,

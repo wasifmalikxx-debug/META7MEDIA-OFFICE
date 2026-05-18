@@ -24,10 +24,6 @@
     {
       "path": "/api/cron/daily-hunt",
       "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/cron/daily-trending",
-      "schedule": "0 0 * * *"
     }
   ]
 }

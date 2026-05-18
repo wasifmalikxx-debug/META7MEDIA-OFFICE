@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Sparkles,
   Check,
@@ -9,16 +8,10 @@ import {
   Target,
   Heart,
   Plug,
-  Hourglass,
-  LayoutGrid,
   X,
-  Flame,
-  Bookmark,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ManualHuntingSection } from "./manual-hunting-section";
-import { DailyTrendingView } from "@/components/daily-trending/daily-trending-view";
-import { DailyTrendingTabComingSoon } from "@/components/daily-trending/daily-trending-tab-coming-soon";
 
 // ─── Recent hunts storage (localStorage) ─────────────────────────────
 //
@@ -111,207 +104,47 @@ export function useRecentHunts(): RecentHunt[] {
 // ─── Main view ──────────────────────────────────────────────────────
 
 /**
- * Tab identifiers for the Product Hunter hub.
+ * Product Hunter is a single-pane tool: type a seed, get underserved
+ * Etsy keywords scored by demand + engagement + shop diversity.
  *
- *  - manual    → keyword-brainstorm + Etsy scoring (CEO types a seed,
- *                we brainstorm and score against Etsy demand)
- *  - trending  → Daily Trending — morning AE feed scoped to niche book
- *                (CEO-only during validation phase; others see Coming Soon)
- *  - soon      → roadmap card (Watchlists, Fresh Finds, etc.)
+ * History (deleted features, kept here for context):
+ *   - Reverse Hunt   (May 17 2026): paste AE URL → verdict. CEO removed.
+ *   - Image Hunt     (May 17 2026): paste image → AE matches. AE
+ *                    image search endpoint never worked across 5
+ *                    request formats. CEO removed.
+ *   - Daily Trending (May 18 2026): morning AE feed scoped to niche
+ *                    book. Tabs + service + cron removed entirely.
+ *   - "More Soon"    (May 18 2026): roadmap card placeholder. Removed.
  *
- * Removed:
- *  - reverse (May 17 2026) — Reverse Hunt (paste AE URL → verdict).
- *    CEO call: ".us URLs don't work and the .com flow was already
- *    covered by Manual Hunting."
- *  - image (May 17 2026) — Image Hunt (paste image → AE matches).
- *    AE's image search endpoint rejected every request format we
- *    tried (5 attempts, all MissingParameter), and the workaround
- *    via Claude vision would add per-search cost. CEO chose to
- *    remove rather than spend on it.
- *
- * Every future hunting tool we build slots in here as a new tab so the
- * whole team has one URL to remember.
+ * Product Hunter is now ONE tool, no tabs.
  */
-type HunterTab = "manual" | "trending" | "soon";
-
-/**
- * Initial-tab resolver — reads `?tab=X` from window.location.
- * Computed once during useState lazy init so we don't violate React 19's
- * "no setState in useEffect" rule. Legacy `?tab=reverse` and
- * `?tab=image` quietly fall back to "manual" (those tabs were removed).
- */
-function resolveInitialTab(): HunterTab {
-  if (typeof window === "undefined") return "manual";
-  const requested = new URLSearchParams(window.location.search).get("tab");
-  if (
-    requested === "manual" ||
-    requested === "trending" ||
-    requested === "soon"
-  ) {
-    return requested;
-  }
-  return "manual";
-}
-
 export function ProductHunterView({
   userRole = "SUPER_ADMIN",
-  currentUserId,
 }: {
   /** Role gate for the AE connection banner. CEO sees full controls,
    * partners see status-only (no Connect button), everyone else gets
    * the banner hidden entirely. Defaults to SUPER_ADMIN for backward
    * compat with calls that don't pass the prop yet. */
   userRole?: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
-  /** Logged-in user id. Required for the Daily Trending tab so the
-   * claim button can flip cards to "Claimed by you". Optional for
-   * backward compat — falls back to a no-op claim path. */
-  currentUserId?: string;
 }) {
   const isCeo = userRole === "SUPER_ADMIN";
-  const [activeTab, setActiveTab] = useState<HunterTab>(resolveInitialTab);
 
-  // Recent hunts now live INSIDE the NicheInputCard (May 16 2026 v3
-  // CEO ask). No more standalone strip at the bottom and no more
-  // prefill prop / key remount on ManualHuntingSection — the input
-  // card reads from useRecentHunts() directly and updates its own
-  // niche/style/audience state on chip click.
   return (
     <div className="relative pb-12">
       {/* Full-bleed hero: cancels the <main> p-4 md:p-6 + own top
           padding so it spans edge to edge under the dashboard header.
-          AE status pill lives INSIDE the hero now (next to Hunting
-          hub label) — no separate banner below. */}
+          AE status pill lives INSIDE the hero (next to Hunting hub
+          label) — no separate banner below. */}
       <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
-        <HeroBanner activeTab={activeTab} userRole={userRole} />
+        <HeroBanner userRole={userRole} />
       </div>
 
-      {/* Constrained content column */}
+      {/* Constrained content column. ManualHuntingSection gets isCeo
+          so it can hide the Claude API "Cost: $X.XXXX" footer in the
+          result hero (CEO-only) — AE product prices stay visible to
+          everyone. */}
       <div className="max-w-5xl mx-auto space-y-6">
-        <ToolTabsBar active={activeTab} onChange={setActiveTab} />
-
-        {/* ManualHuntingSection still gets isCeo so it can hide the
-            Claude API "Cost: $X.XXXX" footer in the result hero
-            (CEO-only) — AE product prices stay visible to everyone. */}
-        {activeTab === "manual" && <ManualHuntingSection isCeo={isCeo} />}
-
-        {activeTab === "trending" &&
-          (isCeo && currentUserId ? (
-            <DailyTrendingView
-              currentUserId={currentUserId}
-              isCeo={isCeo}
-              embedded
-            />
-          ) : (
-            <DailyTrendingTabComingSoon />
-          ))}
-
-        {activeTab === "soon" && <ComingSoonRoadmap />}
-      </div>
-    </div>
-  );
-}
-
-// ─── Tool tabs bar (4-card mode picker) ─────────────────────────────
-//
-// Restored from the original (pre-Spotlight) design — full-width cards
-// with icon + label + description. Each tab keeps its own state inside
-// its child section component, so flipping back to "Manual Hunting"
-// preserves any in-progress scan results.
-
-const MODE_TABS: Array<{
-  id: HunterTab;
-  label: string;
-  icon: typeof Target;
-  description: string;
-  gradient: string;
-}> = [
-  {
-    id: "manual",
-    label: "Manual Hunting",
-    icon: Target,
-    description: "Type a seed → find underserved Etsy keywords",
-    gradient: "from-sky-500 to-violet-500",
-  },
-  {
-    id: "trending",
-    label: "Daily Trending",
-    icon: Flame,
-    description: "Morning AE feed for your niches",
-    gradient: "from-orange-500 to-rose-500",
-  },
-  {
-    id: "soon",
-    label: "More Soon",
-    icon: LayoutGrid,
-    description: "Watchlists · Fresh Finds",
-    gradient: "from-amber-500 to-rose-500",
-  },
-];
-
-function ToolTabsBar({
-  active,
-  onChange,
-}: {
-  active: HunterTab;
-  onChange: (t: HunterTab) => void;
-}) {
-  return (
-    <div className="relative">
-      {/* py-1 + -my-1 below preserves a 4px breathing margin so the
-          leftmost / rightmost card's outer ring isn't clipped by the
-          scroll container (CEO flagged the "Manual Hunting button is
-          cropped" issue). */}
-      <div className="flex gap-2 overflow-x-auto px-1 py-1 -mx-1 -my-1 snap-x">
-        {MODE_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = active === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onChange(tab.id)}
-              className={`relative flex-1 min-w-[180px] snap-start rounded-2xl ring-1 transition-all overflow-hidden ${
-                isActive
-                  ? "ring-foreground/30 bg-card shadow-md"
-                  : "ring-border/50 bg-card/60 hover:ring-border hover:bg-card"
-              }`}
-            >
-              {isActive && (
-                <span
-                  aria-hidden
-                  className={`absolute inset-0 bg-gradient-to-br ${tab.gradient} opacity-[0.06]`}
-                />
-              )}
-              <div className="relative flex items-center gap-3 p-3">
-                <div
-                  className={`size-9 rounded-lg flex items-center justify-center shrink-0 ring-1 ${
-                    isActive
-                      ? `bg-gradient-to-br ${tab.gradient} ring-white/20 shadow-md`
-                      : "bg-muted/60 ring-border/40"
-                  }`}
-                >
-                  <Icon
-                    className={`size-4 ${
-                      isActive ? "text-white" : "text-muted-foreground"
-                    }`}
-                  />
-                </div>
-                <div className="min-w-0 text-left">
-                  <p
-                    className={`text-[12px] font-bold tracking-tight leading-tight ${
-                      isActive ? "text-foreground" : "text-foreground/85"
-                    }`}
-                  >
-                    {tab.label}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 truncate">
-                    {tab.description}
-                  </p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+        <ManualHuntingSection isCeo={isCeo} />
       </div>
     </div>
   );
@@ -322,50 +155,26 @@ function ToolTabsBar({
 // Dark gradient hero with animated aurora blobs — matches the SEO
 // Autopilot hero structurally but uses a COOL (navy → violet → cyan)
 // palette to differentiate Product Hunter from the WARM (purple →
-// orange) palette of SEO Autopilot. CEO restored this on May 16
-// after the Spotlight attempt didn't match the rest of the SEO
-// Autopilot family.
+// orange) palette of SEO Autopilot.
 //
-// Description text + 3 stat cells swap based on the active mode so
-// the hero adapts to whichever tool the user picked.
+// Static stat cells now that Product Hunter is a single-tool view
+// (no more tab-aware copy switching).
 
-const TAB_COPY: Record<
-  HunterTab,
-  {
-    cells: Array<{ icon: typeof Sparkles; label: string; sub: string }>;
-  }
-> = {
-  manual: {
-    cells: [
-      { icon: Sparkles, label: "25 variants", sub: "Claude brainstorm" },
-      { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
-      { icon: Heart, label: "Ranked", sub: "GREAT · GOOD · MAYBE · SKIP" },
-    ],
-  },
-  trending: {
-    cells: [
-      { icon: Bookmark, label: "Niche book", sub: "Up to 5 niches" },
-      { icon: Flame, label: "5 AM PKT", sub: "Auto-refresh daily" },
-      { icon: TrendingUp, label: "Pre-priced", sub: "Etsy markup baked in" },
-    ],
-  },
-  soon: {
-    cells: [
-      { icon: LayoutGrid, label: "Watchlists", sub: "Auto-fetch your niches" },
-      { icon: Sparkles, label: "Fresh Finds", sub: "Early but credible" },
-      { icon: TrendingUp, label: "Bulk tools", sub: "50 URLs at a time" },
-    ],
-  },
-};
+const HERO_CELLS: Array<{
+  icon: typeof Sparkles;
+  label: string;
+  sub: string;
+}> = [
+  { icon: Sparkles, label: "25 variants", sub: "Claude brainstorm" },
+  { icon: TrendingUp, label: "Live Etsy", sub: "Demand · favorites · shops" },
+  { icon: Heart, label: "Ranked", sub: "GREAT · GOOD · MAYBE · SKIP" },
+];
 
 function HeroBanner({
-  activeTab,
   userRole,
 }: {
-  activeTab: HunterTab;
   userRole: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
 }) {
-  const copy = TAB_COPY[activeTab];
   return (
     <div className="relative overflow-hidden shadow-xl shadow-violet-500/15 ap-stagger-in border-b border-white/10">
       {/* Base gradient — cool navy → violet → navy to differentiate
@@ -447,7 +256,7 @@ function HeroBanner({
         </div>
 
         <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-7 pt-5 border-t border-white/10">
-          {copy.cells.map((cell) => (
+          {HERO_CELLS.map((cell) => (
             <FeatureCell
               key={cell.label}
               icon={cell.icon}
@@ -481,109 +290,6 @@ function FeatureCell({
         </p>
         <p className="text-[10px] text-white/55 leading-tight truncate">{sub}</p>
       </div>
-    </div>
-  );
-}
-
-// ─── Coming Soon roadmap card ───────────────────────────────────────
-
-function ComingSoonRoadmap() {
-  const items = [
-    {
-      icon: LayoutGrid,
-      title: "My Watchlists",
-      copy: "Save your niches as watchlists — products auto-flow into a triage queue every morning. Skip / Save / List in one click.",
-      eta: "Next sprint",
-      color: "amber",
-    },
-    {
-      icon: Sparkles,
-      title: "Fresh Finds",
-      copy: "Newly-listed AliExpress products from credible sellers — catch winners before they saturate. Quality-filtered: 4.7★+, 20-500 orders, established shops only.",
-      eta: "Next sprint",
-      color: "rose",
-    },
-    {
-      icon: TrendingUp,
-      title: "Bulk URL Checker",
-      copy: "Paste 50 AliExpress URLs at once → verdict + margin for every one in 90 seconds. Sortable table, bulk Save / Skip.",
-      eta: "Soon",
-      color: "sky",
-    },
-    {
-      icon: Heart,
-      title: "Source Health Monitor",
-      copy: "Daily check on every linked AE source for our active listings. Alert when prices rise, stock drops, or seller rating tanks.",
-      eta: "Soon",
-      color: "emerald",
-    },
-  ];
-
-  return (
-    <div className="space-y-4 ap-stagger-in">
-      <Card className="border border-border/60 shadow-none">
-        <CardContent className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="size-11 rounded-xl bg-gradient-to-br from-amber-500 to-rose-500 ring-1 ring-amber-500/40 flex items-center justify-center shadow shadow-amber-500/30">
-              <Hourglass className="size-5 text-white" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-600 dark:text-amber-400">
-                Coming Soon
-              </p>
-              <h3 className="text-[17px] font-bold leading-tight">
-                Hunting tools in the pipeline
-              </h3>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {items.map((item) => {
-              const Icon = item.icon;
-              const colorClasses: Record<string, string> = {
-                amber:
-                  "bg-amber-500/15 ring-amber-500/30 text-amber-600 dark:text-amber-400",
-                rose: "bg-rose-500/15 ring-rose-500/30 text-rose-600 dark:text-rose-400",
-                sky: "bg-sky-500/15 ring-sky-500/30 text-sky-600 dark:text-sky-400",
-                emerald:
-                  "bg-emerald-500/15 ring-emerald-500/30 text-emerald-600 dark:text-emerald-400",
-              };
-              return (
-                <div
-                  key={item.title}
-                  className="rounded-xl ring-1 ring-border/50 bg-card p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`size-9 rounded-lg ring-1 flex items-center justify-center shrink-0 ${colorClasses[item.color]}`}
-                    >
-                      <Icon className="size-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-[13px] font-bold tracking-tight">
-                          {item.title}
-                        </p>
-                        <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/50 ring-1 ring-border/40 px-1.5 py-0.5 rounded-full">
-                          {item.eta}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground leading-snug mt-1">
-                        {item.copy}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <p className="text-[11px] text-muted-foreground/80 mt-4 italic text-center">
-            Every new hunting tool we build will appear here as a tab —
-            one URL for the whole team.
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }
