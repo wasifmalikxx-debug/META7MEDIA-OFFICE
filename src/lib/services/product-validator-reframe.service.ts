@@ -160,9 +160,82 @@ Rules:
 - titleGuidance, tagGuidance, descriptionGuidance are each 3-5 short imperative bullets. Bullets are RULES, not examples.
   GOOD bullet: "Lead with audience and occasion — drop all franchise references."
   BAD bullet:  "Use 'Red Anti-Hero Costume Kids Halloween'" — do not write actual title content.
-- avoidWords[] is the ONE place to be concrete. List the exact words/phrases the team must not include anywhere on the listing. Be specific (e.g. "deadpool", "marvel", "wade wilson") not generic.
 - photoGuidance.dont[] should describe visual elements specifically tied to the IP (iconic masks, signature poses, branded logos). photoGuidance.do[] should give safer alternatives.
-- Never recommend the words: handmade, personalised, custom-made, monogram (those imply buyer-supplied data which the team cannot deliver).`;
+
+CRITICAL — avoidWords precision (flag the right things, not too much):
+
+  Only flag the SPECIFIC IP-bound phrase, never standalone components of it.
+    ✓ "captain america" → flag the phrase
+    ✗ "captain" alone → DO NOT flag (legit in "ship captain", "captain hook costume")
+    ✗ "america" alone → DO NOT flag (legit in "american flag", "americana decor")
+
+    ✓ "iron man" → flag the phrase
+    ✗ "iron" alone → DO NOT flag (legit in "wrought iron decor")
+
+    ✓ "wonder woman" → flag the phrase
+    ✗ "wonder" alone, "woman" alone → DO NOT flag
+
+  Studio / franchise names (single word) are flagged as-is:
+    ✓ "marvel", "disney", "pokemon", "lego" — these ARE the IP
+
+  Test before flagging a single word: would this word, by itself, appear in
+  thousands of legitimate non-IP Etsy listings? If yes, never include it.
+
+NEVER include in avoidWords — these are core Etsy vocabulary:
+
+    cosplay, costume, jumpsuit, halloween, party, kids, boys, girls,
+    women, men, adult, set, gift, prop, suit, dress, outfit, vintage,
+    superhero, hero, anime, gaming, themed
+
+  If a core keyword doesn't fit the SPECIFIC target audience, say so in
+  titleGuidance / tagGuidance — never in avoidWords.
+
+    ✓ titleGuidance bullet: "Lead with 'costume' rather than 'cosplay' —
+      parents shopping for kids' Halloween don't search 'cosplay'."
+    ✗ avoidWords entry: "cosplay" (banning a legit 4M-listing Etsy keyword
+      from a product that IS a costume).
+
+NEVER recommend in any field (these imply buyer-supplied data the team
+cannot deliver, since they ship ready-stock):
+    personalised, personalized, custom-made, custom-order, monogram,
+    monogrammed, "with name", "your name on"
+  Note: "handmade", "artisan", "hand-crafted" are ALLOWED — these are
+  marketing/feature words, not buyer-data promises.
+
+For titleGuidance / tagGuidance specifically:
+  - DO instruct on which audience-appropriate keywords to LEAD with
+  - DO tell the team to drop the franchise / character / brand name
+  - DO NOT tell the team to drop the physical product type (jumpsuit,
+    dress, mug, jewellery, etc. are what the product IS — accurate
+    descriptions rank better than vague alternatives)
+  - DO NOT blanket-ban core Etsy vocab even when the source AE title used it
+
+EXAMPLE — for a Captain America kids' costume:
+
+  GOOD avoidWords (~10-12 entries — IP phrases + commodity tells only):
+    ["captain america", "marvel", "avengers", "replica", "inspired by",
+     "1:1", "aaa", "wholesale", "factory direct", "100pcs", "oem", "bulk"]
+
+  BAD avoidWords (do NOT produce these):
+    ✗ "captain"   (common word, legit in non-IP listings)
+    ✗ "america"   (common word, "american-made", "vintage america")
+    ✗ "cosplay"   (4M+ legit Etsy listings)
+    ✗ "jumpsuit"  (the actual product type)
+    ✗ "superhero" (generic role, not IP)
+    ✗ "kids"      (audience keyword)
+
+  GOOD titleGuidance:
+    - Drop "Captain America" entirely; use a role-based descriptor like
+      "patriotic superhero" or "star-shield hero"
+    - Lead with audience + occasion: "Kids Halloween Costume",
+      "Boys Dress-Up Outfit"
+    - Keep the physical product type (jumpsuit, costume, suit) — accurate
+      descriptions rank better
+    - Stay under 140 characters
+
+  BAD titleGuidance (do NOT produce):
+    ✗ "Avoid 'cosplay' and 'jumpsuit'" (banning legit Etsy vocab)
+    ✗ "Don't use the word 'superhero'" (generic role, not IP)`;
 
 // ─── Image fetching for vision pass ──────────────────────────────────
 
