@@ -245,30 +245,18 @@ function applySort(
  * Etsy+AE hunt flow, and the result UI. Recent hunts live INSIDE
  * NicheInputCard as inline chips (read via useRecentHunts) — see
  * the chip row at the top of the input card for click-to-refill.
- *
- * The optional `initial*` props are kept for backward compat but
- * no longer wired through anywhere; default values are used.
  */
 export function ManualHuntingSection({
-  initialNiche = "",
-  initialStyle = null,
-  initialAudience = null,
   isCeo = false,
 }: {
-  initialNiche?: string;
-  initialStyle?: string | null;
-  initialAudience?: string | null;
   /** CEO sees AE prices + Claude API cost footer; employees don't.
    * CEO ask May 17 2026 — hide all sourcing-cost info from team. */
   isCeo?: boolean;
 } = {}) {
-  // Lazy initializer reads `?niche=` from the URL on first mount —
-  // Daily Trending cards link here as
-  //   /seo-autopilot/product-hunter?niche=boho+jewelry
-  // and the input pre-fills with that string. Falls back to the
-  // `initialNiche` prop, then to "". Doesn't reset on re-render and
-  // doesn't strip the query param (the param re-fires on full reload,
-  // which is the desired UX — the user came here to research that niche).
+  // Lazy initializer reads `?niche=` from the URL on first mount as a
+  // shareable-link convenience (e.g. someone DMs a link with a niche
+  // pre-filled). The parent ProductHunterView strips ?niche= from the
+  // URL right after mount, so refreshes don't re-pin the input.
   const [niche, setNiche] = useState(() => {
     if (typeof window !== "undefined") {
       try {
@@ -278,10 +266,10 @@ export function ManualHuntingSection({
         /* ignore */
       }
     }
-    return initialNiche;
+    return "";
   });
-  const [style, setStyle] = useState<string | null>(initialStyle);
-  const [audience, setAudience] = useState<string | null>(initialAudience);
+  const [style, setStyle] = useState<string | null>(null);
+  const [audience, setAudience] = useState<string | null>(null);
   const [extraCategories, setExtraCategories] = useState<string[]>([]);
 
   // Live list of the user's recent hunts (from localStorage). Used by
@@ -499,7 +487,7 @@ export function ManualHuntingSection({
           />
 
           {result.categories.length === 0 ? (
-            <EmptyResultCard niche={result.niche} />
+            <EmptyResultCard niche={result.niche} isCeo={isCeo} />
           ) : (
             <>
               <HeatmapNav
@@ -960,7 +948,7 @@ function HuntProgress({ niche }: { niche: string }) {
 
           <div className="mt-6 inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80 tabular-nums">
             <Loader2 className="size-3 animate-spin" />
-            <span>Usually 25-35 seconds</span>
+            <span>Usually 30–60 seconds · please don&apos;t refresh</span>
           </div>
         </div>
       </CardContent>
@@ -1044,10 +1032,14 @@ function ResultHero({
           </button>
         </div>
 
-        {/* Cost/duration footer — CEO-only. Employees just see results. */}
+        {/* Cost/duration footer — CEO sees Claude spend; employees just
+            see the wall-clock time. "Claude cost" is explicit so the
+            number isn't read as "this hunt cost the business $0.02
+            end-to-end" (Etsy + AE quota burn isn't tracked here). */}
         {isCeo ? (
           <p className="text-[10px] text-muted-foreground/70 tabular-nums mt-3 pt-3 border-t border-border/40">
-            Cost: ${costUsd.toFixed(4)} · {(durationMs / 1000).toFixed(1)}s
+            Claude cost: ${costUsd.toFixed(4)} ·{" "}
+            {(durationMs / 1000).toFixed(1)}s
           </p>
         ) : (
           <p className="text-[10px] text-muted-foreground/70 tabular-nums mt-3 pt-3 border-t border-border/40">
@@ -1059,7 +1051,13 @@ function ResultHero({
   );
 }
 
-function EmptyResultCard({ niche }: { niche: string }) {
+function EmptyResultCard({
+  niche,
+  isCeo,
+}: {
+  niche: string;
+  isCeo: boolean;
+}) {
   return (
     <Card className="border border-border/60">
       <CardContent className="p-10 text-center">
@@ -1067,8 +1065,10 @@ function EmptyResultCard({ niche }: { niche: string }) {
         <p className="text-sm font-bold">No vetted products found</p>
         <p className="text-[12px] text-muted-foreground mt-1 max-w-md mx-auto leading-relaxed">
           We couldn&apos;t surface high-quality products for &ldquo;{niche}
-          &rdquo;. Try a more specific niche, or check that AliExpress is
-          connected at the top of this page.
+          &rdquo;.{" "}
+          {isCeo
+            ? "Try a more specific niche, or check that AliExpress is connected at the top of this page."
+            : "Try a more specific niche (e.g. “boho boho macramé wall hanging” instead of “home decor”). If this keeps happening, let the CEO know."}
         </p>
       </CardContent>
     </Card>

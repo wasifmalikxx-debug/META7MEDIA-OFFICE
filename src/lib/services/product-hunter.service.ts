@@ -1,16 +1,21 @@
 /**
- * Product Hunter — find underserved Etsy keywords for product
- * hunting on AliExpress.
+ * Product Hunter — find underserved Etsy niches for the team.
  *
- * Given a seed category/product type, this:
- *   1. Asks Haiku to brainstorm ~25 long-tail variants
- *   2. Queries Etsy for each variant in parallel (top 10 + total count
- *      + unique shop count)
- *   3. Scores each on demand · engagement · diversity · long-tail
- *   4. Returns the top hunt candidates sorted by score
+ * Primary entry point: `huntByNiche()`. Given a niche string (+
+ * optional style/audience), it:
+ *   1. Asks Claude to break the niche into 5-8 shop categories
+ *   2. Per category (parallel) → Claude → 4-6 long-tail keywords
+ *   3. Per keyword (parallel) → Etsy listings + total count + score
+ *   4. Per GREAT/GOOD keyword → AliExpress preview + margin
  *
- * The output drives the CEO Product Hunter page — employees should
- * hunt AliExpress for the GREAT / GOOD keywords first.
+ * The UI surfaces a heatmap of keyword cards per category for the
+ * employee to drill into.
+ *
+ * Note: the original seed-keyword `huntProducts()` entry was removed
+ * May 18 2026 along with the orphaned /hunt-products route and
+ * daily-hunt cron — they were CEO-side admin tooling that pre-dated
+ * the niche-based UI and no longer matched anything the employee
+ * could open in the page.
  */
 
 import {
@@ -18,10 +23,8 @@ import {
   type EtsyListing,
 } from "./etsy-api.service";
 import {
-  expandSearchVariants,
   generateNicheBreakdown,
   createCostAccumulator,
-  type CostAccumulator,
 } from "./anthropic.service";
 import {
   searchProductsByKeyword,
@@ -48,14 +51,9 @@ export interface ProductHuntResult {
   }>;
 }
 
-export interface ProductHuntResponse {
-  seedKeyword: string;
-  scanCount: number; // variants Haiku produced
-  evaluated: number; // variants successfully scored (some may fail Etsy queries)
-  totalCostUsd: number; // Anthropic only — Etsy is free
-  durationMs: number;
-  results: ProductHuntResult[]; // sorted desc by score
-}
+// ProductHuntResponse interface removed May 18 2026 — was only used
+// by the deleted huntProducts() seed-keyword entry point. The
+// niche-based pipeline returns NicheHuntResponse instead.
 
 /**
  * Score a single keyword on its opportunity attractiveness for a new /
@@ -213,54 +211,8 @@ async function evaluateKeyword(
   }
 }
 
-/**
- * Run a full scan from a seed keyword. Returns the ranked opportunities
- * + cost telemetry.
- *
- * Cost: 1 Haiku call (~$0.005) + 25 Etsy calls (free, ~7 quota slots
- * each at our 3.3 QPS bucket).
- */
-export async function huntProducts(
-  seedKeyword: string,
-): Promise<ProductHuntResponse> {
-  const startedAt = Date.now();
-  const costAccum: CostAccumulator = createCostAccumulator();
-
-  // Step 1: Haiku brainstorms 25 long-tail variants of the seed keyword
-  const variants = await expandSearchVariants(
-    {
-      seedKeyword: seedKeyword.trim(),
-      productType: seedKeyword.trim(),
-    },
-    costAccum,
-  );
-
-  // Always include the seed itself as a benchmark
-  const candidates = Array.from(
-    new Set([
-      seedKeyword.trim().toLowerCase(),
-      ...variants.map((v) => v.toLowerCase()),
-    ]),
-  ).filter((v) => v.length >= 3 && v.length <= 80);
-
-  // Step 2: query Etsy for each candidate in parallel
-  const settled = await Promise.all(candidates.map(evaluateKeyword));
-  const evaluated = settled.filter(
-    (s): s is ProductHuntResult => s !== null,
-  );
-
-  // Step 3: sort by score desc, then by demand for tiebreak
-  evaluated.sort((a, b) => b.score - a.score || b.totalListings - a.totalListings);
-
-  return {
-    seedKeyword: seedKeyword.trim(),
-    scanCount: candidates.length,
-    evaluated: evaluated.length,
-    totalCostUsd: costAccum.totalCostUsd,
-    durationMs: Date.now() - startedAt,
-    results: evaluated,
-  };
-}
+// huntProducts() removed May 18 2026 — see file header. The
+// niche-based huntByNiche() (below) is the only entry point now.
 
 // ─── Niche-based hunt (May 16 2026 — v2: category-level products) ──
 

@@ -1,28 +1,35 @@
 import { prisma } from "@/lib/prisma";
 
 /**
- * Single source of truth for the SEO Autopilot role gate.
+ * Single source of truth for the SEO Autopilot + Product Hunter role gate.
  *
  * Replicated previously in three places (page.tsx, generate/route.ts,
  * swap-tag/route.ts) which drifted when access policy changed. This
- * helper consolidates the predicate so adding a new role (e.g. partners
- * on May 15 2026) is a one-line change instead of a 3-file edit.
+ * helper consolidates the predicate so adding a new role is a one-line
+ * change instead of a 3-file edit.
  *
- * Access policy (May 15 2026 — partners granted access):
+ * Access policy (May 18 2026 — full Etsy team rollout):
  *  - CEO / SUPER_ADMIN                     → unlimited
  *  - MANAGER (Izaan, EM-4)                 → 8/day
  *  - EM employees (EM-* except EM-4 / 4L)  → 8/day
- *  - Etsy PARTNERs (Awais, Mubeen)         → 8/day  (NEW)
+ *  - AE employees (AE-*)                   → 8/day  (NEW)
+ *  - ME employees (ME-*)                   → 8/day  (NEW)
+ *  - Etsy PARTNERs (Awais, Mubeen)         → 8/day
  *  - Everyone else                         → blocked
  *
  * Zain (Facebook-only partner) is excluded — he has no EM/AE/ME teams
  * so `isEtsyPartner` resolves false for him.
+ *
+ * Note: SEO Autopilot generator quota stays 8/day; Product Hunter has
+ * a separate quota (5/day) tracked in `ProductHunterUsage`.
  */
 
 export interface SeoAutopilotAccess {
   isCeo: boolean;
   isManager: boolean;
   isEmEmployee: boolean;
+  isAeEmployee: boolean;
+  isMeEmployee: boolean;
   isEtsyPartner: boolean;
   canUseRealTool: boolean;
   /** True when the user's daily limit doesn't apply (CEO only). */
@@ -42,6 +49,8 @@ export async function getSeoAutopilotAccess(user: {
     empId.startsWith("EM") &&
     empId !== "EM-4" &&
     empId !== "EM-4L";
+  const isAeEmployee = typeof empId === "string" && empId.startsWith("AE");
+  const isMeEmployee = typeof empId === "string" && empId.startsWith("ME");
 
   // Etsy partner check — only PARTNERs whose teams sit in an Etsy
   // department (EM / AE / ME). Cheap query: partnerId is indexed and
@@ -61,12 +70,19 @@ export async function getSeoAutopilotAccess(user: {
   }
 
   const canUseRealTool =
-    isCeo || isManager || isEmEmployee || isEtsyPartner;
+    isCeo ||
+    isManager ||
+    isEmEmployee ||
+    isAeEmployee ||
+    isMeEmployee ||
+    isEtsyPartner;
 
   return {
     isCeo,
     isManager,
     isEmEmployee,
+    isAeEmployee,
+    isMeEmployee,
     isEtsyPartner,
     canUseRealTool,
     isUnlimited: isCeo,

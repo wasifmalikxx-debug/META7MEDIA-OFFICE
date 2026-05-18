@@ -4,12 +4,17 @@ import { json, error, requireAuth } from "@/lib/api-helpers";
 import { huntByNiche } from "@/lib/services/product-hunter.service";
 import { getActiveTokenForUser } from "@/lib/services/aliexpress-api.service";
 import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
-import { prisma } from "@/lib/prisma";
+import {
+  checkAndConsumeProductHunter,
+  ProductHunterQuotaExceededError,
+  PRODUCT_HUNTER_DAILY_LIMIT,
+} from "@/lib/services/product-hunter-quota.service";
+import { findCeoUser } from "@/lib/services/ceo-user.service";
 
 /**
  * POST /api/seo-autopilot/hunt-by-niche
  *
- * The new Manual Hunting pipeline (May 16 2026 redesign).
+ * Manual Hunting pipeline.
  *
  * Input:
  *   - niche (required)             e.g. "boho jewelry"
@@ -21,14 +26,19 @@ import { prisma } from "@/lib/prisma";
  *   1. Claude → niche → 5-8 shop categories
  *   2. Per category (parallel) → Claude → 4-6 keywords
  *   3. Per keyword (parallel) → Etsy demand + score
- *   4. Per GREAT/GOOD keyword → AliExpress top-3 preview + margin
+ *   4. Per GREAT/GOOD keyword → AliExpress preview + margin
  *
  * Returns the results organized by category.
  *
- * Access (May 16 2026 — EM-team rollout): anyone with
- * canUseRealTool from the shared SEO Autopilot predicate. That's
- * CEO + Etsy partners + Izaan (EM-4) + EM employees. AE side
- * always uses the CEO's stored token regardless of caller.
+ * Access (May 18 2026 — full Etsy team rollout): anyone with
+ * canUseRealTool from the shared SEO Autopilot predicate — CEO +
+ * Izaan + EM + AE + ME + Etsy partners.
+ *
+ * Quota: PRODUCT_HUNTER_DAILY_LIMIT (5/day) per non-CEO user. Each
+ * hunt burns ~64 Etsy calls + ~50 AE calls, so the cap protects the
+ * shared API quotas, not just the Anthropic dollar cost.
+ *
+ * AE side always uses the CEO's stored token regardless of caller.
  */
 
 export const dynamic = "force-dynamic";
@@ -76,13 +86,29 @@ export async function POST(request: NextRequest) {
     return error(err instanceof Error ? err.message : "Invalid payload", 400);
   }
 
-  // CEO's AliExpress token powers the AE preview step.
-  // If not connected, the pipeline still runs but skips AE previews —
-  // employee sees a banner with reconnect instructions on the page itself.
-  const ceoUser = await prisma.user.findFirst({
-    where: { role: "SUPER_ADMIN" },
-    select: { id: true },
-  });
+  // Quota check — reserve a slot before the expensive Claude + Etsy +
+  // AE work. CEO is unlimited; everyone else hits PRODUCT_HUNTER_DAILY_LIMIT.
+  try {
+    await checkAndConsumeProductHunter({
+      userId: session.user.id,
+      isUnlimited: access.isUnlimited,
+    });
+  } catch (err) {
+    if (err instanceof ProductHunterQuotaExceededError) {
+      return error(
+        `You've used today's ${PRODUCT_HUNTER_DAILY_LIMIT} Product Hunter scans. Resets at PKT midnight.`,
+        429,
+      );
+    }
+    throw err;
+  }
+
+  // CEO's AliExpress token powers the AE preview step. Pin the lookup
+  // to the canonical CEO user via findCeoUser() rather than findFirst
+  // on the SUPER_ADMIN role — with multi-office in prod, a second
+  // admin could be inserted later and findFirst would pick whoever
+  // happened to be first in row order.
+  const ceoUser = await findCeoUser();
   const accessToken = ceoUser
     ? await getActiveTokenForUser(ceoUser.id)
     : null;

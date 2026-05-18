@@ -145,7 +145,7 @@ export interface EtsyListing {
   views?: number;
   num_favorers?: number;
   taxonomy_id?: number;
-  // Shop ownership — used by the opportunity scanner to measure top-10
+  // Shop ownership — used by Product Hunter to measure top-10
   // diversity (how many unique shops dominate a search). Not every
   // search response includes it; treat as optional.
   shop_id?: number;
@@ -215,9 +215,9 @@ export async function searchActiveListings(
 
 /**
  * Same search, but ALSO returns the total `count` from Etsy's response —
- * the universe of active listings matching the keyword. Used by the
- * opportunity scanner where saturation (count) is the headline signal,
- * not just the top 20 sample.
+ * the universe of active listings matching the keyword. Used by Product
+ * Hunter where saturation (count) is the headline signal, not just the
+ * top 20 sample.
  */
 export async function searchActiveListingsWithCount(
   keywords: string,

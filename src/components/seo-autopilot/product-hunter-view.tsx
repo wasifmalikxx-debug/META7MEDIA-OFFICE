@@ -9,6 +9,7 @@ import {
   Heart,
   Plug,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ManualHuntingSection } from "./manual-hunting-section";
@@ -104,30 +105,65 @@ export function useRecentHunts(): RecentHunt[] {
 // ─── Main view ──────────────────────────────────────────────────────
 
 /**
- * Product Hunter is a single-pane tool: type a seed, get underserved
- * Etsy keywords scored by demand + engagement + shop diversity.
+ * Product Hunter — finds underserved Etsy niches before the team goes
+ * to AliExpress. Single-pane tool: type a niche, get a heatmap of
+ * scored keywords with previews.
  *
- * History (deleted features, kept here for context):
- *   - Reverse Hunt   (May 17 2026): paste AE URL → verdict. CEO removed.
- *   - Image Hunt     (May 17 2026): paste image → AE matches. AE
- *                    image search endpoint never worked across 5
- *                    request formats. CEO removed.
- *   - Daily Trending (May 18 2026): morning AE feed scoped to niche
- *                    book. Tabs + service + cron removed entirely.
- *   - "More Soon"    (May 18 2026): roadmap card placeholder. Removed.
- *
- * Product Hunter is now ONE tool, no tabs.
+ * Launched to the full Etsy team May 18 2026 (CEO + Izaan + EM + AE +
+ * ME + Etsy partners). HR / Facebook / Zain see a Coming Soon placeholder.
  */
 export function ProductHunterView({
-  userRole = "SUPER_ADMIN",
+  userRole,
 }: {
   /** Role gate for the AE connection banner. CEO sees full controls,
    * partners see status-only (no Connect button), everyone else gets
-   * the banner hidden entirely. Defaults to SUPER_ADMIN for backward
-   * compat with calls that don't pass the prop yet. */
-  userRole?: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
+   * the banner hidden entirely. Required — no default (the previous
+   * "SUPER_ADMIN" default was a footgun: if ever called without the
+   * prop, every viewer would render as CEO). */
+  userRole: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
 }) {
   const isCeo = userRole === "SUPER_ADMIN";
+
+  // Strip ?aliConnect= / ?reason= / ?niche= from the URL on first
+  // mount so subsequent reloads don't re-fire the OAuth-completion
+  // toast or hijack the niche input. The AliExpressHeaderPill below
+  // only mounts for CEO + Partner viewers (early-return for everyone
+  // else), so the cleanup lives HERE in the always-rendered parent
+  // instead of inside the pill component.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const flag = url.searchParams.get("aliConnect");
+    let dirty = false;
+    if (flag) {
+      const reason = url.searchParams.get("reason");
+      if (flag === "success") {
+        toast.success("AliExpress connected", {
+          description: "Full-loop product hunting is now active.",
+        });
+      } else if (flag === "denied") {
+        toast.error("AliExpress authorization cancelled");
+      } else {
+        toast.error("AliExpress connection failed", {
+          description: reason ?? flag,
+        });
+      }
+      url.searchParams.delete("aliConnect");
+      url.searchParams.delete("reason");
+      dirty = true;
+    }
+    // The ?niche= deep-link was used by the now-deleted Daily Trending
+    // cards. We still let ManualHuntingSection's lazy initializer read
+    // the value once, but then we strip it so a refresh doesn't
+    // re-pin the input to that niche forever.
+    if (url.searchParams.has("niche")) {
+      url.searchParams.delete("niche");
+      dirty = true;
+    }
+    if (dirty) {
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
 
   return (
     <div className="relative pb-12">
@@ -144,7 +180,31 @@ export function ProductHunterView({
           result hero (CEO-only) — AE product prices stay visible to
           everyone. */}
       <div className="max-w-5xl mx-auto space-y-6">
+        <FeedbackNotice />
         <ManualHuntingSection isCeo={isCeo} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Feedback notice ────────────────────────────────────────────────
+
+function FeedbackNotice() {
+  return (
+    <div className="rounded-xl bg-gradient-to-r from-sky-500/12 via-violet-500/8 to-emerald-500/12 ring-1 ring-sky-500/30 px-4 py-3 flex items-start gap-3">
+      <div className="size-9 rounded-lg bg-sky-500/20 ring-1 ring-sky-500/40 flex items-center justify-center shrink-0">
+        <MessageCircle className="size-4 text-sky-700 dark:text-sky-400" />
+      </div>
+      <div className="min-w-0 space-y-1">
+        <p className="text-[12px] font-bold text-sky-900 dark:text-sky-200 leading-tight">
+          Tip: share what you find — and what&apos;s missing
+        </p>
+        <p className="text-[11px] text-sky-800/85 dark:text-sky-200/80 leading-relaxed">
+          If a niche returns no results, scoring feels off, or a
+          category is missing from one of your products — tell the CEO
+          so the rules can be tuned. The more feedback the team gives,
+          the sharper the picks get.
+        </p>
       </div>
     </div>
   );
@@ -219,12 +279,12 @@ function HeroBanner({
           background is full-width. */}
       <div className="relative max-w-5xl mx-auto px-7 sm:px-9 py-8 sm:py-10">
         <div className="flex items-center gap-2 mb-5 flex-wrap">
-          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 shadow-inner">
+          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-emerald-500/25 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-emerald-300/40 shadow-inner shadow-emerald-500/20">
             <span className="relative flex size-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-80" />
               <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
             </span>
-            CEO admin · Beta
+            Etsy team · Live
           </span>
           <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
             <Sparkles className="size-3" />
@@ -328,32 +388,14 @@ function AliExpressHeaderPill({
 
   // IMPORTANT: hooks MUST be called unconditionally — the role gate
   // happens AFTER all hooks (early return below).
+  //
+  // Note: ?aliConnect= / ?reason= URL cleanup + completion toast moved
+  // to the parent ProductHunterView component, which renders for every
+  // role. Doing it here meant EM / AE / ME viewers (where this pill
+  // returns null early) would have left those params in the URL
+  // forever, hijacking the niche-input lazy initializer.
   useEffect(() => {
     let cancelled = false;
-
-    // Read ?aliConnect=success / denied / state_mismatch from URL on
-    // first mount and show a toast — then strip the query param so
-    // refreshes don't re-fire it.
-    const url = new URL(window.location.href);
-    const flag = url.searchParams.get("aliConnect");
-    if (flag) {
-      const reason = url.searchParams.get("reason");
-      if (flag === "success") {
-        toast.success("AliExpress connected", {
-          description: "Full-loop product hunting is now active.",
-        });
-      } else if (flag === "denied") {
-        toast.error("AliExpress authorization cancelled");
-      } else {
-        toast.error("AliExpress connection failed", {
-          description: reason ?? flag,
-        });
-      }
-      url.searchParams.delete("aliConnect");
-      url.searchParams.delete("reason");
-      window.history.replaceState({}, "", url.toString());
-    }
-
     async function load() {
       try {
         const res = await fetch("/api/aliexpress/status");

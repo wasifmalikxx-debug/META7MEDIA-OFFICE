@@ -461,14 +461,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     </SidebarMenuItem>
                   )}
                   {/* Product Hunter — finds underserved Etsy niches before
-                      sending the team to AliExpress. Shown to everyone in
-                      the Etsy Tools group (gated above by showTools).
-                      Pill differentiates by real-tool access:
-                        - CEO + Izaan + EM employees + Etsy partners →
-                          green "BETA" pill with pulsing dot (real tool).
-                        - HR + AE/ME employees → violet "SOON" pill (lands
-                          on the Coming Soon placeholder).
-                      Mirrors the SEO Autopilot link below. */}
+                      sending the team to AliExpress. Launched to the full
+                      Etsy team May 18 2026 (CEO + Izaan + EM + AE + ME +
+                      Etsy partners). HR sees "Soon".
+                      Mirrors the SEO Autopilot access predicate, which
+                      now also includes AE / ME employees. */}
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/seo-autopilot/product-hunter" />}
@@ -484,7 +481,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
                             <span className="relative inline-flex size-1 rounded-full bg-emerald-500" />
                           </span>
-                          Beta
+                          Live
                         </span>
                       ) : (
                         <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">

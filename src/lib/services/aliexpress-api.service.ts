@@ -631,74 +631,16 @@ export async function searchProductsByKeyword(
   return { totalResults: 0, products: [] };
 }
 
-/**
- * Search AliExpress for the top-selling products in a niche.
- *
- * Used by Daily Trending's TRENDING mode — for each niche, we fetch
- * the highest-volume products so they surface as "today's hot picks."
- *
- * Same plumbing as `searchProductsByKeyword` but pinned to
- * volume-desc sort + a wider page size, so the cron gets a meaningful
- * pool to dedupe against the last 7 days' history.
- */
-export async function searchByVolumeDesc(
-  keyword: string,
-  options: {
-    accessToken: string;
-    pageSize?: number;
-  },
-): Promise<ProductSearchResponse> {
-  return searchProductsByKeyword(keyword, {
-    accessToken: options.accessToken,
-    pageSize: options.pageSize ?? 20,
-    // AE's text.search accepts SORT_FIELD enum values, not loose
-    // "orders_desc" style. May 16 2026: switched to the official
-    // values after the FRESH source (orders_asc) returned 0 products
-    // across every niche — AE was silently ignoring/hanging on
-    // unrecognized sort values. orders_desc worked for some niches
-    // because AE happened to fall back to a reasonable default; for
-    // others it returned junk that got filtered out.
-    sortBy: "LAST_VOLUME_DESC" as "orders_desc",
-    targetCurrency: "USD",
-  });
-}
+// searchByVolumeDesc + searchByVolumeAsc removed May 18 2026 — they
+// were Daily Trending's only callers, and Daily Trending was deleted.
+// If a future hunting tool needs volume-sorted AE search, call
+// searchProductsByKeyword directly with sortBy: "LAST_VOLUME_DESC" or
+// "LAST_VOLUME_ASC" (those are the official AE SORT_FIELD enum values
+// — loose aliases like "orders_desc" cause AE to silently return junk).
 
 /**
- * Search AliExpress for new / early-momentum listings in a niche.
- *
- * Surfaces products that have SOME validation (a handful of orders +
- * good rating) but haven't yet gone viral.
- *
- * AE DS API doesn't expose a "newest" sort directly. The closest
- * proxy is volume-asc — products with the FEWEST recent orders are
- * either brand-new SKUs or duds. Callers filter the duds via rating +
- * an orders-count floor (5+) so only legit new arrivals survive.
- *
- * Note: searchByVolumeAsc has no active caller after Daily Trending
- * was removed on May 18 2026. Kept exported so future hunting tools
- * (Fresh Finds, watchlists) can pick it back up without re-deriving
- * the AE sort semantics.
- */
-export async function searchByVolumeAsc(
-  keyword: string,
-  options: {
-    accessToken: string;
-    pageSize?: number;
-  },
-): Promise<ProductSearchResponse> {
-  return searchProductsByKeyword(keyword, {
-    accessToken: options.accessToken,
-    pageSize: options.pageSize ?? 30,
-    // Use AE's official SORT_FIELD enum value, not loose alias.
-    // See searchByVolumeDesc comment above for the diagnostic story.
-    sortBy: "LAST_VOLUME_ASC" as "orders_asc",
-    targetCurrency: "USD",
-  });
-}
-
-/**
- * Fetch a single product by ID. Used by Play 2 (reverse hunt) +
- * Play 5 (margin calc) + the Product Validator.
+ * Fetch a single product by ID. Sole caller today: the Product Validator
+ * (the auto-from-URL mode of the price calculator was removed May 18 2026).
  *
  * Errors are propagated so the caller can surface a meaningful message
  * (auth failures, rate limits, permission denial). A null return ONLY

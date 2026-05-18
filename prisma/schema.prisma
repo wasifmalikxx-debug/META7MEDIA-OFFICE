@@ -220,6 +220,7 @@ model User {
   seoAutopilotUsage      SeoAutopilotUsage[] @relation("SeoAutopilotUsageUser")
   seoAutopilotLogs       SeoAutopilotLog[]   @relation("SeoAutopilotLogUser")
   seoAutopilotTagSwaps   SeoAutopilotTagSwapLog[] @relation("SeoAutopilotTagSwapUser")
+  productHunterUsage     ProductHunterUsage[] @relation("ProductHunterUsageUser")
   aliExpressTokens       AliExpressToken[]   @relation("AliExpressTokenUser")
   complaintsSubmitted    Complaint[]        @relation("ComplaintSubmitter")
   complaintsResolved     Complaint[]        @relation("ComplaintResponder")
@@ -949,6 +950,28 @@ model SeoAutopilotUsage {
   id     String   @id @default(cuid())
   userId String
   user   User     @relation("SeoAutopilotUsageUser", fields: [userId], references: [id], onDelete: Cascade)
+  date   DateTime @db.Date
+  count  Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+// Per-user daily quota tracker for Product Hunter. Mirrors
+// SeoAutopilotUsage. Each hunt burns ~$0.02 Anthropic, ~64 Etsy calls,
+// and ~50 AliExpress calls — without a per-user cap, one bored
+// employee clicking "hunt" 20× could burn 25% of the daily Etsy cap.
+//
+// Limit: 5/day per employee (CEO unlimited). Reset bucketed by PKT
+// midnight (Date column truncates to day). Same upsert-style write
+// pattern as SeoAutopilotUsage — one row per (user, date) ever.
+model ProductHunterUsage {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation("ProductHunterUsageUser", fields: [userId], references: [id], onDelete: Cascade)
   date   DateTime @db.Date
   count  Int      @default(0)
 
