@@ -209,7 +209,7 @@ export async function validateProduct(
 
       if (/InvalidAccessToken|AccessTokenExpired|invalid_token|expired/i.test(raw)) {
         throw new Error(
-          "AliExpress connection expired. Ask Wasif to reconnect on Product Hunter, then retry.",
+          "AliExpress connection expired. Ask the CEO to reconnect on Product Hunter, then retry.",
         );
       }
       if (/InsufficientPermission|Permission/i.test(raw)) {

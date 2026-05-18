@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   const accessToken = await getActiveTokenForUser(ceoUser.id);
   if (!accessToken) {
     return error(
-      "AliExpress not connected — ask Wasif to connect on Product Hunter",
+      "AliExpress not connected — ask the CEO to connect on Product Hunter",
       409,
     );
   }

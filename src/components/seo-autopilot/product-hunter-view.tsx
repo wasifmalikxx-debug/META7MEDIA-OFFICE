@@ -403,7 +403,7 @@ function AliExpressHeaderPill({
         title="AliExpress not connected — only the CEO can attach an account"
       >
         <Plug className="size-3" />
-        AE off · ask Wasif
+        AE off · ask the CEO
       </span>
     );
   }

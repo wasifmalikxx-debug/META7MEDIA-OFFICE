@@ -171,9 +171,10 @@ export function ProductHunterComingSoon() {
               CEO-led pilot first
             </p>
             <p className="text-[12px] text-amber-800/85 dark:text-amber-200/80 mt-1 leading-relaxed">
-              Wasif is running the early scans himself to validate which niche
-              signals actually translate into AliExpress wins. Once the
-              picks are proven, the tool opens up to the team.
+              The CEO is running the early scans personally to validate
+              which niche signals actually translate into AliExpress
+              wins. Once the picks are proven, the tool opens up to the
+              team.
             </p>
           </div>
         </CardContent>

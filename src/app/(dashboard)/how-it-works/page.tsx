@@ -189,7 +189,7 @@ export default async function HowItWorksPage() {
       </PolicyCard>
 
       <p className="text-[10px] text-center text-muted-foreground/40 pb-4 pt-2">
-        META7MEDIA AI Office Manager — Developed by Wasif Malik, CEO
+        META7MEDIA AI Office Manager — Built by the CEO
       </p>
     </div>
   );

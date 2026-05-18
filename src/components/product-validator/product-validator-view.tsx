@@ -530,8 +530,8 @@ function BetaTestNotice() {
           The rule set and AI listing guidance are new. If a verdict
           looks wrong, a product gets blocked unfairly, or the
           generated strategy doesn&apos;t fit one of your niches —
-          share the AliExpress URL + a note with Wasif so the rules
-          can be tuned.
+          share the AliExpress URL + a note with the CEO so the
+          rules can be tuned.
         </p>
       </div>
     </div>

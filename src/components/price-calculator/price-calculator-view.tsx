@@ -90,7 +90,7 @@ export function PriceCalculatorView({
         const body = await res.json().catch(() => ({}));
         if (res.status === 409) {
           throw new Error(
-            "AliExpress not connected. Wasif needs to connect it on Product Hunter first.",
+            "AliExpress not connected. The CEO needs to connect it on Product Hunter first.",
           );
         }
         throw new Error(body?.error ?? `Failed (${res.status})`);
