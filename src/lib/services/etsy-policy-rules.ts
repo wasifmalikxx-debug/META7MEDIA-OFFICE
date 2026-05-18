@@ -365,23 +365,41 @@ const IP_RULES: PolicyRule[] = [
     severity: "block",
     matchType: "substring",
     patterns: [
+      // Studios & franchises (catches generic-named products)
       "disney", "pixar", "marvel", "dc comics",
       "star wars", "harry potter", "lord of the rings", "lotr ",
+
+      // Disney / Pixar characters
       "mickey mouse", "minnie mouse", "donald duck", "goofy",
       "frozen elsa", "moana", "lion king",
-      "batman", "superman", "spider-man", "spiderman",
-      "iron man", "captain america",
-      "wonder woman",
-      // Note: "thor", "hulk", "joker" removed — false-positives on
-      // "thoroughly", "hulking", playing-card "joker". The broader
-      // "marvel" + "dc comics" patterns already catch the IP angle
-      // for products that name those characters directly.
+
+      // Marvel characters (added May 18 — Deadpool / Wolverine / X-Men
+      // were missed by the original list, causing a false-SAFE on a
+      // Deadpool costume listing)
+      "batman", "superman", "spider-man", "spiderman", "spider man",
+      "iron man", "ironman", "captain america",
+      "wonder woman", "wonderwoman",
+      "deadpool", "dead pool", "wolverine", "x-men", "x men",
+      "black panther", "doctor strange", "ant-man", "antman",
+      "venom symbiote", "groot ", "rocket raccoon",
+      "loki marvel", "scarlet witch", "doctor doom",
+      // Note: "thor", "hulk", "joker" still excluded — false-positives
+      // on "thoroughly", "hulking", playing-card "joker". The broader
+      // "marvel" + "dc comics" patterns catch products that name them.
+
+      // DC characters
+      "harley quinn", "harleyquinn", "the flash dc", "aquaman",
+      "green lantern", "robin batman", "catwoman dc",
+
+      // Anime / video game / cartoon IPs
       "pokemon", "pikachu", "naruto", "dragon ball", " goku ",
       "sonic the hedgehog", "super mario", "mario bros",
       "minecraft", "fortnite",
       "barbie", "lego",
       "hello kitty", "sanrio",
       "studio ghibli", "totoro",
+      "one piece luffy", "demon slayer", "tanjiro",
+      "attack on titan", "my hero academia",
     ],
     label: "Copyrighted characters",
     policyClause: "Prohibited Items Policy § 5 — IP Infringement",
