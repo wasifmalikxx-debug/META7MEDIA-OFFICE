@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SeoAutopilotComingSoon } from "@/components/seo-autopilot/coming-soon-view";
 import { SeoAutopilotView } from "@/components/seo-autopilot/autopilot-view";
+import { SeoAutopilotHero } from "@/components/seo-autopilot/seo-autopilot-hero";
 import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
 
 export const dynamic = "force-dynamic";
@@ -9,23 +10,22 @@ export const dynamic = "force-dynamic";
 /**
  * SEO Autopilot — AI-powered Etsy listing generator.
  *
- * **Etsy team + Etsy partners (May 15 2026)**: rollout broadened from
- * EM-only to include Etsy partners (Awais, Mubeen). AE / ME employees
- * still see Coming Soon; we'll fold them in once we validate quota +
- * cost holds at this scale.
+ * **Full Etsy team rollout (May 18 2026)** — opened to AE + ME
+ * employees alongside CEO, Izaan, EM, and Etsy partners. No more Beta
+ * framing.
  *
- * Daily limit: 8 generations per Pakistan calendar day (CEO unlimited).
- * The API route mirrors this check server-side, so even if a non-EM
- * user reaches the real UI (e.g. via a stale page bundle) the backend
- * refuses to generate.
+ * Daily limit: 10 generations per Pakistan calendar day (CEO unlimited).
+ * The API route mirrors this check server-side, so even a stale
+ * client bundle can't bypass the gate.
  *
  * Page-level access:
  *  - CEO / SUPER_ADMIN                     → REAL tool · unlimited
- *  - MANAGER (Izaan, EM-4)                 → REAL tool · 8/day
- *  - EM employees (EM-* except EM-4 / 4L)  → REAL tool · 8/day
- *  - Etsy PARTNERs (Awais, Mubeen)         → REAL tool · 8/day  ← NEW
+ *  - MANAGER (Izaan, EM-4)                 → REAL tool · 10/day
+ *  - EM employees (EM-* except EM-4 / 4L)  → REAL tool · 10/day
+ *  - AE employees (AE-*)                   → REAL tool · 10/day
+ *  - ME employees (ME-*)                   → REAL tool · 10/day
+ *  - Etsy PARTNERs (Awais, Mubeen)         → REAL tool · 10/day
  *  - HR Admin                              → Coming Soon
- *  - AE / ME employees                     → Coming Soon (test phase)
  *  - Non-Etsy PARTNER (Zain / FB)          → BLOCKED
  *  - EM-4L (non-Etsy ecom)                 → BLOCKED
  *  - SMM-* (Facebook team)                 → BLOCKED
@@ -69,13 +69,21 @@ export default async function SeoAutopilotPage() {
   }
 
   if (access.canUseRealTool) {
-    // No PageHeader — the hero banner inside the view already provides
-    // the title + tagline. PageHeader was a duplicate.
-    // Pass isCeo so the inline history section can hide cost UI from
-    // non-CEO users — only Wasif sees what each gen costs.
-    return <SeoAutopilotView isCeo={access.isCeo} />;
+    // Full-bleed hero + constrained content column — same shell as
+    // the Price Calculator, Product Hunter, and Product Validator
+    // pages. All four Etsy Tools now share the same page-level
+    // structure.
+    return (
+      <div className="relative pb-12">
+        <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
+          <SeoAutopilotHero />
+        </div>
+        <SeoAutopilotView isCeo={access.isCeo} />
+      </div>
+    );
   }
 
-  // AE / ME employees + HR see Coming Soon until we broaden again.
+  // HR Admin sees Coming Soon. AE/ME employees now have full access
+  // (May 18 2026 expansion) — they no longer land here.
   return <SeoAutopilotComingSoon />;
 }

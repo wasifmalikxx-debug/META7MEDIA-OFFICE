@@ -425,15 +425,19 @@ export function AppSidebar({ user }: AppSidebarProps) {
               user.employeeId?.startsWith("AE") ||
               user.employeeId?.startsWith("ME")) &&
             user.employeeId !== "EM-4L";
-          // SEO Autopilot live roster (May 15 2026) — CEO + Izaan + EM
-          // employees + Etsy partners (Awais, Mubeen). AE/ME teams + HR
-          // still see "Soon". Mirrors page.tsx + API route gate.
+          // Etsy Tools sidebar group — shown to anyone on the Etsy
+          // side of the org (CEO, HR Admin, Etsy partners, Izaan,
+          // EM/AE/ME employees). Individual entries inside no longer
+          // need their own pill predicates after the May 18 launch
+          // pass — every tool is fully live for the Etsy team and
+          // dropped its Beta badge.
           const isEmEmployee =
             user.employeeId?.startsWith("EM") &&
             user.employeeId !== "EM-4" &&
             user.employeeId !== "EM-4L";
-          const isEmTeam = isIzaan || isEmEmployee;
-          const hasAutopilotBeta = isCeo || isEmTeam || isEtsyPartner;
+          // `isEmEmployee` kept exported via the closure for any
+          // future per-entry gate that needs it.
+          void isEmEmployee;
           const showTools =
             isCeo || isHrAdmin || isIzaan || isEtsyPartner || isEtsyEmployee;
           if (!showTools) return null;
@@ -513,6 +517,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       <span>Price Calculator</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  {/* SEO Autopilot — launched to the full Etsy team
+                      May 18 2026 (CEO + Izaan + EM + AE + ME + Etsy
+                      partners). No pill — matches the Calculator +
+                      Product Hunter + Product Validator pattern.
+                      Users without access still land on Coming Soon
+                      when clicking through. */}
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/seo-autopilot" />}
@@ -520,23 +530,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     >
                       <Sparkles className="size-4" />
                       <span>SEO Autopilot</span>
-                      {/* Live for: CEO + Izaan + EM employees + Etsy
-                          partners (Awais, Mubeen) → green "BETA" pill with
-                          a pulsing dot. AE/ME/HR still see Coming Soon →
-                          violet "SOON" pill. */}
-                      {hasAutopilotBeta ? (
-                        <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
-                          <span className="relative flex size-1">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                            <span className="relative inline-flex size-1 rounded-full bg-emerald-500" />
-                          </span>
-                          Beta
-                        </span>
-                      ) : (
-                        <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
-                          Soon
-                        </span>
-                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
