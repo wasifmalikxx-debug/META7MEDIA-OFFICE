@@ -524,7 +524,7 @@ function BetaTestNotice() {
       </div>
       <div className="min-w-0 space-y-1">
         <p className="text-[12px] font-bold text-amber-900 dark:text-amber-200 leading-tight">
-          Beta version · EM team is testing this tool
+          Beta version · EM team and Etsy partners are testing this tool
         </p>
         <p className="text-[11px] text-amber-800/85 dark:text-amber-200/80 leading-relaxed">
           The rule set and AI listing guidance are new. If a verdict
@@ -1713,7 +1713,7 @@ function HeroBanner() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-80" />
               <span className="relative inline-flex size-2 rounded-full bg-amber-400" />
             </span>
-            Beta · EM team testing
+            Beta · EM team + partners
           </span>
           <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
             <ShieldCheck className="size-3" />

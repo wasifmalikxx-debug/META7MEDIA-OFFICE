@@ -504,14 +504,16 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       no sub-routes. */}
 
                   {/* Product Validator — pre-listing Etsy policy check.
-                      Beta-launched to the EM team on May 18 2026.
-                      Predicate: CEO + Izaan (EM-4) + EM-* employees
-                      (excluding EM-4L). AE / ME / Partners still on
-                      Coming Soon — they roll in after the EM team
-                      validates the tool. Reopen wider access in
-                      product-validator-access.ts. */}
+                      Beta-launched to EM team + Etsy partners on
+                      May 18 2026. Predicate: CEO + Izaan (EM-4) +
+                      EM-* employees (excluding EM-4L) + Etsy
+                      partners (Awais, Mubeen). AE / ME employees
+                      still on Coming Soon — they roll in after this
+                      wave validates the tool. Reopen wider access
+                      in product-validator-access.ts. */}
                   {(() => {
-                    const hasValidator = isCeo || isIzaan || isEmEmployee;
+                    const hasValidator =
+                      isCeo || isIzaan || isEmEmployee || isEtsyPartner;
                     return (
                       <SidebarMenuItem>
                         <SidebarMenuButton
