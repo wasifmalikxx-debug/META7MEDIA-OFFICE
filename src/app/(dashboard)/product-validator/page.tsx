@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { ProductValidatorView } from "@/components/product-validator/product-validator-view";
 import { ProductValidatorComingSoon } from "@/components/product-validator/product-validator-coming-soon";
+import { ProductValidatorHero } from "@/components/product-validator/product-validator-hero";
 import { getProductValidatorAccess } from "@/lib/services/product-validator-access";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,19 @@ export default async function ProductValidatorPage() {
   });
 
   if (access.canUseRealTool) {
-    return <ProductValidatorView />;
+    // Full-bleed hero + constrained content column — same layout as
+    // the Price Calculator and Product Hunter pages so the four Etsy
+    // Tools all look like one product family.
+    return (
+      <div className="relative pb-12">
+        <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
+          <ProductValidatorHero />
+        </div>
+        <div className="max-w-5xl mx-auto">
+          <ProductValidatorView />
+        </div>
+      </div>
+    );
   }
 
   return <ProductValidatorComingSoon />;

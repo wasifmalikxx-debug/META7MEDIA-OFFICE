@@ -362,234 +362,142 @@ export function ProductValidatorView() {
   }
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Slim premium banner — replaces the heavy dark hero. Matches
-          the Price Calculator's ReminderBanner pattern (gradient,
-          glow blobs, frosted icon chip, status pill on the right). */}
-      <PreListingBanner />
+    <div className="space-y-6">
+      {/* Input card — clean white card matching the Price Calculator's
+          input zone: shadow-none, generous padding, professional
+          segmented control for mode, oversized inputs. */}
+      {!loading && (
+        <Card className="border shadow-none">
+          <CardContent className="p-6 sm:p-8 space-y-6">
+            {/* Section label */}
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-[0.16em] flex items-center gap-1.5">
+                <ShieldCheck className="size-3" />
+                {mode === "url"
+                  ? "Aliexpress.com product URL"
+                  : "Manual product submission"}
+              </Label>
+              <p className="hidden sm:block text-[10px] text-muted-foreground/60 tabular-nums">
+                {mode === "url" ? "URL check" : "Manual check"}
+              </p>
+            </div>
 
-      <div className="max-w-3xl mx-auto space-y-6">
-        {/* Input card — clean white card matching the calculator's
-            input zone: shadow-none, generous padding, centered, with
-            a small uppercase tag-style label leading each section. */}
-        {!loading && (
-          <Card className="border shadow-none">
-            <CardContent className="p-6 sm:p-8 space-y-6">
-              {/* Section label */}
-              <div className="flex items-center justify-between gap-3">
-                <Label className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-[0.16em] flex items-center gap-1.5">
-                  <ShieldCheck className="size-3" />
-                  {mode === "url"
-                    ? "Aliexpress.com product URL"
-                    : "Manual product submission"}
-                </Label>
-                <p className="hidden sm:block text-[10px] text-muted-foreground/60 tabular-nums">
-                  {mode === "url" ? "URL check" : "Manual check"}
-                </p>
-              </div>
+            {/* Mode toggle — professional underline-style segmented
+                control. Cleaner than the icon-card version: row of
+                two equal-width buttons, small leading icon, label
+                above sub-label, active gets a thin violet underline
+                bar + bold weight. */}
+            <ModeSegmentedControl
+              mode={mode}
+              onChange={setMode}
+              disabled={loading}
+            />
 
-              {/* Mode toggle — calculator-style segmented control */}
-              <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-1 ring-1 ring-border/40">
-                <ModeButton
-                  active={mode === "url"}
-                  onClick={() => setMode("url")}
-                  disabled={loading}
-                  icon={Link2}
-                  gradient="from-violet-500 to-emerald-500"
-                  label="URL check"
-                  sub="aliexpress.com only"
-                />
-                <ModeButton
-                  active={mode === "manual"}
-                  onClick={() => setMode("manual")}
-                  disabled={loading}
-                  icon={PenLine}
-                  gradient="from-emerald-500 to-amber-500"
-                  label="Manual check"
-                  sub="Title + reference photos"
-                />
-              </div>
-
-              {/* URL mode — bigger input, calculator-grade typography */}
-              {mode === "url" && (
-                <div className="space-y-3">
-                  <div className="relative">
-                    <Link2 className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground/40 pointer-events-none" />
-                    <Input
-                      type="text"
-                      value={urlInput}
-                      onChange={(e) => handleUrlChange(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && canSubmit()) handleValidate();
-                      }}
-                      placeholder="https://www.aliexpress.com/item/…"
-                      disabled={loading}
-                      autoFocus
-                      className="h-16 pl-14 pr-4 text-[15px] font-medium"
-                    />
-                  </div>
-                  <UsUrlNotice />
+            {/* URL mode — bigger input, calculator-grade typography */}
+            {mode === "url" && (
+              <div className="space-y-3">
+                <div className="relative">
+                  <Link2 className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground/40 pointer-events-none" />
+                  <Input
+                    type="text"
+                    value={urlInput}
+                    onChange={(e) => handleUrlChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && canSubmit()) handleValidate();
+                    }}
+                    placeholder="https://www.aliexpress.com/item/…"
+                    disabled={loading}
+                    autoFocus
+                    className="h-16 pl-14 pr-4 text-[15px] font-medium"
+                  />
                 </div>
-              )}
+                <UsUrlNotice />
+              </div>
+            )}
 
-              {/* Manual mode */}
-              {mode === "manual" && (
-                <div className="space-y-5">
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="manual-title"
-                      className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground"
-                    >
-                      Product title{" "}
-                      <span className="text-rose-500">*</span>
-                    </Label>
-                    <Input
-                      id="manual-title"
-                      type="text"
-                      value={manualTitle}
-                      onChange={(e) => setManualTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && canSubmit()) handleValidate();
-                      }}
-                      placeholder="Copy the product title exactly as it appears on AliExpress"
-                      disabled={loading}
-                      maxLength={500}
-                      autoFocus
-                      className="h-14 text-[14px]"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
-                      Reference photos{" "}
-                      <span className="text-rose-500">*</span>{" "}
-                      <span className="text-muted-foreground/50 font-normal">
-                        (1 required, 2 recommended)
-                      </span>
-                    </Label>
-                    <SeoImageUploader
-                      images={manualImages}
-                      onChange={setManualImages}
-                      disabled={loading}
-                      maxImages={2}
-                    />
-                    <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
-                      AliExpress blocks image downloads. Take screenshots
-                      of the product photos and upload them here so the
-                      result card shows the product that was validated.
-                    </p>
-                  </div>
+            {/* Manual mode */}
+            {mode === "manual" && (
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="manual-title"
+                    className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground"
+                  >
+                    Product title{" "}
+                    <span className="text-rose-500">*</span>
+                  </Label>
+                  <Input
+                    id="manual-title"
+                    type="text"
+                    value={manualTitle}
+                    onChange={(e) => setManualTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && canSubmit()) handleValidate();
+                    }}
+                    placeholder="Copy the product title exactly as it appears on AliExpress"
+                    disabled={loading}
+                    maxLength={500}
+                    autoFocus
+                    className="h-14 text-[14px]"
+                  />
                 </div>
-              )}
 
-              {/* Run button — calculator-grade height and clean
-                  presentation; gradient kept since it's the brand
-                  signature for the validator. */}
-              <div className="space-y-2 pt-1">
-                <Button
-                  type="button"
-                  onClick={handleValidate}
-                  disabled={!canSubmit()}
-                  className="w-full h-14 text-[14px] bg-gradient-to-r from-violet-500 to-emerald-500 hover:opacity-90 text-white font-bold rounded-xl shadow-md shadow-violet-500/25 disabled:opacity-40 disabled:shadow-none"
-                >
-                  <Sparkles className="size-4 mr-2" />
-                  Run validation
-                </Button>
-                {mode === "manual" && manualMissing().length > 0 && (
-                  <p className="text-[11px] text-muted-foreground/80 text-center">
-                    Still required: {manualMissing().join(" + ")}.
+                <div className="space-y-2">
+                  <Label className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
+                    Reference photos{" "}
+                    <span className="text-rose-500">*</span>{" "}
+                    <span className="text-muted-foreground/50 font-normal">
+                      (1 required, 2 recommended)
+                    </span>
+                  </Label>
+                  <SeoImageUploader
+                    images={manualImages}
+                    onChange={setManualImages}
+                    disabled={loading}
+                    maxImages={2}
+                  />
+                  <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
+                    AliExpress blocks image downloads. Take screenshots
+                    of the product photos and upload them here so the
+                    result card shows the product that was validated.
                   </p>
-                )}
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
 
-        {/* Loading cinema */}
-        {loading && <ValidationCinema stage={stage} />}
+            {/* Run button */}
+            <div className="space-y-2 pt-1">
+              <Button
+                type="button"
+                onClick={handleValidate}
+                disabled={!canSubmit()}
+                className="w-full h-14 text-[14px] bg-gradient-to-r from-violet-500 to-emerald-500 hover:opacity-90 text-white font-bold rounded-xl shadow-md shadow-violet-500/25 disabled:opacity-40 disabled:shadow-none"
+              >
+                <Sparkles className="size-4 mr-2" />
+                Run validation
+              </Button>
+              {mode === "manual" && manualMissing().length > 0 && (
+                <p className="text-[11px] text-muted-foreground/80 text-center">
+                  Still required: {manualMissing().join(" + ")}.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Result panel — kept at max-w-5xl for breathing room on the
-            big result hero / policy matrix / findings cards. */}
-        {!loading && result && (
-          <div className="max-w-5xl mx-auto -mx-3 sm:mx-0">
-            <ResultPanel result={result} />
-          </div>
-        )}
-      </div>
+      {/* Loading cinema */}
+      {loading && <ValidationCinema stage={stage} />}
+
+      {/* Result panel */}
+      {!loading && result && <ResultPanel result={result} />}
     </div>
   );
 }
 
-// ─── Premium banner ────────────────────────────────────────────────
-//
-// Mirrors the Price Calculator's ReminderBanner structure (gradient
-// base + glow blobs + stripe texture + frosted icon chip + status
-// pill on the right). The colour palette swaps from the calculator's
-// warning-rose to a violet→emerald gradient that reads as the
-// validator's brand signature — same visual weight, different role.
-
-function PreListingBanner() {
-  return (
-    <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-600 via-violet-700 to-emerald-700 dark:from-violet-700 dark:via-violet-800 dark:to-emerald-800 shadow-lg shadow-violet-500/20 dark:shadow-violet-950/40 ring-1 ring-violet-700/40">
-      {/* Glow blobs for depth */}
-      <div
-        aria-hidden
-        className="absolute -top-16 -left-12 size-48 rounded-full bg-violet-300/25 blur-3xl pointer-events-none"
-      />
-      <div
-        aria-hidden
-        className="absolute -bottom-20 -right-12 size-56 rounded-full bg-emerald-400/20 blur-3xl pointer-events-none"
-      />
-
-      {/* Diagonal stripe texture — subtle backdrop */}
-      <div
-        aria-hidden
-        className="absolute inset-0 opacity-[0.06] pointer-events-none"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(135deg, transparent 0, transparent 18px, rgba(255,255,255,0.6) 18px, rgba(255,255,255,0.6) 19px)",
-        }}
-      />
-
-      <div className="relative flex items-center gap-4 px-4 sm:px-6 py-4">
-        {/* Frosted icon chip */}
-        <div className="relative shrink-0">
-          <span
-            aria-hidden
-            className="absolute inset-0 rounded-xl bg-white/30 animate-pulse blur-sm"
-          />
-          <div className="relative size-11 rounded-xl bg-white/15 ring-1 ring-white/40 flex items-center justify-center backdrop-blur-sm shadow-inner">
-            <ShieldCheck className="size-5 text-white" />
-          </div>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.18em] uppercase bg-emerald-500/30 backdrop-blur-sm px-2 py-0.5 rounded-full ring-1 ring-emerald-300/40">
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-200 opacity-75" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-300" />
-              </span>
-              Etsy team · Live
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/25 backdrop-blur-sm px-2 py-0.5 rounded-full ring-1 ring-white/15">
-              Pre-listing policy check
-            </span>
-          </div>
-          <p className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
-            Product Validator
-          </p>
-          <p className="text-[11px] sm:text-[12px] text-white/85 mt-1 leading-snug">
-            Run any AliExpress product through Etsy&apos;s policy rules
-            before listing. Catch prohibited items, IP issues, and
-            creativity standard violations before they cost the shop a
-            strike.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+// PreListingBanner removed — replaced by the page-level
+// <ProductValidatorHero /> which matches the calculator + Product
+// Hunter + SEO Autopilot full-bleed hero family.
 
 // ─── US-URL guidance notice ─────────────────────────────────────────
 
@@ -1490,60 +1398,99 @@ function SourceBadge({ source }: { source: "com" | "manual" }) {
   );
 }
 
-// ─── Mode toggle button ─────────────────────────────────────────────
+// ─── Mode segmented control ─────────────────────────────────────────
+//
+// Replaces the older ModeButton card pair. This version reads as a
+// professional segmented control: clean row of two equal-width
+// buttons, small leading icon, label + sub-label stacked, active gets
+// a thin violet underline bar + bold weight + subtle bg lift. No
+// gradient backgrounds on icons (those were the "less professional"
+// element in the previous design — too playful for a compliance tool).
 
-function ModeButton({
-  active,
-  onClick,
+function ModeSegmentedControl({
+  mode,
+  onChange,
   disabled,
-  icon: Icon,
-  gradient,
-  label,
-  sub,
 }: {
-  active: boolean;
-  onClick: () => void;
+  mode: InputMode;
+  onChange: (next: InputMode) => void;
   disabled: boolean;
-  icon: typeof Link2;
-  gradient: string;
-  label: string;
-  sub: string;
 }) {
+  const options: Array<{
+    value: InputMode;
+    icon: typeof Link2;
+    label: string;
+    sub: string;
+  }> = [
+    {
+      value: "url",
+      icon: Link2,
+      label: "URL check",
+      sub: "Paste an AliExpress link",
+    },
+    {
+      value: "manual",
+      icon: PenLine,
+      label: "Manual check",
+      sub: "Title + reference photos",
+    },
+  ];
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`relative rounded-lg px-3 py-2 text-left transition-all ${
-        active
-          ? "bg-card shadow-sm ring-1 ring-border/60"
-          : "hover:bg-card/60 disabled:opacity-50"
-      }`}
+    <div
+      role="tablist"
+      aria-label="Validation mode"
+      className="relative grid grid-cols-2 rounded-xl bg-muted/40 ring-1 ring-border/50 p-1"
     >
-      <div className="flex items-center gap-2">
-        <div
-          className={`size-7 rounded-md flex items-center justify-center ${
-            active
-              ? `bg-gradient-to-br ${gradient} text-white`
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          <Icon className="size-3.5" />
-        </div>
-        <div className="min-w-0">
-          <p
-            className={`text-[11px] font-bold ${
-              active ? "text-foreground" : "text-foreground/70"
+      {options.map((opt) => {
+        const active = mode === opt.value;
+        const Icon = opt.icon;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(opt.value)}
+            disabled={disabled}
+            className={`relative flex items-center gap-2.5 px-4 py-2.5 rounded-lg transition-all ${
+              active
+                ? "bg-card ring-1 ring-border/60 shadow-sm"
+                : "hover:bg-card/40 disabled:opacity-40"
             }`}
           >
-            {label}
-          </p>
-          <p className="text-[9px] text-muted-foreground leading-tight">
-            {sub}
-          </p>
-        </div>
-      </div>
-    </button>
+            <Icon
+              className={`size-4 shrink-0 ${
+                active
+                  ? "text-violet-600 dark:text-violet-400"
+                  : "text-muted-foreground/70"
+              }`}
+            />
+            <div className="min-w-0 text-left">
+              <p
+                className={`text-[12px] tracking-tight leading-tight ${
+                  active
+                    ? "font-bold text-foreground"
+                    : "font-semibold text-foreground/75"
+                }`}
+              >
+                {opt.label}
+              </p>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight mt-0.5 truncate">
+                {opt.sub}
+              </p>
+            </div>
+            {/* Active indicator — thin gradient bar at the bottom edge */}
+            {active && (
+              <span
+                aria-hidden
+                className="absolute inset-x-3 bottom-0 h-[2px] rounded-full bg-gradient-to-r from-violet-500 to-emerald-500"
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
