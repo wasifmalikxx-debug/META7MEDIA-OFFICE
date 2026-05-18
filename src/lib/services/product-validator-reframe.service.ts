@@ -4,18 +4,22 @@
  * When the rule engine returns REVIEW (soft-flag — IP, brand,
  * Creativity Standards, or combat-terminology in costume context),
  * this service calls Claude Haiku 4.5 with the four Etsy policies
- * as system context and asks it to produce an Etsy-safe listing
- * strategy:
+ * as system context and produces an Etsy-safe listing STRATEGY —
+ * not concrete title / tag / description content, just the guidance
+ * the employee needs to write a safe listing themselves (or feed
+ * to SEO Autopilot, which handles the concrete generation).
  *
- *   - 3 candidate titles (the seller picks one)
- *   - 13 Etsy-safe tags
- *   - 1-paragraph description angle
- *   - Explicit "avoid these exact words" list
- *   - Photo regeneration guidance (what NOT to recreate in the
- *     identity-shot pass the team does before listing)
+ * Output is strategy + coaching:
  *
- * The team always regenerates photos before listing, so this output
- * is for the textual side + a coaching note on photo regen.
+ *   - listingApproach     — one paragraph framing the overall direction
+ *   - titleGuidance       — bullet rules for writing the title
+ *   - tagGuidance         — bullet rules for selecting tags
+ *   - descriptionGuidance — bullet rules for writing the description
+ *   - avoidWords          — explicit list of words/phrases to never use
+ *   - photoGuidance       — do / don't for the identity-shot regen pass
+ *
+ * Separation of concerns: this tool tells the team HOW to list a
+ * flagged product. SEO Autopilot writes the actual content.
  *
  * Cost: ~$0.003 text-only, ~$0.006 with vision (one Haiku call per
  * validation, total). The rule engine still gates BLOCKED products
@@ -53,12 +57,14 @@ export interface PhotoRiskNote {
 }
 
 export interface ReframeResult {
-  /** 3 candidate Etsy-safe titles ordered best-first. */
-  titles: string[];
-  /** 13 Etsy-safe tags, ≤20 chars each. */
-  tags: string[];
-  /** 1-paragraph description angle (creativity-standards compliant). */
-  descriptionAngle: string;
+  /** One paragraph framing the overall listing direction. */
+  listingApproach: string;
+  /** Bullet-point rules for writing the title. */
+  titleGuidance: string[];
+  /** Bullet-point rules for selecting tags. */
+  tagGuidance: string[];
+  /** Bullet-point rules for writing the description. */
+  descriptionGuidance: string[];
   /** Exact words/phrases the seller must NOT include anywhere. */
   avoidWords: string[];
   /** Photo regeneration coaching (always populated). */
@@ -76,10 +82,10 @@ export interface ReframeResult {
 // so we don't burn tokens on every call. The full policy URLs are
 // linked in the citations the rule engine emits.
 
-const ETSY_POLICIES_SYSTEM = `You are an Etsy compliance specialist for a dropshipping team in Pakistan.
-The team sources products from AliExpress, regenerates all product photos with new identity shots before listing, and lists on Etsy.
+const ETSY_POLICIES_SYSTEM = `You are an Etsy compliance advisor for a dropshipping team in Pakistan.
+The team sources products from AliExpress, regenerates all product photos with new identity shots before listing, and writes their own listing content (or uses an SEO-generation tool) before posting on Etsy.
 
-Your job: when an AliExpress product has policy flags, generate an Etsy-safe listing strategy that will pass Etsy's automated keyword scans and minimise DMCA risk.
+Your job: when an AliExpress product has policy flags, produce STRATEGIC GUIDANCE that tells the team HOW to write a safe Etsy listing for this product. You DO NOT write the actual title, tags, or description — you give the rules and direction the team will follow when they write the content themselves.
 
 ETSY'S FOUR POLICIES — full context:
 
@@ -93,40 +99,70 @@ ETSY'S FOUR POLICIES — full context:
      - Character names (Deadpool, Mickey Mouse, Pikachu, Mario, etc.)
      - Studio / franchise names (Marvel, DC, Pixar, Star Wars)
      - Explicit replica language ("1:1 copy", "AAA replica", "inspired by [brand]")
-   Etsy's enforcement is mostly keyword-based for these. Strip the IP keyword from title/tags/description and the listing passes automated scans. Photo-based DMCA remains a separate risk handled by the team's photo regen pass.
+   Etsy's enforcement is mostly keyword-based for these. If the team strips the IP keyword from title/tags/description, the listing passes automated scans. Photo-based DMCA remains a separate risk handled by the team's photo regen pass.
 
 3. PPE / LIFESAVING POLICY (effective 21 July 2025)
    Banned: medical-grade masks (N95/KN95/surgical), respirators, hard hats, safety harnesses, life jackets, fire extinguishers, smoke detectors. Cloth fashion masks remain allowed.
 
 4. CREATIVITY STANDARDS
-   Every listing must be Made, Designed, Handpicked, or Sourced by the seller. Bulk-pack wording ("100pcs", "wholesale", "OEM", "factory direct") signals reseller commodity and risks removal under the Made by a Seller clause. The reframe should position the product as Designed or Handpicked by the shop.
+   Every listing must be Made, Designed, Handpicked, or Sourced by the seller. Bulk-pack wording ("100pcs", "wholesale", "OEM", "factory direct") signals reseller commodity and risks removal under the Made by a Seller clause. The team should position the product as Designed or Handpicked by their shop.
 
 REFRAME PRINCIPLES:
-   - Strip IP / brand / character names entirely. Replace with descriptive equivalents based on what the product IS (red anti-hero costume, athletic sneakers, cute cartoon plush).
-   - Strip wholesale / commodity tells. Frame as "designed", "curated", "handpicked", "boutique".
-   - Strip combat terminology if the product is a costume / kitchen / decorative item. Use the actual product role instead.
+   - Strip IP / brand / character names entirely. Direct the team toward descriptive equivalents based on what the product IS.
+   - Strip wholesale / commodity tells. Direct the team to frame as designed / curated / handpicked / boutique.
+   - Strip combat terminology if the product is a costume / kitchen / decorative item. Direct the team to use the actual product role instead.
    - Etsy buyers search differently than AliExpress sellers: descriptive aesthetic + occasion + audience beats keyword stuffing.
-   - Each title MUST be under 140 characters.
-   - Each tag MUST be under 20 characters. Lowercase, multi-word tags allowed.
+   - Etsy title limit: 140 chars. Tag limit: 20 chars each, 13 tags max.
 
-OUTPUT — strict JSON, no prose:
+OUTPUT — strict JSON, no prose. Strategy and rules ONLY. Do NOT write example titles or example tags. Speak in instructions / directions / rules:
+
 {
-  "titles": ["title 1", "title 2", "title 3"],
-  "tags": ["tag1", "tag2", ..., "tag13"],
-  "descriptionAngle": "one paragraph (≤300 chars) explaining how the seller should frame the description — what to emphasise, what role the product plays, what occasion it fits.",
-  "avoidWords": ["exact word 1", "exact phrase 2", ...],
+  "listingApproach": "One paragraph (≤350 chars) explaining the overall direction. What kind of product should the team frame this AS on Etsy? What audience, occasion, aesthetic should they lead with? What category of Etsy buyer is this listing for?",
+
+  "titleGuidance": [
+    "Short imperative bullet about what to do in the title",
+    "Another rule for the title",
+    "..."
+  ],
+
+  "tagGuidance": [
+    "Short imperative bullet about what kinds of tags to use",
+    "Another rule for tags",
+    "..."
+  ],
+
+  "descriptionGuidance": [
+    "Short imperative bullet about how to frame the description",
+    "Another rule for the description",
+    "..."
+  ],
+
+  "avoidWords": [
+    "exact word 1",
+    "exact phrase 2",
+    "..."
+  ],
+
   "photoGuidance": {
-    "dont": ["specific thing the team should NOT recreate in the regenerated identity photos", ...],
-    "do": ["specific safer alternative for the photo regen pass", ...]
+    "dont": [
+      "Specific visual element the team should NOT recreate in their identity-shot regen",
+      "..."
+    ],
+    "do": [
+      "Specific safer alternative for the regen pass",
+      "..."
+    ]
   }
 }
 
 Rules:
-- titles[] must be 3 distinct angles (e.g. occasion-led, audience-led, style-led). All ≤140 chars. None may contain any flagged keyword.
-- tags[] must be exactly 13 entries. Each ≤20 chars. None may contain any flagged keyword.
-- avoidWords[] should be the exact strings the seller must not include — be specific (e.g. "deadpool", "wade wilson", "marvel", not generic guidance).
+- listingApproach is ONE paragraph, ≤350 chars. Tell the team what direction to go in — what to frame the product AS.
+- titleGuidance, tagGuidance, descriptionGuidance are each 3-5 short imperative bullets. Bullets are RULES, not examples.
+  GOOD bullet: "Lead with audience and occasion — drop all franchise references."
+  BAD bullet:  "Use 'Red Anti-Hero Costume Kids Halloween'" — do not write actual title content.
+- avoidWords[] is the ONE place to be concrete. List the exact words/phrases the team must not include anywhere on the listing. Be specific (e.g. "deadpool", "marvel", "wade wilson") not generic.
 - photoGuidance.dont[] should describe visual elements specifically tied to the IP (iconic masks, signature poses, branded logos). photoGuidance.do[] should give safer alternatives.
-- Never use the words: handmade, personalised, custom-made, monogram (those imply buyer-supplied data which we cannot deliver).`;
+- Never recommend the words: handmade, personalised, custom-made, monogram (those imply buyer-supplied data which the team cannot deliver).`;
 
 // ─── Image fetching for vision pass ──────────────────────────────────
 
@@ -254,7 +290,7 @@ Generate the Etsy-safe listing strategy as strict JSON per the schema.`;
   const msg = await client().messages.create({
     model: MODEL,
     max_tokens: 1500,
-    temperature: 0.3, // small creativity for title variety, low overall
+    temperature: 0.2, // strategy / guidance — keep deterministic
     system: ETSY_POLICIES_SYSTEM,
     messages: [
       { role: "user", content },
@@ -268,9 +304,10 @@ Generate the Etsy-safe listing strategy as strict JSON per the schema.`;
   const cost = calcCost(msg);
 
   return {
-    titles: parsed.titles,
-    tags: parsed.tags,
-    descriptionAngle: parsed.descriptionAngle,
+    listingApproach: parsed.listingApproach,
+    titleGuidance: parsed.titleGuidance,
+    tagGuidance: parsed.tagGuidance,
+    descriptionGuidance: parsed.descriptionGuidance,
     avoidWords: parsed.avoidWords,
     photoGuidance: parsed.photoGuidance,
     visionUsed: images.length > 0,
@@ -282,11 +319,26 @@ Generate the Etsy-safe listing strategy as strict JSON per the schema.`;
 // ─── JSON parsing + normalization ────────────────────────────────────
 
 interface ParsedReframe {
-  titles: string[];
-  tags: string[];
-  descriptionAngle: string;
+  listingApproach: string;
+  titleGuidance: string[];
+  tagGuidance: string[];
+  descriptionGuidance: string[];
   avoidWords: string[];
   photoGuidance: PhotoRiskNote;
+}
+
+/**
+ * Pull a normalised list of short instruction bullets from a JSON
+ * field. Each entry is trimmed, capped to 200 chars, and the array
+ * itself capped to 8 entries — enough for thorough guidance, few
+ * enough that the UI doesn't drown in bullets.
+ */
+function parseBulletList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+    .slice(0, 8)
+    .map((s) => s.trim().slice(0, 200));
 }
 
 function parseReframe(raw: string): ParsedReframe {
@@ -305,27 +357,14 @@ function parseReframe(raw: string): ParsedReframe {
 
   const obj = parsed as Record<string, unknown>;
 
-  // Normalise — Haiku occasionally returns fewer than 3 titles or
-  // fewer than 13 tags; clamp + pad rather than failing the whole
-  // pipeline.
-  const titles = Array.isArray(obj.titles)
-    ? obj.titles
-        .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
-        .slice(0, 3)
-        .map((t) => t.trim().slice(0, 140))
-    : [];
-
-  const tags = Array.isArray(obj.tags)
-    ? obj.tags
-        .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
-        .slice(0, 13)
-        .map((t) => t.trim().toLowerCase().slice(0, 20))
-    : [];
-
-  const descriptionAngle =
-    typeof obj.descriptionAngle === "string"
-      ? obj.descriptionAngle.trim().slice(0, 400)
+  const listingApproach =
+    typeof obj.listingApproach === "string"
+      ? obj.listingApproach.trim().slice(0, 500)
       : "";
+
+  const titleGuidance = parseBulletList(obj.titleGuidance);
+  const tagGuidance = parseBulletList(obj.tagGuidance);
+  const descriptionGuidance = parseBulletList(obj.descriptionGuidance);
 
   const avoidWords = Array.isArray(obj.avoidWords)
     ? obj.avoidWords
@@ -338,31 +377,16 @@ function parseReframe(raw: string): ParsedReframe {
   const pg = obj.photoGuidance as Record<string, unknown> | undefined;
   if (pg && typeof pg === "object") {
     photoGuidance = {
-      dont: Array.isArray(pg.dont)
-        ? pg.dont
-            .filter(
-              (s): s is string =>
-                typeof s === "string" && s.trim().length > 0,
-            )
-            .slice(0, 8)
-            .map((s) => s.trim().slice(0, 200))
-        : [],
-      do: Array.isArray(pg.do)
-        ? pg.do
-            .filter(
-              (s): s is string =>
-                typeof s === "string" && s.trim().length > 0,
-            )
-            .slice(0, 8)
-            .map((s) => s.trim().slice(0, 200))
-        : [],
+      dont: parseBulletList(pg.dont),
+      do: parseBulletList(pg.do),
     };
   }
 
   return {
-    titles,
-    tags,
-    descriptionAngle,
+    listingApproach,
+    titleGuidance,
+    tagGuidance,
+    descriptionGuidance,
     avoidWords,
     photoGuidance,
   };

@@ -32,7 +32,9 @@ import {
   ChevronRight,
   Clock,
   FileCheck2,
-  Copy,
+  Type,
+  Hash,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -75,9 +77,10 @@ interface PhotoRiskNote {
 }
 
 interface ReframeData {
-  titles: string[];
-  tags: string[];
-  descriptionAngle: string;
+  listingApproach: string;
+  titleGuidance: string[];
+  tagGuidance: string[];
+  descriptionGuidance: string[];
   avoidWords: string[];
   photoGuidance: PhotoRiskNote;
   visionUsed: boolean;
@@ -153,8 +156,8 @@ const STAGE_META: Record<
     icon: Gavel,
   },
   reframing: {
-    title: "Generating Etsy-safe content",
-    sub: "AI rewrites title, tags, description, photo guidance",
+    title: "Generating listing guidance",
+    sub: "AI builds strategy + photo regen rules from Etsy policies",
     icon: Sparkles,
   },
   compiling: {
@@ -616,28 +619,14 @@ function ResultPanel({ result }: { result: ValidatorResult }) {
   );
 }
 
-// ─── Reframe panel (AI-generated Etsy-safe listing strategy) ────────
+// ─── Reframe panel (AI-generated Etsy-safe listing guidance) ────────
 
 function ReframePanel({ reframe }: { reframe: ReframeData }) {
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  function copyToClipboard(text: string, key: string) {
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopiedKey(key);
-        toast.success("Copied to clipboard");
-        setTimeout(
-          () => setCopiedKey((cur) => (cur === key ? null : cur)),
-          1500,
-        );
-      },
-      () => toast.error("Copy failed"),
-    );
-  }
-
-  function copyAllTags() {
-    copyToClipboard(reframe.tags.join(", "), "all-tags");
-  }
+  const hasAnyGuidance =
+    reframe.listingApproach.trim().length > 0 ||
+    reframe.titleGuidance.length > 0 ||
+    reframe.tagGuidance.length > 0 ||
+    reframe.descriptionGuidance.length > 0;
 
   return (
     <div className="space-y-4">
@@ -655,140 +644,78 @@ function ReframePanel({ reframe }: { reframe: ReframeData }) {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-700 dark:text-violet-300">
-              Etsy-safe listing strategy
+              How to list this on Etsy
             </p>
             <h3 className="text-base font-bold text-foreground leading-tight mt-0.5">
-              AI-generated content that bypasses Etsy&apos;s automated
-              keyword scans
+              Listing guidance for a flagged product
             </h3>
             <p className="text-[11.5px] text-foreground/70 mt-1 leading-relaxed">
-              Pick one of the three titles, paste the 13 tags, follow the
-              description angle, and avoid the listed words anywhere on
-              the listing. Use the photo guidance during your identity
-              regen pass.
+              Follow the direction and rules below when writing the
+              title, tags, and description (or when running this product
+              through SEO Autopilot). Avoid the listed words anywhere on
+              the listing. Use the photo guidance during the identity
+              regeneration pass.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Title options */}
-      <Card className="border border-border/60 shadow-none">
-        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            Safe title — pick one
-          </p>
-          <p className="text-[10px] font-semibold text-muted-foreground/70">
-            {reframe.titles.length} option
-            {reframe.titles.length === 1 ? "" : "s"}
-          </p>
-        </div>
-        <CardContent className="px-5 pb-5 pt-2 space-y-2">
-          {reframe.titles.map((title, i) => (
-            <div
-              key={i}
-              className="group relative flex items-start gap-3 rounded-lg ring-1 ring-border/60 bg-muted/15 hover:ring-violet-400/60 hover:bg-violet-50/30 dark:hover:bg-violet-950/20 transition-all p-3"
-            >
-              <span className="size-6 rounded-md bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 flex items-center justify-center text-[10px] font-bold tabular-nums shrink-0">
-                {i + 1}
-              </span>
-              <p className="text-[13px] font-medium leading-snug flex-1 min-w-0">
-                {title}
-                <span className="ml-2 text-[10px] text-muted-foreground tabular-nums">
-                  ({title.length}/140)
-                </span>
-              </p>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(title, `title-${i}`)}
-                className="shrink-0 size-8 rounded-md bg-card hover:bg-violet-500 hover:text-white ring-1 ring-border/60 hover:ring-violet-500 flex items-center justify-center transition-all opacity-60 group-hover:opacity-100"
-                title="Copy title"
-              >
-                {copiedKey === `title-${i}` ? (
-                  <Check className="size-3.5" strokeWidth={3} />
-                ) : (
-                  <Copy className="size-3.5" />
-                )}
-              </button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Tags */}
-      <Card className="border border-border/60 shadow-none">
-        <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-2">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Safe tags
+      {/* Listing approach (overall direction) */}
+      {reframe.listingApproach.trim().length > 0 && (
+        <Card className="border border-violet-300/30 dark:border-violet-700/30 bg-violet-50/30 dark:bg-violet-950/15 shadow-none">
+          <div className="px-5 pt-4 pb-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-700 dark:text-violet-300">
+              Listing approach
             </p>
-            <p className="text-[10px] font-semibold text-muted-foreground/70 mt-0.5">
-              {reframe.tags.length} / 13 tags · all under 20 chars
+            <p className="text-[10px] font-semibold text-violet-700/70 dark:text-violet-300/70 mt-0.5">
+              The overall direction to take with this product
             </p>
-          </div>
-          <button
-            type="button"
-            onClick={copyAllTags}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold transition-colors"
-          >
-            {copiedKey === "all-tags" ? (
-              <>
-                <Check className="size-3" strokeWidth={3} />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="size-3" />
-                Copy all 13
-              </>
-            )}
-          </button>
-        </div>
-        <CardContent className="px-5 pb-5 pt-2">
-          <div className="flex flex-wrap gap-1.5">
-            {reframe.tags.map((tag, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => copyToClipboard(tag, `tag-${i}`)}
-                className="inline-flex items-center gap-1 text-[11.5px] font-medium px-2.5 py-1.5 rounded-md bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500/30 hover:bg-emerald-500/20 transition-colors"
-                title="Click to copy"
-              >
-                {tag}
-                {copiedKey === `tag-${i}` && (
-                  <Check className="size-2.5" strokeWidth={3} />
-                )}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Description angle */}
-      {reframe.descriptionAngle && (
-        <Card className="border border-border/60 shadow-none">
-          <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Description angle
-            </p>
-            <button
-              type="button"
-              onClick={() =>
-                copyToClipboard(reframe.descriptionAngle, "desc")
-              }
-              className="inline-flex items-center gap-1 h-7 px-2 rounded-md hover:bg-muted text-[10px] font-bold text-muted-foreground transition-colors"
-            >
-              {copiedKey === "desc" ? (
-                <Check className="size-3" strokeWidth={3} />
-              ) : (
-                <Copy className="size-3" />
-              )}
-              Copy
-            </button>
           </div>
           <CardContent className="px-5 pb-5 pt-2">
-            <p className="text-[12.5px] leading-relaxed text-foreground/85">
-              {reframe.descriptionAngle}
+            <p className="text-[13px] leading-relaxed text-foreground/90">
+              {reframe.listingApproach}
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Guidance: title / tags / description */}
+      {hasAnyGuidance && (
+        <Card className="border border-border/60 shadow-none">
+          <div className="px-5 pt-4 pb-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Writing rules
+            </p>
+            <p className="text-[10px] font-semibold text-muted-foreground/70 mt-0.5">
+              Follow these rules when the team (or SEO Autopilot) writes
+              the actual listing content
+            </p>
+          </div>
+          <CardContent className="px-5 pb-5 pt-2 space-y-4">
+            {reframe.titleGuidance.length > 0 && (
+              <GuidanceGroup
+                heading="Title"
+                icon={Type}
+                accent="violet"
+                bullets={reframe.titleGuidance}
+              />
+            )}
+            {reframe.tagGuidance.length > 0 && (
+              <GuidanceGroup
+                heading="Tags"
+                icon={Hash}
+                accent="emerald"
+                bullets={reframe.tagGuidance}
+              />
+            )}
+            {reframe.descriptionGuidance.length > 0 && (
+              <GuidanceGroup
+                heading="Description"
+                icon={FileText}
+                accent="amber"
+                bullets={reframe.descriptionGuidance}
+              />
+            )}
           </CardContent>
         </Card>
       )}
@@ -885,6 +812,71 @@ function ReframePanel({ reframe }: { reframe: ReframeData }) {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ─── Guidance group (title / tag / description rule list) ───────────
+
+function GuidanceGroup({
+  heading,
+  icon: Icon,
+  accent,
+  bullets,
+}: {
+  heading: string;
+  icon: typeof Type;
+  accent: "violet" | "emerald" | "amber";
+  bullets: string[];
+}) {
+  const theme = {
+    violet: {
+      iconBg:
+        "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-violet-500/30",
+      bullet: "bg-violet-500",
+      headingText: "text-violet-700 dark:text-violet-300",
+    },
+    emerald: {
+      iconBg:
+        "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30",
+      bullet: "bg-emerald-500",
+      headingText: "text-emerald-700 dark:text-emerald-300",
+    },
+    amber: {
+      iconBg:
+        "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30",
+      bullet: "bg-amber-500",
+      headingText: "text-amber-700 dark:text-amber-300",
+    },
+  }[accent];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div
+          className={`size-7 rounded-lg ring-1 flex items-center justify-center ${theme.iconBg}`}
+        >
+          <Icon className="size-3.5" />
+        </div>
+        <p
+          className={`text-[11px] font-bold uppercase tracking-[0.16em] ${theme.headingText}`}
+        >
+          {heading}
+        </p>
+      </div>
+      <ul className="space-y-1.5 pl-9">
+        {bullets.map((b, i) => (
+          <li
+            key={i}
+            className="text-[12.5px] leading-relaxed text-foreground/85 flex gap-2 items-start"
+          >
+            <span
+              className={`mt-1.5 size-1 rounded-full shrink-0 ${theme.bullet}`}
+            />
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
