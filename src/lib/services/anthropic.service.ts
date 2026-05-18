@@ -1402,11 +1402,28 @@ CORE RULES
 4. NO BANNED/TRADEMARKED TERMS:
    Disney, Marvel, Nike, Adidas, NFL/NBA/MLB team names, Pokemon, Harry Potter, Star Wars, Game of Thrones, real celebrity names, etc.
 
-5. DESCRIPTION — 3 sections, separated by a blank line:
-   Section 1: HOOK (1-2 lines, benefit-led, why this product matters to the buyer)
-   Section 2: FEATURES (4-7 bullets starting with "•" of specific details visible in the image)
-   Section 3: CARE & SIZING note (1 short paragraph, 2-3 sentences)
-   Total target length: 600-1500 chars. Long-tail keywords sprinkled naturally.
+5. DESCRIPTION — 3 sections, structured with EXPLICIT newline characters:
+
+   Section 1: HOOK — 1-2 lines, benefit-led, why this product matters
+              to the buyer.
+   (BLANK LINE — i.e. \\n\\n between sections)
+   Section 2: FEATURES — 4-7 bullets. EACH BULLET ON ITS OWN LINE,
+              starting with "• " (bullet + space), separated by a
+              single \\n. Do NOT run bullets inline inside a paragraph.
+   (BLANK LINE — \\n\\n)
+   Section 3: CARE & SIZING note — 1 short paragraph, 2-3 sentences.
+
+   The literal characters \\n MUST appear between every bullet and
+   between every section in the JSON string. If you skip the
+   newlines, Etsy renders the description as one wall of text with
+   stray • characters and buyers bounce.
+
+   Total target length: 600-1500 chars. Long-tail keywords sprinkled
+   naturally.
+
+   EXAMPLE of correctly-formatted description (note the \\n escapes):
+
+   "A breathtaking gown that captures storybook royalty.\\n\\n• Lace-up corset bodice in gradient ombré tones\\n• Puffed short sleeves with sheer mesh overlay\\n• Full A-line skirt in lustrous satin\\n• Floor-length silhouette for dramatic stage presence\\n\\nGentle hand-wash in cold water, hang to dry. Store flat or on a padded hanger to preserve the bodice structure."
 
    NEVER write shipping time, processing time, dispatch time, or any
    "ships in X days" / "ready to ship in X business days" / "ships
@@ -1414,6 +1431,14 @@ CORE RULES
    language. Etsy's shop settings handle delivery promises — putting
    timing in the description creates conflicting promises and TOS risk.
    The description must be silent on shipping / processing / dispatch.
+
+   NEVER use character-defining trait wording even when reframing
+   away from the IP. For Rapunzel-style products: ban "long-haired",
+   "long braid", "golden braid", "magic hair". For Snow White-style:
+   ban "raven-haired", "red apple", "seven dwarfs". For Frozen-style:
+   ban "ice queen", "snow queen", "frozen kingdom". The reframed
+   description must read as a generic fairy-tale / fantasy item, not
+   "a thinly-veiled <character>".
 
 6. VARIATIONS:
    If sizes and/or variants were supplied, mention them ONCE in the description in a natural way that fits the actual axis ("Available in XS-XXL and 5 colors", "Available in 3 phone models and 4 designs", "Comes in gold, silver, and rose gold"). Do NOT put them in title or tags — Etsy handles them as separate variation fields.
@@ -1475,7 +1500,7 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
 
 {
   "title": "string ≤140 chars",
-  "description": "string, multi-line OK",
+  "description": "string with \\n\\n between sections AND \\n between every bullet — see DESCRIPTION rule above for the exact shape",
   "tags": ["...", ... exactly 13 items],
   "altTexts": ["...", "..."],
   "rationale": {
@@ -1860,6 +1885,43 @@ function tagLooksLikeMto(tag: string): boolean {
   });
 }
 
+/**
+ * Defensive description formatter. The system prompt asks Sonnet for
+ * \n between bullets and \n\n between sections, but it sometimes
+ * still returns one giant paragraph with inline `• ` markers. This
+ * recovers the intended structure post-hoc so the description doesn't
+ * render as a wall of text in the UI / on Etsy.
+ *
+ * Heuristic:
+ *   1. Collapse Windows newlines.
+ *   2. Wherever a "• " appears NOT preceded by a newline, insert a
+ *      newline before it.
+ *   3. Trim excessive blank lines (>2 consecutive newlines → 2).
+ *
+ * Idempotent: descriptions that were already well-formatted pass
+ * through unchanged.
+ */
+function normalizeDescription(raw: string): string {
+  if (!raw) return "";
+  let s = raw.replace(/\r\n/g, "\n");
+  // Insert a newline before every "• " that doesn't already have one
+  // ahead of it. Handles "...palette. • Bodice features..." → "...palette.\n• Bodice features..."
+  s = s.replace(/([^\n])\s*•\s*/g, "$1\n• ");
+  // Ensure leading "• " on the very first bullet line if Sonnet started
+  // the description with a bullet (rare but possible).
+  s = s.replace(/^\s*•\s*/, "• ");
+  // Collapse runs of 3+ newlines down to 2 (one blank line between
+  // sections; bullet-to-bullet stays single \n).
+  s = s.replace(/\n{3,}/g, "\n\n");
+  // Strip trailing whitespace on each line.
+  s = s
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .trim();
+  return s;
+}
+
 function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListing {
   const rawTitle = (out.title ?? "").trim();
   const title = stripMtoFromTitle(rawTitle).slice(0, ETSY_LIMITS.TITLE_MAX);
@@ -1885,7 +1947,10 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
     if (tags.length === ETSY_LIMITS.TAG_COUNT) break;
   }
 
-  const description = (out.description ?? "").slice(0, ETSY_LIMITS.DESCRIPTION_MAX);
+  const description = normalizeDescription(out.description ?? "").slice(
+    0,
+    ETSY_LIMITS.DESCRIPTION_MAX,
+  );
 
   // Alt texts — clamp each to 250 chars, pad/truncate to expected count.
   const altTexts: string[] = [];
