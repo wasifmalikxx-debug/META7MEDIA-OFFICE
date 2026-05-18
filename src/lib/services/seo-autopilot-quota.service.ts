@@ -336,6 +336,24 @@ export interface TeamStatsResponse {
 }
 
 /**
+ * Eligibility check for the Autopilot dashboard. The dashboard is an
+ * Etsy-only surface (SEO Autopilot is an Etsy tool), so users on the
+ * Facebook side of the org — SMM-prefix employees, the FB partner
+ * (Zain), Facebook-HQ employees — shouldn't appear here, even with a
+ * zero-activity row. Returns true for:
+ *   - CEO / HR Admin              ("Office" bucket)
+ *   - Etsy partners (Awais, Mubeen) — checked via role + dept name
+ *   - EM / AE / ME employees       (Etsy team prefixes)
+ *
+ * Source of truth for the role gate lives in seo-autopilot-access.ts
+ * — this is the dept-label equivalent used by the dashboard service
+ * which doesn't have the user.id needed for the partnerTeams lookup.
+ */
+function isEtsyDeptLabel(label: string): boolean {
+  return label === "Office" || label.startsWith("Etsy");
+}
+
+/**
  * Resolve a user's department label for dashboard grouping. Uses the
  * actual Department.name when present; falls back to inferring from
  * the employeeId prefix + role so partners, admins, and users without
@@ -896,6 +914,22 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     if (isMtd) entry.costMtdUsd += swapCost;
   }
 
+  // ─── Filter out Facebook-side users (don't use this Etsy tool) ──
+  // The dashboard is Etsy-only. FB users (SMM-*, Zain, Facebook-HQ)
+  // can't access SEO Autopilot per seo-autopilot-access.ts, so they
+  // shouldn't have activity rows to begin with — but this defensive
+  // filter ensures any pre-gate test data or future role changes
+  // don't leak FB users onto the Etsy dashboard. Applied before
+  // entries is built so both the employees table AND the per-dept
+  // aggregation downstream see only Etsy users.
+  for (const userId of Array.from(byUser.keys())) {
+    const entry = byUser.get(userId);
+    if (!entry) continue;
+    if (!isEtsyDeptLabel(entry.department)) {
+      byUser.delete(userId);
+    }
+  }
+
   const entries: TeamUsageEntry[] = Array.from(byUser.entries())
     .map(([userId, v]) => ({
       userId,
@@ -925,6 +959,26 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         b.count7Day - a.count7Day ||
         a.name.localeCompare(b.name),
     );
+
+  // ─── Reconcile globals against the FB-filtered entries ───────────
+  // Globals (costAllTimeUsd, costMtdUsd, countMtd, countAllTime,
+  // cost7DayUsd, costTodayUsd) were accumulated DURING the activity
+  // passes — before the FB filter ran. In normal operation this is
+  // fine because the access predicate blocks FB users from generating,
+  // so no FB rows exist to over-count. But if any pre-gate test data
+  // slipped through OR a role changed mid-day, the globals would
+  // include FB cost while per-user rows don't, breaking the
+  // audit-time invariant (Spend Summary cell == sum of Employees
+  // table rows).
+  //
+  // Re-derive every cost/count global from `entries` here so the
+  // invariant holds regardless. Cheap — entries is small.
+  costTodayUsd = entries.reduce((s, e) => s + e.costTodayUsd, 0);
+  cost7DayUsd = entries.reduce((s, e) => s + e.cost7DayUsd, 0);
+  costMtdUsd = entries.reduce((s, e) => s + e.costMtdUsd, 0);
+  costAllTimeUsd = entries.reduce((s, e) => s + e.costAllTimeUsd, 0);
+  countMtd = entries.reduce((s, e) => s + e.countMtd, 0);
+  countAllTime = entries.reduce((s, e) => s + e.countAllTime, 0);
 
   // ─── Aggregate per-department breakdown ─────────────────────────
   const byDept = new Map<
@@ -980,16 +1034,20 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
   }
 
   // ─── Zero-fill teams that have members but no activity ──────────
-  // Without this, Etsy - ME (and any other team where nobody has
-  // generated yet) silently disappears from the dashboard because
-  // byDept is only populated by entries, and entries are only
-  // populated by activity. We use the active employee roster to:
-  //   1. Synthesize a zero-stats dept entry for every team that has
-  //      at least one HIRED/PROBATION user but no logs/swaps/usage.
+  // Without this, Etsy - ME (and any other Etsy team where nobody has
+  // generated yet) silently disappears because byDept is only
+  // populated by entries, and entries are only populated by activity.
+  // Walk the roster and:
+  //   1. Synthesize a zero-stats dept entry for every Etsy team that
+  //      has at least one HIRED/PROBATION user but no logs/swaps/
+  //      usage.
   //   2. Override memberCount with the TRUE active-employee count.
   //      Without this, memberCount only counted users in `entries`
   //      (i.e. members who actually used the tool) — which read like
   //      "team size" but was actually "engaged users".
+  //
+  // Roster is pre-filtered to Etsy-side users so we never zero-fill a
+  // Facebook team here either.
   const trueMembersByDept = new Map<string, number>();
   for (const u of activeRoster) {
     const label = resolveDepartmentLabel(
@@ -997,6 +1055,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       u.employeeId,
       u.role,
     );
+    if (!isEtsyDeptLabel(label)) continue;
     trueMembersByDept.set(label, (trueMembersByDept.get(label) ?? 0) + 1);
   }
   for (const [label, totalMembers] of trueMembersByDept.entries()) {
@@ -1020,6 +1079,13 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         blockedCount: 0,
       });
     }
+  }
+
+  // Drop any FB-side dept rows that got added to byDept earlier (via
+  // entries) — they're now orphans after we filtered byUser. Iterates
+  // before the final map step.
+  for (const [label] of Array.from(byDept.entries())) {
+    if (!isEtsyDeptLabel(label)) byDept.delete(label);
   }
 
   const departments: DepartmentBreakdown[] = Array.from(byDept.entries())
