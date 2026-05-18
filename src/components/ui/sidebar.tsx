@@ -306,8 +306,15 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       data-slot="sidebar-inset"
+      // `min-w-0` + `overflow-x-hidden`: the inset sits in a flex row next
+      // to the sidebar. Without min-w-0 the inset refuses to shrink below
+      // its content width and pushes past the viewport's right edge —
+      // clipping wide content (stat strips, tables, etc.) on every page.
+      // overflow-x-hidden is the safety net so an unexpectedly wide
+      // descendant inside any future page can't cause the page to scroll
+      // horizontally; the inset clips it inside its bounds instead.
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        "relative flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}
       {...props}
