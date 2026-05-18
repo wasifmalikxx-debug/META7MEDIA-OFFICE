@@ -1,5 +1,12 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole, getCallerScope } from "@/lib/api-helpers";
+import {
+  json,
+  error,
+  requireAuth,
+  requireRole,
+  getCallerScope,
+  assertCanActOnUser,
+} from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { fineSchema } from "@/lib/validations/payroll";
 import { createNotification } from "@/lib/services/notification.service";
@@ -41,12 +48,21 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireRole("SUPER_ADMIN");
+  // CEO + Partners can issue manual fines. Partners are scoped to their own
+  // team(s) via assertCanActOnUser below — mirrors the DELETE handler so the
+  // UI button (already shown to partners) actually works on the server.
+  const session = await requireRole("SUPER_ADMIN", "PARTNER");
   if (!session) return error("Forbidden", 403);
 
   try {
     const body = await request.json();
     const parsed = fineSchema.parse(body);
+
+    // Partner team-scope check. CEO bypasses inside the helper.
+    const scope = await getCallerScope(session);
+    if (!scope) return error("Forbidden", 403);
+    const denied = await assertCanActOnUser(scope, parsed.userId);
+    if (denied) return denied;
 
     // Block fines on non-employee accounts. Partners (Awais/Mubeen/Zain) and
     // the CEO aren't on payroll and shouldn't receive fine WhatsApp messages.
