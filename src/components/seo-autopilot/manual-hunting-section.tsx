@@ -248,10 +248,14 @@ function applySort(
  */
 export function ManualHuntingSection({
   isCeo = false,
+  onHuntComplete,
 }: {
   /** CEO sees AE prices + Claude API cost footer; employees don't.
    * CEO ask May 17 2026 — hide all sourcing-cost info from team. */
   isCeo?: boolean;
+  /** Fired after every successful hunt so the parent can refresh
+   * the daily-quota chip without a full page reload. */
+  onHuntComplete?: () => void;
 } = {}) {
   // Lazy initializer reads `?niche=` from the URL on first mount as a
   // shareable-link convenience (e.g. someone DMs a link with a niche
@@ -409,6 +413,9 @@ export function ManualHuntingSection({
       toast.success(
         `${data.categories.length} categories · ${data.productCount} vetted products`,
       );
+      // Tell the parent to refresh the daily-quota chip — the hunt
+      // just consumed a slot.
+      onHuntComplete?.();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Hunt failed";
       setErrorMsg(msg);

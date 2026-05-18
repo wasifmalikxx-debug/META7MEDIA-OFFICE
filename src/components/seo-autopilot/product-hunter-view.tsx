@@ -10,9 +10,22 @@ import {
   Plug,
   X,
   MessageCircle,
+  Gauge,
+  Crown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ManualHuntingSection } from "./manual-hunting-section";
+
+// ─── Quota / usage ───────────────────────────────────────────────────
+
+interface UsageSummary {
+  count: number;
+  limit: number;
+  remaining: number;
+  resetAt: string;
+  isUnlimited: boolean;
+  date: string;
+}
 
 // ─── Recent hunts storage (localStorage) ─────────────────────────────
 //
@@ -124,6 +137,26 @@ export function ProductHunterView({
 }) {
   const isCeo = userRole === "SUPER_ADMIN";
 
+  // Daily quota usage — mirrors SEO Autopilot's "X / 10 today" chip.
+  // Refetched on mount and after every hunt completes so the count
+  // stays in sync without a full page reload.
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const refreshUsage = async () => {
+    try {
+      const res = await fetch("/api/seo-autopilot/hunt-usage", {
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.usage) setUsage(data.usage);
+    } catch {
+      // Silent — UI just doesn't show the chip if the fetch fails.
+    }
+  };
+  useEffect(() => {
+    refreshUsage();
+  }, []);
+
   // Strip ?aliConnect= / ?reason= / ?niche= from the URL on first
   // mount so subsequent reloads don't re-fire the OAuth-completion
   // toast or hijack the niche input. The AliExpressHeaderPill below
@@ -170,18 +203,20 @@ export function ProductHunterView({
       {/* Full-bleed hero: cancels the <main> p-4 md:p-6 + own top
           padding so it spans edge to edge under the dashboard header.
           AE status pill lives INSIDE the hero (next to Hunting hub
-          label) — no separate banner below. */}
+          label) — no separate banner below. Quota pill ("X / 10
+          today") also lives in the hero pill row. */}
       <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
-        <HeroBanner userRole={userRole} />
+        <HeroBanner userRole={userRole} usage={usage} />
       </div>
 
       {/* Constrained content column. ManualHuntingSection gets isCeo
           so it can hide the Claude API "Cost: $X.XXXX" footer in the
           result hero (CEO-only) — AE product prices stay visible to
-          everyone. */}
+          everyone. onHuntComplete refreshes the quota pill after every
+          successful hunt so the count stays in sync. */}
       <div className="max-w-5xl mx-auto space-y-6">
         <FeedbackNotice />
-        <ManualHuntingSection isCeo={isCeo} />
+        <ManualHuntingSection isCeo={isCeo} onHuntComplete={refreshUsage} />
       </div>
     </div>
   );
@@ -232,8 +267,10 @@ const HERO_CELLS: Array<{
 
 function HeroBanner({
   userRole,
+  usage,
 }: {
   userRole: "SUPER_ADMIN" | "PARTNER" | "MANAGER" | "EMPLOYEE" | "HR_ADMIN";
+  usage: UsageSummary | null;
 }) {
   return (
     <div className="relative overflow-hidden shadow-xl shadow-violet-500/15 ap-stagger-in border-b border-white/10">
@@ -290,6 +327,9 @@ function HeroBanner({
             <Sparkles className="size-3" />
             Hunting hub
           </span>
+          {/* Daily quota pill — mirrors SEO Autopilot's "X / 10 today"
+              badge. Shows "Unlimited" for CEO. */}
+          {usage && <UsagePill usage={usage} />}
           {/* AE status pill — sits right next to "Hunting hub" in the
               header row. Role-aware (see component). */}
           <AliExpressHeaderPill userRole={userRole} />
@@ -378,6 +418,46 @@ interface AliConnectionStatus {
 //   - PARTNER: connected → green status-only pill;
 //              disconnected → orange "ask Wasif" info pill
 //   - everyone else: nothing (the tool just works via CEO's token)
+// ─── Daily quota pill ───────────────────────────────────────────────
+//
+// Mirrors the SEO Autopilot UsagePill (in autopilot-view.tsx). Colors
+// shift with usage: emerald at low use, amber at 80%+, rose at the
+// limit. CEO sees a violet "Unlimited" pill with a crown.
+
+function UsagePill({ usage }: { usage: UsageSummary }) {
+  if (usage.isUnlimited) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 text-[10px] font-bold text-violet-100 tracking-[0.16em] uppercase bg-violet-500/25 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-violet-300/30"
+        title="CEO — no daily cap"
+      >
+        <Crown className="size-3" />
+        Unlimited
+      </span>
+    );
+  }
+  const remaining = Math.max(0, usage.remaining);
+  const ratio = usage.count / Math.max(1, usage.limit);
+  const tone =
+    remaining === 0 ? "rose" : ratio >= 0.8 ? "amber" : "emerald";
+  const cls = {
+    rose: "bg-rose-500/25 text-rose-100 ring-rose-300/30",
+    amber: "bg-amber-500/25 text-amber-100 ring-amber-300/30",
+    emerald: "bg-emerald-500/25 text-emerald-100 ring-emerald-300/30",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-[10px] font-bold tracking-[0.16em] uppercase backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ${cls}`}
+      title={`${usage.count} of ${usage.limit} hunts today (resets at midnight PKT)`}
+    >
+      <Gauge className="size-3" />
+      {remaining === 0
+        ? "Daily limit reached"
+        : `${usage.count} / ${usage.limit} today`}
+    </span>
+  );
+}
+
 function AliExpressHeaderPill({
   userRole = "SUPER_ADMIN",
 }: {

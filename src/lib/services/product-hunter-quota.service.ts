@@ -20,7 +20,7 @@ import {
   nextPktMidnight,
 } from "./seo-autopilot-quota.service";
 
-export const PRODUCT_HUNTER_DAILY_LIMIT = 5;
+export const PRODUCT_HUNTER_DAILY_LIMIT = 10;
 
 export interface ProductHunterUsageSummary {
   count: number;

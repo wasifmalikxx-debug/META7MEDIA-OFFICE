@@ -14,7 +14,7 @@
 
 import { prisma } from "@/lib/prisma";
 
-export const SEO_AUTOPILOT_DAILY_LIMIT = 8;
+export const SEO_AUTOPILOT_DAILY_LIMIT = 10;
 
 /**
  * Returns the current calendar date in Pakistan (Asia/Karachi, UTC+5)
