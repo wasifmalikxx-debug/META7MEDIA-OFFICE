@@ -433,7 +433,14 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
   const monthStart = pktCurrentMonthStartUtc();
   const monthStartTime = monthStart.getTime();
 
-  const [usageRows, logRows, swapRows, allLogRows, allSwapRows] = await Promise.all([
+  const [
+    usageRows,
+    logRows,
+    swapRows,
+    allLogRows,
+    allSwapRows,
+    activeRoster,
+  ] = await Promise.all([
     prisma.seoAutopilotUsage.findMany({
       where: { date: { gte: sevenDaysAgo } },
       include: { user: { select: userSelect } },
@@ -481,6 +488,19 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         actualCostUsd: true,
         createdAt: true,
         user: { select: userSelect },
+      },
+    }),
+    // Active employee roster — drives the "always show every team"
+    // logic below. Without this, teams like Etsy - ME with members
+    // but zero generations disappear from the dashboard entirely and
+    // the CEO can't tell whether the team is missing or just idle.
+    prisma.user.findMany({
+      where: { status: { in: ["HIRED", "PROBATION"] } },
+      select: {
+        id: true,
+        employeeId: true,
+        role: true,
+        department: { select: { name: true } },
       },
     }),
   ]);
@@ -958,6 +978,50 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     cur.blockedCount += e.blockedCount;
     byDept.set(e.department, cur);
   }
+
+  // ─── Zero-fill teams that have members but no activity ──────────
+  // Without this, Etsy - ME (and any other team where nobody has
+  // generated yet) silently disappears from the dashboard because
+  // byDept is only populated by entries, and entries are only
+  // populated by activity. We use the active employee roster to:
+  //   1. Synthesize a zero-stats dept entry for every team that has
+  //      at least one HIRED/PROBATION user but no logs/swaps/usage.
+  //   2. Override memberCount with the TRUE active-employee count.
+  //      Without this, memberCount only counted users in `entries`
+  //      (i.e. members who actually used the tool) — which read like
+  //      "team size" but was actually "engaged users".
+  const trueMembersByDept = new Map<string, number>();
+  for (const u of activeRoster) {
+    const label = resolveDepartmentLabel(
+      u.department?.name,
+      u.employeeId,
+      u.role,
+    );
+    trueMembersByDept.set(label, (trueMembersByDept.get(label) ?? 0) + 1);
+  }
+  for (const [label, totalMembers] of trueMembersByDept.entries()) {
+    const existing = byDept.get(label);
+    if (existing) {
+      existing.memberCount = totalMembers;
+    } else {
+      byDept.set(label, {
+        memberCount: totalMembers,
+        activeUserIdsToday: new Set<string>(),
+        countToday: 0,
+        count7Day: 0,
+        countMtd: 0,
+        countAllTime: 0,
+        costTodayUsd: 0,
+        cost7DayUsd: 0,
+        costMtdUsd: 0,
+        costAllTimeUsd: 0,
+        allowedCount: 0,
+        reviewCount: 0,
+        blockedCount: 0,
+      });
+    }
+  }
+
   const departments: DepartmentBreakdown[] = Array.from(byDept.entries())
     .map(([name, d]) => {
       // Short tag = last word after the dash, e.g. "Etsy - EM" → "EM"

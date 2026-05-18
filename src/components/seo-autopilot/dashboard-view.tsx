@@ -1022,8 +1022,7 @@ function DepartmentsSection({
           </div>
           <p className="text-[10px] text-muted-foreground">
             {departments.length}{" "}
-            {departments.length === 1 ? "team" : "teams"} with activity in the
-            last 7 days
+            {departments.length === 1 ? "team" : "teams"} on the roster
           </p>
         </div>
 
