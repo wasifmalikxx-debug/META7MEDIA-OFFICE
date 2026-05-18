@@ -337,23 +337,43 @@ export interface TeamStatsResponse {
 
 /**
  * Resolve a user's department label for dashboard grouping. Uses the
- * actual Department.name when present; falls back to inferring from the
- * employeeId prefix so partners + users without a departmentId still
- * land in the right Etsy bucket.
+ * actual Department.name when present; falls back to inferring from
+ * the employeeId prefix + role so partners, admins, and users without
+ * a departmentId still land in a sensible bucket.
+ *
+ * Bucketing rules (in order):
+ *   1. Department.name on the user record — always wins
+ *   2. SUPER_ADMIN / HR_ADMIN role → "Office" (Wasif + Sara HR; they
+ *      own the company / sit in HQ and aren't in a generation team)
+ *   3. employeeId prefix:
+ *        EM / AE / ME       → "Etsy - <prefix>"
+ *        M7M                → "Office" (admin / management IDs)
+ *        anything else      → the bare prefix (e.g. "SMM", "HQ", "O2")
+ *   4. No usable signal → "Unassigned"
+ *
+ * Regex updated from /^([A-Z]+)-/ to /^([A-Z][A-Z0-9]*)-/ so prefixes
+ * containing digits (M7M-001, etc.) parse correctly. The old regex
+ * silently bucketed every M7M-prefix admin into "Unassigned".
  */
 function resolveDepartmentLabel(
   departmentName: string | null | undefined,
   employeeId: string,
+  role?: string | null,
 ): string {
   if (departmentName && departmentName.trim().length > 0) {
     return departmentName;
   }
-  // employeeId pattern: e.g. "EM-3", "AE-7", "ME-2" → "Etsy - EM" etc.
-  const m = /^([A-Z]+)-/.exec(employeeId);
+  if (role === "SUPER_ADMIN" || role === "HR_ADMIN") {
+    return "Office";
+  }
+  const m = /^([A-Z][A-Z0-9]*)-/.exec(employeeId);
   if (m) {
     const prefix = m[1];
     if (prefix === "EM" || prefix === "AE" || prefix === "ME") {
       return `Etsy - ${prefix}`;
+    }
+    if (prefix === "M7M") {
+      return "Office";
     }
     return prefix;
   }
@@ -507,6 +527,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         department: resolveDepartmentLabel(
           r.user.department?.name,
           r.user.employeeId,
+          r.user.role,
         ),
         countToday: 0,
         countYesterday: 0,
@@ -631,6 +652,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         department: resolveDepartmentLabel(
           log.user.department?.name,
           log.user.employeeId,
+          log.user.role,
         ),
         countToday: 0,
         countYesterday: 0,
@@ -708,6 +730,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         department: resolveDepartmentLabel(
           swap.user.department?.name,
           swap.user.employeeId,
+          swap.user.role,
         ),
         countToday: 0,
         countYesterday: 0,
@@ -777,6 +800,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         department: resolveDepartmentLabel(
           log.user.department?.name,
           log.user.employeeId,
+          log.user.role,
         ),
         countToday: 0,
         countYesterday: 0,
@@ -830,6 +854,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         department: resolveDepartmentLabel(
           swap.user.department?.name,
           swap.user.employeeId,
+          swap.user.role,
         ),
         countToday: 0,
         countYesterday: 0,
