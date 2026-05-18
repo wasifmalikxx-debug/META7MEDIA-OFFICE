@@ -34,12 +34,23 @@ import {
   rollupVerdict,
   type ValidationVerdict,
 } from "./etsy-policy-rules";
+import {
+  reframeForEtsy,
+  type ReframeResult,
+  type FetchedImage,
+} from "./product-validator-reframe.service";
 
 export interface ProductValidatorInput {
   /** AliExpress.com URL or numeric product ID. Optional if `manualTitle` is provided. */
   url?: string;
   /** Manual entry fallback when the seller has the title in hand. */
   manualTitle?: string;
+  /**
+   * Manual-check uploaded photos (base64, no data: prefix). The team's
+   * regen pass operates on these — passing them to the reframe service
+   * lets vision generate specific photo-regen guidance.
+   */
+  manualImages?: FetchedImage[];
 }
 
 export interface ValidationFlag {
@@ -66,6 +77,13 @@ export interface ProductValidatorResult {
     /** Origin of the data shown in the result. */
     source: "com" | "manual";
   };
+  /**
+   * AI reframe — only populated for REVIEW verdicts. BLOCKED products
+   * are hard category bans (firearms, drugs, hate, adult, PPE, animals)
+   * where no reframe is possible, so the reframe step is skipped.
+   * SAFE products don't need a reframe either.
+   */
+  reframe: ReframeResult | null;
   /** Diagnostics for the toast: how the product was fetched. */
   fetchPath: "ds_api" | "manual";
   durationMs: number;
@@ -88,13 +106,13 @@ function buildVerdictSummary(
   flags: ValidationFlag[],
 ): string {
   if (verdict === "SAFE") {
-    return "No policy issues detected. Cleared for listing.";
+    return "No policy issues detected. Cleared for listing as-is.";
   }
 
   if (flags.length === 0) {
     return verdict === "BLOCKED"
-      ? "Flagged for listing — this product violates Etsy policy."
-      : "Flagged for review — reframe before listing.";
+      ? "Cannot be listed — this product is in an Etsy-banned category."
+      : "Listable with reframing — use the safe content generated below.";
   }
 
   const top = flags[0];
@@ -103,11 +121,11 @@ function buildVerdictSummary(
     more === 0 ? "" : more === 1 ? " + 1 more issue" : ` + ${more} more issues`;
 
   if (verdict === "BLOCKED") {
-    return `Flagged: ${top.label.toLowerCase()} — matched "${top.matchedText}" against ${top.policyClause}${moreSuffix}. Listing will likely trigger removal and a shop strike.`;
+    return `Cannot be listed: ${top.label.toLowerCase()} — matched "${top.matchedText}" against ${top.policyClause}${moreSuffix}. This is a category ban; no reframing will save it.`;
   }
 
-  // REVIEW
-  return `Flagged for review: ${top.label.toLowerCase()} — matched "${top.matchedText}" against ${top.policyClause}${moreSuffix}. Reframe or customize before listing.`;
+  // REVIEW = "Listable with care" — AI reframe is provided below
+  return `Listable with care: ${top.label.toLowerCase()} — matched "${top.matchedText}" against ${top.policyClause}${moreSuffix}. Use the Etsy-safe content generated below.`;
 }
 
 /**
@@ -259,6 +277,33 @@ export async function validateProduct(
 
   const verdict = rollupVerdict(hits);
 
+  // ── AI reframe for REVIEW verdicts ──────────────────────────────
+  // Hard-blocked products (BLOCKED) get no reframe — they're banned
+  // by category, no clever wording saves them. SAFE products don't
+  // need one. REVIEW is where the work happens.
+  let reframe: ReframeResult | null = null;
+  if (verdict === "REVIEW") {
+    try {
+      reframe = await reframeForEtsy({
+        title,
+        flags,
+        imageUrl: imageUrl ?? undefined,
+        manualImages: input.manualImages,
+      });
+      console.log(
+        `[product-validator] reframe ok in ${reframe.costUsd.toFixed(4)} USD (vision=${reframe.visionUsed})`,
+      );
+    } catch (err) {
+      // Reframe failure is non-fatal — return the rule verdict with
+      // no reframe attached and let the UI fall back to the rule
+      // suggestions. The seller still gets actionable output.
+      console.warn(
+        "[product-validator] reframe failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   return {
     verdict,
     summary: buildVerdictSummary(verdict, flags),
@@ -270,6 +315,7 @@ export async function validateProduct(
       productUrl,
       source,
     },
+    reframe,
     fetchPath,
     durationMs: Date.now() - startedAt,
   };

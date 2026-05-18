@@ -23,12 +23,20 @@ import { getProductValidatorAccess } from "@/lib/services/product-validator-acce
  */
 
 export const dynamic = "force-dynamic";
+// Reframe adds one Haiku call (~3-5s). 30s is plenty.
 export const maxDuration = 30;
+
+const ManualImageSchema = z.object({
+  base64: z.string().min(100).max(3_000_000), // ~2.2 MB max after b64 expansion
+  mediaType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]),
+});
 
 const RequestSchema = z
   .object({
     url: z.string().min(8).max(2000).optional(),
     manualTitle: z.string().min(3).max(500).optional(),
+    /** Up to 2 base64-encoded photos from Manual check uploader. */
+    manualImages: z.array(ManualImageSchema).max(2).optional(),
   })
   .refine((d) => Boolean(d.url || d.manualTitle), {
     message: "Either a product URL or a manual title is required",
@@ -101,6 +109,7 @@ export async function POST(request: NextRequest) {
       {
         url: body.url,
         manualTitle: body.manualTitle,
+        manualImages: body.manualImages,
       },
       { accessToken },
     );

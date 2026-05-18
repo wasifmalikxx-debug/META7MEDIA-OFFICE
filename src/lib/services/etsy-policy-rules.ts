@@ -80,7 +80,12 @@ const WEAPON_RULES: PolicyRule[] = [
   {
     id: "weapons-bladed",
     policy: "weapons",
-    severity: "block",
+    // REVIEW, not BLOCK — "sword", "dagger", "katana" appear often in
+    // costume prop bags, kitchen sets, decorative wall pieces. The
+    // reframe AI strips the combat wording; if the product is genuinely
+    // a real combat blade, the reframe step still won't generate viable
+    // Etsy content, so nothing is lost by routing through review.
+    severity: "review",
     matchType: "substring",
     patterns: [
       "tactical knife", "combat knife", "fighting knife", "switchblade",
@@ -88,12 +93,12 @@ const WEAPON_RULES: PolicyRule[] = [
       "sword", "katana", "machete", "bayonet", "dagger",
       "throwing knife", "throwing star", "shuriken",
     ],
-    label: "Combat blades",
+    label: "Combat blade terminology",
     policyClause: "Prohibited Items Policy § 3 — Dangerous Items",
     explanation:
-      "Knives intended as weapons are banned. Kitchen knives and craft tools are usually fine.",
+      "Combat / weapon terminology in the title triggers Etsy's automated scans. Costume props, kitchen knives, and decorative pieces need different wording.",
     suggestion:
-      "If the product is a kitchen/craft knife, the title shouldn't include combat terminology.",
+      "Strip combat terminology. If it's a costume prop, frame as a 'costume accessory'. If kitchen, 'chef knife'. If decorative, 'wall display'.",
   },
   {
     id: "weapons-misc",
@@ -320,11 +325,18 @@ const ANIMAL_RULES: PolicyRule[] = [
   },
 ];
 
+// IP rules are REVIEW, not BLOCK — they trigger the AI reframe path
+// instead of refusing the product. The original AliExpress photo never
+// reaches Etsy (employees regenerate identity photos before listing),
+// so the only Etsy-side risk is title / tag / description keywords,
+// which the reframe pass strips cleanly. Hard bans (firearms, drugs,
+// hate, adult, PPE, animals, violence) stay at BLOCK because those
+// products are category-banned regardless of framing.
 const IP_RULES: PolicyRule[] = [
   {
     id: "ip-tech-brands",
     policy: "ip",
-    severity: "block",
+    severity: "review",
     matchType: "substring",
     patterns: [
       "apple iphone", "apple watch", "macbook", "airpods",
@@ -343,7 +355,7 @@ const IP_RULES: PolicyRule[] = [
   {
     id: "ip-fashion-brands",
     policy: "ip",
-    severity: "block",
+    severity: "review",
     matchType: "substring",
     patterns: [
       "nike ", "adidas", "puma ", "reebok", "champion brand",
@@ -362,7 +374,7 @@ const IP_RULES: PolicyRule[] = [
   {
     id: "ip-characters",
     policy: "ip",
-    severity: "block",
+    severity: "review",
     matchType: "substring",
     patterns: [
       // Studios & franchises (catches generic-named products)
@@ -411,7 +423,7 @@ const IP_RULES: PolicyRule[] = [
   {
     id: "ip-replica",
     policy: "ip",
-    severity: "block",
+    severity: "review",
     matchType: "substring",
     patterns: [
       "replica ", "1:1 replica", "1:1 copy", "high copy",

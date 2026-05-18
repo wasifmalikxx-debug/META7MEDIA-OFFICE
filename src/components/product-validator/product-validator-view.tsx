@@ -32,6 +32,7 @@ import {
   ChevronRight,
   Clock,
   FileCheck2,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -68,6 +69,22 @@ interface ValidationFlag {
 
 type Verdict = "BLOCKED" | "REVIEW" | "SAFE";
 
+interface PhotoRiskNote {
+  dont: string[];
+  do: string[];
+}
+
+interface ReframeData {
+  titles: string[];
+  tags: string[];
+  descriptionAngle: string;
+  avoidWords: string[];
+  photoGuidance: PhotoRiskNote;
+  visionUsed: boolean;
+  modelId: string;
+  costUsd: number;
+}
+
 interface ValidatorResult {
   verdict: Verdict;
   summary: string;
@@ -79,6 +96,7 @@ interface ValidatorResult {
     productUrl: string;
     source: "com" | "manual";
   };
+  reframe: ReframeData | null;
   fetchPath: "ds_api" | "manual";
   durationMs: number;
 }
@@ -91,16 +109,22 @@ type Stage =
   | "scanning"
   | "checking"
   | "reviewing"
+  | "reframing"
   | "compiling";
 
-/** Minimum visible duration of the loading panel. */
-const MIN_LOADING_MS = 10_000;
+/**
+ * Minimum visible duration of the loading panel. Bumped to 14s — the
+ * reframe pipeline adds a Haiku call (~3-5s) so the cinema needs more
+ * room to walk through all six stages without skipping.
+ */
+const MIN_LOADING_MS = 14_000;
 
 const STAGE_ORDER: Exclude<Stage, "idle">[] = [
   "reading",
   "scanning",
   "checking",
   "reviewing",
+  "reframing",
   "compiling",
 ];
 
@@ -128,9 +152,14 @@ const STAGE_META: Record<
     sub: "Made / Designed / Handpicked / Sourced framing",
     icon: Gavel,
   },
+  reframing: {
+    title: "Generating Etsy-safe content",
+    sub: "AI rewrites title, tags, description, photo guidance",
+    icon: Sparkles,
+  },
   compiling: {
     title: "Compiling verdict",
-    sub: "Ordering flags and writing recommendations",
+    sub: "Ordering flags and finalising recommendations",
     icon: ListChecks,
   },
 };
@@ -160,7 +189,7 @@ const VERDICT_THEME: Record<
     bgSubtle: "bg-amber-50 dark:bg-amber-950/40",
     text: "text-amber-700 dark:text-amber-300",
     icon: ShieldAlert,
-    label: "Flagged for review",
+    label: "Listable with care",
   },
   BLOCKED: {
     ring: "ring-rose-500/40",
@@ -168,7 +197,7 @@ const VERDICT_THEME: Record<
     bgSubtle: "bg-rose-50 dark:bg-rose-950/40",
     text: "text-rose-700 dark:text-rose-300",
     icon: ShieldX,
-    label: "Flagged product",
+    label: "Cannot be listed",
   },
 };
 
@@ -191,8 +220,10 @@ export function ProductValidatorView() {
     }
     setStage("reading");
     const timers: ReturnType<typeof setTimeout>[] = [];
+    // Spread 6 stages across the 14s minimum window — ~2.3s per step.
+    const stepMs = Math.floor(MIN_LOADING_MS / STAGE_ORDER.length);
     STAGE_ORDER.slice(1).forEach((next, i) => {
-      timers.push(setTimeout(() => setStage(next), (i + 1) * 2000));
+      timers.push(setTimeout(() => setStage(next), (i + 1) * stepMs));
     });
     return () => timers.forEach(clearTimeout);
   }, [loading]);
@@ -259,7 +290,15 @@ export function ProductValidatorView() {
     const body =
       mode === "url"
         ? { url: urlInput.trim() }
-        : { manualTitle: manualTitle.trim() };
+        : {
+            manualTitle: manualTitle.trim(),
+            // Send the uploaded photos so the reframe service can run
+            // vision over them and generate specific photo-regen guidance.
+            manualImages: manualImages.map((img) => ({
+              base64: img.base64,
+              mediaType: img.mediaType,
+            })),
+          };
 
     try {
       const apiPromise = (async () => {
@@ -304,9 +343,9 @@ export function ProductValidatorView() {
       if (final.verdict === "SAFE") {
         toast.success("Cleared for listing", { description: final.summary });
       } else if (final.verdict === "REVIEW") {
-        toast.warning("Flagged for review", { description: final.summary });
+        toast.warning("Listable with care", { description: final.summary });
       } else {
-        toast.error("Flagged product", { description: final.summary });
+        toast.error("Cannot be listed", { description: final.summary });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Validation failed";
@@ -567,7 +606,285 @@ function ResultPanel({ result }: { result: ValidatorResult }) {
       ) : (
         <ClearedConfirmation />
       )}
+      {/* AI reframe — only shown for REVIEW verdicts, never for hard
+          blocks (no reframe possible) or SAFE (no reframe needed). */}
+      {result.verdict === "REVIEW" && result.reframe && (
+        <ReframePanel reframe={result.reframe} />
+      )}
       <RuleSourceFooter />
+    </div>
+  );
+}
+
+// ─── Reframe panel (AI-generated Etsy-safe listing strategy) ────────
+
+function ReframePanel({ reframe }: { reframe: ReframeData }) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  function copyToClipboard(text: string, key: string) {
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopiedKey(key);
+        toast.success("Copied to clipboard");
+        setTimeout(
+          () => setCopiedKey((cur) => (cur === key ? null : cur)),
+          1500,
+        );
+      },
+      () => toast.error("Copy failed"),
+    );
+  }
+
+  function copyAllTags() {
+    copyToClipboard(reframe.tags.join(", "), "all-tags");
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Strategy header */}
+      <div className="relative overflow-hidden rounded-2xl border border-violet-300/40 dark:border-violet-700/30 bg-gradient-to-br from-violet-50/70 via-violet-50/30 to-emerald-50/40 dark:from-violet-950/30 dark:via-violet-950/15 dark:to-emerald-950/15">
+        <div className="px-5 py-4 flex items-start gap-4">
+          <div className="relative shrink-0">
+            <span
+              aria-hidden
+              className="absolute -inset-1.5 rounded-2xl bg-violet-500/30 blur-md"
+            />
+            <div className="relative size-11 rounded-2xl bg-gradient-to-br from-violet-500 to-emerald-500 ring-2 ring-white/50 flex items-center justify-center shadow-lg shadow-violet-500/30">
+              <Sparkles className="size-5 text-white" />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-700 dark:text-violet-300">
+              Etsy-safe listing strategy
+            </p>
+            <h3 className="text-base font-bold text-foreground leading-tight mt-0.5">
+              AI-generated content that bypasses Etsy&apos;s automated
+              keyword scans
+            </h3>
+            <p className="text-[11.5px] text-foreground/70 mt-1 leading-relaxed">
+              Pick one of the three titles, paste the 13 tags, follow the
+              description angle, and avoid the listed words anywhere on
+              the listing. Use the photo guidance during your identity
+              regen pass.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Title options */}
+      <Card className="border border-border/60 shadow-none">
+        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Safe title — pick one
+          </p>
+          <p className="text-[10px] font-semibold text-muted-foreground/70">
+            {reframe.titles.length} option
+            {reframe.titles.length === 1 ? "" : "s"}
+          </p>
+        </div>
+        <CardContent className="px-5 pb-5 pt-2 space-y-2">
+          {reframe.titles.map((title, i) => (
+            <div
+              key={i}
+              className="group relative flex items-start gap-3 rounded-lg ring-1 ring-border/60 bg-muted/15 hover:ring-violet-400/60 hover:bg-violet-50/30 dark:hover:bg-violet-950/20 transition-all p-3"
+            >
+              <span className="size-6 rounded-md bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30 flex items-center justify-center text-[10px] font-bold tabular-nums shrink-0">
+                {i + 1}
+              </span>
+              <p className="text-[13px] font-medium leading-snug flex-1 min-w-0">
+                {title}
+                <span className="ml-2 text-[10px] text-muted-foreground tabular-nums">
+                  ({title.length}/140)
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(title, `title-${i}`)}
+                className="shrink-0 size-8 rounded-md bg-card hover:bg-violet-500 hover:text-white ring-1 ring-border/60 hover:ring-violet-500 flex items-center justify-center transition-all opacity-60 group-hover:opacity-100"
+                title="Copy title"
+              >
+                {copiedKey === `title-${i}` ? (
+                  <Check className="size-3.5" strokeWidth={3} />
+                ) : (
+                  <Copy className="size-3.5" />
+                )}
+              </button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Tags */}
+      <Card className="border border-border/60 shadow-none">
+        <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Safe tags
+            </p>
+            <p className="text-[10px] font-semibold text-muted-foreground/70 mt-0.5">
+              {reframe.tags.length} / 13 tags · all under 20 chars
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={copyAllTags}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold transition-colors"
+          >
+            {copiedKey === "all-tags" ? (
+              <>
+                <Check className="size-3" strokeWidth={3} />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="size-3" />
+                Copy all 13
+              </>
+            )}
+          </button>
+        </div>
+        <CardContent className="px-5 pb-5 pt-2">
+          <div className="flex flex-wrap gap-1.5">
+            {reframe.tags.map((tag, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => copyToClipboard(tag, `tag-${i}`)}
+                className="inline-flex items-center gap-1 text-[11.5px] font-medium px-2.5 py-1.5 rounded-md bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500/30 hover:bg-emerald-500/20 transition-colors"
+                title="Click to copy"
+              >
+                {tag}
+                {copiedKey === `tag-${i}` && (
+                  <Check className="size-2.5" strokeWidth={3} />
+                )}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Description angle */}
+      {reframe.descriptionAngle && (
+        <Card className="border border-border/60 shadow-none">
+          <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Description angle
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                copyToClipboard(reframe.descriptionAngle, "desc")
+              }
+              className="inline-flex items-center gap-1 h-7 px-2 rounded-md hover:bg-muted text-[10px] font-bold text-muted-foreground transition-colors"
+            >
+              {copiedKey === "desc" ? (
+                <Check className="size-3" strokeWidth={3} />
+              ) : (
+                <Copy className="size-3" />
+              )}
+              Copy
+            </button>
+          </div>
+          <CardContent className="px-5 pb-5 pt-2">
+            <p className="text-[12.5px] leading-relaxed text-foreground/85">
+              {reframe.descriptionAngle}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Avoid words */}
+      {reframe.avoidWords.length > 0 && (
+        <Card className="border border-rose-300/40 dark:border-rose-700/30 bg-rose-50/40 dark:bg-rose-950/15 shadow-none">
+          <div className="px-5 pt-4 pb-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-rose-700 dark:text-rose-300">
+              Avoid these exact words
+            </p>
+            <p className="text-[10px] font-semibold text-rose-700/70 dark:text-rose-300/70 mt-0.5">
+              Do not include in title, tags, description, or anywhere on
+              the listing
+            </p>
+          </div>
+          <CardContent className="px-5 pb-5 pt-2">
+            <div className="flex flex-wrap gap-1.5">
+              {reframe.avoidWords.map((word, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1.5 text-[11.5px] font-medium px-2.5 py-1.5 rounded-md bg-rose-500/15 text-rose-800 dark:text-rose-200 ring-1 ring-rose-500/30 line-through decoration-rose-500/70 decoration-1.5"
+                >
+                  <Ban className="size-3 no-underline" strokeWidth={2.5} />
+                  {word}
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Photo regen guidance */}
+      {(reframe.photoGuidance.dont.length > 0 ||
+        reframe.photoGuidance.do.length > 0) && (
+        <Card className="border border-amber-300/40 dark:border-amber-700/30 bg-amber-50/30 dark:bg-amber-950/10 shadow-none">
+          <div className="px-5 pt-4 pb-2 flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-800 dark:text-amber-200">
+                Photo regeneration guidance
+              </p>
+              <p className="text-[10px] font-semibold text-amber-800/70 dark:text-amber-200/70 mt-0.5">
+                For the identity-shot pass before listing on Etsy
+              </p>
+            </div>
+            {reframe.visionUsed && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30">
+                <Eye className="size-2.5" />
+                Vision analysed
+              </span>
+            )}
+          </div>
+          <CardContent className="px-5 pb-5 pt-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {reframe.photoGuidance.dont.length > 0 && (
+                <div className="rounded-lg bg-rose-500/8 ring-1 ring-rose-500/25 p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 inline-flex items-center gap-1">
+                    <XCircle className="size-3" strokeWidth={3} />
+                    Do not recreate
+                  </p>
+                  <ul className="space-y-1.5">
+                    {reframe.photoGuidance.dont.map((item, i) => (
+                      <li
+                        key={i}
+                        className="text-[11.5px] leading-snug text-foreground/85 flex gap-2 items-start"
+                      >
+                        <span className="mt-1 size-1 rounded-full bg-rose-500 shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {reframe.photoGuidance.do.length > 0 && (
+                <div className="rounded-lg bg-emerald-500/8 ring-1 ring-emerald-500/25 p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
+                    <CheckCircle2 className="size-3" strokeWidth={3} />
+                    Use instead
+                  </p>
+                  <ul className="space-y-1.5">
+                    {reframe.photoGuidance.do.map((item, i) => (
+                      <li
+                        key={i}
+                        className="text-[11.5px] leading-snug text-foreground/85 flex gap-2 items-start"
+                      >
+                        <span className="mt-1 size-1 rounded-full bg-emerald-500 shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
