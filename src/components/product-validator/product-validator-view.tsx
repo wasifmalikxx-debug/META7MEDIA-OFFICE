@@ -160,7 +160,7 @@ const VERDICT_THEME: Record<
     bgSubtle: "bg-amber-50 dark:bg-amber-950/40",
     text: "text-amber-700 dark:text-amber-300",
     icon: ShieldAlert,
-    label: "Review required",
+    label: "Flagged for review",
   },
   BLOCKED: {
     ring: "ring-rose-500/40",
@@ -168,7 +168,7 @@ const VERDICT_THEME: Record<
     bgSubtle: "bg-rose-50 dark:bg-rose-950/40",
     text: "text-rose-700 dark:text-rose-300",
     icon: ShieldX,
-    label: "Do not list",
+    label: "Flagged product",
   },
 };
 
@@ -304,11 +304,9 @@ export function ProductValidatorView() {
       if (final.verdict === "SAFE") {
         toast.success("Cleared for listing", { description: final.summary });
       } else if (final.verdict === "REVIEW") {
-        toast.warning("Review required", { description: final.summary });
+        toast.warning("Flagged for review", { description: final.summary });
       } else {
-        toast.error("Do not list this product", {
-          description: final.summary,
-        });
+        toast.error("Flagged product", { description: final.summary });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Validation failed";
@@ -1383,7 +1381,7 @@ function HeroBanner() {
           <FeatureCell
             icon={Sparkles}
             label="Clear verdict"
-            sub="Safe · Review · Do not list"
+            sub="Safe · Review · Flagged"
           />
         </div>
       </div>

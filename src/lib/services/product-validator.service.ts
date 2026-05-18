@@ -71,13 +71,44 @@ export interface ProductValidatorResult {
   durationMs: number;
 }
 
-const VERDICT_SUMMARIES: Record<ValidationVerdict, string> = {
-  BLOCKED:
-    "This product violates Etsy policy. Listing it will likely result in removal and a shop strike.",
-  REVIEW:
-    "Caution required. Reframe the title or modify the product before listing.",
-  SAFE: "No policy issues detected. Cleared for listing.",
-};
+/**
+ * Build a single-sentence summary that names the actual reason(s) the
+ * verdict came out the way it did.
+ *
+ *   SAFE     → static cleared message
+ *   REVIEW   → "Flagged for review — {reason 1}, {reason 2}, ..."
+ *   BLOCKED  → "Flagged: {label 1} (matched 'x'), {label 2} (matched 'y') —
+ *               violates {primary policy clause}"
+ *
+ * Sellers see the actual policy reason on the verdict card itself
+ * instead of having to scroll into the Findings panel to find it.
+ */
+function buildVerdictSummary(
+  verdict: ValidationVerdict,
+  flags: ValidationFlag[],
+): string {
+  if (verdict === "SAFE") {
+    return "No policy issues detected. Cleared for listing.";
+  }
+
+  if (flags.length === 0) {
+    return verdict === "BLOCKED"
+      ? "Flagged for listing — this product violates Etsy policy."
+      : "Flagged for review — reframe before listing.";
+  }
+
+  const top = flags[0];
+  const more = flags.length - 1;
+  const moreSuffix =
+    more === 0 ? "" : more === 1 ? " + 1 more issue" : ` + ${more} more issues`;
+
+  if (verdict === "BLOCKED") {
+    return `Flagged: ${top.label.toLowerCase()} — matched "${top.matchedText}" against ${top.policyClause}${moreSuffix}. Listing will likely trigger removal and a shop strike.`;
+  }
+
+  // REVIEW
+  return `Flagged for review: ${top.label.toLowerCase()} — matched "${top.matchedText}" against ${top.policyClause}${moreSuffix}. Reframe or customize before listing.`;
+}
 
 /**
  * Main validator entry point. Caller passes EITHER url OR manualTitle.
@@ -230,7 +261,7 @@ export async function validateProduct(
 
   return {
     verdict,
-    summary: VERDICT_SUMMARIES[verdict],
+    summary: buildVerdictSummary(verdict, flags),
     flags,
     product: {
       title,
