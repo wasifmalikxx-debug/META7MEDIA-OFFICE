@@ -3,19 +3,18 @@ import { prisma } from "@/lib/prisma";
 /**
  * Single source of truth for the Product Validator role gate.
  *
- * Access policy (May 18 2026 — tightened to CEO-only while we tune):
+ * Access policy (May 18 2026 — BETA launch to the EM team):
  *  - CEO / SUPER_ADMIN                     → real tool
- *  - Everyone else                         → Coming Soon placeholder
+ *  - MANAGER (Izaan, EM-4)                 → real tool
+ *  - EM employees (EM-* except EM-4L)      → real tool
+ *  - AE / ME employees                     → Coming Soon (next wave)
+ *  - Etsy PARTNERs                         → Coming Soon (next wave)
+ *  - HR / Facebook / Zain                  → Coming Soon
  *
- * The Etsy team rollout is paused while the tool's rule set is being
- * tuned. Reopen access by adding back the role/employee checks below.
- *
- * Earlier policy kept here as a comment for fast revert:
- *   isManager        empId === "EM-4"
- *   isEmEmployee     empId startsWith "EM" and !== "EM-4" / "EM-4L"
- *   isAeEmployee     empId startsWith "AE"
- *   isMeEmployee     empId startsWith "ME"
- *   isEtsyPartner    PARTNER role on an EM/AE/ME team
+ * Rationale: the rule set + AI reframe pipeline are fresh — the EM
+ * team validates the tool first against their actual sourcing
+ * workflow. Once their feedback is clean, add AE / ME / Partners
+ * back to the canUseRealTool union below.
  */
 
 export interface ProductValidatorAccess {
@@ -63,7 +62,7 @@ export async function getProductValidatorAccess(user: {
     );
   }
 
-  const canUseRealTool = isCeo;
+  const canUseRealTool = isCeo || isManager || isEmEmployee;
 
   return {
     isCeo,

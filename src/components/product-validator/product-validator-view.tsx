@@ -369,6 +369,11 @@ export function ProductValidatorView() {
       </div>
 
       <div className="max-w-5xl mx-auto space-y-5">
+        {/* Beta-test notice — visible to everyone the validator is
+            open to. Removed when the tool graduates to general
+            availability. */}
+        {!loading && <BetaTestNotice />}
+
         {/* Input card — hidden while the loading cinema is on screen */}
         {!loading && (
           <Card className="border border-border/60 shadow-none">
@@ -504,6 +509,30 @@ export function ProductValidatorView() {
 
         {/* Result panel */}
         {!loading && result && <ResultPanel result={result} />}
+      </div>
+    </div>
+  );
+}
+
+// ─── Beta-test notice ───────────────────────────────────────────────
+
+function BetaTestNotice() {
+  return (
+    <div className="rounded-xl bg-gradient-to-r from-amber-500/12 via-amber-500/8 to-violet-500/12 ring-1 ring-amber-500/30 px-4 py-3 flex items-start gap-3">
+      <div className="size-9 rounded-lg bg-amber-500/20 ring-1 ring-amber-500/40 flex items-center justify-center shrink-0">
+        <Sparkles className="size-4 text-amber-700 dark:text-amber-400" />
+      </div>
+      <div className="min-w-0 space-y-1">
+        <p className="text-[12px] font-bold text-amber-900 dark:text-amber-200 leading-tight">
+          Beta version · EM team is testing this tool
+        </p>
+        <p className="text-[11px] text-amber-800/85 dark:text-amber-200/80 leading-relaxed">
+          The rule set and AI listing guidance are new. If a verdict
+          looks wrong, a product gets blocked unfairly, or the
+          generated strategy doesn&apos;t fit one of your niches —
+          share the AliExpress URL + a note with Wasif so the rules
+          can be tuned.
+        </p>
       </div>
     </div>
   );
@@ -1679,12 +1708,12 @@ function HeroBanner() {
 
       <div className="relative max-w-5xl mx-auto px-7 sm:px-9 py-8 sm:py-10">
         <div className="flex items-center gap-2 mb-5 flex-wrap">
-          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 shadow-inner">
+          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-amber-500/25 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-amber-300/40 shadow-inner shadow-amber-500/20">
             <span className="relative flex size-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-80" />
-              <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-80" />
+              <span className="relative inline-flex size-2 rounded-full bg-amber-400" />
             </span>
-            Live for the Etsy team
+            Beta · EM team testing
           </span>
           <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
             <ShieldCheck className="size-3" />

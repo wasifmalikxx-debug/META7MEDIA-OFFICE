@@ -504,14 +504,14 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       no sub-routes. */}
 
                   {/* Product Validator — pre-listing Etsy policy check.
-                      Paste an AE URL, get SAFE/REVIEW/BLOCKED verdict
-                      with per-rule citations. Tightened to CEO-only on
-                      May 18 2026 while the rule set is being tuned —
-                      everyone else sees Coming Soon. Reopen by
-                      restoring the wider predicate (kept as a comment
-                      in product-validator-access.ts). */}
+                      Beta-launched to the EM team on May 18 2026.
+                      Predicate: CEO + Izaan (EM-4) + EM-* employees
+                      (excluding EM-4L). AE / ME / Partners still on
+                      Coming Soon — they roll in after the EM team
+                      validates the tool. Reopen wider access in
+                      product-validator-access.ts. */}
                   {(() => {
-                    const hasValidator = isCeo;
+                    const hasValidator = isCeo || isIzaan || isEmEmployee;
                     return (
                       <SidebarMenuItem>
                         <SidebarMenuButton
@@ -521,12 +521,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
                           <ShieldCheck className="size-4" />
                           <span>Product Validator</span>
                           {hasValidator ? (
-                            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
+                            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase">
                               <span className="relative flex size-1">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                                <span className="relative inline-flex size-1 rounded-full bg-emerald-500" />
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
+                                <span className="relative inline-flex size-1 rounded-full bg-amber-500" />
                               </span>
-                              New
+                              Beta
                             </span>
                           ) : (
                             <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
