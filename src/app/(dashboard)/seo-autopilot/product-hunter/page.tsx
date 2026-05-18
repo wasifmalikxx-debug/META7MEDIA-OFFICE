@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { ProductHunterView } from "@/components/seo-autopilot/product-hunter-view";
+import { ProductHunterHero } from "@/components/seo-autopilot/product-hunter-hero";
 import { ProductHunterComingSoon } from "@/components/seo-autopilot/product-hunter-coming-soon";
 import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
 
@@ -44,10 +45,19 @@ export default async function ProductHunterPage() {
   });
 
   if (access.canUseRealTool) {
-    // Pass the user.role through so the in-hero AE pill renders the
-    // right variant: CEO → connect/disconnect, partner → status only,
-    // everyone else → hidden.
-    return <ProductHunterView userRole={user.role} />;
+    // Full-bleed hero + constrained content column — same layout as
+    // the Price Calculator and Product Validator pages so the four
+    // Etsy Tools all read as one consistent product family.
+    return (
+      <div className="relative pb-12">
+        <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
+          <ProductHunterHero userRole={user.role} />
+        </div>
+        <div className="max-w-5xl mx-auto">
+          <ProductHunterView userRole={user.role} />
+        </div>
+      </div>
+    );
   }
 
   // Everyone else (HR Admin, AE/ME employees, EM-4L, Facebook team,
