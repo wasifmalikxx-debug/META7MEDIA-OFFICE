@@ -1156,17 +1156,28 @@ function HeatmapCell({
     <button
       type="button"
       onClick={onClick}
-      className={`relative rounded-xl text-left p-2.5 transition-all ring-1 overflow-hidden ${
+      // flex-col + mt-auto on the footer pushes that line to the same
+      // baseline across all cards in the row, so a long category name
+      // that pushes the title into 2 lines doesn't drag the dots/footer
+      // out of horizontal alignment with neighbour cards.
+      // min-h locks a floor so a card with very short content doesn't
+      // collapse vertically.
+      className={`relative flex flex-col rounded-xl text-left p-2.5 min-h-[88px] transition-all ring-1 overflow-hidden ${
         active
           ? "ring-violet-500/50 bg-gradient-to-br from-sky-500/[0.10] to-violet-500/[0.10] shadow-md"
           : "ring-border/40 bg-muted/15 hover:ring-border hover:bg-muted/30"
       }`}
     >
+      {/* Title row — min-w-0 + flex-1 on the title <p> is REQUIRED for
+          `truncate` to actually shrink inside a flex container.
+          Without it, long category names ("Costume Jewelry &
+          Accessories") silently overflow and break row-equal-height. */}
       <div className="flex items-start justify-between gap-1.5">
         <p
-          className={`text-[11px] font-bold tracking-tight leading-tight truncate ${
+          className={`flex-1 min-w-0 text-[11px] font-bold tracking-tight leading-tight truncate ${
             active ? "text-foreground" : "text-foreground/85"
           }`}
+          title={cat.category}
         >
           {cat.category}
         </p>
@@ -1186,8 +1197,10 @@ function HeatmapCell({
         ))}
       </div>
 
-      {/* Footer — hot count + Etsy volume */}
-      <p className="text-[9px] tabular-nums text-muted-foreground mt-1.5 truncate">
+      {/* Footer — hot count + Etsy volume. mt-auto pushes it to the
+          bottom of the card so it aligns with neighbour cards' footers
+          regardless of how many dots wrap or how the title rendered. */}
+      <p className="text-[9px] tabular-nums text-muted-foreground mt-auto pt-1.5 truncate">
         {cat.etsyHotKeywords > 0 && (
           <span className="text-emerald-700 dark:text-emerald-400 font-bold inline-flex items-center gap-0.5">
             <Flame className="size-2.5" />
