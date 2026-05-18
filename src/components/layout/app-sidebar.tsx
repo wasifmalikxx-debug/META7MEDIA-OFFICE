@@ -463,9 +463,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   {/* Product Hunter — finds underserved Etsy niches before
                       sending the team to AliExpress. Launched to the full
                       Etsy team May 18 2026 (CEO + Izaan + EM + AE + ME +
-                      Etsy partners). HR sees "Soon".
-                      Mirrors the SEO Autopilot access predicate, which
-                      now also includes AE / ME employees. */}
+                      Etsy partners). No pill — tool is fully live and the
+                      "Live" badge added visual clutter to a settled tool.
+                      Users without access still land on the Coming Soon
+                      placeholder when clicking through. */}
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/seo-autopilot/product-hunter" />}
@@ -475,19 +476,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     >
                       <Target className="size-4" />
                       <span>Product Hunter</span>
-                      {hasAutopilotBeta ? (
-                        <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wider uppercase">
-                          <span className="relative flex size-1">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                            <span className="relative inline-flex size-1 rounded-full bg-emerald-500" />
-                          </span>
-                          Live
-                        </span>
-                      ) : (
-                        <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
-                          Soon
-                        </span>
-                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
 
