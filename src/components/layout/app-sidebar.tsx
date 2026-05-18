@@ -489,41 +489,20 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       no sub-routes. */}
 
                   {/* Product Validator — pre-listing Etsy policy check.
-                      Beta-launched to EM team + Etsy partners on
-                      May 18 2026. Predicate: CEO + Izaan (EM-4) +
-                      EM-* employees (excluding EM-4L) + Etsy
-                      partners (Awais, Mubeen). AE / ME employees
-                      still on Coming Soon — they roll in after this
-                      wave validates the tool. Reopen wider access
-                      in product-validator-access.ts. */}
-                  {(() => {
-                    const hasValidator =
-                      isCeo || isIzaan || isEmEmployee || isEtsyPartner;
-                    return (
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          render={<Link href="/product-validator" />}
-                          isActive={isItemActive("/product-validator")}
-                        >
-                          <ShieldCheck className="size-4" />
-                          <span>Product Validator</span>
-                          {hasValidator ? (
-                            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase">
-                              <span className="relative flex size-1">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
-                                <span className="relative inline-flex size-1 rounded-full bg-amber-500" />
-                              </span>
-                              Beta
-                            </span>
-                          ) : (
-                            <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
-                              Soon
-                            </span>
-                          )}
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })()}
+                      Launched to the full Etsy team May 18 2026 (CEO +
+                      Izaan + EM + AE + ME + Etsy partners). No pill,
+                      matching the Price Calculator + Product Hunter
+                      pattern — settled tools without a Beta badge feel
+                      cleaner in the sidebar. */}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      render={<Link href="/product-validator" />}
+                      isActive={isItemActive("/product-validator")}
+                    >
+                      <ShieldCheck className="size-4" />
+                      <span>Product Validator</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
 
                   <SidebarMenuItem>
                     <SidebarMenuButton

@@ -362,39 +362,33 @@ export function ProductValidatorView() {
   }
 
   return (
-    <div className="relative pb-12">
-      {/* Full-bleed hero */}
-      <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-6">
-        <HeroBanner />
-      </div>
+    <div className="space-y-6 pb-12">
+      {/* Slim premium banner — replaces the heavy dark hero. Matches
+          the Price Calculator's ReminderBanner pattern (gradient,
+          glow blobs, frosted icon chip, status pill on the right). */}
+      <PreListingBanner />
 
-      <div className="max-w-5xl mx-auto space-y-5">
-        {/* Beta-test notice — visible to everyone the validator is
-            open to. Removed when the tool graduates to general
-            availability. */}
-        {!loading && <BetaTestNotice />}
-
-        {/* Input card — hidden while the loading cinema is on screen */}
+      <div className="max-w-3xl mx-auto space-y-6">
+        {/* Input card — clean white card matching the calculator's
+            input zone: shadow-none, generous padding, centered, with
+            a small uppercase tag-style label leading each section. */}
         {!loading && (
-          <Card className="border border-border/60 shadow-none">
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="size-10 rounded-xl bg-gradient-to-br from-violet-500 to-emerald-500 ring-1 ring-violet-500/30 flex items-center justify-center shadow shadow-violet-500/30">
-                  <ShieldCheck className="size-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-violet-600 dark:text-violet-400">
-                    Pre-listing policy check
-                  </p>
-                  <h3 className="text-[16px] font-bold leading-tight">
-                    {mode === "url"
-                      ? "Paste an aliexpress.com product URL"
-                      : "Submit the product manually"}
-                  </h3>
-                </div>
+          <Card className="border shadow-none">
+            <CardContent className="p-6 sm:p-8 space-y-6">
+              {/* Section label */}
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-[0.16em] flex items-center gap-1.5">
+                  <ShieldCheck className="size-3" />
+                  {mode === "url"
+                    ? "Aliexpress.com product URL"
+                    : "Manual product submission"}
+                </Label>
+                <p className="hidden sm:block text-[10px] text-muted-foreground/60 tabular-nums">
+                  {mode === "url" ? "URL check" : "Manual check"}
+                </p>
               </div>
 
-              {/* Mode toggle */}
+              {/* Mode toggle — calculator-style segmented control */}
               <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-1 ring-1 ring-border/40">
                 <ModeButton
                   active={mode === "url"}
@@ -416,28 +410,32 @@ export function ProductValidatorView() {
                 />
               </div>
 
-              {/* URL mode */}
+              {/* URL mode — bigger input, calculator-grade typography */}
               {mode === "url" && (
-                <>
-                  <Input
-                    type="text"
-                    value={urlInput}
-                    onChange={(e) => handleUrlChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && canSubmit()) handleValidate();
-                    }}
-                    placeholder="https://www.aliexpress.com/item/1005006123456789.html"
-                    disabled={loading}
-                    className="h-12 text-sm bg-muted/20 border-border/70 focus-visible:border-violet-500/60 focus-visible:ring-violet-500/15"
-                  />
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Link2 className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground/40 pointer-events-none" />
+                    <Input
+                      type="text"
+                      value={urlInput}
+                      onChange={(e) => handleUrlChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && canSubmit()) handleValidate();
+                      }}
+                      placeholder="https://www.aliexpress.com/item/…"
+                      disabled={loading}
+                      autoFocus
+                      className="h-16 pl-14 pr-4 text-[15px] font-medium"
+                    />
+                  </div>
                   <UsUrlNotice />
-                </>
+                </div>
               )}
 
               {/* Manual mode */}
               {mode === "manual" && (
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
+                <div className="space-y-5">
+                  <div className="space-y-2">
                     <Label
                       htmlFor="manual-title"
                       className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground"
@@ -457,11 +455,11 @@ export function ProductValidatorView() {
                       disabled={loading}
                       maxLength={500}
                       autoFocus
-                      className="h-10 text-sm"
+                      className="h-14 text-[14px]"
                     />
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <Label className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
                       Reference photos{" "}
                       <span className="text-rose-500">*</span>{" "}
@@ -476,20 +474,23 @@ export function ProductValidatorView() {
                       maxImages={2}
                     />
                     <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
-                      AliExpress blocks image downloads. Take screenshots of
-                      the product photos and upload them here so the result
-                      card shows the product that was validated.
+                      AliExpress blocks image downloads. Take screenshots
+                      of the product photos and upload them here so the
+                      result card shows the product that was validated.
                     </p>
                   </div>
                 </div>
               )}
 
-              <div className="space-y-2">
+              {/* Run button — calculator-grade height and clean
+                  presentation; gradient kept since it's the brand
+                  signature for the validator. */}
+              <div className="space-y-2 pt-1">
                 <Button
                   type="button"
                   onClick={handleValidate}
                   disabled={!canSubmit()}
-                  className="w-full h-12 bg-gradient-to-r from-violet-500 to-emerald-500 hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-violet-500/30 disabled:opacity-40"
+                  className="w-full h-14 text-[14px] bg-gradient-to-r from-violet-500 to-emerald-500 hover:opacity-90 text-white font-bold rounded-xl shadow-md shadow-violet-500/25 disabled:opacity-40 disabled:shadow-none"
                 >
                   <Sparkles className="size-4 mr-2" />
                   Run validation
@@ -507,32 +508,84 @@ export function ProductValidatorView() {
         {/* Loading cinema */}
         {loading && <ValidationCinema stage={stage} />}
 
-        {/* Result panel */}
-        {!loading && result && <ResultPanel result={result} />}
+        {/* Result panel — kept at max-w-5xl for breathing room on the
+            big result hero / policy matrix / findings cards. */}
+        {!loading && result && (
+          <div className="max-w-5xl mx-auto -mx-3 sm:mx-0">
+            <ResultPanel result={result} />
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Beta-test notice ───────────────────────────────────────────────
+// ─── Premium banner ────────────────────────────────────────────────
+//
+// Mirrors the Price Calculator's ReminderBanner structure (gradient
+// base + glow blobs + stripe texture + frosted icon chip + status
+// pill on the right). The colour palette swaps from the calculator's
+// warning-rose to a violet→emerald gradient that reads as the
+// validator's brand signature — same visual weight, different role.
 
-function BetaTestNotice() {
+function PreListingBanner() {
   return (
-    <div className="rounded-xl bg-gradient-to-r from-amber-500/12 via-amber-500/8 to-violet-500/12 ring-1 ring-amber-500/30 px-4 py-3 flex items-start gap-3">
-      <div className="size-9 rounded-lg bg-amber-500/20 ring-1 ring-amber-500/40 flex items-center justify-center shrink-0">
-        <Sparkles className="size-4 text-amber-700 dark:text-amber-400" />
-      </div>
-      <div className="min-w-0 space-y-1">
-        <p className="text-[12px] font-bold text-amber-900 dark:text-amber-200 leading-tight">
-          Beta version · EM team and Etsy partners are testing this tool
-        </p>
-        <p className="text-[11px] text-amber-800/85 dark:text-amber-200/80 leading-relaxed">
-          The rule set and AI listing guidance are new. If a verdict
-          looks wrong, a product gets blocked unfairly, or the
-          generated strategy doesn&apos;t fit one of your niches —
-          share the AliExpress URL + a note with the CEO so the
-          rules can be tuned.
-        </p>
+    <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-600 via-violet-700 to-emerald-700 dark:from-violet-700 dark:via-violet-800 dark:to-emerald-800 shadow-lg shadow-violet-500/20 dark:shadow-violet-950/40 ring-1 ring-violet-700/40">
+      {/* Glow blobs for depth */}
+      <div
+        aria-hidden
+        className="absolute -top-16 -left-12 size-48 rounded-full bg-violet-300/25 blur-3xl pointer-events-none"
+      />
+      <div
+        aria-hidden
+        className="absolute -bottom-20 -right-12 size-56 rounded-full bg-emerald-400/20 blur-3xl pointer-events-none"
+      />
+
+      {/* Diagonal stripe texture — subtle backdrop */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.06] pointer-events-none"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(135deg, transparent 0, transparent 18px, rgba(255,255,255,0.6) 18px, rgba(255,255,255,0.6) 19px)",
+        }}
+      />
+
+      <div className="relative flex items-center gap-4 px-4 sm:px-6 py-4">
+        {/* Frosted icon chip */}
+        <div className="relative shrink-0">
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-xl bg-white/30 animate-pulse blur-sm"
+          />
+          <div className="relative size-11 rounded-xl bg-white/15 ring-1 ring-white/40 flex items-center justify-center backdrop-blur-sm shadow-inner">
+            <ShieldCheck className="size-5 text-white" />
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white tracking-[0.18em] uppercase bg-emerald-500/30 backdrop-blur-sm px-2 py-0.5 rounded-full ring-1 ring-emerald-300/40">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-200 opacity-75" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-300" />
+              </span>
+              Etsy team · Live
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/25 backdrop-blur-sm px-2 py-0.5 rounded-full ring-1 ring-white/15">
+              Pre-listing policy check
+            </span>
+          </div>
+          <p className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
+            Product Validator
+          </p>
+          <p className="text-[11px] sm:text-[12px] text-white/85 mt-1 leading-snug">
+            Run any AliExpress product through Etsy&apos;s policy rules
+            before listing. Catch prohibited items, IP issues, and
+            creativity standard violations before they cost the shop a
+            strike.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -1670,124 +1723,9 @@ function ValidationCinema({ stage }: { stage: Stage }) {
   );
 }
 
-// ─── Hero banner ────────────────────────────────────────────────────
-
-function HeroBanner() {
-  return (
-    <div className="relative overflow-hidden shadow-xl shadow-violet-500/15 ap-stagger-in border-b border-white/10">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#1a0d2a] via-[#0d1a26] to-[#0d2a1f]" />
-      <div
-        aria-hidden
-        className="absolute -top-32 -left-20 size-[420px] rounded-full blur-3xl ap-aurora-1"
-        style={{
-          background:
-            "radial-gradient(closest-side, rgba(168,85,247,0.55), rgba(168,85,247,0) 70%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute -bottom-40 right-0 size-[520px] rounded-full blur-3xl ap-aurora-2"
-        style={{
-          background:
-            "radial-gradient(closest-side, rgba(16,185,129,0.55), rgba(16,185,129,0) 70%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-0 opacity-[0.08]"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle, rgba(255,255,255,0.6) 1px, transparent 1px)",
-          backgroundSize: "18px 18px",
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent"
-      />
-
-      <div className="relative max-w-5xl mx-auto px-7 sm:px-9 py-8 sm:py-10">
-        <div className="flex items-center gap-2 mb-5 flex-wrap">
-          <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-amber-500/25 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-amber-300/40 shadow-inner shadow-amber-500/20">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-80" />
-              <span className="relative inline-flex size-2 rounded-full bg-amber-400" />
-            </span>
-            Beta · EM team + partners
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
-            <ShieldCheck className="size-3" />
-            Pre-listing policy check
-          </span>
-        </div>
-
-        <div className="flex items-center gap-4 sm:gap-5">
-          <div className="relative shrink-0">
-            <span
-              aria-hidden
-              className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-violet-400/40 to-emerald-500/40 blur-lg ap-orb-pulse"
-            />
-            <div className="relative size-16 sm:size-[68px] rounded-2xl bg-gradient-to-br from-white/20 to-white/5 ring-1 ring-white/30 flex items-center justify-center backdrop-blur-md shadow-2xl shadow-violet-900/40">
-              <ShieldCheck className="size-7 sm:size-8 text-white drop-shadow-lg" />
-            </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-[1.05]">
-              Product Validator
-            </h1>
-            <p className="text-[13px] sm:text-sm text-white/70 mt-1.5 leading-relaxed max-w-2xl">
-              Run any AliExpress product through Etsy&apos;s policy rules
-              before listing. Catch prohibited items, IP issues, and
-              creativity standard violations before they cost the shop a
-              strike.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-7 pt-5 border-t border-white/10">
-          <FeatureCell
-            icon={Link2}
-            label="Aliexpress.com URLs"
-            sub="Regional storefronts not supported"
-          />
-          <FeatureCell
-            icon={ShieldCheck}
-            label="Etsy policy coverage"
-            sub="Prohibited · IP · PPE · Creativity"
-          />
-          <FeatureCell
-            icon={Sparkles}
-            label="Clear verdict"
-            sub="Safe · Review · Flagged"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FeatureCell({
-  icon: Icon,
-  label,
-  sub,
-}: {
-  icon: typeof Sparkles;
-  label: string;
-  sub: string;
-}) {
-  return (
-    <div className="flex items-center gap-2.5 min-w-0">
-      <div className="size-8 rounded-lg bg-white/10 ring-1 ring-white/15 flex items-center justify-center shrink-0">
-        <Icon className="size-4 text-white/90" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] sm:text-[12px] font-semibold text-white leading-tight truncate">
-          {label}
-        </p>
-        <p className="text-[10px] text-white/55 leading-tight truncate">
-          {sub}
-        </p>
-      </div>
-    </div>
-  );
-}
+// HeroBanner + FeatureCell removed May 18 2026 — replaced by the
+// slim calculator-style PreListingBanner at the top of the file.
+// The previous heavy dark hero was inconsistent with the rest of the
+// Etsy Tools (Price Calculator + Product Hunter use lighter premium
+// banners). Resurrect from git history if a full-bleed dark hero
+// ever comes back.

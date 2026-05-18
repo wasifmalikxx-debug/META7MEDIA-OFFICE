@@ -3,18 +3,19 @@ import { prisma } from "@/lib/prisma";
 /**
  * Single source of truth for the Product Validator role gate.
  *
- * Access policy (May 18 2026 — BETA launch to EM team + Etsy partners):
- *  - CEO / SUPER_ADMIN                     → real tool
- *  - MANAGER (Izaan, EM-4)                 → real tool
- *  - EM employees (EM-* except EM-4L)      → real tool
- *  - Etsy PARTNERs (Awais, Mubeen)         → real tool
- *  - AE / ME employees                     → Coming Soon (next wave)
+ * Access policy (May 18 2026 — full Etsy team rollout):
+ *  - CEO / SUPER_ADMIN                     → real tool, unlimited
+ *  - MANAGER (Izaan, EM-4)                 → real tool, unlimited
+ *  - EM employees (EM-* except EM-4L)      → real tool, unlimited
+ *  - AE employees (AE-*)                   → real tool, unlimited
+ *  - ME employees (ME-*)                   → real tool, unlimited
+ *  - Etsy PARTNERs (Awais, Mubeen)         → real tool, unlimited
  *  - HR / Facebook / Zain                  → Coming Soon
  *
- * Rationale: the rule set + AI reframe pipeline are fresh — the EM
- * team + Etsy partners validate the tool first against their actual
- * sourcing workflow. Once their feedback is clean, AE / ME employees
- * roll in.
+ * No daily quota — validation is cheap (~$0.006/check with vision,
+ * $0 for hard-block or cleared products) and high-value since it
+ * prevents shop strikes. Letting the team validate freely is more
+ * important than capping spend.
  */
 
 export interface ProductValidatorAccess {
@@ -36,9 +37,6 @@ export async function getProductValidatorAccess(user: {
   const isCeo = user.role === "SUPER_ADMIN";
   const empId = user.employeeId;
 
-  // Role/team flags are still computed so the rest of the app (sidebar
-  // pill copy, dashboards) keeps reading them, but they no longer
-  // affect access. canUseRealTool gates only on isCeo for now.
   const isManager = empId === "EM-4"; // Izaan
   const isEmEmployee =
     typeof empId === "string" &&
@@ -63,7 +61,12 @@ export async function getProductValidatorAccess(user: {
   }
 
   const canUseRealTool =
-    isCeo || isManager || isEmEmployee || isEtsyPartner;
+    isCeo ||
+    isManager ||
+    isEmEmployee ||
+    isAeEmployee ||
+    isMeEmployee ||
+    isEtsyPartner;
 
   return {
     isCeo,
