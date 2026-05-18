@@ -30,6 +30,7 @@ import {
   Lightbulb,
   Crown,
   Eye,
+  XCircle,
   Search,
   PenLine,
   Zap,
@@ -101,12 +102,31 @@ interface AnchorKeywords {
   topTags: KeywordFrequency[];
   totalListings: number;
 }
+/** Reframe metadata — present when the rule engine or vision flagged
+ * the source product as IP / brand / commodity / personalisation
+ * risk. The generated listing was produced WITH constraints that
+ * stripped those flags. UI uses this to show an "IP-adjusted" badge
+ * + the photo regen guidance for the team's identity-shot pass. */
+interface ReframeMeta {
+  flaggedRules: Array<{
+    label: string;
+    matchedText: string;
+    policyClause: string;
+  }>;
+  avoidWords: string[];
+  photoGuidance: {
+    dont: string[];
+    do: string[];
+  };
+}
+
 interface GenerateResponse {
   compliance: ComplianceVerdict;
   listing: GeneratedListing | null;
   research: ResearchSummary;
   anchorKeywords?: AnchorKeywords;
   tagIntelligence?: TagDemand[];
+  reframe?: ReframeMeta | null;
   inputs?: UserInputsEcho;
   generatedAt: string;
 }
@@ -646,18 +666,21 @@ function HeroBanner({
           pills don't sprawl on ultrawide displays — only the gradient
           background goes full width. */}
       <div className="relative max-w-5xl mx-auto px-7 sm:px-9 py-8 sm:py-10">
-        {/* Status pills */}
+        {/* Status pills — match the family (Calculator, Validator,
+            Product Hunter) with "Etsy team · Live" + a scope pill.
+            Removed the "Beta version" pill per CEO May 18 — the tool
+            is launched, not beta. */}
         <div className="flex items-center gap-2 mb-5 flex-wrap">
           <span className="inline-flex items-center gap-2 text-[10px] font-bold text-white tracking-[0.22em] uppercase bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/20 shadow-inner">
             <span className="relative flex size-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-80" />
               <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
             </span>
-            Beta version
+            Etsy team · Live
           </span>
           <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/90 tracking-[0.16em] uppercase bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-white/10">
             <ShieldCheck className="size-3" />
-            Strict compliance gate
+            Policy-safe listing
           </span>
           {hasResult && (
             <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-200 tracking-[0.16em] uppercase bg-emerald-500/20 backdrop-blur-md px-3 py-1.5 rounded-full ring-1 ring-emerald-300/30">
@@ -1567,7 +1590,7 @@ function ResultPanel({
   data: GenerateResponse;
   userImages: UploadedImage[];
 }) {
-  const { listing, compliance, research, inputs } = data;
+  const { listing, compliance, research, inputs, reframe } = data;
 
   const [tags, setTags] = useState<string[]>(listing?.tags ?? []);
   const [tagIntel, setTagIntel] = useState<TagDemand[]>(
@@ -1647,6 +1670,15 @@ function ResultPanel({
           </div>
         )}
 
+        {/* IP-adjusted banner — present when the rule engine or vision
+            flagged the source product and Sonnet generated with reframe
+            constraints. Tells the team WHAT was stripped + WHY. */}
+        {reframe && (
+          <div className="ap-stagger-in" style={{ animationDelay: "175ms" }}>
+            <ReframeBanner reframe={reframe} />
+          </div>
+        )}
+
         {/* Title */}
         <div className="ap-stagger-in" style={{ animationDelay: "200ms" }}>
           <TitleRow title={listing.title} />
@@ -1687,8 +1719,150 @@ function ResultPanel({
         <div className="ap-stagger-in" style={{ animationDelay: "650ms" }}>
           <AltTextRow altTexts={listing.altTexts} images={userImages} />
         </div>
+
+        {/* Photo regen guidance — only when reframe ran. Tells the
+            team what NOT to recreate in the identity-shot pass + safer
+            alternatives, mirroring the validator's photo guidance. */}
+        {reframe &&
+          (reframe.photoGuidance.dont.length > 0 ||
+            reframe.photoGuidance.do.length > 0) && (
+            <>
+              <Divider />
+              <div
+                className="ap-stagger-in"
+                style={{ animationDelay: "750ms" }}
+              >
+                <PhotoGuidanceRow guidance={reframe.photoGuidance} />
+              </div>
+            </>
+          )}
       </CardContent>
     </PremiumCard>
+  );
+}
+
+// ─── Reframe banner — shown when Sonnet generated with policy constraints
+
+function ReframeBanner({ reframe }: { reframe: ReframeMeta }) {
+  const topFlag = reframe.flaggedRules[0];
+  return (
+    <div className="my-3 rounded-xl border border-violet-300/40 dark:border-violet-700/30 bg-gradient-to-br from-violet-50/70 via-violet-50/40 to-emerald-50/40 dark:from-violet-950/30 dark:via-violet-950/15 dark:to-emerald-950/15 p-4">
+      <div className="flex items-start gap-3">
+        <div className="relative shrink-0">
+          <span
+            aria-hidden
+            className="absolute -inset-1 rounded-xl bg-violet-500/30 blur-md"
+          />
+          <div className="relative size-9 rounded-xl bg-gradient-to-br from-violet-500 to-emerald-500 ring-1 ring-violet-700/30 flex items-center justify-center shadow shadow-violet-500/30">
+            <ShieldCheck className="size-4 text-white" />
+          </div>
+        </div>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-[0.18em] px-2 py-0.5 rounded-full bg-violet-500 text-white">
+              IP-adjusted
+            </span>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+              Generated with Etsy-safe constraints
+            </p>
+          </div>
+          <p className="text-[12.5px] leading-relaxed text-foreground/90">
+            {topFlag
+              ? `The source title hit "${topFlag.matchedText}" (${topFlag.label} · ${topFlag.policyClause}). We rewrote the title, tags, and description to pass Etsy's automated scans.`
+              : "The source product was flagged by Etsy's policy rules. We rewrote the title, tags, and description to pass Etsy's automated scans."}
+          </p>
+          {reframe.avoidWords.length > 0 && (
+            <div className="pt-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700/70 dark:text-violet-300/70 mb-1.5">
+                Words stripped from the output
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {reframe.avoidWords.slice(0, 10).map((word, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-md bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/25 line-through decoration-rose-500/60"
+                  >
+                    {word}
+                  </span>
+                ))}
+                {reframe.avoidWords.length > 10 && (
+                  <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 text-muted-foreground">
+                    +{reframe.avoidWords.length - 10} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Photo regen guidance — do / don't for the identity-shot pass ───
+
+function PhotoGuidanceRow({
+  guidance,
+}: {
+  guidance: { dont: string[]; do: string[] };
+}) {
+  return (
+    <div className="space-y-3 pt-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+          Photo regeneration guidance
+        </p>
+        <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/30">
+          <Eye className="size-2.5" />
+          Vision analysed
+        </span>
+      </div>
+      <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+        Use these notes during your identity-shot pass — the photos you
+        upload to Etsy must not recreate the IP-bound elements in the
+        source images.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {guidance.dont.length > 0 && (
+          <div className="rounded-lg bg-rose-500/8 ring-1 ring-rose-500/25 p-3 space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 inline-flex items-center gap-1">
+              <XCircle className="size-3" strokeWidth={3} />
+              Do not recreate
+            </p>
+            <ul className="space-y-1.5">
+              {guidance.dont.map((item, i) => (
+                <li
+                  key={i}
+                  className="text-[11.5px] leading-snug text-foreground/85 flex gap-2 items-start"
+                >
+                  <span className="mt-1 size-1 rounded-full bg-rose-500 shrink-0" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {guidance.do.length > 0 && (
+          <div className="rounded-lg bg-emerald-500/8 ring-1 ring-emerald-500/25 p-3 space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
+              <Check className="size-3" strokeWidth={3} />
+              Use instead
+            </p>
+            <ul className="space-y-1.5">
+              {guidance.do.map((item, i) => (
+                <li
+                  key={i}
+                  className="text-[11.5px] leading-snug text-foreground/85 flex gap-2 items-start"
+                >
+                  <span className="mt-1 size-1 rounded-full bg-emerald-500 shrink-0" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

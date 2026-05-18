@@ -1312,6 +1312,23 @@ export interface GenerationInput {
   sizes?: string[];
   /** "Variants" — covers colors, phone models, designs, anything. */
   variants?: string[];
+  /**
+   * Reframe constraints — only set when the rule engine OR vision
+   * compliance flagged the product (IP / brand / commodity tells /
+   * personalisation wording). When present, Sonnet must:
+   *   - never include any of `avoidWords` in title, tags, or description
+   *   - follow `listingApproach` for the overall framing
+   *   - follow `titleGuidance` / `tagGuidance` / `descriptionGuidance`
+   * The hard-block list (firearms, drugs, hate, adult, PPE, animals)
+   * never reaches this point — those products short-circuit upstream.
+   */
+  reframeConstraints?: {
+    listingApproach: string;
+    titleGuidance: string[];
+    tagGuidance: string[];
+    descriptionGuidance: string[];
+    avoidWords: string[];
+  };
 }
 
 export interface GeneratedListing {
@@ -1606,12 +1623,49 @@ ${input.buyerVariants
   // sounds the same" problem.
   const voice = pickGeneratorVoice();
 
+  // Reframe constraint block — only present when the rule engine OR
+  // vision flagged the product. Threaded into the user prompt (not
+  // system) so the system-prompt cache stays warm. These are HARD
+  // constraints: Sonnet must follow them in addition to every system-
+  // prompt rule.
+  const reframeBlock = input.reframeConstraints
+    ? `# ⚠ POLICY-SAFE REFRAME REQUIRED — read carefully
+
+The source product was flagged by Etsy's policy rules (IP, brand,
+commodity tells, or personalisation wording). Generate a listing that
+PASSES Etsy's automated keyword scans by following these hard
+constraints:
+
+LISTING APPROACH (frame the listing this way):
+${input.reframeConstraints.listingApproach}
+
+TITLE RULES:
+${input.reframeConstraints.titleGuidance.map((b) => `  • ${b}`).join("\n")}
+
+TAG RULES:
+${input.reframeConstraints.tagGuidance.map((b) => `  • ${b}`).join("\n")}
+
+DESCRIPTION RULES:
+${input.reframeConstraints.descriptionGuidance.map((b) => `  • ${b}`).join("\n")}
+
+NEVER include these exact words/phrases ANYWHERE (title, tags,
+description, alt text, rationale):
+${input.reframeConstraints.avoidWords.map((w) => `  ✗ ${w}`).join("\n")}
+
+If you put any of the AVOID words in the output, the listing will be
+removed by Etsy within hours. They are non-negotiable. Replace each
+flagged concept with the descriptive equivalents from the LISTING
+APPROACH above.
+
+`
+    : "";
+
   return `# Writing voice for THIS listing — ${voice.name}
 ${voice.instruction}
 
 (This voice is randomly assigned per generation so the shop's listings sound varied instead of all using the same template phrasing. Still follow every CORE RULE in the system prompt — voice changes tone, not structure or output format.)
 
-# Source title
+${reframeBlock}# Source title
 ${input.productBrief}
 
 # Target Etsy category

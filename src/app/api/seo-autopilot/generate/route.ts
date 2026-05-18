@@ -32,6 +32,14 @@ import {
 } from "@/lib/services/seo-autopilot-quota.service";
 import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
 import { prisma } from "@/lib/prisma";
+import {
+  evaluatePolicyRules,
+  rollupVerdict,
+} from "@/lib/services/etsy-policy-rules";
+import {
+  reframeForEtsy,
+  type ReframeResult,
+} from "@/lib/services/product-validator-reframe.service";
 
 /**
  * POST /api/seo-autopilot/generate
@@ -206,6 +214,92 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // ─── Stage 1.5 — Policy rule engine (free, instant) ────────────────
+  //
+  // Same rule engine the Product Validator uses. Two roles:
+  //   1. HARD-BLOCK early-return — if the title hits a true category
+  //      ban (firearms, drugs, hate, adult, PPE, animals, violence),
+  //      stop right here. Saves the Sonnet vision call entirely and
+  //      doesn't burn a quota slot. Same products the validator's
+  //      BLOCKED verdict refuses.
+  //   2. SOFT-FLAG marker — if the title hits IP / brand / commodity
+  //      / personalisation rules, mark the gen for reframe-aware
+  //      generation (continues to vision compliance + reframe call
+  //      + Sonnet with reframe constraints threaded in).
+  const ruleHits = evaluatePolicyRules(payload.aliExpressTitle);
+  const ruleVerdict = rollupVerdict(ruleHits);
+
+  if (ruleVerdict === "BLOCKED") {
+    // Hard-banned category. Halt before any Sonnet/Haiku cost.
+    refundOnFailure = false;
+    const topHit = ruleHits[0];
+    const synthCompliance: ComplianceVerdict = {
+      verdict: "BLOCKED",
+      concerns: ruleHits.map((h) => ({
+        severity: "block" as const,
+        category: (h.rule.policy === "ip"
+          ? "trademark"
+          : h.rule.policy === "weapons" ||
+              h.rule.policy === "drugs" ||
+              h.rule.policy === "ppe" ||
+              h.rule.policy === "animals" ||
+              h.rule.policy === "hate" ||
+              h.rule.policy === "adult" ||
+              h.rule.policy === "violence"
+            ? "prohibited"
+            : "policy") as
+          | "trademark"
+          | "prohibited"
+          | "counterfeit"
+          | "policy"
+          | "quality",
+        details: `${h.rule.label} — matched "${h.matchedText}" (${h.rule.policyClause}). ${h.rule.explanation}`,
+      })),
+      summary: topHit
+        ? `Cannot be listed: ${topHit.rule.label} — matched "${topHit.matchedText}" against ${topHit.rule.policyClause}. This is a category ban; no reframing will save it.`
+        : "Cannot be listed — this product is in an Etsy-banned category.",
+    };
+
+    await logGeneration({
+      userId: u.id,
+      sourceTitle: payload.aliExpressTitle,
+      generatedTitle: null,
+      verdict: "BLOCKED",
+      category: null,
+      actualCostUsd: costAccum.totalCostUsd, // $0 — rule engine ran free
+      inputTokens: costAccum.totalInputTokens,
+      outputTokens: costAccum.totalOutputTokens,
+      cacheReadTokens: costAccum.totalCacheReadTokens,
+      cacheWriteTokens: costAccum.totalCacheWriteTokens,
+      listing: null,
+      sizes: payload.sizes,
+      variants: payload.variants,
+    });
+
+    return json({
+      compliance: synthCompliance,
+      research: {
+        searchKeyword: context.searchKeyword,
+        productType: context.productType,
+        audienceHint: context.audienceHint,
+        styleHint: context.styleHint,
+        categoryPath: "",
+        categoryId: 0,
+        competitorsAnalyzed: 0,
+        topCompetitors: [],
+      },
+      listing: null,
+      anchorKeywords: { topPhrases: [], topTags: [], totalListings: 0 },
+      reframed: false,
+      generatedAt: new Date().toISOString(),
+    });
+  }
+
+  // Soft-flagged products fall through and continue. We capture the
+  // hits so the reframe call (after vision compliance) can use them
+  // for context.
+  const softFlaggedByRules = ruleVerdict === "REVIEW";
+
   // ─── Stage 2 — Sonnet vision compliance + Haiku buyer-keyword
   //                brainstorm (parallel — both independent) ─────────────
 
@@ -240,45 +334,60 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // BLOCKED → return early. Don't waste tokens generating a listing the
-  // employee can't legally publish. The quota slot stays consumed —
-  // compliance is a billable outcome (Haiku already did vision work).
-  if (compliance.verdict === "BLOCKED") {
-    refundOnFailure = false;
-    await logGeneration({
-      userId: u.id,
-      sourceTitle: payload.aliExpressTitle,
-      generatedTitle: null,
-      verdict: "BLOCKED",
-      category: null,
-      actualCostUsd: costAccum.totalCostUsd,
-      inputTokens: costAccum.totalInputTokens,
-      outputTokens: costAccum.totalOutputTokens,
-      cacheReadTokens: costAccum.totalCacheReadTokens,
-      cacheWriteTokens: costAccum.totalCacheWriteTokens,
-      // No listing on BLOCKED — user's history will show the source
-      // title + the BLOCKED verdict but no listing detail to expand.
-      listing: null,
-      sizes: payload.sizes,
-      variants: payload.variants,
-    });
-    return json({
-      compliance,
-      // Echo what we read so the UI can still show "Autopilot's read"
-      research: {
-        searchKeyword: context.searchKeyword,
-        productType: context.productType,
-        audienceHint: context.audienceHint,
-        styleHint: context.styleHint,
-        categoryPath: "",
-        categoryId: 0,
-        competitorsAnalyzed: 0,
-        topCompetitors: [],
-      },
-      listing: null,
-      anchorKeywords: { topPhrases: [], topTags: [], totalListings: 0 },
-      generatedAt: new Date().toISOString(),
-    });
+  // Vision compliance is now a SOFT-FLAG signal, not a hard gate.
+  // The rule engine above already hard-blocked the truly banned
+  // categories (firearms, drugs, hate, adult, PPE, animals). If
+  // vision says BLOCKED at this point, it caught something visual
+  // the title-rule missed — almost always IP / brand visible in the
+  // photo but not in the title (Marvel logo on a generically-titled
+  // costume). For these we REFRAME instead of refusing: the team
+  // can list the product with safer wording + the photo regen pass
+  // strips the visible IP.
+  const visionFlagged =
+    compliance.verdict === "BLOCKED" || compliance.verdict === "REVIEW";
+  const needsReframe = softFlaggedByRules || visionFlagged;
+
+  // ─── Stage 2.5 — Reframe call (when soft-flagged) ─────────────────
+  //
+  // Same Haiku reframe service the Product Validator uses. Produces
+  // the avoid-words list + listing approach + title/tag/description
+  // guidance bullets + photo regen guidance. We thread these into
+  // Sonnet's user prompt below as hard constraints so the generated
+  // listing is Etsy-safe by construction.
+  //
+  // Non-fatal — if the reframe Haiku call fails, generation continues
+  // without constraints (still better than refusing the product).
+  let reframe: ReframeResult | null = null;
+  if (needsReframe) {
+    try {
+      reframe = await reframeForEtsy({
+        title: payload.aliExpressTitle,
+        flags: ruleHits.map((h) => ({
+          severity: h.rule.severity,
+          policy: h.rule.policy,
+          policyClause: h.rule.policyClause,
+          label: h.rule.label,
+          matchedText: h.matchedText,
+          explanation: h.rule.explanation,
+          suggestion: h.rule.suggestion,
+        })),
+        // SEO Autopilot user uploaded base64 images; reframe service
+        // accepts them in the same shape as the Product Validator's
+        // Manual check (base64 + mediaType per image).
+        manualImages: images.map((img) => ({
+          base64: img.base64,
+          mediaType: img.mediaType,
+        })),
+      });
+      // Roll the reframe Haiku's cost into the per-gen total so the
+      // CEO footer reflects real spend.
+      costAccum.totalCostUsd += reframe.costUsd;
+    } catch (err) {
+      console.warn(
+        "[seo-autopilot] reframe failed (non-fatal):",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   // ─── Stage 3 — Etsy research ───────────────────────────────────────
@@ -367,6 +476,11 @@ export async function POST(request: NextRequest) {
   }
 
   // ─── Stage 4 — Sonnet writes the listing (with vision) ─────────────
+  //
+  // When `reframe` is set, the reframe constraints get threaded into
+  // the Sonnet user prompt as hard rules (avoid these exact words,
+  // frame the listing as X, follow these title/tag/description
+  // guidance bullets). That's how the policy-safe rewrite happens.
 
   let listing;
   try {
@@ -382,6 +496,15 @@ export async function POST(request: NextRequest) {
         style: context.styleHint || undefined,
         sizes: payload.sizes,
         variants: payload.variants,
+        reframeConstraints: reframe
+          ? {
+              listingApproach: reframe.listingApproach,
+              titleGuidance: reframe.titleGuidance,
+              tagGuidance: reframe.tagGuidance,
+              descriptionGuidance: reframe.descriptionGuidance,
+              avoidWords: reframe.avoidWords,
+            }
+          : undefined,
       },
       costAccum,
     );
@@ -393,15 +516,70 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // ─── Stage 4.5 — Output sanity check (avoid-word leak) ────────────
+  //
+  // Free regex sweep. If Sonnet accidentally included any avoid-word
+  // (rare with the prompt above, but possible), we strip the listing's
+  // textual fields rather than ship a listing that'll get flagged. The
+  // strip is a programmatic last-line-of-defense — we don't re-call
+  // Sonnet because the prompt already explicitly forbids these words.
+  if (reframe && reframe.avoidWords.length > 0) {
+    const leakedWords: string[] = [];
+    for (const word of reframe.avoidWords) {
+      const wordEscaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`\\b${wordEscaped}\\b`, "gi");
+      const titleHit = re.test(listing.title);
+      re.lastIndex = 0;
+      const descHit = re.test(listing.description);
+      re.lastIndex = 0;
+      const tagHit = listing.tags.some((t) => {
+        re.lastIndex = 0;
+        return re.test(t);
+      });
+      re.lastIndex = 0;
+      const altHit = listing.altTexts.some((a) => {
+        re.lastIndex = 0;
+        return re.test(a);
+      });
+      if (titleHit || descHit || tagHit || altHit) {
+        leakedWords.push(word);
+        // Strip from title + description + alts (best-effort scrub).
+        listing.title = listing.title.replace(re, "").replace(/\s+/g, " ").trim();
+        listing.description = listing.description
+          .replace(re, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        listing.altTexts = listing.altTexts.map((a) =>
+          a.replace(re, "").replace(/\s+/g, " ").trim(),
+        );
+        // Drop any tags that matched.
+        listing.tags = listing.tags.filter((t) => !re.test(t));
+      }
+    }
+    if (leakedWords.length > 0) {
+      console.warn(
+        `[seo-autopilot] avoid-word leak scrubbed: ${leakedWords.join(", ")}`,
+      );
+    }
+  }
+
   // Listing successfully generated — the slot is now permanently
   // consumed. Anything that fails AFTER this point (tag intelligence)
   // is non-billable already (Etsy free + listing already returned).
   refundOnFailure = false;
+
+  // Final verdict for the audit log + UI:
+  //   - "ALLOWED" → no flags at all, clean generation
+  //   - "REVIEW"  → soft-flagged + reframe applied (IP-adjusted)
+  //   - "BLOCKED" can no longer reach this point (rule engine
+  //     short-circuited those much earlier)
+  const finalVerdict = reframe ? "REVIEW" : "ALLOWED";
+
   await logGeneration({
     userId: u.id,
     sourceTitle: payload.aliExpressTitle,
     generatedTitle: listing.title,
-    verdict: compliance.verdict === "REVIEW" ? "REVIEW" : "ALLOWED",
+    verdict: finalVerdict,
     category: category.path,
     actualCostUsd: costAccum.totalCostUsd,
     inputTokens: costAccum.totalInputTokens,
@@ -457,6 +635,22 @@ export async function POST(request: NextRequest) {
     },
     anchorKeywords,
     tagIntelligence,
+    // Reframe metadata — present when the rule engine OR vision
+    // flagged the source product as soft-policy-risk (IP, brand,
+    // commodity tells, personalisation wording). UI renders an
+    // "IP-adjusted" badge + the photo-regen guidance for the team's
+    // identity-shot pass when this is set.
+    reframe: reframe
+      ? {
+          flaggedRules: ruleHits.map((h) => ({
+            label: h.rule.label,
+            matchedText: h.matchedText,
+            policyClause: h.rule.policyClause,
+          })),
+          avoidWords: reframe.avoidWords,
+          photoGuidance: reframe.photoGuidance,
+        }
+      : null,
     // Echo back the SEO-relevant inputs so the UI can show the
     // variations / personalization sections in the result.
     inputs: {
