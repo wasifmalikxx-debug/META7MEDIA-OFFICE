@@ -103,33 +103,45 @@ interface NicheHuntResponse {
 
 // ─── Pill picker options ────────────────────────────────────────────
 
-// Style + Audience pill options — expanded May 16 2026 (CEO ask) to
-// give sellers a wider lens when narrowing a niche. Order is curated
-// for scan-ability: most-common aesthetics first, then niche styles.
+// Style + Audience pill options — curated May 18 2026 against the
+// EM team's 17 niche clusters (clothing adult/kids/leather, cosplay,
+// wedding/prom dresses, leather, footwear, jewelry, accessories, pet,
+// home decor, wooden, lighting, office, watches, tumblers, christmas,
+// car accessories, gadgets).
+//
+// Each chip is here because at least one of those clusters benefits
+// from it as a refinement angle. Order is scan-friendly: mainstream
+// aesthetics first, then trend, premium, then themed/cosplay-adjacent.
 
 const STYLE_OPTIONS = [
-  // Mainstream aesthetics
+  // Mainstream aesthetics — apply across most clothing/jewelry/decor niches
   "Boho",
   "Minimalist",
   "Vintage",
   "Modern",
   "Cottagecore",
   "Coastal",
+  "Farmhouse",
+  "Tropical",
   // Trend / Gen-Z
   "Y2K",
   "Streetwear",
   "Preppy",
   "Grunge",
-  // Premium / craft
+  "Punk",
+  // Premium / craft — home decor + wedding + watches
   "Maximalist",
   "Glam",
+  "Bridal",
   "Mid-Century",
   "Industrial",
   "Scandi",
-  "Japandi",
-  // Themed
   "Rustic",
+  // Themed — cosplay + plush + Christmas
   "Gothic",
+  "Halloween",
+  "Anime / Kawaii",
+  "Whimsical",
   "Art Deco",
   "Eco / Sustainable",
 ];
@@ -142,6 +154,11 @@ const AUDIENCE_OPTIONS = [
   "Gift for Brother",
   "Gift for Wife",
   "Gift for Husband",
+  // New audience targets matching the niche book
+  "For Kids",        // kids clothing + plush toys
+  "Couple",          // couple matching outfits + jewelry
+  "New Mom",         // newborn cluster
+  "Bridal Party",    // wedding dresses
   // Occasions
   "Anniversary",
   "Wedding",
@@ -154,14 +171,18 @@ const AUDIENCE_OPTIONS = [
   "Housewarming",
   "Graduation",
   // Calendar
-  "Christmas",
+  "Christmas",       // christmas clothing + event decor cluster
+  "Halloween",       // cosplay cluster
   "Valentine's",
   "Mother's Day",
   "Father's Day",
-  // Lifestyle / niche
+  // Lifestyle / hobbies
   "Office",
   "Self-gift",
-  "Pet Lover",
+  "Pet Lover",       // pet store cluster
+  "Plant Lover",     // vase + home decor cluster
+  "Book Lover",      // book stands cluster
+  "Beach Vacation",  // beachwear + swimsuits cluster
   "Teen",
 ];
 
@@ -1134,8 +1155,10 @@ function HeatmapNav({
           </div>
         </div>
 
-        {/* Heatmap cells grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+        {/* Heatmap cells grid — items-stretch is the CSS Grid default
+            but explicit for safety; combined with h-full on each cell
+            it guarantees every card matches its row's tallest sibling. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 items-stretch">
           {categories.map((cat, idx) => (
             <HeatmapCell
               key={cat.category}
@@ -1166,12 +1189,19 @@ function HeatmapCell({
       // flex-col + mt-auto on the footer pushes that line to the same
       // baseline across all cards in the row, so a long category name
       // that pushes the title into 2 lines doesn't drag the dots/footer
-      // out of horizontal alignment with neighbour cards.
-      // min-h locks a floor so a card with very short content doesn't
-      // collapse vertically.
-      className={`relative flex flex-col rounded-xl text-left p-2.5 min-h-[88px] transition-all ring-1 overflow-hidden ${
+      // out of horizontal alignment with neighbour cards. h-full makes
+      // every cell expand to its grid row's full height (CSS Grid's
+      // default `align-items: stretch` does this — h-full is explicit
+      // belt-and-suspenders). min-h locks a floor for visually-balanced
+      // rows.
+      //
+      // Active state uses NO shadow (was shadow-md before, which made
+      // the active card sit visually proud of its row-mates and looked
+      // like misalignment). The violet ring + gradient bg are enough
+      // to differentiate.
+      className={`relative h-full flex flex-col rounded-xl text-left p-2.5 min-h-[96px] transition-all ring-1 overflow-hidden ${
         active
-          ? "ring-violet-500/50 bg-gradient-to-br from-sky-500/[0.10] to-violet-500/[0.10] shadow-md"
+          ? "ring-violet-500/60 bg-gradient-to-br from-sky-500/[0.10] to-violet-500/[0.10]"
           : "ring-border/40 bg-muted/15 hover:ring-border hover:bg-muted/30"
       }`}
     >
