@@ -34,13 +34,17 @@ interface TeamStatsEntry {
   countToday: number;
   countYesterday: number;
   count7Day: number;
+  countMtd: number;
+  countAllTime: number;
   isOverLimit: boolean;
   allowedCount: number;
   reviewCount: number;
   blockedCount: number;
   lastGeneratedAt: string | null;
-  cost7DayUsd: number;
   costTodayUsd: number;
+  cost7DayUsd: number;
+  costMtdUsd: number;
+  costAllTimeUsd: number;
 }
 
 interface RecentGeneration {
@@ -83,8 +87,12 @@ interface DepartmentBreakdown {
   activeUsersToday: number;
   countToday: number;
   count7Day: number;
+  countMtd: number;
+  countAllTime: number;
   costTodayUsd: number;
   cost7DayUsd: number;
+  costMtdUsd: number;
+  costAllTimeUsd: number;
   allowedCount: number;
   reviewCount: number;
   blockedCount: number;
@@ -92,13 +100,18 @@ interface DepartmentBreakdown {
 
 interface TeamStats {
   today: string;
+  monthLabel: string;
   limit: number;
   totalToday: number;
   totalYesterday: number;
   total7Day: number;
+  totalMtd: number;
+  totalAllTime: number;
   costTodayUsd: number;
   costYesterdayUsd: number;
   cost7DayUsd: number;
+  costMtdUsd: number;
+  costAllTimeUsd: number;
   tagSwapsToday: number;
   tagSwaps7Day: number;
   tagSwapCostTodayUsd: number;
@@ -258,6 +271,8 @@ export function SeoAutopilotDashboardView() {
 
       <KpiHeroRow stats={stats} />
 
+      <CostBreakdownStrip stats={stats} />
+
       <TwoColumnSection>
         <DailyTrendCard trend={stats.dailyTrend} />
         <OutcomeBreakdownCard breakdown={stats.costByOutcome7d} />
@@ -270,6 +285,144 @@ export function SeoAutopilotDashboardView() {
       <ActivityFeedSection events={stats.recent} />
 
       <FooterNote limit={stats.limit} />
+    </div>
+  );
+}
+
+// ─── Cost breakdown strip (Today / Yesterday / 7-day / MTD / All-time)
+//
+// A dedicated five-column card right under the KPI hero. The KPI hero
+// answers "what's happening today?"; this strip answers "what have we
+// spent?" across every reporting window the dashboard supports. Five
+// equal cells, hairline divider, USD values in tabular-nums so the
+// columns line up. Each cell also shows the gen count so the cost is
+// instantly interpretable ("$12.40 from 318 gens"). Hidden from the
+// rest of the dashboard so we never have to ask "what window is this?"
+
+function CostBreakdownStrip({ stats }: { stats: TeamStats }) {
+  const cells: Array<{
+    label: string;
+    sub: string;
+    cost: number;
+    count: number;
+    accent: "muted" | "violet" | "orange" | "emerald" | "sky";
+  }> = [
+    {
+      label: "Today",
+      sub: "Current PKT day",
+      cost: stats.costTodayUsd,
+      count: stats.totalToday,
+      accent: "violet",
+    },
+    {
+      label: "Yesterday",
+      sub: "Previous PKT day",
+      cost: stats.costYesterdayUsd,
+      count: stats.totalYesterday,
+      accent: "muted",
+    },
+    {
+      label: "Last 7 days",
+      sub: "Rolling week",
+      cost: stats.cost7DayUsd,
+      count: stats.total7Day,
+      accent: "orange",
+    },
+    {
+      label: "Month-to-date",
+      sub: stats.monthLabel,
+      cost: stats.costMtdUsd,
+      count: stats.totalMtd,
+      accent: "emerald",
+    },
+    {
+      label: "All-time",
+      sub: "Since launch",
+      cost: stats.costAllTimeUsd,
+      count: stats.totalAllTime,
+      accent: "sky",
+    },
+  ];
+
+  return (
+    <Card
+      className="border border-border/60 ap-stagger-in overflow-hidden"
+      style={{ animationDelay: "200ms" }}
+    >
+      <CardContent className="p-0">
+        <div className="px-6 sm:px-7 pt-5 pb-3 flex items-center gap-2.5">
+          <div className="size-8 rounded-lg bg-gradient-to-br from-violet-500/15 to-emerald-500/15 ring-1 ring-violet-500/30 flex items-center justify-center">
+            <DollarSign className="size-4 text-violet-600 dark:text-violet-400" />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+              Spend summary
+            </p>
+            <p className="text-[14px] font-bold tracking-tight leading-tight">
+              Total cost across all teams and users
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 border-t border-border/40">
+          {cells.map((cell, i) => (
+            <CostCell
+              key={cell.label}
+              {...cell}
+              showLeftBorder={i > 0}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CostCell({
+  label,
+  sub,
+  cost,
+  count,
+  accent,
+  showLeftBorder,
+}: {
+  label: string;
+  sub: string;
+  cost: number;
+  count: number;
+  accent: "muted" | "violet" | "orange" | "emerald" | "sky";
+  showLeftBorder: boolean;
+}) {
+  const accentText = {
+    muted: "text-muted-foreground",
+    violet: "text-violet-600 dark:text-violet-400",
+    orange: "text-orange-600 dark:text-orange-400",
+    emerald: "text-emerald-600 dark:text-emerald-400",
+    sky: "text-sky-600 dark:text-sky-400",
+  }[accent];
+  const accentDot = {
+    muted: "bg-muted-foreground/40",
+    violet: "bg-violet-500",
+    orange: "bg-orange-500",
+    emerald: "bg-emerald-500",
+    sky: "bg-sky-500",
+  }[accent];
+
+  return (
+    <div
+      className={`relative px-5 py-4 ${showLeftBorder ? "lg:border-l border-border/40" : ""}`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className={`size-1.5 rounded-full ${accentDot}`} />
+        <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${accentText}`}>
+          {label}
+        </p>
+      </div>
+      <p className="text-2xl font-bold tabular-nums leading-tight mt-1.5">
+        {formatUsd(cost)}
+      </p>
+      <p className="text-[10px] tabular-nums text-muted-foreground mt-0.5">
+        {count.toLocaleString()} {count === 1 ? "gen" : "gens"} · {sub}
+      </p>
     </div>
   );
 }
@@ -815,17 +968,17 @@ function DepartmentsSection({
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
-                Departments
+                Teams
               </p>
               <p className="text-[16px] font-bold tracking-tight">
-                Usage & cost by team
+                Spend per team · today, 7-day, MTD, all-time
               </p>
             </div>
           </div>
           <p className="text-[10px] text-muted-foreground">
             {departments.length}{" "}
-            {departments.length === 1 ? "department" : "departments"} active in
-            the last 7 days
+            {departments.length === 1 ? "team" : "teams"} with activity in the
+            last 7 days
           </p>
         </div>
 
@@ -909,32 +1062,31 @@ function DepartmentCard({
         )}
       </div>
 
-      {/* Today + 7-day stat row */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg bg-muted/30 ring-1 ring-border/40 px-2.5 py-1.5">
-          <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/80">
-            Today
-          </p>
-          <p className="text-base font-bold tabular-nums leading-tight mt-0.5">
-            {dept.countToday}
-            <span className="text-[10px] font-bold ml-1 opacity-60">gens</span>
-          </p>
-          <p className="text-[10px] tabular-nums text-muted-foreground">
-            {formatUsd(dept.costTodayUsd)}
-          </p>
-        </div>
-        <div className="rounded-lg bg-muted/30 ring-1 ring-border/40 px-2.5 py-1.5">
-          <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/80">
-            7-day
-          </p>
-          <p className="text-base font-bold tabular-nums leading-tight mt-0.5">
-            {dept.count7Day}
-            <span className="text-[10px] font-bold ml-1 opacity-60">gens</span>
-          </p>
-          <p className="text-[10px] tabular-nums text-muted-foreground">
-            {formatUsd(dept.cost7DayUsd)}
-          </p>
-        </div>
+      {/* 4-window stat grid — Today / 7-day / MTD / All-time. Each tile
+          shows gen count on top, cost underneath. Compact so the four
+          fit on a 2x2 on narrow widths and 4x1 at md+. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <DeptStatTile
+          label="Today"
+          count={dept.countToday}
+          cost={dept.costTodayUsd}
+        />
+        <DeptStatTile
+          label="7-day"
+          count={dept.count7Day}
+          cost={dept.cost7DayUsd}
+        />
+        <DeptStatTile
+          label="MTD"
+          count={dept.countMtd}
+          cost={dept.costMtdUsd}
+        />
+        <DeptStatTile
+          label="All-time"
+          count={dept.countAllTime}
+          cost={dept.costAllTimeUsd}
+          highlight
+        />
       </div>
 
       {/* Share-of-week bar */}
@@ -1011,6 +1163,56 @@ function DepartmentCard({
   );
 }
 
+/**
+ * One stat tile inside a department card. `highlight` swaps the bg
+ * to a subtle emerald tint — used for the All-time tile so the user's
+ * eye lands on the lifetime total at a glance.
+ */
+function DeptStatTile({
+  label,
+  count,
+  cost,
+  highlight,
+}: {
+  label: string;
+  count: number;
+  cost: number;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-lg ring-1 px-2.5 py-1.5 ${
+        highlight
+          ? "bg-emerald-500/10 ring-emerald-500/30"
+          : "bg-muted/30 ring-border/40"
+      }`}
+    >
+      <p
+        className={`text-[9px] font-bold uppercase tracking-[0.16em] ${
+          highlight
+            ? "text-emerald-700 dark:text-emerald-300"
+            : "text-muted-foreground/80"
+        }`}
+      >
+        {label}
+      </p>
+      <p className="text-base font-bold tabular-nums leading-tight mt-0.5">
+        {count.toLocaleString()}
+        <span className="text-[10px] font-bold ml-1 opacity-60">gens</span>
+      </p>
+      <p
+        className={`text-[10px] tabular-nums ${
+          highlight
+            ? "text-emerald-700/85 dark:text-emerald-300/85 font-semibold"
+            : "text-muted-foreground"
+        }`}
+      >
+        {formatUsd(cost)}
+      </p>
+    </div>
+  );
+}
+
 // ─── Employees section (full table) ─────────────────────────────────
 
 function EmployeesSection({
@@ -1021,9 +1223,9 @@ function EmployeesSection({
   limit: number;
 }) {
   const [filter, setFilter] = useState("");
-  const [sortBy, setSortBy] = useState<"today" | "week" | "cost" | "name">(
-    "today",
-  );
+  const [sortBy, setSortBy] = useState<
+    "today" | "week" | "mtd" | "allTime" | "cost7d" | "costMtd" | "costAllTime" | "name"
+  >("costAllTime");
 
   const filtered = entries.filter((e) => {
     if (!filter) return true;
@@ -1042,12 +1244,48 @@ function EmployeesSection({
         return b.countToday - a.countToday || b.count7Day - a.count7Day;
       case "week":
         return b.count7Day - a.count7Day || b.countToday - a.countToday;
-      case "cost":
+      case "mtd":
+        return b.countMtd - a.countMtd || b.count7Day - a.count7Day;
+      case "allTime":
+        return b.countAllTime - a.countAllTime;
+      case "cost7d":
         return b.cost7DayUsd - a.cost7DayUsd;
+      case "costMtd":
+        return b.costMtdUsd - a.costMtdUsd;
+      case "costAllTime":
+        return b.costAllTimeUsd - a.costAllTimeUsd;
       case "name":
         return a.name.localeCompare(b.name);
     }
   });
+
+  // Per-window totals shown in the table footer — gives the CEO a
+  // visible "sum" row beneath the per-employee breakdown so they can
+  // sanity-check the dashboard's top-line spend numbers against the
+  // table they're staring at.
+  const footerTotals = sorted.reduce(
+    (acc, e) => {
+      acc.countToday += e.countToday;
+      acc.countYesterday += e.countYesterday;
+      acc.count7Day += e.count7Day;
+      acc.countMtd += e.countMtd;
+      acc.countAllTime += e.countAllTime;
+      acc.cost7DayUsd += e.cost7DayUsd;
+      acc.costMtdUsd += e.costMtdUsd;
+      acc.costAllTimeUsd += e.costAllTimeUsd;
+      return acc;
+    },
+    {
+      countToday: 0,
+      countYesterday: 0,
+      count7Day: 0,
+      countMtd: 0,
+      countAllTime: 0,
+      cost7DayUsd: 0,
+      costMtdUsd: 0,
+      costAllTimeUsd: 0,
+    },
+  );
 
   return (
     <Card
@@ -1065,7 +1303,7 @@ function EmployeesSection({
                 Employees
               </p>
               <p className="text-[16px] font-bold tracking-tight">
-                All users · last 7 days
+                Per-user spend across every window
               </p>
             </div>
           </div>
@@ -1081,15 +1319,25 @@ function EmployeesSection({
               value={sortBy}
               onChange={(e) =>
                 setSortBy(
-                  e.target.value as "today" | "week" | "cost" | "name",
+                  e.target.value as typeof sortBy,
                 )
               }
               className="h-8 px-2 rounded-md text-[12px] font-semibold border border-border/70 bg-card cursor-pointer"
             >
-              <option value="today">Sort: Today</option>
-              <option value="week">Sort: 7-day</option>
-              <option value="cost">Sort: Spend</option>
-              <option value="name">Sort: Name</option>
+              <optgroup label="Spend">
+                <option value="costAllTime">All-time spend</option>
+                <option value="costMtd">MTD spend</option>
+                <option value="cost7d">7-day spend</option>
+              </optgroup>
+              <optgroup label="Volume">
+                <option value="allTime">All-time gens</option>
+                <option value="mtd">MTD gens</option>
+                <option value="week">7-day gens</option>
+                <option value="today">Today's gens</option>
+              </optgroup>
+              <optgroup label="Other">
+                <option value="name">Name</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -1106,37 +1354,83 @@ function EmployeesSection({
           />
         ) : (
           <div className="rounded-xl border border-border/60 overflow-hidden">
-            <table className="w-full text-[12px]">
-              <thead className="bg-muted/40 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2.5 font-bold text-left">User</th>
-                  <th className="px-3 py-2.5 font-bold text-left">Dept</th>
-                  <th className="px-3 py-2.5 font-bold text-left">Role</th>
-                  <th className="px-3 py-2.5 font-bold text-right">Today</th>
-                  <th className="px-3 py-2.5 font-bold text-right">Yest.</th>
-                  <th className="px-3 py-2.5 font-bold text-right">7-day</th>
-                  <th className="px-3 py-2.5 font-bold text-left">
-                    Outcomes
-                  </th>
-                  <th className="px-3 py-2.5 font-bold text-right">
-                    Spend (7d)
-                  </th>
-                  <th className="px-3 py-2.5 font-bold text-right">
-                    Last seen
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((e, i) => (
-                  <EmployeeRow
-                    key={e.userId}
-                    entry={e}
-                    limit={limit}
-                    animationDelay={i * 22}
-                  />
-                ))}
-              </tbody>
-            </table>
+            {/* Horizontal scroll wrapper — the cost-breakdown columns push
+                this past the available width on tablet/narrow desktop;
+                we let it scroll horizontally inside its own card rather
+                than collapse columns. */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px] min-w-[1080px]">
+                <thead className="bg-muted/40 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2.5 font-bold text-left">User</th>
+                    <th className="px-3 py-2.5 font-bold text-left">Dept</th>
+                    <th className="px-3 py-2.5 font-bold text-left">Role</th>
+                    <th className="px-3 py-2.5 font-bold text-right">Today</th>
+                    <th className="px-3 py-2.5 font-bold text-right">7-day</th>
+                    <th className="px-3 py-2.5 font-bold text-right">MTD</th>
+                    <th className="px-3 py-2.5 font-bold text-right">All-time</th>
+                    <th className="px-3 py-2.5 font-bold text-left">
+                      Outcomes
+                    </th>
+                    <th className="px-3 py-2.5 font-bold text-right">
+                      Spend 7d
+                    </th>
+                    <th className="px-3 py-2.5 font-bold text-right">
+                      Spend MTD
+                    </th>
+                    <th className="px-3 py-2.5 font-bold text-right bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                      Spend all-time
+                    </th>
+                    <th className="px-3 py-2.5 font-bold text-right">
+                      Last seen
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((e, i) => (
+                    <EmployeeRow
+                      key={e.userId}
+                      entry={e}
+                      limit={limit}
+                      animationDelay={i * 22}
+                    />
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/30 border-t-2 border-border text-[11px] font-bold">
+                  <tr>
+                    <td className="px-3 py-2.5 text-left">
+                      <span className="uppercase tracking-[0.16em] text-[10px] text-muted-foreground">
+                        Totals
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5" colSpan={2} />
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {footerTotals.countToday}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {footerTotals.count7Day}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {footerTotals.countMtd}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {footerTotals.countAllTime.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2.5" />
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {formatUsd(footerTotals.cost7DayUsd)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {formatUsd(footerTotals.costMtdUsd)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                      {formatUsd(footerTotals.costAllTimeUsd)}
+                    </td>
+                    <td className="px-3 py-2.5" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         )}
       </CardContent>
@@ -1237,11 +1531,14 @@ function EmployeeRow({
           </div>
         )}
       </td>
-      <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-        {entry.countYesterday}
+      <td className="px-3 py-3 text-right tabular-nums font-semibold text-muted-foreground">
+        {entry.count7Day}
+      </td>
+      <td className="px-3 py-3 text-right tabular-nums font-semibold text-muted-foreground">
+        {entry.countMtd}
       </td>
       <td className="px-3 py-3 text-right tabular-nums font-bold">
-        {entry.count7Day}
+        {entry.countAllTime.toLocaleString()}
       </td>
       <td className="px-3 py-3">
         <OutcomeMicroChips
@@ -1250,8 +1547,14 @@ function EmployeeRow({
           blocked={entry.blockedCount}
         />
       </td>
-      <td className="px-3 py-3 text-right tabular-nums font-bold text-[11px]">
+      <td className="px-3 py-3 text-right tabular-nums text-[11px] text-muted-foreground">
         {formatUsd(entry.cost7DayUsd)}
+      </td>
+      <td className="px-3 py-3 text-right tabular-nums text-[11px] text-muted-foreground">
+        {formatUsd(entry.costMtdUsd)}
+      </td>
+      <td className="px-3 py-3 text-right tabular-nums font-bold text-[11px] bg-emerald-500/5 text-emerald-700 dark:text-emerald-300">
+        {formatUsd(entry.costAllTimeUsd)}
       </td>
       <td className="px-3 py-3 text-right text-[10px] text-muted-foreground tabular-nums">
         {entry.lastGeneratedAt ? relativePktTime(entry.lastGeneratedAt) : "—"}

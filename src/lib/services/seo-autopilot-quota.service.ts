@@ -218,15 +218,25 @@ export interface TeamUsageEntry {
   countToday: number;
   countYesterday: number;
   count7Day: number;
+  // Month-to-date and all-time generation counts (added May 18 2026
+  // for the per-user cost breakdown on the admin dashboard). MTD
+  // covers the current Pakistan calendar month from PKT-midnight on
+  // the 1st; All-time is every gen ever logged for this user.
+  countMtd: number;
+  countAllTime: number;
   isOverLimit: boolean;
   // Outcome breakdown for the last 7 days (computed from log entries)
   allowedCount: number;
   reviewCount: number;
   blockedCount: number;
   lastGeneratedAt: string | null;
-  // Estimated USD spend over last 7 days (sum of per-event estimates)
-  cost7DayUsd: number;
+  // USD spend across each window. Includes generation cost + tag-swap
+  // cost (same Anthropic invoice). Uses log.actualCostUsd when present,
+  // else falls back to the verdict-based estimate (older rows).
   costTodayUsd: number;
+  cost7DayUsd: number;
+  costMtdUsd: number;
+  costAllTimeUsd: number;
 }
 
 export interface DepartmentBreakdown {
@@ -240,8 +250,14 @@ export interface DepartmentBreakdown {
   activeUsersToday: number;
   countToday: number;
   count7Day: number;
+  // Month-to-date and all-time totals (added May 18 2026). Same
+  // definitions as the per-user fields above.
+  countMtd: number;
+  countAllTime: number;
   costTodayUsd: number;
   cost7DayUsd: number;
+  costMtdUsd: number;
+  costAllTimeUsd: number;
   allowedCount: number;
   reviewCount: number;
   blockedCount: number;
@@ -282,16 +298,22 @@ export interface CostByOutcome {
 
 export interface TeamStatsResponse {
   today: string; // PKT YYYY-MM-DD
+  /** Display label for the current PKT month (e.g. "May 2026"). */
+  monthLabel: string;
   limit: number;
   totalToday: number;
   totalYesterday: number;
   total7Day: number;
+  totalMtd: number;
+  totalAllTime: number;
   // Estimated USD spend across all users in each window — INCLUDES
   // both generation costs AND tag-swap suggestion costs (they're
   // separate API calls but the same Anthropic line item)
   costTodayUsd: number;
   costYesterdayUsd: number;
   cost7DayUsd: number;
+  costMtdUsd: number;
+  costAllTimeUsd: number;
   // Tag-swap specific metrics (subset of the cost totals above)
   tagSwapsToday: number;
   tagSwaps7Day: number;
@@ -386,7 +408,12 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     department: { select: { name: true } },
   } as const;
 
-  const [usageRows, logRows, swapRows] = await Promise.all([
+  // PKT-anchored start of the current calendar month. Used for MTD
+  // cost aggregation (separate from the 7-day window).
+  const monthStart = pktCurrentMonthStartUtc();
+  const monthStartTime = monthStart.getTime();
+
+  const [usageRows, logRows, swapRows, allLogRows, allSwapRows] = await Promise.all([
     prisma.seoAutopilotUsage.findMany({
       where: { date: { gte: sevenDaysAgo } },
       include: { user: { select: userSelect } },
@@ -403,12 +430,33 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       where: { createdAt: { gte: sevenDaysAgo } },
       include: { user: { select: userSelect } },
     }),
+    // All-time + MTD aggregation source. We project only the fields we
+    // need (userId, cost, verdict, createdAt) so the row payload stays
+    // small even at scale. Same SELECT for tag-swap rows below.
+    prisma.seoAutopilotLog.findMany({
+      select: {
+        userId: true,
+        actualCostUsd: true,
+        verdict: true,
+        createdAt: true,
+      },
+    }),
+    prisma.seoAutopilotTagSwapLog.findMany({
+      select: {
+        userId: true,
+        actualCostUsd: true,
+        createdAt: true,
+      },
+    }),
   ]);
 
   const todayTime = today.getTime();
   const yesterdayTime = yesterday.getTime();
 
   // ─── Aggregate usage counts per user ────────────────────────────
+  // MTD + all-time fields are filled in a second pass below (from
+  // allLogRows + allSwapRows) — they live in the same map so the final
+  // `entries` flatten in one place.
   const byUser = new Map<
     string,
     {
@@ -419,12 +467,16 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       countToday: number;
       countYesterday: number;
       count7Day: number;
+      countMtd: number;
+      countAllTime: number;
       allowedCount: number;
       reviewCount: number;
       blockedCount: number;
       lastGeneratedAt: Date | null;
-      cost7DayUsd: number;
       costTodayUsd: number;
+      cost7DayUsd: number;
+      costMtdUsd: number;
+      costAllTimeUsd: number;
     }
   >();
 
@@ -444,12 +496,16 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         countToday: 0,
         countYesterday: 0,
         count7Day: 0,
+        countMtd: 0,
+        countAllTime: 0,
         allowedCount: 0,
         reviewCount: 0,
         blockedCount: 0,
         lastGeneratedAt: null,
-        cost7DayUsd: 0,
         costTodayUsd: 0,
+        cost7DayUsd: 0,
+        costMtdUsd: 0,
+        costAllTimeUsd: 0,
       };
     const t = r.date.getTime();
     if (t === todayTime) entry.countToday += r.count;
@@ -552,6 +608,7 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     if (!entry) {
       // User has a log row but no usage row — possible if usage row got
       // deleted manually. Synthesize an entry so they still show up.
+      // MTD + all-time get filled by the dedicated pass below.
       byUser.set(log.userId, {
         employeeId: log.user.employeeId,
         name: `${log.user.firstName} ${log.user.lastName}`.trim(),
@@ -563,12 +620,16 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         countToday: 0,
         countYesterday: 0,
         count7Day: 0,
+        countMtd: 0,
+        countAllTime: 0,
         allowedCount: log.verdict === "ALLOWED" ? 1 : 0,
         reviewCount: log.verdict === "REVIEW" ? 1 : 0,
         blockedCount: log.verdict === "BLOCKED" ? 1 : 0,
         lastGeneratedAt: log.createdAt,
-        cost7DayUsd: logCost,
         costTodayUsd: logDayTime === todayTime ? logCost : 0,
+        cost7DayUsd: logCost,
+        costMtdUsd: 0,
+        costAllTimeUsd: 0,
       });
       continue;
     }
@@ -636,13 +697,79 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         countToday: 0,
         countYesterday: 0,
         count7Day: 0,
+        countMtd: 0,
+        countAllTime: 0,
         allowedCount: 0,
         reviewCount: 0,
         blockedCount: 0,
         lastGeneratedAt: null,
-        cost7DayUsd: swapCost,
         costTodayUsd: swapDayTime === todayTime ? swapCost : 0,
+        cost7DayUsd: swapCost,
+        costMtdUsd: 0,
+        costAllTimeUsd: 0,
       });
+    }
+  }
+
+  // ─── MTD + all-time pass over the projected log rows ─────────────
+  // Separate from the 7-day pass because we need a much wider window.
+  // We project only userId/cost/verdict/createdAt to keep the payload
+  // small. Same actual-cost-with-estimate-fallback rule the 7-day pass
+  // uses, so cost numbers across all windows stay consistent.
+  let costMtdUsd = 0;
+  let costAllTimeUsd = 0;
+  let countMtd = 0;
+  let countAllTime = 0;
+
+  for (const log of allLogRows) {
+    const logCost =
+      typeof log.actualCostUsd === "number" && log.actualCostUsd > 0
+        ? log.actualCostUsd
+        : estimateGenerationCostUsd(log.verdict);
+    const isMtd = log.createdAt.getTime() >= monthStartTime;
+
+    costAllTimeUsd += logCost;
+    countAllTime += 1;
+    if (isMtd) {
+      costMtdUsd += logCost;
+      countMtd += 1;
+    }
+
+    const entry = byUser.get(log.userId);
+    if (entry) {
+      entry.costAllTimeUsd += logCost;
+      entry.countAllTime += 1;
+      if (isMtd) {
+        entry.costMtdUsd += logCost;
+        entry.countMtd += 1;
+      }
+    }
+    // If no entry yet for this user, they have older log rows but no
+    // 7-day activity → we still want them visible. Synthesize a
+    // minimal entry; we'll fill name/dept later if a usage row shows
+    // up. For now stub with what the log has.
+    else {
+      // We don't have user details on allLogRows (no include) — skip
+      // for now. They'll appear in the 7-day window the next time they
+      // generate. This matches the dashboard's "last 7d activity" lens.
+    }
+  }
+
+  for (const swap of allSwapRows) {
+    const swapCost =
+      typeof swap.actualCostUsd === "number" && swap.actualCostUsd > 0
+        ? swap.actualCostUsd
+        : 0;
+    if (swapCost === 0) continue;
+    const isMtd = swap.createdAt.getTime() >= monthStartTime;
+
+    costAllTimeUsd += swapCost;
+    if (isMtd) costMtdUsd += swapCost;
+
+    const entry = byUser.get(swap.userId);
+    if (entry) {
+      entry.costAllTimeUsd += swapCost;
+      if (isMtd) entry.costMtdUsd += swapCost;
     }
   }
 
@@ -656,12 +783,16 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       countToday: v.countToday,
       countYesterday: v.countYesterday,
       count7Day: v.count7Day,
+      countMtd: v.countMtd,
+      countAllTime: v.countAllTime,
       allowedCount: v.allowedCount,
       reviewCount: v.reviewCount,
       blockedCount: v.blockedCount,
       lastGeneratedAt: v.lastGeneratedAt?.toISOString() ?? null,
-      cost7DayUsd: v.cost7DayUsd,
       costTodayUsd: v.costTodayUsd,
+      cost7DayUsd: v.cost7DayUsd,
+      costMtdUsd: v.costMtdUsd,
+      costAllTimeUsd: v.costAllTimeUsd,
       isOverLimit:
         v.role !== "SUPER_ADMIN" && v.countToday >= SEO_AUTOPILOT_DAILY_LIMIT,
     }))
@@ -680,8 +811,12 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
       activeUserIdsToday: Set<string>;
       countToday: number;
       count7Day: number;
+      countMtd: number;
+      countAllTime: number;
       costTodayUsd: number;
       cost7DayUsd: number;
+      costMtdUsd: number;
+      costAllTimeUsd: number;
       allowedCount: number;
       reviewCount: number;
       blockedCount: number;
@@ -695,8 +830,12 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         activeUserIdsToday: new Set<string>(),
         countToday: 0,
         count7Day: 0,
+        countMtd: 0,
+        countAllTime: 0,
         costTodayUsd: 0,
         cost7DayUsd: 0,
+        costMtdUsd: 0,
+        costAllTimeUsd: 0,
         allowedCount: 0,
         reviewCount: 0,
         blockedCount: 0,
@@ -705,8 +844,12 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     if (e.countToday > 0) cur.activeUserIdsToday.add(e.userId);
     cur.countToday += e.countToday;
     cur.count7Day += e.count7Day;
+    cur.countMtd += e.countMtd;
+    cur.countAllTime += e.countAllTime;
     cur.costTodayUsd += e.costTodayUsd;
     cur.cost7DayUsd += e.cost7DayUsd;
+    cur.costMtdUsd += e.costMtdUsd;
+    cur.costAllTimeUsd += e.costAllTimeUsd;
     cur.allowedCount += e.allowedCount;
     cur.reviewCount += e.reviewCount;
     cur.blockedCount += e.blockedCount;
@@ -724,8 +867,12 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
         activeUsersToday: d.activeUserIdsToday.size,
         countToday: d.countToday,
         count7Day: d.count7Day,
+        countMtd: d.countMtd,
+        countAllTime: d.countAllTime,
         costTodayUsd: d.costTodayUsd,
         cost7DayUsd: d.cost7DayUsd,
+        costMtdUsd: d.costMtdUsd,
+        costAllTimeUsd: d.costAllTimeUsd,
         allowedCount: d.allowedCount,
         reviewCount: d.reviewCount,
         blockedCount: d.blockedCount,
@@ -733,7 +880,9 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     })
     .sort(
       (a, b) =>
-        b.count7Day - a.count7Day || a.name.localeCompare(b.name),
+        b.cost7DayUsd - a.cost7DayUsd ||
+        b.count7Day - a.count7Day ||
+        a.name.localeCompare(b.name),
     );
 
   // ─── Cap recent events at 50 newest ─────────────────────────────
@@ -792,13 +941,18 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
 
   return {
     today: today.toISOString().slice(0, 10),
+    monthLabel: pktCurrentMonthLabel(),
     limit: SEO_AUTOPILOT_DAILY_LIMIT,
     totalToday: totalTodayCount,
     totalYesterday: entries.reduce((s, e) => s + e.countYesterday, 0),
     total7Day: total7DayCount,
+    totalMtd: countMtd,
+    totalAllTime: countAllTime,
     costTodayUsd,
     costYesterdayUsd,
     cost7DayUsd,
+    costMtdUsd,
+    costAllTimeUsd,
     tagSwapsToday,
     tagSwaps7Day,
     tagSwapCostTodayUsd,
