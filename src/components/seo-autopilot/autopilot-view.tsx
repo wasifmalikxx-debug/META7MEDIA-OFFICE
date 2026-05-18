@@ -630,12 +630,11 @@ function SourceCard({
 }) {
   return (
     <PremiumCard>
-      <CardContent className="p-7 sm:p-8 space-y-7">
+      <CardContent className="p-6 sm:p-8 space-y-6">
         <StepHeader
           stepN={1}
-          eyebrow="Step one"
-          title="Source material"
-          subtitle="What Autopilot reads first"
+          title="Product details"
+          subtitle="Source title and product photos used to generate the listing."
           required
         />
 
@@ -648,7 +647,7 @@ function SourceCard({
             <Textarea
               value={aliTitle}
               onChange={(e) => onAliTitleChange(e.target.value)}
-              placeholder="Paste the full AliExpress product title here — keyword-stuffed is fine. Autopilot extracts the search keyword, category, audience and style automatically."
+              placeholder="Paste the original AliExpress product title."
               className="min-h-[110px] resize-none text-sm leading-relaxed bg-muted/20 border-border/70 focus-visible:border-orange-500/60 focus-visible:ring-orange-500/15 transition-colors placeholder:text-muted-foreground/55"
               disabled={disabled}
             />
@@ -658,7 +657,7 @@ function SourceCard({
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground/75 leading-snug">
-            Autopilot reads this to extract the keyword, category, audience &amp; style.
+            Used to extract the target keyword, category, audience, and style.
           </p>
         </div>
 
@@ -668,12 +667,11 @@ function SourceCard({
             Product images
           </SectionLabel>
 
-          {/* CRITICAL compliance warning — raw AliExpress images get
-              auto-flagged by our vision compliance gate as copyrighted /
-              counterfeit (Etsy is strict on this, and the Claude vision
-              gate catches stock-photo watermarks + brand logos). Make
-              this IMPOSSIBLE to miss — bright rose, all caps eyebrow,
-              animated icon glow. */}
+          {/* Image-source policy notice — raw AliExpress photos get
+              auto-flagged by the vision compliance gate as copyrighted
+              content (Etsy is strict here, and Claude vision catches
+              stock-photo watermarks + brand logos). Keeps the seller
+              from burning a quota slot on a guaranteed BLOCKED listing. */}
           <AliWarningBanner />
 
           <SeoImageUploader
@@ -682,8 +680,7 @@ function SourceCard({
             disabled={disabled}
           />
           <p className="text-[11px] text-muted-foreground/75 leading-snug">
-            Sonnet sees these for the compliance check and alt text. Use
-            your Nano Banana / AI-regenerated photos only.
+            Used for compliance review and alt-text generation. AI-regenerated images only.
           </p>
         </div>
       </CardContent>
@@ -694,55 +691,30 @@ function SourceCard({
 // ─── AliExpress image warning banner ────────────────────────────────
 
 /**
- * A prominent banner above the image uploader telling the user NOT to
- * upload raw AliExpress photos. Reads as a hard rule — bright rose
- * surface, animated icon halo, all-caps headline. The compliance gate
- * will block these anyway; this banner is what stops the upload before
- * it costs the user a quota slot.
+ * Image-source advisory shown above the uploader. Calm, professional,
+ * single-card rose accent — no diagonal tape, no pulsing halo. Still
+ * unmissable because of the rose tint + leading icon, but presented as
+ * a policy notice rather than a panic alert. The compliance gate will
+ * block raw AliExpress images anyway; this notice stops the upload
+ * before a quota slot is consumed.
  */
 function AliWarningBanner() {
   return (
-    <div className="relative overflow-hidden rounded-xl border-2 border-rose-400/60 dark:border-rose-700/60 bg-gradient-to-br from-rose-50 via-rose-50/80 to-amber-50/40 dark:from-rose-950/40 dark:via-rose-950/30 dark:to-amber-950/15 shadow-md shadow-rose-500/15">
-      {/* Diagonal warning-tape stripes for "stop, read this" vibes */}
-      <div
-        aria-hidden
-        className="absolute inset-0 opacity-[0.08] pointer-events-none"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(45deg, transparent 0, transparent 12px, rgba(244,63,94,0.6) 12px, rgba(244,63,94,0.6) 13px)",
-        }}
-      />
-      {/* Pulsing left edge accent */}
-      <div
-        aria-hidden
-        className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-rose-500 via-rose-600 to-amber-500"
-      />
+    <div className="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50/60 dark:bg-rose-950/20 px-4 py-3 flex items-start gap-3">
+      <div className="size-7 rounded-md bg-rose-500/10 ring-1 ring-rose-500/25 flex items-center justify-center shrink-0 mt-0.5">
+        <AlertTriangle className="size-3.5 text-rose-600 dark:text-rose-400" />
+      </div>
 
-      <div className="relative flex items-start gap-3 px-4 py-3.5 sm:px-5">
-        {/* Icon chip with pulsing glow */}
-        <div className="relative shrink-0 mt-0.5">
-          <span
-            aria-hidden
-            className="absolute -inset-1 rounded-xl bg-rose-500/40 blur-md animate-pulse"
-          />
-          <div className="relative size-9 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 ring-1 ring-rose-800/30 flex items-center justify-center shadow-md shadow-rose-500/30">
-            <AlertTriangle className="size-4 text-white" strokeWidth={2.5} />
-          </div>
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-[0.22em]">
-            Critical · read before uploading
-          </p>
-          <p className="text-[13px] sm:text-[14px] font-bold text-rose-900 dark:text-rose-100 leading-tight mt-1 tracking-tight">
-            DO NOT upload AliExpress images.
-          </p>
-          <p className="text-[11px] sm:text-[12px] text-rose-800/90 dark:text-rose-200/90 mt-1.5 leading-relaxed">
-            Our AI <strong>auto-flags</strong> them as copyrighted content,
-            blocks the listing and burns one of your daily generations.
-            Upload your <strong>regenerated (Nano Banana / AI)</strong> images only.
-          </p>
-        </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 uppercase tracking-[0.18em]">
+          Image source policy
+        </p>
+        <p className="text-[13px] font-semibold text-rose-900 dark:text-rose-100 leading-tight mt-0.5">
+          Upload AI-regenerated images only.
+        </p>
+        <p className="text-[11.5px] text-rose-800/85 dark:text-rose-200/85 mt-1 leading-relaxed">
+          Raw AliExpress photos are auto-flagged as copyrighted content. The listing will be blocked and one daily generation consumed.
+        </p>
       </div>
     </div>
   );
@@ -765,13 +737,11 @@ function VariationsCard({
 }) {
   return (
     <PremiumCard>
-      <CardContent className="p-7 sm:p-8 space-y-7">
+      <CardContent className="p-6 sm:p-8 space-y-6">
         <StepHeader
           stepN={2}
-          eyebrow="Step two"
-          title="Variations"
-          subtitle="Sizes & options buyers can pick"
-          required
+          title="Product variations"
+          subtitle="Sizes and options available to buyers."
         />
 
         <div className="space-y-2.5">
@@ -796,67 +766,66 @@ function VariationsCard({
   );
 }
 
-// ─── Premium card wrapper ───────────────────────────────────────────
+// ─── Card wrapper ───────────────────────────────────────────────────
+//
+// Matches the Price Calculator: clean `border shadow-none`, no
+// backdrop-blur, no gradient highlight. The visual lift now comes from
+// the hero above and the warmth of the page backdrop, not from heavy
+// per-card chrome.
 
 function PremiumCard({ children }: { children: React.ReactNode }) {
-  return (
-    <Card className="border border-border/60 bg-card/95 backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_12px_36px_-12px_rgba(0,0,0,0.5)] overflow-hidden relative">
-      {/* Top highlight line */}
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-      {children}
-    </Card>
-  );
+  return <Card className="border shadow-none">{children}</Card>;
 }
 
 // ─── Step header ────────────────────────────────────────────────────
+//
+// Calculator-flat replacement for the previous big orange→violet
+// gradient step circle. Reads like a section heading on a SaaS form:
+//   • small step chip (neutral)
+//   • clean h2 title
+//   • subdued subtitle below
+//   • optional `Required` pill inline with the title
 
 function StepHeader({
   stepN,
-  eyebrow,
   title,
   subtitle,
   required,
 }: {
   stepN: number;
-  eyebrow: string;
   title: string;
   subtitle: string;
   required?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-4">
-      <div className="relative shrink-0">
-        <span
-          aria-hidden
-          className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-orange-400/30 to-violet-500/30 blur-md"
-        />
-        <div className="relative size-11 rounded-2xl bg-gradient-to-br from-orange-500 to-violet-600 ring-1 ring-orange-700/30 flex items-center justify-center shadow-lg shadow-orange-500/25">
-          <span className="text-base font-bold tabular-nums text-white">
-            {stepN}
-          </span>
-        </div>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-[0.22em]">
-            {eyebrow}
-          </p>
-          {required && (
-            <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-[0.18em] text-rose-600 dark:text-rose-400">
-              Required
-            </span>
-          )}
-        </div>
-        <h3 className="text-[17px] font-bold tracking-tight leading-tight mt-1">
+    <div className="space-y-1">
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <span className="inline-flex items-center justify-center size-6 rounded-md bg-muted text-foreground/80 text-[11px] font-semibold tabular-nums ring-1 ring-border/60">
+          {stepN}
+        </span>
+        <h2 className="text-[15px] sm:text-base font-semibold tracking-tight leading-tight">
           {title}
-        </h3>
-        <p className="text-[12px] text-muted-foreground/80 mt-0.5">{subtitle}</p>
+        </h2>
+        {required && (
+          <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-rose-600 dark:text-rose-400 leading-none">
+            Required
+          </span>
+        )}
       </div>
+      <p className="text-[12px] text-muted-foreground leading-snug pl-[34px]">
+        {subtitle}
+      </p>
     </div>
   );
 }
 
 // ─── Section label ──────────────────────────────────────────────────
+//
+// Calculator-style inline label: `text-[11px] font-semibold uppercase
+// tracking-[0.16em]` + small icon + optional asterisk. The "filled"
+// state used to swap the icon chip to a green check; we now show a
+// small emerald check at the end of the label instead — same signal,
+// flatter visual.
 
 function SectionLabel({
   children,
@@ -870,27 +839,23 @@ function SectionLabel({
   filled?: boolean;
 }) {
   return (
-    <label className="text-[11px] font-bold text-foreground/80 uppercase tracking-[0.18em] flex items-center gap-2">
-      {Icon && (
-        <span
-          className={`size-5 rounded-md flex items-center justify-center ring-1 transition-colors ${
-            filled
-              ? "bg-emerald-500/15 ring-emerald-500/40 text-emerald-600 dark:text-emerald-400"
-              : "bg-muted/40 ring-border/60 text-muted-foreground"
-          }`}
-        >
-          {filled ? <Check className="size-3" strokeWidth={3} /> : <Icon className="size-3" />}
-        </span>
-      )}
-      {children}
+    <label className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-[0.16em] flex items-center gap-1.5">
+      {Icon && <Icon className="size-3 text-muted-foreground/70" />}
+      <span>{children}</span>
       {required && (
         <span
-          className="text-rose-500 dark:text-rose-400 normal-case tracking-normal font-bold leading-none ml-0.5"
+          className="text-rose-500 dark:text-rose-400 normal-case tracking-normal font-bold leading-none"
           aria-label="required"
           title="Required"
         >
           *
         </span>
+      )}
+      {filled && (
+        <Check
+          className="size-3 text-emerald-600 dark:text-emerald-400 ml-0.5"
+          strokeWidth={3}
+        />
       )}
     </label>
   );
@@ -956,12 +921,12 @@ function GenerateCta({
           {generating ? (
             <>
               <Loader2 className="size-5 animate-spin" />
-              Generating your listing…
+              Generating listing…
             </>
           ) : (
             <>
               <Wand2 className="size-5" />
-              <span>Generate Etsy listing</span>
+              <span>Generate Listing</span>
               <span className="ml-1 text-xs font-semibold opacity-80 hidden sm:inline">
                 · 25–40s
               </span>
@@ -974,14 +939,14 @@ function GenerateCta({
       {!generating && usage && !usage.isUnlimited && (
         <p className="text-center text-[11px] font-semibold text-muted-foreground tabular-nums flex items-center justify-center gap-1.5">
           <Gauge className="size-3" />
-          {usage.remaining} of {usage.limit} generations left today · resets at midnight PKT
+          {usage.remaining} of {usage.limit} generations remaining today · resets at midnight PKT
         </p>
       )}
 
       {!generating && aliTitleHasContent(titleValid, imagesValid) && (
         <div className="space-y-1">
           {!titleValid && (
-            <ValidationLine text="Paste at least 8 characters of title text." />
+            <ValidationLine text="Enter at least 8 characters in the title." />
           )}
           {!imagesValid && (
             <ValidationLine text="Upload at least one product image." />
@@ -996,7 +961,7 @@ function GenerateCta({
           className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center justify-center gap-1.5 py-1"
         >
           <RotateCw className="size-3" />
-          Reset everything
+          Reset all fields
         </button>
       )}
     </div>
@@ -3543,21 +3508,15 @@ function MyHistorySection({
         className="w-full text-left transition-colors hover:bg-muted/20"
       >
         <div className="p-6 sm:p-7 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="relative shrink-0">
-              <span
-                aria-hidden
-                className="absolute -inset-1 rounded-2xl bg-amber-400/20 blur-md"
-              />
-              <div className="relative size-10 rounded-2xl bg-gradient-to-br from-amber-400/20 via-orange-500/15 to-pink-500/20 ring-1 ring-amber-500/30 flex items-center justify-center">
-                <Clock className="size-4 text-amber-600 dark:text-amber-400" />
-              </div>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0 ring-1 ring-border/60">
+              <Clock className="size-4 text-muted-foreground" />
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-[0.22em]">
-                Your recent generations
+              <p className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-[0.16em]">
+                Generation history
               </p>
-              <h3 className="text-[17px] font-bold tracking-tight leading-tight mt-0.5">
+              <h3 className="text-[15px] font-semibold tracking-tight leading-tight mt-0.5">
                 {windowLabel || "This month"} · {entries.length}{" "}
                 {entries.length === 1 ? "listing" : "listings"}
               </h3>
@@ -3565,7 +3524,7 @@ function MyHistorySection({
                   their gens cost, only that they exist. */}
               {isCeo && (
                 <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
-                  Total spend on AI: {formatHistoryCost(totalCost)}
+                  AI spend: {formatHistoryCost(totalCost)}
                 </p>
               )}
             </div>
@@ -3593,9 +3552,8 @@ function MyHistorySection({
           ))}
 
           <p className="mt-4 pt-3 border-t border-border/40 text-[10px] text-muted-foreground/70 leading-snug">
-            Showing this calendar month. Resets cleanly at midnight on the
-            1st. Tap <strong>Restore</strong> to load any past listing back
-            into the result panel — no new quota slot used.
+            Showing this calendar month. List resets on the 1st. Use{" "}
+            <strong>Restore</strong> to reload a past listing without using a new generation.
           </p>
         </div>
       )}
