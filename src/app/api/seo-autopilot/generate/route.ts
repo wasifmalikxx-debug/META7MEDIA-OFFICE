@@ -575,6 +575,23 @@ export async function POST(request: NextRequest) {
   //     short-circuited those much earlier)
   const finalVerdict = reframe ? "REVIEW" : "ALLOWED";
 
+  // The raw `compliance` object from vision can still hold verdict
+  // "BLOCKED" or "REVIEW" if Sonnet vision flagged the photo (e.g.,
+  // spotted a brand logo in an otherwise clean-title product). At
+  // this point we've already RESOLVED that signal — the reframe ran,
+  // Sonnet wrote a policy-safe listing, the avoid-word sweep scrubbed
+  // any leak. Returning the raw vision verdict to the UI made the
+  // client (autopilot-view.tsx line 462/551) hide the listing behind
+  // the BlockedPanel even though we just generated a perfectly good
+  // one. Override here so compliance.verdict matches the real outcome.
+  const resolvedCompliance: ComplianceVerdict = reframe
+    ? {
+        verdict: "REVIEW",
+        concerns: compliance.concerns,
+        summary: compliance.summary,
+      }
+    : compliance;
+
   await logGeneration({
     userId: u.id,
     sourceTitle: payload.aliExpressTitle,
@@ -617,7 +634,7 @@ export async function POST(request: NextRequest) {
   ).catch(() => []);
 
   return json({
-    compliance,
+    compliance: resolvedCompliance,
     listing,
     research: {
       searchKeyword: context.searchKeyword,
