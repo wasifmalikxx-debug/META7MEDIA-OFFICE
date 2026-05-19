@@ -1335,7 +1335,7 @@ export interface GeneratedListing {
   title: string;
   description: string;
   tags: string[]; // exactly 13
-  altTexts: string[]; // one per image (matches images.length, or 1 if no images)
+  altTexts: string[]; // EXACTLY 1 item — one general alt text for the whole listing (seller pastes it onto every image)
   rationale: {
     keywordFocus: string;
     titleStrategy: string;
@@ -1404,8 +1404,9 @@ CORE RULES
 
 5. DESCRIPTION — 3 sections, structured with EXPLICIT newline characters:
 
-   Section 1: HOOK — 1-2 lines, benefit-led, why this product matters
-              to the buyer.
+   Section 1: HOOK — 1-2 SHORT lines. State what the product IS and the
+              top benefit, plainly. Buyer should know what they're
+              buying within 5 seconds.
    (BLANK LINE — i.e. \\n\\n between sections)
    Section 2: FEATURES — 4-7 bullets. EACH BULLET ON ITS OWN LINE,
               starting with "• " (bullet + space), separated by a
@@ -1418,12 +1419,34 @@ CORE RULES
    newlines, Etsy renders the description as one wall of text with
    stray • characters and buyers bounce.
 
+   ❌ NEVER open with narrative / storytelling / scene-setting.
+      Etsy buyers skim — they want product specs and benefits, NOT
+      fiction. These openings are BANNED, no matter which voice
+      instruction you're given below:
+        ❌ "Picture him / her / them pulling these on…"
+        ❌ "Imagine the moment when…"
+        ❌ "Soft cotton settles against his legs as he…"
+        ❌ "On a quiet Sunday morning…"
+        ❌ "She'll smile when she opens the box…"
+        ❌ Any second-person scene direction ("you'll feel…", "you'll
+           reach for…", etc. — these are also narrative)
+      If a voice instruction below sounds like it asks for narrative,
+      reinterpret it as a benefit-led version. Voice variation is for
+      sentence rhythm + vocabulary, NOT for genre.
+
+   ✅ GOOD opening: "Heavy-duty cotton chinos cut for daily wear.
+      Elastic waistband and reinforced stitching mean they hold up to
+      job-site abuse and weekend trails alike."
+   ❌ BAD opening:  "Picture him pulling these on for the first shift
+      of the week, the soft cotton settling against his legs…"
+
    Total target length: 600-1500 chars. Long-tail keywords sprinkled
    naturally.
 
-   EXAMPLE of correctly-formatted description (note the \\n escapes):
+   EXAMPLE of correctly-formatted description (note the \\n escapes
+   and the plain, benefit-led opening — NO narrative):
 
-   "A breathtaking gown that captures storybook royalty.\\n\\n• Lace-up corset bodice in gradient ombré tones\\n• Puffed short sleeves with sheer mesh overlay\\n• Full A-line skirt in lustrous satin\\n• Floor-length silhouette for dramatic stage presence\\n\\nGentle hand-wash in cold water, hang to dry. Store flat or on a padded hanger to preserve the bodice structure."
+   "Floor-length princess gown built for cosplay, photo shoots, and themed parties. Heavyweight construction and finished seams give it real costume-grade durability.\\n\\n• Lace-up corset bodice in gradient ombré tones\\n• Puffed short sleeves with sheer mesh overlay\\n• Full A-line skirt in lustrous satin\\n• Ornate embroidered scrollwork at the hem\\n• Available in sizes XS through XL\\n\\nGentle hand-wash in cold water, hang to dry. Store flat or on a padded hanger to preserve the bodice structure."
 
    NEVER write shipping time, processing time, dispatch time, or any
    "ships in X days" / "ready to ship in X business days" / "ships
@@ -1443,13 +1466,17 @@ CORE RULES
 6. VARIATIONS:
    If sizes and/or variants were supplied, mention them ONCE in the description in a natural way that fits the actual axis ("Available in XS-XXL and 5 colors", "Available in 3 phone models and 4 designs", "Comes in gold, silver, and rose gold"). Do NOT put them in title or tags — Etsy handles them as separate variation fields.
 
-7. IMAGE ALT TEXTS:
-   ONE per image you see (matching the image count). ≤ 250 chars each.
+7. IMAGE ALT TEXT — ONE GENERAL alt text for the whole listing:
+   Return exactly ONE alt text string. The seller will paste the same
+   string into every image slot on Etsy (primary photo + every variant
+   + every angle), so it must describe the LISTING (the product +
+   product type), NOT what's visible in any one specific image.
+   ≤ 250 chars.
 
-   CRITICAL — the seller reuses the SAME alt text across every colour
-   and variation of this listing on Etsy. So your alt text must work
-   equally well for the blue version AND the white version AND the
-   black version AND every future variant.
+   CRITICAL — the alt is reused across every colour and variation of
+   this listing on Etsy. So it must work equally well for the blue
+   version AND the white version AND the black version AND every
+   future variant.
 
    NEVER include:
    • Specific colour words: blue, white, black, red, pink, gold, rose
@@ -1458,6 +1485,8 @@ CORE RULES
    • Variant-specific pattern words: polka dot, floral print, striped,
      paisley, tartan (skip these even if visible — same alt has to fit
      the plain version)
+   • Per-image scene details (e.g. "model holding hem", "close-up of
+     hem", "side view") — alt is general, not image-specific
 
    DO include (these stay constant across variants):
    • Material: lace, satin, linen, cotton, leather, ceramic, etc.
@@ -1471,6 +1500,7 @@ CORE RULES
    Front-load the primary product noun (good for image SEO). Example:
      ✓ "Lace evening gown strapless sweetheart bodice high slit floor length formal prom dress sheer mesh overlay floral appliqués"
      ✗ "Blue lace evening gown ..." (the word "blue" makes it wrong for every non-blue variant of this same listing)
+     ✗ "Model showing back of dress" (image-specific, won't fit the front-view or flat-lay photos)
 
 ============================================================
 GOOD vs BAD TITLE EXAMPLES
@@ -1502,7 +1532,7 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
   "title": "string ≤140 chars",
   "description": "string with \\n\\n between sections AND \\n between every bullet — see DESCRIPTION rule above for the exact shape",
   "tags": ["...", ... exactly 13 items],
-  "altTexts": ["...", "..."],
+  "altTexts": ["one general alt text for the whole listing, ≤250 chars — array length 1"],
   "rationale": {
     "keywordFocus": "1 line — which anchor keyword(s) you anchored on and why",
     "titleStrategy": "1 line — what your title does for ranking (front-load, hook, length)",
@@ -1516,49 +1546,62 @@ OUTPUT FORMAT — strict JSON, NO prose, NO markdown fences
 // time. Two employees generating the same listing got 80% overlap
 // in title/description/tags. To break that uniformity, every
 // generation picks a random voice from this list and tells Sonnet
-// to write in that tone. Lives in the USER prompt (not system) so
-// it doesn't invalidate the system-prompt cache.
+// to write in the matching tone. Lives in the USER prompt (not the
+// system prompt) so it doesn't invalidate the system-prompt cache.
+//
+// IMPORTANT (May 19 2026): every voice must produce a benefit-led
+// opening, NOT a narrative scene. Previous "warm-storyteller",
+// "lifestyle-aspirational", and "playful-casual" voices were
+// generating openings like "Picture him pulling these on for the
+// first shift…" — bad Etsy copy that CEO flagged. Removed. The
+// DESCRIPTION rule in the system prompt also explicitly bans
+// narrative openings as belt-and-suspenders.
+//
+// Each voice is a STYLISTIC variation (vocabulary + sentence
+// rhythm), not a genre swap. Voice changes the texture of the
+// language, never the structure (state-what-it-is → benefits →
+// bullets → care).
 
 const GENERATOR_VOICES: { name: string; instruction: string }[] = [
   {
-    name: "warm-storyteller",
-    instruction:
-      "WARM STORYTELLING. Lead the description with an emotional hook — paint the moment when this item arrives, who it's for, why they'll smile when they unbox it. Use sensory language (texture, weight, warmth). The opening section should feel like the start of a small story.",
-  },
-  {
-    name: "lifestyle-aspirational",
-    instruction:
-      "ASPIRATIONAL LIFESTYLE. Show the buyer the scene this product creates — the morning ritual, the dinner-party moment, the daily upgrade. Lead with the *life* this enables, not the product specs. Make them want to BE that person.",
-  },
-  {
     name: "practical-specs-first",
     instruction:
-      "PRACTICAL SPECS-FIRST. Lead the description with concrete features — material, dimensions, what makes it functionally distinct. Buyer-confidence comes from clarity. Direct, no fluff, no purple prose.",
+      "PRACTICAL SPECS-FIRST. Lead with concrete features — material, construction, dimensions, what makes it functionally distinct. Direct, no fluff, no purple prose. Sentences are short and factual.",
   },
   {
     name: "designer-aesthetic",
     instruction:
-      "DESIGNER AESTHETIC. Focus on materials, color story, texture, silhouette, the visual language. Use words a fashion editor or interior designer would actually use. Detail-oriented and sophisticated, never generic.",
-  },
-  {
-    name: "playful-casual",
-    instruction:
-      "PLAYFUL CASUAL. Friendly, conversational, like a recommendation from a stylish friend. Use 'you' freely. Drop the formal tone — have personality. Make the reader smirk a little.",
+      "DESIGNER AESTHETIC. Use vocabulary a fashion editor or interior designer would actually reach for — silhouette, drape, hand-feel, texture, finish, palette. Sophisticated and detail-oriented, never generic. Still benefit-led, NEVER narrative.",
   },
   {
     name: "premium-minimalist",
     instruction:
-      "PREMIUM MINIMALIST. Short sentences. Punchy bullets. Confident. Quality over quantity in every line. Skip filler words. The kind of copy that appears on a luxury brand's product page — restrained and assured.",
+      "PREMIUM MINIMALIST. Short, confident sentences. No filler words. Each line earns its place. The kind of copy that appears on a luxury brand's product page — restrained and assured. Lead with what the product IS, in one sharp line.",
   },
   {
     name: "occasion-focused",
     instruction:
-      "OCCASION-FOCUSED. Lead with WHEN the buyer would use this — gift moments, life events, daily rituals. Recipient-centric: think about who this is for, not just what it is. Make the description feel like a gift-guide entry.",
+      "OCCASION-FOCUSED. Lead with WHEN and FOR WHOM this product fits — gift moments, life events, daily routines, specific use cases. Concrete and benefit-led: name the occasion, then name the feature that makes the product right for it. NO scene-setting prose.",
   },
   {
     name: "detail-expert",
     instruction:
-      "DETAILED EXPERT. Comprehensive feature breakdown, construction details, materials vocabulary. The buyer wants confidence that the product is well-made and the seller knows what they're talking about. Authoritative and thorough.",
+      "DETAILED EXPERT. Comprehensive feature breakdown, construction details, materials vocabulary. Buyer wants confidence that the product is well-made and the seller knows what they're talking about. Authoritative and thorough. Open with a one-line summary of what the product is + the headline feature.",
+  },
+  {
+    name: "benefit-led",
+    instruction:
+      "BENEFIT-LED. Open with the single most useful thing this product does for the buyer (a problem it solves, a job it does well). Then back the claim with the construction detail that makes it true. Plain English, action-focused, no scene-setting.",
+  },
+  {
+    name: "buyer-confidence",
+    instruction:
+      "BUYER-CONFIDENCE. Lead with quality + durability cues — material weight, stitching, reinforcement, finish. Tone is reassuring: 'this is built to last.' Open with a factual line about what the product is and the construction that backs the claim.",
+  },
+  {
+    name: "feature-forward",
+    instruction:
+      "FEATURE-FORWARD. Open with a one-line product summary, then immediately call out the standout feature in the same paragraph. Punchy. Buyer should know what's special by the end of line two. No scene-setting, no second-person 'you'll feel…' framing.",
   },
 ];
 
@@ -1707,7 +1750,7 @@ Reference only — DON'T copy phrasing. Identify positioning + hook patterns and
 ${competitorBlock || "(no competitor data — generate based on the brief alone)"}
 
 # Output count expected
-- altTexts: ${input.images.length || 1} items
+- altTexts: EXACTLY 1 item (one general listing-level alt text the seller pastes onto every image — see IMAGE ALT TEXT rule in the system prompt)
 
 Now produce the listing JSON in the assigned voice.`;
 }
@@ -1952,13 +1995,19 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
     ETSY_LIMITS.DESCRIPTION_MAX,
   );
 
-  // Alt texts — clamp each to 250 chars, pad/truncate to expected count.
-  const altTexts: string[] = [];
-  const targetCount = Math.max(1, expectedAlts);
-  for (let i = 0; i < targetCount; i++) {
-    const raw = out.altTexts?.[i] ?? "";
-    altTexts.push(raw.toString().trim().slice(0, ETSY_LIMITS.ALT_TEXT_MAX));
-  }
+  // Alt text — EXACTLY ONE general alt text for the whole listing.
+  // CEO directive May 19 2026: the seller pastes the same alt onto
+  // every variant image on Etsy, so per-image alts were unnecessary
+  // noise. Anything Sonnet returns past index 0 is dropped. If it
+  // returns an empty array, fall back to "" so the field still
+  // exists in the shape downstream consumers expect.
+  // `expectedAlts` arg is now ignored — kept on the signature for
+  // backward-compat with the one caller in generateListing.
+  void expectedAlts;
+  const firstAlt = out.altTexts?.[0] ?? "";
+  const altTexts: string[] = [
+    firstAlt.toString().trim().slice(0, ETSY_LIMITS.ALT_TEXT_MAX),
+  ];
 
   const rationale = {
     keywordFocus: (out.rationale?.keywordFocus ?? "").toString(),

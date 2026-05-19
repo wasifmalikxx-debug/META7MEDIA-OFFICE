@@ -2205,50 +2205,61 @@ function AltTextRow({
   altTexts: string[];
   images: UploadedImage[];
 }) {
-  if (altTexts.length === 0) return null;
+  // CEO directive May 19 2026: ONE general alt text for the whole
+  // listing, not one per image. The seller pastes the same string
+  // into every image slot on Etsy. UI renders a single card now,
+  // with a strip of image thumbnails on the left as a reminder that
+  // the same alt covers every photo.
+  const alt = altTexts[0]?.trim() ?? "";
+  if (!alt) return null;
+  const thumbs = images.slice(0, 4);
+
   return (
     <div className="py-4 space-y-3">
-      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
-        Image alt text
-      </p>
-      <div className="space-y-2">
-        {altTexts.map((alt, idx) => {
-          const img = images[idx];
-          return (
-            <div
-              key={idx}
-              className="rounded-xl border border-border/60 bg-muted/15 px-3.5 py-3 flex gap-3 items-start"
-            >
-              {img ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={img.previewUrl}
-                  alt=""
-                  className="size-14 rounded-lg object-cover shrink-0 ring-1 ring-border"
-                />
-              ) : (
-                <div className="size-14 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                  <ImageIcon className="size-4 text-muted-foreground/40" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <p className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
-                    Image {idx + 1}
-                  </p>
-                  <CopyButton
-                    value={alt}
-                    label={`image ${idx + 1} alt`}
-                    size="xs"
-                  />
-                </div>
-                <p className="text-[12px] text-foreground/90 leading-relaxed italic">
-                  &ldquo;{alt}&rdquo;
-                </p>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+          Image alt text
+        </p>
+        <p className="text-[10px] text-muted-foreground/70">
+          one general alt — paste on every image
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-border/60 bg-muted/15 px-3.5 py-3 flex gap-3 items-start">
+        {thumbs.length > 0 ? (
+          <div className="flex -space-x-2 shrink-0">
+            {thumbs.map((img, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={img.previewUrl}
+                alt=""
+                className="size-14 rounded-lg object-cover ring-2 ring-card shadow-sm"
+              />
+            ))}
+            {images.length > thumbs.length && (
+              <div className="size-14 rounded-lg bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground ring-2 ring-card shadow-sm">
+                +{images.length - thumbs.length}
               </div>
-            </div>
-          );
-        })}
+            )}
+          </div>
+        ) : (
+          <div className="size-14 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            <ImageIcon className="size-4 text-muted-foreground/40" />
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <p className="text-[9px] font-bold text-muted-foreground/80 uppercase tracking-[0.18em]">
+              {images.length > 0 ? `Use on all ${images.length} image${images.length === 1 ? "" : "s"}` : "Listing alt text"}
+            </p>
+            <CopyButton value={alt} label="alt text" size="xs" />
+          </div>
+          <p className="text-[12px] text-foreground/90 leading-relaxed italic">
+            &ldquo;{alt}&rdquo;
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -3717,21 +3728,14 @@ function HistoryRow({
               Copy all tags
             </button>
           </div>
-          {entry.listing.altTexts.length > 0 && (
+          {entry.listing.altTexts[0]?.trim() && (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground mb-1.5">
-                Image alt text ({entry.listing.altTexts.length})
+                Image alt text · one for every image
               </p>
-              <div className="space-y-1.5">
-                {entry.listing.altTexts.map((alt, i) => (
-                  <p
-                    key={i}
-                    className="text-[11px] text-foreground/85 italic leading-snug rounded-md bg-card ring-1 ring-border/40 px-2.5 py-1.5"
-                  >
-                    &ldquo;{alt}&rdquo;
-                  </p>
-                ))}
-              </div>
+              <p className="text-[11px] text-foreground/85 italic leading-snug rounded-md bg-card ring-1 ring-border/40 px-2.5 py-1.5">
+                &ldquo;{entry.listing.altTexts[0]}&rdquo;
+              </p>
             </div>
           )}
           {(entry.sizes.length > 0 || entry.variants.length > 0) && (
