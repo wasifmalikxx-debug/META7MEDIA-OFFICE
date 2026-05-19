@@ -191,8 +191,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   if (userIsAdmin) {
     // Full access — proceed.
-  } else if (isManager) {
+  } else if (isManager && !isOwner) {
     // Scope check: submitter must be in the manager's own department.
+    // The `!isOwner` guard stops Izaan from bypassing the owner 15-min
+    // window for his OWN submissions now that he runs shops himself.
+    // For his own refunds he falls through to the isOwner branch below
+    // and gets the same time-limited delete every other shop owner has.
     const [me, submitter] = await Promise.all([
       prisma.user.findUnique({ where: { id: user.id }, select: { departmentId: true } }),
       prisma.user.findUnique({ where: { id: existing.userId }, select: { departmentId: true } }),

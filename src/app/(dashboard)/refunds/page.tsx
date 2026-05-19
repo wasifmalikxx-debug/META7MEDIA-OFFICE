@@ -31,11 +31,13 @@ export default async function RefundsPage({
   const isPartner = user.role === "PARTNER";
   const isManager = user.employeeId === "EM-4";
   const empId: string | undefined = user.employeeId;
-  // Etsy-style shop owners — can submit refunds. Excludes Izaan (team lead,
-  // doesn't own shops). AE-* and ME-* added post multi-office (May 2026).
+  // Etsy-style shop owners — can submit refunds. Includes Izaan (EM-4) as
+  // of May 19 2026, when the CEO assigned him his own shops alongside
+  // his team-lead role. AE-* and ME-* added post multi-office (May 2026).
+  // EM-4L (Abdullah) stays excluded — non-Etsy ecom employee.
   const isEtsyShopOwner =
     typeof empId === "string" &&
-    !isManager &&
+    empId !== "EM-4L" &&
     (empId.startsWith("EM") || empId.startsWith("AE") || empId.startsWith("ME"));
 
   // EM-4L (Abdullah) was hired for non-Etsy ecom work and is not part of

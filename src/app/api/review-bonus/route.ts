@@ -90,8 +90,17 @@ export async function POST(request: NextRequest) {
   if (!session) return error("Unauthorized", 401);
 
   const role = (session.user as any).role;
-  if (role !== "EMPLOYEE") {
-    return error("Only employees can submit review bonuses", 403);
+  const empId = (session.user as any).employeeId as string | undefined;
+
+  // Shop owners can submit review-bonus claims. EMPLOYEE-by-role covers
+  // EM/AE/ME sellers; the explicit MANAGER+EM-4 branch lets Izaan submit
+  // for his own shops (May 19 2026 — he runs shops alongside managing the
+  // team). The self-approval guard in /api/review-bonus/[id] PATCH stops
+  // him approving his own submissions; CEO approves his claims.
+  const isShopOwnerEmployee = role === "EMPLOYEE";
+  const isManagerWithShops = role === "MANAGER" && empId === "EM-4";
+  if (!isShopOwnerEmployee && !isManagerWithShops) {
+    return error("Only shop owners can submit review bonuses", 403);
   }
 
   try {

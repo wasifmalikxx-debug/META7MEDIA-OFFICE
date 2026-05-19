@@ -20,11 +20,15 @@ function canSeeAllUnscoped(user: { role?: string }) {
 }
 
 function canSubmit(user: { employeeId?: string }) {
-  // Etsy-style shop owners across all offices, except the EM team lead Izaan.
-  // Pre multi-office this only included EM-*; AE-* and ME-* are Awais's and
-  // Mubeen's teams added in May 2026.
+  // Etsy-style shop owners across all offices. Pre multi-office this only
+  // included EM-*; AE-* and ME-* are Awais's and Mubeen's teams added in
+  // May 2026. EM-4 (Izaan) was excluded until May 19 2026 because he was
+  // team-lead-only — he now runs his own shops alongside managing the team,
+  // so he submits refunds for his own listings like any other seller. The
+  // self-approval guard in /api/refunds/[id] PATCH stops him from approving
+  // his own submission; CEO approves his refunds.
   if (!user.employeeId) return false;
-  if (user.employeeId === "EM-4") return false;
+  if (user.employeeId === "EM-4L") return false; // Abdullah — not in Etsy program
   return (
     user.employeeId.startsWith("EM") ||
     user.employeeId.startsWith("AE") ||

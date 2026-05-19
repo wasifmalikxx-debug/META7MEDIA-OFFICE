@@ -32,6 +32,20 @@ export async function PATCH(
       return error("This submission has already been processed");
     }
 
+    // Self-approval guard. Izaan now submits review-bonus claims for his
+    // own shops (May 19 2026), so without this check his MANAGER role
+    // would let him approve/reject his own PENDING submissions and pay
+    // himself out. CEO/HR approve his claims via the SUPER_ADMIN branch
+    // below. Applies to all roles defensively — a partner couldn't end
+    // up submitting their own anyway (role check at POST), but cheaper
+    // to enforce here than reason about every future role change.
+    if (submission.userId === session.user.id) {
+      return error(
+        "You can't approve or reject your own review-bonus submission — the CEO will handle it.",
+        403,
+      );
+    }
+
     // PARTNER scope: target submission's user must be on one of the
     // partner's teams. CEO passes without scope check (sees everything).
     // MANAGER (Izaan) scope: target submission's user must be in his own

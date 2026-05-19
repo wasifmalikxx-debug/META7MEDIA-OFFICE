@@ -19,6 +19,13 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
   // CEO + MANAGER (Izaan) + PARTNER (Awais, Mubeen, Zain) all see an approval
   // inbox. PARTNERs are scoped to their own team's submissions only.
   const isReviewer = role === "SUPER_ADMIN" || role === "MANAGER" || role === "PARTNER";
+  // Izaan (EM-4) now runs his own shops (May 19 2026) so he ALSO needs the
+  // employee-style submit form alongside his approval inbox. The submit
+  // form is added inline below the inbox for him only. CEO/HR/Partners
+  // don't get a submit form (they don't own shops). The self-approval
+  // guard in the PATCH API stops Izaan from approving his own claims —
+  // CEO handles those.
+  const showOwnSubmit = role === "MANAGER" && employeeId === "EM-4";
 
   // EM-4L (Abdullah) was hired for non-Etsy ecom work and is not part of
   // the Etsy bonus program. Block direct URL access.
@@ -82,6 +89,21 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
       orderBy: { createdAt: "desc" },
     });
 
+    // Izaan also gets his OWN submit form — fetch his personal submissions
+    // for the current month so the form can list/edit them just like an
+    // employee's view. CEO/Partners don't render this section.
+    let ownSubmissions: typeof submissions = [];
+    if (showOwnSubmit) {
+      ownSubmissions = await prisma.reviewBonus.findMany({
+        where: { userId, month, year },
+        include: {
+          user: { select: { firstName: true, lastName: true, employeeId: true } },
+          approvedBy: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
     return (
       <div className="space-y-6">
         <PageHeader
@@ -102,6 +124,25 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
           // out of their UI to match the API gate.
           canDelete={role !== "PARTNER"}
         />
+
+        {/* Izaan-only: his personal submit form lives below the approval
+            inbox. Same component employees use — server-side guards
+            (self-approval block + role check) keep him from approving
+            his own claims. CEO sees those PENDING items in the main
+            inbox above. */}
+        {showOwnSubmit && (
+          <div className="pt-2">
+            <PageHeader
+              title="Submit My Reviews"
+              description="Your own shop review-bonus claims — submit here for the CEO to approve."
+            />
+            <ReviewBonusSubmit
+              submissions={JSON.parse(JSON.stringify(ownSubmissions))}
+              currentMonth={month}
+              currentYear={year}
+            />
+          </div>
+        )}
       </div>
     );
   }
