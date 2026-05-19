@@ -112,10 +112,44 @@ const financeNav = [
 function getEtsyNav(userRole: string, employeeId: string) {
   const isAdminOrManager = userRole === "SUPER_ADMIN" || userRole === "MANAGER";
   const isPartner = userRole === "PARTNER";
-  // Izaan (EM-4) is Etsy team lead — gets the admin-style label even though
-  // his role is EMPLOYEE, because he sees all refunds but doesn't submit
-  const isTeamLead = employeeId === "EM-4";
+  // Izaan (EM-4, MANAGER) runs the EM team AND owns shops himself (May 19
+  // 2026). He gets FOUR Etsy items instead of two — submit/manage split
+  // into separate sidebar entries so "my own shop" actions and "team"
+  // actions are visually distinct. Everyone else gets the original two.
+  const isIzaan = userRole === "MANAGER" && employeeId === "EM-4";
   const isAdminLikeView = isAdminOrManager || isPartner;
+
+  if (isIzaan) {
+    return [
+      // Personal submit surfaces first — he lands on them most often
+      // (daily shop work). Approval surfaces sit below.
+      {
+        title: "Submit Review",
+        href: "/my-reviews",
+        icon: Star,
+        roles: ["all"],
+      },
+      {
+        title: "Submit Refund",
+        href: "/my-refunds",
+        icon: RefreshCcw,
+        roles: ["all"],
+      },
+      {
+        title: "Review Approvals",
+        href: "/review-bonus",
+        icon: Star,
+        roles: ["all"],
+      },
+      {
+        title: "Refunds",
+        href: "/refunds",
+        icon: RefreshCcw,
+        roles: ["all"],
+      },
+      { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] },
+    ];
+  }
 
   return [
     {
@@ -125,7 +159,7 @@ function getEtsyNav(userRole: string, employeeId: string) {
       roles: ["all"],
     },
     {
-      title: isAdminLikeView || isTeamLead ? "Refunds" : "Submit Refund",
+      title: isAdminLikeView ? "Refunds" : "Submit Refund",
       href: "/refunds",
       icon: RefreshCcw,
       roles: ["all"],
