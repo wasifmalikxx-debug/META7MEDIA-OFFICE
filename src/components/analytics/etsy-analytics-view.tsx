@@ -422,11 +422,11 @@ function KpiStrip({
         subtitle={show ? usd(overview.totalCost) : MASK}
       />
       <KpiTile
-        label="Net profit"
+        label="Gross profit"
         value={maskedCompact(overview.grossProfit, show)}
         icon={TrendingUp}
         tone="emerald"
-        subtitle={show ? `${usd(overview.grossProfit)} after Etsy fees` : MASK}
+        subtitle={show ? usd(overview.grossProfit) : MASK}
         accent="primary"
       />
       <KpiTile
