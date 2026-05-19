@@ -278,6 +278,53 @@ export async function sendDailyReportTemplate(
 }
 
 /**
+ * v2 of the daily report template — same payload as v1 plus an explicit
+ * `teamLabel` slot. The Meta template body splits the header into two
+ * lines:
+ *
+ *     💰 META7MEDIA DAILY REPORT 💰
+ *     🧑‍🤝‍🧑 {{1}}
+ *     📅 Date: {{2}}
+ *
+ * so the team identifier no longer has to ride inside the date param.
+ * 12 vars total (vs v1's 11).
+ *
+ * Param map:
+ *   {{1}}  teamLabel              e.g. "Izaan's Team"
+ *   {{2}}  date                   e.g. "18/5/2026"
+ *   {{3}}  monthName              e.g. "May 2026"
+ *   {{4}}-{{7}}  monthly orders/sale/cost/profit
+ *   {{8}}-{{11}} today orders/sale/cost/profit
+ *   {{12}} breakdown              multi-line per-employee block
+ */
+export interface DailyReportV2Data extends DailyReportData {
+  /** Team identifier — renders on its own line under the title. e.g.
+   * "Izaan's Team", "Awais's Team". For partners receiving their own
+   * team's report, this is still their own team. */
+  teamLabel: string;
+}
+
+export async function sendDailyReportV2Template(
+  to: string,
+  data: DailyReportV2Data
+): Promise<boolean> {
+  return sendWhatsAppTemplate(to, META_TEMPLATE_NAMES.DAILY_REPORT_V2, {
+    "1": data.teamLabel,
+    "2": data.date,
+    "3": data.monthName,
+    "4": fmtCount(data.monthly.orders),
+    "5": fmtMoney(data.monthly.sale),
+    "6": fmtMoney(data.monthly.cost),
+    "7": fmtMoney(data.monthly.profit),
+    "8": fmtCount(data.today.orders),
+    "9": fmtMoney(data.today.sale),
+    "10": fmtMoney(data.today.cost),
+    "11": fmtMoney(data.today.profit),
+    "12": data.breakdown,
+  });
+}
+
+/**
  * CEO all-offices combined total — 10-variable Meta template.
  *
  * Sent as the 4th message in the per-team daily sequence (EM → AE → ME →

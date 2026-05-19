@@ -35,6 +35,12 @@ export const META_TEMPLATE_NAMES = {
   MANUAL_FINE: "manual_fine",
   SALARY_PAID: "salary_paid",
   DAILY_REPORT: "daily_report",
+  // v2 of daily_report — adds a dedicated team-name line above the date
+  // so the header reads as two lines instead of "Team · Date" jammed
+  // into one. 12 params vs v1's 11. Submitted to Meta May 19 2026 per
+  // CEO request; flip WHATSAPP_DAILY_REPORT_V2 env var to true once
+  // approved and the cron will route through this name instead.
+  DAILY_REPORT_V2: "daily_report_v2",
   // CEO-only multi-team summary (37 params: combined + EM + AE + ME).
   // SUPERSEDED — the cron no longer sends this. Kept registered so the
   // template stays linked in Meta and we can revert by flipping one import

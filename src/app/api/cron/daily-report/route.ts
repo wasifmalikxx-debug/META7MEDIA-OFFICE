@@ -367,10 +367,47 @@ export async function GET(request: NextRequest) {
       select: { phone: true, phone2: true },
     });
 
-    const { sendDailyReportTemplate, sendCeoCombinedTotalTemplate } = await import(
-      "@/lib/services/whatsapp.service"
-    );
+    const {
+      sendDailyReportTemplate,
+      sendDailyReportV2Template,
+      sendCeoCombinedTotalTemplate,
+    } = await import("@/lib/services/whatsapp.service");
     const sent: string[] = [];
+
+    // V2 template feature flag. When WHATSAPP_DAILY_REPORT_V2=true is set
+    // in the env (and the `daily_report_v2` template is approved by
+    // Meta), all daily_report sends route through the 12-param v2 helper
+    // — the header splits the team label onto its own line above the
+    // date. Leave unset / false to keep the original 11-param v1 sends.
+    //
+    // CEO ask May 19 2026: header readability — "Izaan's Team · Date"
+    // jammed into one line was hard to parse at a glance. Two lines
+    // (team identity above the date) reads better on mobile.
+    const useV2 = process.env.WHATSAPP_DAILY_REPORT_V2 === "true";
+    const sendDailyReport = async (
+      to: string,
+      data: {
+        teamLabel: string;
+        date: string;
+        monthName: string;
+        monthly: { orders: number; sale: number; cost: number; profit: number };
+        today: { orders: number; sale: number; cost: number; profit: number };
+        breakdown: string;
+      },
+    ): Promise<boolean> => {
+      if (useV2) {
+        return sendDailyReportV2Template(to, data);
+      }
+      // v1: fold the team label into the date string so it still surfaces
+      // at the top of the message. Identical to pre-flag behavior.
+      return sendDailyReportTemplate(to, {
+        date: `${data.teamLabel} · ${data.date}`,
+        monthName: data.monthName,
+        monthly: data.monthly,
+        today: data.today,
+        breakdown: data.breakdown,
+      });
+    };
 
     // ─── Partner reports (AE → Awais, ME → Mubeen) ─────────────────────
     // Each Etsy partner gets their team's daily_report (single-team, 11
@@ -503,7 +540,13 @@ export async function GET(request: NextRequest) {
         if (deptName.includes(" - AE")) partnerTeamStats.ae = teamSummary;
         else if (deptName.includes(" - ME")) partnerTeamStats.me = teamSummary;
 
+        // Partner sends use the same v1/v2 wrapper as the CEO loop.
+        // Their teamLabel is their own team's display name so the v2
+        // header reads naturally ("Awais's Team", "Mubeen's Team"). On
+        // v1 this folds into the date string like CEO sends do.
+        const partnerTeamLabel = `${partner.firstName}'s Team`;
         const partnerPayload = {
+          teamLabel: partnerTeamLabel,
           date: dateFormatted,
           monthName: monthNameFormatted,
           monthly: teamSummary.monthly,
@@ -513,12 +556,12 @@ export async function GET(request: NextRequest) {
 
         const partnerSent: string[] = [];
         if (partner.phone) {
-          await sendDailyReportTemplate(partner.phone, partnerPayload);
+          await sendDailyReport(partner.phone, partnerPayload);
           partnerSent.push(partner.phone);
           sent.push(partner.phone);
         }
         if (partner.phone2) {
-          await sendDailyReportTemplate(partner.phone2, partnerPayload);
+          await sendDailyReport(partner.phone2, partnerPayload);
           partnerSent.push(partner.phone2);
           sent.push(partner.phone2);
         }
@@ -594,15 +637,14 @@ export async function GET(request: NextRequest) {
 
       for (let i = 0; i < teamRounds.length; i++) {
         const round = teamRounds[i];
+        // Same payload shape regardless of v1/v2 — the sendDailyReport
+        // wrapper above picks the right Meta template based on
+        // WHATSAPP_DAILY_REPORT_V2. v1 folds teamLabel into date; v2
+        // sends them as separate {{1}} and {{2}} so the header reads
+        // as two lines on the recipient's phone.
         const payload = {
-          // Tag the date field with the team label so each of the 3 CEO
-          // messages is immediately identifiable at the top. The
-          // daily_report template body has "🗓 {{1}}" so this renders as
-          // "🗓 Izaan's Team · May 11, 2026" — visible the moment the
-          // message opens, no template re-submission required. Partner
-          // sends keep the plain date (line 507) since each partner only
-          // ever receives one team's report.
-          date: `${round.label} · ${dateFormatted}`,
+          teamLabel: round.label,
+          date: dateFormatted,
           monthName: monthNameFormatted,
           monthly: round.data.monthly,
           today: round.data.today,
@@ -616,7 +658,7 @@ export async function GET(request: NextRequest) {
         // recipient.
         await Promise.all(
           ceoPhones.map(async (phone) => {
-            const ok = await sendDailyReportTemplate(phone, payload);
+            const ok = await sendDailyReport(phone, payload);
             if (ok && !ceoSent.includes(phone)) {
               ceoSent.push(phone);
               sent.push(phone);
