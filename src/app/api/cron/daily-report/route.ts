@@ -374,16 +374,16 @@ export async function GET(request: NextRequest) {
     } = await import("@/lib/services/whatsapp.service");
     const sent: string[] = [];
 
-    // V2 template feature flag. When WHATSAPP_DAILY_REPORT_V2=true is set
-    // in the env (and the `daily_report_v2` template is approved by
-    // Meta), all daily_report sends route through the 12-param v2 helper
-    // — the header splits the team label onto its own line above the
-    // date. Leave unset / false to keep the original 11-param v1 sends.
+    // V2 template is now the default (Meta approved `daily_report_v2`
+    // on May 19 2026). The 12-param v2 helper splits the team label
+    // onto its own line above the date, which reads better on mobile
+    // than v1's "Izaan's Team · Date" jammed into one field.
     //
-    // CEO ask May 19 2026: header readability — "Izaan's Team · Date"
-    // jammed into one line was hard to parse at a glance. Two lines
-    // (team identity above the date) reads better on mobile.
-    const useV2 = process.env.WHATSAPP_DAILY_REPORT_V2 === "true";
+    // The flag is kept as a rollback escape hatch: set
+    // WHATSAPP_DAILY_REPORT_V2=false in Vercel env to revert to the
+    // original 11-param `daily_report` template instantly. v1's code
+    // path stays wired below.
+    const useV2 = process.env.WHATSAPP_DAILY_REPORT_V2 !== "false";
     const sendDailyReport = async (
       to: string,
       data: {
