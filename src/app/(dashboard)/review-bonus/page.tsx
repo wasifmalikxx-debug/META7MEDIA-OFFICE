@@ -81,6 +81,13 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
         year,
         ...(userIdFilter ? { userId: userIdFilter } : {}),
         ...(userRelationFilter ? { user: userRelationFilter } : {}),
+        // In Izaan's dual-view, drop his own claims from the team inbox so
+        // they only appear in his personal "My Review Claims" section
+        // below. He can't approve them anyway (self-approval guard); the
+        // CEO sees + approves them via the SUPER_ADMIN branch. Without
+        // this filter the same claim would render twice on Izaan's page —
+        // once with a disabled "Approve" button and once in his own list.
+        ...(showOwnSubmit ? { NOT: { userId } } : {}),
       },
       include: {
         user: { select: { firstName: true, lastName: true, employeeId: true } },
@@ -113,9 +120,45 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
               ? "Approve or reject your team's review bonus submissions"
               : scopedTeamName
               ? `Approve or reject review bonus submissions from ${scopedTeamName}`
+              : showOwnSubmit
+              ? "Approve your team's submissions in the section below — submit your own shop claims in the section underneath that."
               : "Approve or reject employee review bonus submissions"
           }
         />
+
+        {/* Izaan-only: personal submit form lives at the TOP so he doesn't
+            have to scroll past his team's inbox to add his own claim.
+            Same component employees use — server-side guards (self-
+            approval block + role check) keep him from approving his
+            own claims. CEO sees those PENDING items in the main inbox
+            below and approves them. */}
+        {showOwnSubmit && (
+          <div className="space-y-3">
+            <h2 className="text-base font-semibold tracking-tight pl-1">
+              My Review Claims
+              <span className="text-[12px] font-normal text-muted-foreground ml-2">
+                · your own shops · CEO approves
+              </span>
+            </h2>
+            <ReviewBonusSubmit
+              submissions={JSON.parse(JSON.stringify(ownSubmissions))}
+              currentMonth={month}
+              currentYear={year}
+            />
+          </div>
+        )}
+
+        {/* Approval inbox — team's PENDING claims, dept-scoped. Header
+            only shown in Izaan's dual-view so the divider between "my
+            stuff" and "team stuff" is unambiguous. */}
+        {showOwnSubmit && (
+          <h2 className="text-base font-semibold tracking-tight pl-1 pt-4 border-t border-border/40 mt-6">
+            Team Review Claims
+            <span className="text-[12px] font-normal text-muted-foreground ml-2">
+              · Etsy - EM sellers · awaiting your decision
+            </span>
+          </h2>
+        )}
         <ReviewBonusManager
           submissions={JSON.parse(JSON.stringify(submissions))}
           currentMonth={month}
@@ -124,25 +167,6 @@ export default async function ReviewBonusPage({ searchParams }: { searchParams: 
           // out of their UI to match the API gate.
           canDelete={role !== "PARTNER"}
         />
-
-        {/* Izaan-only: his personal submit form lives below the approval
-            inbox. Same component employees use — server-side guards
-            (self-approval block + role check) keep him from approving
-            his own claims. CEO sees those PENDING items in the main
-            inbox above. */}
-        {showOwnSubmit && (
-          <div className="pt-2">
-            <PageHeader
-              title="Submit My Reviews"
-              description="Your own shop review-bonus claims — submit here for the CEO to approve."
-            />
-            <ReviewBonusSubmit
-              submissions={JSON.parse(JSON.stringify(ownSubmissions))}
-              currentMonth={month}
-              currentYear={year}
-            />
-          </div>
-        )}
       </div>
     );
   }

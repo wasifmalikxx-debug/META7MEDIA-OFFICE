@@ -161,11 +161,24 @@ export default async function RefundsPage({
     aliexpressProofUrl: null as string | null,
   }));
 
-  // Can this user submit a refund? Only Etsy-style shop owners.
+  // Can this user submit a refund? Etsy-style shop owners only.
   // - CEO / HR / PARTNER can't submit (no shop)
-  // - Izaan (manager) can't submit (no shop, he supervises)
+  // - Izaan (manager + shop owner since May 19 2026) CAN submit
   // - Etsy / AE / ME employees can submit
   const canSubmit = isEtsyShopOwner;
+
+  // Izaan's dual-view: he both submits for his own shops AND manages the
+  // EM team's refunds. Splitting into two sections keeps "my refunds"
+  // visually separate from "team refunds" so he doesn't mix them up.
+  // Same shape as the review-bonus page. Only fires when he's BOTH the
+  // manager AND a shop owner (i.e., the EM-4 case as of May 19 2026).
+  const isDualView = isManager && isEtsyShopOwner;
+  const ownRefunds = isDualView
+    ? refunds.filter((r) => r.userId === user.id)
+    : [];
+  const teamRefunds = isDualView
+    ? refunds.filter((r) => r.userId !== user.id)
+    : refunds;
 
   return (
     <div className="space-y-6">
@@ -176,11 +189,54 @@ export default async function RefundsPage({
             ? "All refunds submitted by your team"
             : scopedTeamName
             ? `All refunds submitted by ${scopedTeamName}`
+            : isDualView
+            ? "Submit refunds for your own shops below — your team's refunds appear in the section underneath."
             : canSeeAll
             ? "All refunds submitted by the Etsy team"
             : "Submit and track refunds for your assigned Etsy shops"
         }
       />
+
+      {/* Izaan-only: personal submit section on top, scoped to his own
+          refunds + the Submit Refund button. Same RefundsView component
+          employees see — feature-flagged via canSubmit / canSeeAll. */}
+      {isDualView && (
+        <div className="space-y-3">
+          <h2 className="text-base font-semibold tracking-tight pl-1">
+            My Refunds
+            <span className="text-[12px] font-normal text-muted-foreground ml-2">
+              · your own shops
+            </span>
+          </h2>
+          <RefundsView
+            key={`refunds-own-${year}-${month}`}
+            initialRefunds={JSON.parse(JSON.stringify(ownRefunds))}
+            // canSeeAll=false → renders as a personal list (single column,
+            // no "Employee" column, no aggregate stats by shop).
+            canSeeAll={false}
+            // Izaan can delete his own refunds within the 15-min window
+            // via the owner-flow inside RefundsView; no admin-delete needed.
+            canDeleteAny={false}
+            canSubmit={true}
+            currentUserId={user.id}
+            currentMonth={month}
+            currentYear={year}
+          />
+        </div>
+      )}
+
+      {/* Main panel — team-wide view for managers/CEO/partners, or
+          personal-only for shop-owner employees. For Izaan in dual-view,
+          this becomes the "Team Refunds" section underneath his personal
+          one. */}
+      {isDualView && (
+        <h2 className="text-base font-semibold tracking-tight pl-1 pt-4 border-t border-border/40 mt-6">
+          Team Refunds
+          <span className="text-[12px] font-normal text-muted-foreground ml-2">
+            · {scopedTeamName ?? "Etsy - EM"} sellers
+          </span>
+        </h2>
+      )}
       <RefundsView
         // KEY ON SCOPE — forces a fresh client-side mount when the CEO
         // switches teams (?team=em → ?team=ae) or months. RefundsView
@@ -190,14 +246,17 @@ export default async function RefundsPage({
         // component so state re-seeds from the new server payload, and
         // resets transient UI (open dialog, lightbox) that belonged to the
         // previous scope.
-        key={`refunds-${params.team ?? "all"}-${year}-${month}`}
-        initialRefunds={JSON.parse(JSON.stringify(refunds))}
+        key={`refunds-${params.team ?? "all"}-${year}-${month}${isDualView ? "-team" : ""}`}
+        initialRefunds={JSON.parse(JSON.stringify(teamRefunds))}
         canSeeAll={canSeeAll}
         // Partners see their team's refunds but the API does NOT authorize
         // partner deletes — separate the two prop semantics so the Delete
         // button doesn't render for partners and trigger 403 toasts.
         canDeleteAny={isAdmin || isManager}
-        canSubmit={canSubmit}
+        // In dual-view the personal section above has the Submit button.
+        // The team section below is read/manage only — keeps "submit for
+        // self" and "manage team" actions visually separate.
+        canSubmit={isDualView ? false : canSubmit}
         currentUserId={user.id}
         currentMonth={month}
         currentYear={year}
