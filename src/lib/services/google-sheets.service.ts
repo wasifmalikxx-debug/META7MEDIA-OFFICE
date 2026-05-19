@@ -116,46 +116,51 @@ export async function fetchProfitFromSheet(
   month: number,
   year: number
 ): Promise<{ profit: number | null; error: string | null; tabName: string | null }> {
-  // BUGFIX May 19 2026: this helper used to read the "AFTER TAX" summary
-  // cell and return it as `profit`. AFTER TAX is gross sale minus Etsy
-  // fees — it does NOT subtract the AliExpress cost yet. Returning that
-  // as "profit" overstated every employee's earnings by their own AE
-  // cost (typically 30-35% of sale), which then inflated bonus
-  // eligibility and tier payouts via the sync-profits cron.
+  // BONUS PROGRAM INPUT — DO NOT CHANGE WITHOUT CEO APPROVAL.
   //
-  // Real profit = AFTER TAX − COST. We delegate to fetchSheetAnalytics
-  // (which reads every row including the AFTER TAX column) and sum
-  // (afterTax − cost) per row. Same formula every other layer of the
-  // app now uses for profit, so bonus eligibility, dashboard, and
-  // analytics all agree.
+  // The `profit` value this helper returns feeds the sync-profits cron
+  // and is the threshold + tier driver in calculateEligibility ($1,000
+  // floor; PKR 5,000 per $500 tier). The bonus formula was calibrated
+  // against AFTER TAX (gross sale minus Etsy fees, BEFORE subtracting
+  // AliExpress cost), not net profit.
+  //
+  // History: on May 19 2026 this was briefly switched to (AFTER TAX −
+  // COST) to fix display layers (WhatsApp + analytics) showing inflated
+  // profit. That display fix was correct, but changing the bonus input
+  // silently was wrong — CEO reverted the bonus side: "Bonus program
+  // should take after tax, not gross profit, do not change the bonus
+  // program." Reverted here.
+  //
+  // Implementation: still uses the row-sum of the AFTER TAX column
+  // (slightly more reliable than the summary cell, which was sometimes
+  // stale) but returns its raw value, NOT (afterTax − cost).
   const data = await fetchSheetAnalytics(sheetUrl, month, year);
   if (data.error) {
     return { profit: null, error: data.error, tabName: data.tabName };
   }
 
   let totalAfterTax = 0;
-  let totalCost = 0;
   let totalSale = 0;
   for (const row of data.orders) {
     totalAfterTax += row.afterTax;
-    totalCost += row.cost;
     totalSale += row.price;
   }
 
-  // Fallback: a sheet with no AFTER TAX column populated would compute
-  // profit = -cost (negative). Fall back to (sale − cost) and surface
-  // a soft error so the operator knows the column is missing.
+  // Defensive: if the sheet's AFTER TAX column isn't populated, return
+  // null with a clear error so the cron skips the row rather than
+  // misclassifying eligibility. (Pre-this-revert we silently fell back
+  // to Sale − Cost; that hides the data hygiene issue.)
   if (totalAfterTax === 0 && totalSale > 0) {
     return {
-      profit: totalSale - totalCost,
+      profit: null,
       error:
-        "AFTER TAX column not populated — profit fell back to (Sale − Cost). Add an After Tax column to the sheet for accurate Etsy-fee-deducted profit.",
+        "AFTER TAX column not populated for this month. Bonus eligibility cannot be computed until the After Tax column is filled.",
       tabName: data.tabName,
     };
   }
 
   return {
-    profit: totalAfterTax - totalCost,
+    profit: totalAfterTax,
     error: null,
     tabName: data.tabName,
   };
