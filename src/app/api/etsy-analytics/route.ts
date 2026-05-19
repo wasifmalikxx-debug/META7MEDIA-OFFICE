@@ -152,11 +152,14 @@ export async function GET(request: NextRequest) {
   const sheetData = await fetchAllSheetAnalytics(employeeSheets, month, year);
 
   // ─── Aggregation ────────────────────────────────────────────────
-  // Rules (all of these were violated by the previous implementation —
-  // see prisma/scripts/audit-analytics-accuracy.ts for the full diff):
+  // Rules (current as of May 19 2026 — see commit body for full audit):
   //
-  //   • Gross profit ≡ price − cost. NEVER sum the sheet's PROFIT column
-  //     (that column is afterTax − cost in the Etsy template, not gross).
+  //   • PROFIT ≡ afterTax − cost  (NET, after Etsy's fee + payment-
+  //     processing bite). Live audit against all 17 EM/AE/ME sellers
+  //     proved every sheet's PROFIT column matches this formula to the
+  //     penny. The PREVIOUS implementation used (price − cost) which
+  //     overstated profit by ~23% of sale because it didn't subtract
+  //     Etsy's fees. That's been fixed at every aggregation level here.
   //   • Order count is unique Order IDs, not row count. Multi-SKU line
   //     items belong to one Etsy transaction. Rows with no Order ID can't
   //     be deduped — they always count as 1.
@@ -196,7 +199,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const profit = totalSales - totalCost; // gross profit
+    // NET profit = AFTER TAX − COST (matches sheet's PROFIT column).
+    // Fall back to (Sale − Cost) only if a sheet has no AFTER TAX
+    // column populated — defensive, all currently-audited sheets have
+    // it. Same rule applied at the shop + overview aggregations below.
+    const profit = afterTax > 0 ? afterTax - totalCost : totalSales - totalCost;
 
     employeeAnalytics.push({
       userId: emp.id,
@@ -206,7 +213,7 @@ export async function GET(request: NextRequest) {
       totalSales,
       totalCost,
       profit,
-      afterTax, // kept for backward-compat; not displayed in the UI anymore
+      afterTax, // exposed so UI can show Etsy fees = totalSales − afterTax
       orders: empOrders,
       avgOrderValue: empOrders > 0 ? totalSales / empOrders : 0,
       error: data.error,
@@ -240,15 +247,16 @@ export async function GET(request: NextRequest) {
     overview.totalOrders > 0 ? overview.totalSales / overview.totalOrders : 0;
 
   // ─── Shop analytics ─────────────────────────────────────────────
-  // Per-shop totals: sum every row's price/cost, dedupe orders by the
-  // canonical id. Gross profit = totalSales − totalCost computed at the
-  // end so the same arithmetic rule applies everywhere.
+  // Per-shop totals: sum every row's price/cost/afterTax, dedupe orders
+  // by canonical id. NET profit = afterTax − cost (fall back to
+  // sale − cost when afterTax column is missing).
   const shopAgg = new Map<
     string,
     {
       shopName: string;
       totalSales: number;
       totalCost: number;
+      afterTax: number;
       orderSet: Set<string>;
     }
   >();
@@ -259,12 +267,14 @@ export async function GET(request: NextRequest) {
         shopName: order.shopName,
         totalSales: 0,
         totalCost: 0,
+        afterTax: 0,
         orderSet: new Set(),
       };
       shopAgg.set(order.shopName, entry);
     }
     entry.totalSales += order.price;
     entry.totalCost += order.cost;
+    entry.afterTax += order.afterTax;
     entry.orderSet.add(order.canonicalId);
   }
   const shops: ShopAnalytics[] = [...shopAgg.values()]
@@ -273,7 +283,8 @@ export async function GET(request: NextRequest) {
       orders: s.orderSet.size,
       totalSales: s.totalSales,
       totalCost: s.totalCost,
-      profit: s.totalSales - s.totalCost,
+      profit:
+        s.afterTax > 0 ? s.afterTax - s.totalCost : s.totalSales - s.totalCost,
     }))
     .sort((a, b) => b.profit - a.profit);
 

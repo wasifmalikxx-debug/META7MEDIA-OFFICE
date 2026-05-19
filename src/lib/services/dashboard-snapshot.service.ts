@@ -220,7 +220,13 @@ export async function buildSnapshotsForMonth(
     allTeams.add(teamKey);
 
     const meta = metaByTeamKey.get(teamKey);
-    const grossProfit = b.totalSale - b.totalCost;
+    // NET profit = AFTER TAX − COST (matches the sheet's PROFIT column
+    // and what the team actually banks). The column name in the DB is
+    // still `grossProfit` for backward compat — change is value-only,
+    // semantics now mean "profit net of Etsy fees". Falls back to
+    // (Sale − Cost) only if a sheet has no AFTER TAX column populated.
+    const grossProfit =
+      b.afterTax > 0 ? b.afterTax - b.totalCost : b.totalSale - b.totalCost;
 
     await prisma.dailyTeamSnapshot.upsert({
       where: { date_teamKey: { date: new Date(dateStr), teamKey } },

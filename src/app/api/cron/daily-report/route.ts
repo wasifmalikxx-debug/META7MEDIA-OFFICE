@@ -170,6 +170,12 @@ async function readEmployeeSheetReport(
     const dateCol = headers.findIndex((h: string) => h.includes("order date") || h.includes("date"));
     const priceCol = headers.findIndex((h: string) => h.includes("price"));
     const costCol = headers.findIndex((h: string) => h.includes("cost"));
+    // After Tax = sale price MINUS Etsy fees + payment processing. Real
+    // profit = afterTax − cost (matches the sheet's PROFIT column
+    // exactly across all 17 audited employees — see commit body for the
+    // audit numbers). Without this column we'd over-report profit by
+    // ~23% of sale (the Etsy fee bite).
+    const afterTaxCol = headers.findIndex((h: string) => h.includes("after tax"));
     // Order ID column varies in label across partner sheets — accept any
     // header that mentions "order number / order # / order id / ordder #
     // (typo seen on AE-5)". When present, used to dedupe multi-SKU rows
@@ -192,8 +198,8 @@ async function readEmployeeSheetReport(
     });
     const rows = dataRes.data.values || [];
 
-    let todayOrders = 0, todaySale = 0, todayCost = 0;
-    let monthOrders = 0, monthSale = 0, monthCost = 0;
+    let todayOrders = 0, todaySale = 0, todayCost = 0, todayAfterTax = 0;
+    let monthOrders = 0, monthSale = 0, monthCost = 0, monthAfterTax = 0;
     const monthOrderIds = new Set<string>();
     const todayOrderIds = new Set<string>();
 
@@ -205,11 +211,14 @@ async function readEmployeeSheetReport(
       // sometimes pre-stamp a date before logging the actual order details.
       if (rowSale <= 0) continue;
       const rowCost = costCol >= 0 ? parseDollar(row[costCol]) : 0;
+      const rowAfterTax = afterTaxCol >= 0 ? parseDollar(row[afterTaxCol]) : 0;
       const orderId = orderIdCol >= 0 ? (row[orderIdCol] || "").toString().trim() : "";
 
-      // Always sum revenue + cost — every line item contributes to the totals.
+      // Always sum revenue + cost + after-tax — every line item contributes
+      // to the totals.
       monthSale += rowSale;
       monthCost += rowCost;
+      monthAfterTax += rowAfterTax;
       // But increment the ORDER COUNT only when the order ID hasn't been
       // seen this month. SKU line items of the same Etsy transaction
       // collapse into one order. Rows without an orderId always count
@@ -222,6 +231,7 @@ async function readEmployeeSheetReport(
       if (isTodayCell(dateVal, todayPkt)) {
         todaySale += rowSale;
         todayCost += rowCost;
+        todayAfterTax += rowAfterTax;
         if (!orderId || !todayOrderIds.has(orderId)) {
           todayOrders++;
           if (orderId) todayOrderIds.add(orderId);
@@ -229,13 +239,33 @@ async function readEmployeeSheetReport(
       }
     }
 
-    // Gross profit = sale - cost. We DON'T sum the sheet's column literally
-    // labeled "PROFIT" because in the Etsy templates that column is
-    // (After Tax - Cost), i.e. net post-fee. Wasif wants gross profit on
-    // every WhatsApp report, matching the analytics page change.
+    // REAL profit = AFTER TAX − COST. Live audit (May 19 2026, all 17
+    // active EM/AE/ME sellers) proved every sheet's PROFIT column
+    // matches Σ(afterTax) − Σ(cost) to the penny — that IS the right
+    // formula. The earlier (Sale − Cost) overstated profit by ~23% of
+    // sale (the Etsy fee + payment-processing bite, which previous code
+    // wasn't subtracting).
+    //
+    // Fallback: if a sheet has no AFTER TAX column (or every row is 0),
+    // afterTax totals are 0 and `afterTax − cost` would be negative. In
+    // that case we fall back to (sale − cost) and log a warning so the
+    // partner gets a chance to add the column. All currently-audited
+    // sheets have AFTER TAX populated, so this branch is defensive only.
+    const todayProfit = todayAfterTax > 0
+      ? todayAfterTax - todayCost
+      : todaySale - todayCost;
+    const monthProfit = monthAfterTax > 0
+      ? monthAfterTax - monthCost
+      : monthSale - monthCost;
+    if (monthAfterTax === 0 && monthSale > 0) {
+      console.warn(
+        `[daily-report] sheet ${sheetId} has no AFTER TAX column — profit falls back to (Sale − Cost). Ask the partner to add an "After Tax" column for accurate Etsy-fee-deducted reporting.`,
+      );
+    }
+
     return {
-      todayOrders, todaySale, todayCost, todayProfit: todaySale - todayCost,
-      monthOrders, monthSale, monthCost, monthProfit: monthSale - monthCost,
+      todayOrders, todaySale, todayCost, todayProfit,
+      monthOrders, monthSale, monthCost, monthProfit,
     };
   } catch {
     return empty;

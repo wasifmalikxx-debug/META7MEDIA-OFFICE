@@ -116,82 +116,49 @@ export async function fetchProfitFromSheet(
   month: number,
   year: number
 ): Promise<{ profit: number | null; error: string | null; tabName: string | null }> {
-  try {
-    const sheetId = extractSheetId(sheetUrl);
-    if (!sheetId) {
-      return { profit: null, error: "Invalid Google Sheet URL", tabName: null };
-    }
-
-    const authClient = await getAuthClient();
-    const sheets = google.sheets({ version: "v4", auth: authClient as any });
-
-    // First, get all sheet/tab names
-    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
-    const sheetTabs = spreadsheet.data.sheets?.map((s) => s.properties?.title || "") || [];
-
-    // Try to find the correct monthly tab. Use fuzzy comparison so tabs with
-    // inconsistent dash/whitespace formatting (e.g. "May- 2K26") still match.
-    const tabNames = getAlternativeTabNames(month, year);
-    let matchedTab: string | null = null;
-
-    for (const tabName of tabNames) {
-      const target = normalizeTabName(tabName);
-      const found = sheetTabs.find((t) => normalizeTabName(t) === target);
-      if (found) {
-        matchedTab = found;
-        break;
-      }
-    }
-
-    if (!matchedTab) {
-      return {
-        profit: null,
-        error: `Tab not found. Tried: ${tabNames[0]}. Available tabs: ${sheetTabs.join(", ")}`,
-        tabName: null,
-      };
-    }
-
-    // Read the analytics area (V1:AD15) and search for "AFTER TAX" label
-    // Layout varies between sheets — label could be in any column, value is always next column
-    const range = `'${matchedTab}'!V1:AD15`;
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range,
-    });
-
-    const rows = response.data.values || [];
-    let profit: number | null = null;
-
-    for (const row of rows) {
-      for (let col = 0; col < row.length; col++) {
-        if (String(row[col]).trim().toUpperCase() === "AFTER TAX") {
-          // Value is in the next column
-          const rawValue = row[col + 1];
-          if (rawValue) {
-            const cleanValue = String(rawValue).replace(/[$,\s]/g, "");
-            profit = parseFloat(cleanValue);
-          }
-          break;
-        }
-      }
-      if (profit !== null) break;
-    }
-
-    if (profit === null || isNaN(profit)) {
-      return { profit: null, error: "AFTER TAX value not found in analytics area", tabName: matchedTab };
-    }
-
-    return { profit, error: null, tabName: matchedTab };
-  } catch (err: any) {
-    const msg = err.message || String(err);
-    if (msg.includes("not found")) {
-      return { profit: null, error: "Sheet not found or not shared with service account", tabName: null };
-    }
-    if (msg.includes("permission")) {
-      return { profit: null, error: "No permission. Share the sheet with: meta7media-sheets@meta7media-office.iam.gserviceaccount.com", tabName: null };
-    }
-    return { profit: null, error: msg, tabName: null };
+  // BUGFIX May 19 2026: this helper used to read the "AFTER TAX" summary
+  // cell and return it as `profit`. AFTER TAX is gross sale minus Etsy
+  // fees — it does NOT subtract the AliExpress cost yet. Returning that
+  // as "profit" overstated every employee's earnings by their own AE
+  // cost (typically 30-35% of sale), which then inflated bonus
+  // eligibility and tier payouts via the sync-profits cron.
+  //
+  // Real profit = AFTER TAX − COST. We delegate to fetchSheetAnalytics
+  // (which reads every row including the AFTER TAX column) and sum
+  // (afterTax − cost) per row. Same formula every other layer of the
+  // app now uses for profit, so bonus eligibility, dashboard, and
+  // analytics all agree.
+  const data = await fetchSheetAnalytics(sheetUrl, month, year);
+  if (data.error) {
+    return { profit: null, error: data.error, tabName: data.tabName };
   }
+
+  let totalAfterTax = 0;
+  let totalCost = 0;
+  let totalSale = 0;
+  for (const row of data.orders) {
+    totalAfterTax += row.afterTax;
+    totalCost += row.cost;
+    totalSale += row.price;
+  }
+
+  // Fallback: a sheet with no AFTER TAX column populated would compute
+  // profit = -cost (negative). Fall back to (sale − cost) and surface
+  // a soft error so the operator knows the column is missing.
+  if (totalAfterTax === 0 && totalSale > 0) {
+    return {
+      profit: totalSale - totalCost,
+      error:
+        "AFTER TAX column not populated — profit fell back to (Sale − Cost). Add an After Tax column to the sheet for accurate Etsy-fee-deducted profit.",
+      tabName: data.tabName,
+    };
+  }
+
+  return {
+    profit: totalAfterTax - totalCost,
+    error: null,
+    tabName: data.tabName,
+  };
 }
 
 // ─── Analytics Types ───────────────────────────────────────────────
