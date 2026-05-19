@@ -6,6 +6,7 @@ import { getActiveTokenForUser } from "@/lib/services/aliexpress-api.service";
 import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
 import {
   checkAndConsumeProductHunter,
+  refundProductHunter,
   ProductHunterQuotaExceededError,
   PRODUCT_HUNTER_DAILY_LIMIT,
 } from "@/lib/services/product-hunter-quota.service";
@@ -113,6 +114,12 @@ export async function POST(request: NextRequest) {
     ? await getActiveTokenForUser(ceoUser.id)
     : null;
 
+  // Logging context so when a hunt fails we can read the Vercel logs
+  // and see exactly which user / niche / role tripped which stage.
+  // Areefa-on-EM reports of "no result + count didn't move" land here.
+  const ctx = `user=${session.user.employeeId ?? session.user.id} role=${session.user.role} niche="${payload.niche}" hasAeToken=${accessToken ? "yes" : "no"}`;
+  console.log(`[hunt-by-niche] START ${ctx}`);
+
   try {
     const result = await huntByNiche({
       niche: payload.niche,
@@ -121,10 +128,43 @@ export async function POST(request: NextRequest) {
       extraCategories: payload.extraCategories,
       accessToken,
     });
+
+    // Refund-on-empty: if the pipeline returned 0 categories the
+    // employee got nothing usable back — don't dock them for it.
+    // Common upstream causes: Anthropic JSON parse failure (returns []
+    // from generateNicheBreakdown's catch), Etsy API rate-limit (every
+    // evaluateKeyword returns null), or all keywords filtered by the
+    // gender/audience backstop. Logging the diagnostic counters lets
+    // us pinpoint which one when this happens in prod.
+    if (result.categories.length === 0) {
+      await refundProductHunter({ userId: session.user.id });
+      console.warn(
+        `[hunt-by-niche] EMPTY ${ctx} — categories=0 productCount=${result.productCount} scanCount=${result.scanCount} costUsd=${result.totalCostUsd.toFixed(4)} durationMs=${result.durationMs} — quota REFUNDED`,
+      );
+      return json({
+        ...result,
+        // Surface a diagnostic hint so the UI can tell the user
+        // *why* there are no results, not just that there are none.
+        diagnostics: {
+          refunded: true,
+          reason: !accessToken
+            ? "AliExpress connection isn't set up — ask the CEO to reconnect on Product Hunter. Etsy-side results may still be missing if the upstream Etsy API is rate-limited."
+            : "The niche search came back empty — usually Etsy rate-limit or a niche too narrow for the keyword brainstorm. Try a broader or rephrased niche and retry. No quota slot was used.",
+        },
+      });
+    }
+
+    console.log(
+      `[hunt-by-niche] DONE ${ctx} categories=${result.categories.length} productCount=${result.productCount} scanCount=${result.scanCount} costUsd=${result.totalCostUsd.toFixed(4)} durationMs=${result.durationMs}`,
+    );
     return json(result);
   } catch (err) {
     const reason = err instanceof Error ? err.message : "unknown";
-    console.error(`[hunt-by-niche] failed:`, reason);
+    console.error(`[hunt-by-niche] FAILED ${ctx} —`, reason);
+    // Refund on throw too — the employee shouldn't lose a slot when
+    // the pipeline blew up mid-run. Best-effort, doesn't block the
+    // error response.
+    await refundProductHunter({ userId: session.user.id });
     return error(`Hunt failed: ${reason}`, 502);
   }
 }

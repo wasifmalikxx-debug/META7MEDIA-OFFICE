@@ -114,6 +114,37 @@ export async function checkAndConsumeProductHunter(opts: {
   };
 }
 
+/**
+ * Refund one slot that was previously consumed by
+ * checkAndConsumeProductHunter. Called when the hunt failed or
+ * returned zero results so the employee isn't docked for a hunt that
+ * never delivered value.
+ *
+ * Best-effort: decrements only when the row exists and count > 0.
+ * Never throws — if the DB write fails the slot stays consumed,
+ * which is the safer side-effect (vs. losing track of count).
+ */
+export async function refundProductHunter(opts: {
+  userId: string;
+}): Promise<void> {
+  const date = pktDateAsUtcMidnight();
+  try {
+    const row = await prisma.productHunterUsage.findUnique({
+      where: { userId_date: { userId: opts.userId, date } },
+    });
+    if (!row || row.count <= 0) return;
+    await prisma.productHunterUsage.update({
+      where: { userId_date: { userId: opts.userId, date } },
+      data: { count: { decrement: 1 } },
+    });
+  } catch (err) {
+    console.warn(
+      "[product-hunter-quota] refund failed (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 export class ProductHunterQuotaExceededError extends Error {
   readonly limit: number;
   readonly resetAt: Date;

@@ -21,6 +21,7 @@ import {
   Star,
   ArrowDownNarrowWide,
   ChevronDown,
+  Check,
   Clock,
   Flame,
   LayoutGrid,
@@ -99,6 +100,13 @@ interface NicheHuntResponse {
   totalCostUsd: number;
   durationMs: number;
   categories: NicheCategoryResult[];
+  /** Present when the hunt returned 0 categories — server-side hint
+   * about what went wrong (Etsy rate limit, missing AE token, niche
+   * too narrow, etc.) + whether the quota slot was refunded. */
+  diagnostics?: {
+    refunded: boolean;
+    reason: string;
+  };
 }
 
 // ─── Pill picker options ────────────────────────────────────────────
@@ -441,6 +449,12 @@ export function ManualHuntingSection({
       const msg = err instanceof Error ? err.message : "Hunt failed";
       setErrorMsg(msg);
       toast.error("Hunt failed", { description: msg });
+      // Also fire the completion event on FAILURE so the daily-quota
+      // chip refreshes from the DB. The server refunds the slot on
+      // throw/empty, but the chip only reflects that if the hero
+      // refetches — without this the chip stays at the optimistic
+      // pre-hunt value and confuses the user.
+      onHuntComplete?.();
     } finally {
       setHunting(false);
     }
@@ -515,7 +529,11 @@ export function ManualHuntingSection({
           />
 
           {result.categories.length === 0 ? (
-            <EmptyResultCard niche={result.niche} isCeo={isCeo} />
+            <EmptyResultCard
+              niche={result.niche}
+              isCeo={isCeo}
+              diagnostics={result.diagnostics}
+            />
           ) : (
             <>
               <HeatmapNav
@@ -1082,9 +1100,14 @@ function ResultHero({
 function EmptyResultCard({
   niche,
   isCeo,
+  diagnostics,
 }: {
   niche: string;
   isCeo: boolean;
+  /** Server-side diagnostic when the hunt returned 0 categories. When
+   * present, the card shows the specific reason + a refunded-slot
+   * banner so the employee knows they can retry without penalty. */
+  diagnostics?: { refunded: boolean; reason: string };
 }) {
   return (
     <Card className="border border-border/60">
@@ -1098,6 +1121,23 @@ function EmptyResultCard({
             ? "Try a more specific niche, or check that AliExpress is connected at the top of this page."
             : "Try a more specific niche (e.g. “boho boho macramé wall hanging” instead of “home decor”). If this keeps happening, let the CEO know."}
         </p>
+        {diagnostics && (
+          <div className="mt-4 max-w-md mx-auto rounded-lg border border-amber-300/50 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 px-3.5 py-2.5 text-left">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-400">
+              What went wrong
+            </p>
+            <p className="text-[12px] text-amber-900/85 dark:text-amber-100/85 mt-1 leading-relaxed">
+              {diagnostics.reason}
+            </p>
+            {diagnostics.refunded && (
+              <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 mt-2 inline-flex items-center gap-1">
+                <Check className="size-3" strokeWidth={3} />
+                Daily slot refunded — retrying won&apos;t cost you a quota
+                slot.
+              </p>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
