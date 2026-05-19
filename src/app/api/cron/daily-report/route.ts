@@ -239,29 +239,23 @@ async function readEmployeeSheetReport(
       }
     }
 
-    // REAL profit = AFTER TAX − COST. Live audit (May 19 2026, all 17
-    // active EM/AE/ME sellers) proved every sheet's PROFIT column
-    // matches Σ(afterTax) − Σ(cost) to the penny — that IS the right
-    // formula. The earlier (Sale − Cost) overstated profit by ~23% of
-    // sale (the Etsy fee + payment-processing bite, which previous code
-    // wasn't subtracting).
+    // GROSS profit = Sale − Cost (CEO directive May 19 2026 — second
+    // pass). The earlier-this-day change to AfterTax − Cost was
+    // reverted on direct CEO instruction; he wants the daily WhatsApp
+    // report to show the pre-Etsy-fee profit number. AFTER TAX is
+    // still tracked + returned for future use (analytics page,
+    // dashboard snapshot) but the daily-report's `monthProfit` /
+    // `todayProfit` fields reflect gross.
     //
-    // Fallback: if a sheet has no AFTER TAX column (or every row is 0),
-    // afterTax totals are 0 and `afterTax − cost` would be negative. In
-    // that case we fall back to (sale − cost) and log a warning so the
-    // partner gets a chance to add the column. All currently-audited
-    // sheets have AFTER TAX populated, so this branch is defensive only.
-    const todayProfit = todayAfterTax > 0
-      ? todayAfterTax - todayCost
-      : todaySale - todayCost;
-    const monthProfit = monthAfterTax > 0
-      ? monthAfterTax - monthCost
-      : monthSale - monthCost;
-    if (monthAfterTax === 0 && monthSale > 0) {
-      console.warn(
-        `[daily-report] sheet ${sheetId} has no AFTER TAX column — profit falls back to (Sale − Cost). Ask the partner to add an "After Tax" column for accurate Etsy-fee-deducted reporting.`,
-      );
-    }
+    // Note: this means Sale − Cost − Profit reconciles cleanly on
+    // the WhatsApp message (no Etsy-fee gap), which is what the CEO
+    // wants to see. The bonus calculation (sync-profits cron) uses
+    // a separate code path and still reads AFTER TAX directly per
+    // his previous directive — untouched here.
+    void todayAfterTax;
+    void monthAfterTax;
+    const todayProfit = todaySale - todayCost;
+    const monthProfit = monthSale - monthCost;
 
     return {
       todayOrders, todaySale, todayCost, todayProfit,
@@ -329,15 +323,48 @@ export async function GET(request: NextRequest) {
       return numA - numB;
     });
 
-    // Read all EM employee sheets in parallel — much faster than serial
-    // (each readEmployeeSheetReport makes 3 Sheets API calls; 10 sheets
-    // sequentially eats most of the Vercel function timeout).
-    const emResults = await Promise.all(
-      sortedIds.map(async (empId) => ({
-        empId,
-        stats: await readEmployeeSheetReport(sheets, SHEET_MAP[empId], reportMonth, reportYear, todayPkt),
-      }))
-    );
+    // BUGFIX May 19 2026 (2nd pass): same as the partner block below —
+    // firing 10 employees in parallel = ~30 Sheets API calls in <2s,
+    // burning through Google's per-user 60-req/min ceiling. The AE
+    // block fired next was then 429'd into oblivion and Awais's team
+    // total ended up showing only one seller's numbers. Serial reads
+    // with a 200ms breather between each keep the whole cron under
+    // the rate cap.
+    const emResults: Array<{
+      empId: string;
+      stats: Awaited<ReturnType<typeof readEmployeeSheetReport>>;
+    }> = [];
+    for (const empId of sortedIds) {
+      try {
+        const stats = await readEmployeeSheetReport(
+          sheets,
+          SHEET_MAP[empId],
+          reportMonth,
+          reportYear,
+          todayPkt,
+        );
+        emResults.push({ empId, stats });
+      } catch (err: any) {
+        console.warn(
+          `[daily-report] readEmployeeSheetReport failed for ${empId}:`,
+          err?.message,
+        );
+        emResults.push({
+          empId,
+          stats: {
+            todayOrders: 0,
+            todaySale: 0,
+            todayCost: 0,
+            todayProfit: 0,
+            monthOrders: 0,
+            monthSale: 0,
+            monthCost: 0,
+            monthProfit: 0,
+          },
+        });
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
     for (const { empId, stats } of emResults) {
       reports.push({
         empId,
@@ -519,19 +546,51 @@ export async function GET(request: NextRequest) {
           return an - bn;
         });
 
-        // Parallel sheet reads — 7 employees in parallel finishes in ~3s
-        // instead of ~21s sequentially. Still serial across teams so we
-        // don't slam the Sheets API rate limit too hard.
-        const memberResults = await Promise.all(
-          teamMembers.map(async (member) => {
-            const sheetId = member.googleSheetUrl ? extractSheetId(member.googleSheetUrl) : null;
-            if (!sheetId) {
-              return { member, stats: null as null | Awaited<ReturnType<typeof readEmployeeSheetReport>> };
-            }
-            const stats = await readEmployeeSheetReport(sheets, sheetId, reportMonth, reportYear, todayPkt);
-            return { member, stats };
-          })
-        );
+        // BUGFIX May 19 2026 (2nd pass): the old Promise.all over all 7
+        // members fired ~21 Sheets API calls in <2s (3 calls/sheet × 7
+        // sheets). That spiked over Google's per-user 60-req/min cap;
+        // most got 429'd and the silent-catch in readEmployeeSheetReport
+        // returned zeros. Awais's team report ended up showing only one
+        // seller's numbers (whichever survived the burst — AE-6 last
+        // time the CEO checked).
+        //
+        // Sequential reads with a small inter-request delay keep us
+        // well under the limit. Adds ~12s per team to the cron runtime
+        // (vs 3s parallel) but the cron runs once a day — correctness
+        // matters more than speed here. If a single sheet errors we
+        // log + continue rather than failing the whole team.
+        const memberResults: Array<{
+          member: typeof teamMembers[number];
+          stats: Awaited<ReturnType<typeof readEmployeeSheetReport>> | null;
+        }> = [];
+        for (const member of teamMembers) {
+          const sheetId = member.googleSheetUrl
+            ? extractSheetId(member.googleSheetUrl)
+            : null;
+          if (!sheetId) {
+            memberResults.push({ member, stats: null });
+            continue;
+          }
+          try {
+            const stats = await readEmployeeSheetReport(
+              sheets,
+              sheetId,
+              reportMonth,
+              reportYear,
+              todayPkt,
+            );
+            memberResults.push({ member, stats });
+          } catch (err: any) {
+            console.warn(
+              `[daily-report] readEmployeeSheetReport failed for ${member.employeeId}:`,
+              err?.message,
+            );
+            memberResults.push({ member, stats: null });
+          }
+          // 200ms breather between member reads keeps us well under
+          // Sheets API rate caps even on retries.
+          await new Promise((r) => setTimeout(r, 200));
+        }
 
         for (const { member, stats } of memberResults) {
           if (!stats) {
