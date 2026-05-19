@@ -73,8 +73,15 @@ export async function resolveEtsyScope(
       departmentId: dept.id,
       departmentName: dept.name,
       teamKey: "em",
-      // Izaan himself + EM-4L are excluded from his own bonus list.
-      employeeIdExclusions: ["EM-4", "EM-4L"],
+      // EM-4L (Abdullah, non-Etsy ecom) is the only exclusion. EM-4 (Izaan)
+      // USED to be excluded because he was team-lead-only, but as of
+      // May 19 2026 he runs his own shops alongside managing the team, so
+      // he gets his own row in the bonus list — same 7-criteria scoring
+      // as everyone else. The team-lead-bonus tally still filters EM-4 out
+      // (see /api/bonus-eligibility line ~215 and the BonusProgramView
+      // `eligibleCount` reducer) so his own row never inflates his
+      // team-lead payout.
+      employeeIdExclusions: ["EM-4L"],
     };
   }
 
@@ -91,7 +98,9 @@ export async function resolveEtsyScope(
       departmentId: dept.id,
       departmentName: dept.name,
       teamKey: "em",
-      employeeIdExclusions: ["EM-4", "EM-4L"],
+      // EM-4 (Izaan) now appears in the EM bonus list — see comment in the
+      // MANAGER branch above. Only EM-4L stays out.
+      employeeIdExclusions: ["EM-4L"],
     };
   }
 

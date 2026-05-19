@@ -49,11 +49,20 @@ export async function GET(request: NextRequest) {
         status: { in: ["HIRED"] },
         googleSheetUrl: { not: null },
         // Exclusions:
-        //  - EM-4  (Izaan, team lead — has his own team-lead bonus formula)
         //  - EM-4L (Abdullah, hired for non-Etsy ecom work — not in bonus program)
-        // AE-* and ME-* have no analogous exclusions: partners aren't employees
-        // and don't draw a team-lead bonus.
-        employeeId: { notIn: ["EM-4", "EM-4L"] },
+        //
+        // EM-4 (Izaan) USED to be excluded because he was team-lead-only and
+        // didn't own shops. As of May 19 2026 he runs his own shops alongside
+        // managing the team, so he's now in the per-employee bonus loop just
+        // like every other EM seller. His shop sheet at the CEO-provided URL
+        // gets synced and he becomes eligible for the same 7-criteria profit
+        // bonus as the team. The team-lead bonus calc below still filters
+        // EM-4 out of its own eligible-employee tally so his own row doesn't
+        // inflate his team-lead payout.
+        //
+        // AE-* and ME-* have no analogous exclusions: partners aren't
+        // employees and don't draw a team-lead bonus.
+        employeeId: { notIn: ["EM-4L"] },
       },
       select: { id: true, firstName: true, lastName: true, employeeId: true, googleSheetUrl: true, departmentId: true },
     });
@@ -174,16 +183,27 @@ export async function GET(request: NextRequest) {
     }
 
     // Sync Team Lead bonus for Izaan (EM-4): PKR 5,000 per eligible employee
-    // IMPORTANT: scope to Izaan's OWN department (Etsy - EM) only. AE and ME
-    // partners aren't employees and have no team-lead bonus, so their eligible
-    // counts must NOT inflate Izaan's payout.
+    //
+    // IMPORTANT scoping rules:
+    //   (a) Count only Izaan's OWN department (Etsy - EM). AE and ME
+    //       partners aren't employees and have no team-lead bonus, so
+    //       their eligible counts must NOT inflate Izaan's payout.
+    //   (b) EXCLUDE Izaan himself from the eligible-employee count, even
+    //       though he now has his own bonus eligibility row from his
+    //       shops (May 19 2026 — CEO gave him shops + sheet alongside
+    //       his team-lead role). The team-lead bonus rewards him for
+    //       his team's eligibility, not his own — no double-dip on his
+    //       own personal bonus.
     const izaan = await prisma.user.findFirst({
       where: { employeeId: "EM-4" },
       select: { id: true, departmentId: true },
     });
     if (izaan) {
       const eligibleCount = results.filter(
-        (r: any) => r.eligible && r.departmentId === izaan.departmentId,
+        (r: any) =>
+          r.eligible &&
+          r.departmentId === izaan.departmentId &&
+          r.employeeId !== "EM-4", // rule (b) — exclude Izaan's own row
       ).length;
       const teamLeadBonus = eligibleCount * 5000;
 
