@@ -127,17 +127,57 @@ export async function POST(request: NextRequest) {
     }),
   );
 
-  // Stage 3 — drop dead-tag suggestions (under 30 Etsy listings = no
-  // buyer demand exists for this phrase). The CEO flagged getting
-  // suggestions like "wooden wall key stor" with 1 listing — those
-  // are useless. We keep niche tags (30-1k listings) since those are
-  // exactly what we want sellers to use, just not the truly dead ones.
+  // Stage 3 — quality filters before sending back to the seller.
   //
-  // If filtering would leave us with zero suggestions, return what we
-  // have anyway so the seller sees SOMETHING (better than empty).
-  const MIN_LISTINGS = 30;
+  // 1) Drop DEAD tags (< MIN_LISTINGS). The CEO flagged getting score-1
+  //    or score-2 suggestions like "wooden wall key stor" — useless. The
+  //    threshold is the floor where a tag has enough search volume to
+  //    be worth a slot. Bumped from 30 → 200 May 19 2026 after the CEO
+  //    saw multiple score-1/2 suggestions in production. Niche tags
+  //    (200-1k listings) still pass — those are the easy-win slots.
+  // 2) Drop SATURATED tags (>50k) when the seller swapped specifically
+  //    because the current tag was too hot. We detect this via the
+  //    optional `reason` field. If they didn't give a reason, leave
+  //    saturated picks in — they might genuinely want a high-traffic
+  //    anchor.
+  //
+  // If filtering would leave us with zero suggestions, fall back to
+  // whatever survived the dead-tag filter so the seller sees SOMETHING.
+  const MIN_LISTINGS = 200;
+  const SATURATED_THRESHOLD = 50_000;
+  const reason = (payload.reason ?? "").toLowerCase();
+  const swappingForSaturation =
+    reason.includes("saturat") ||
+    reason.includes("too hot") ||
+    reason.includes("hard to rank") ||
+    reason.includes("competitive");
+
   const alive = enriched.filter((s) => s.totalListings >= MIN_LISTINGS);
-  const finalSuggestions = alive.length > 0 ? alive : enriched;
+  const filtered = swappingForSaturation
+    ? alive.filter((s) => s.totalListings < SATURATED_THRESHOLD)
+    : alive;
+
+  // Sort by tier: niche first (easy wins), then moderate, then hot —
+  // skip saturated at the end. Within a tier, higher avgFavorites wins
+  // (proxy for "demand × engagement").
+  const tierRank: Record<string, number> = {
+    niche: 0,
+    moderate: 1,
+    hot: 2,
+    saturated: 3,
+  };
+  const sorted = [...filtered].sort((a, b) => {
+    const aTier = tierRank[a.tier] ?? 99;
+    const bTier = tierRank[b.tier] ?? 99;
+    if (aTier !== bTier) return aTier - bTier;
+    return (b.avgTopFavorites ?? 0) - (a.avgTopFavorites ?? 0);
+  });
+
+  const finalSuggestions = sorted.length > 0
+    ? sorted.slice(0, 5)
+    : alive.length > 0
+      ? alive.slice(0, 5)
+      : enriched.slice(0, 5); // last-resort fallback so UI never empties
 
   return json({ suggestions: finalSuggestions });
 }

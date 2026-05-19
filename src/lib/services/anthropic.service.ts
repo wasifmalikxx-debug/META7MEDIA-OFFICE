@@ -260,15 +260,15 @@ export async function suggestTagReplacements(
     ? `Reason for swapping: ${opts.reason}`
     : "Reason for swapping: the seller wants a fresh take on this tag (often because it's too saturated to rank for).";
 
-  // Ask Haiku for 6 candidates (was 3). Some will fail the post-
-  // filters (>20 chars, risky words, dupes), and we want to be able
-  // to return 3 GOOD ones after filtering. Asking for 6 gives a
-  // 2× buffer against rejections.
+  // Ask Haiku for 10 candidates (was 6). After filtering for length,
+  // risky words, near-duplicates of the existing tag list, and
+  // low-quality picks, we want 3 strong ones to return. 10 → 3 gives
+  // ~3× buffer.
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR, // Haiku — cheap, good at this kind of task
-    max_tokens: 600,
-    temperature: 0.4,
-    system: `You are an Etsy SEO expert. Given a tag a seller wants to REPLACE, suggest 6 alternative tags.
+    max_tokens: 900,
+    temperature: 0.5,
+    system: `You are an Etsy SEO expert. The seller wants to REPLACE one tag — usually because it's saturated (won't rank for a new shop) or off-target. Suggest 10 alternative tags that are GENUINELY DIFFERENT from the tag being replaced AND from every tag already on the listing.
 
 🚫 ABSOLUTE HARD RULE — TAG LENGTH ≤20 CHARACTERS:
 Etsy rejects any tag over 20 characters TOTAL (every letter + every space counts). You MUST count characters before outputting. If your candidate is 21+ chars, REWRITE it shorter or pick a completely different tag — NEVER output a tag over 20 chars even partially. Truncated phrases are USELESS to the seller.
@@ -281,29 +281,60 @@ Character counting examples (count every char including spaces):
   ❌ "minimalist gold drop" = 20 chars — OK at exactly 20
   ❌ "wooden wall key storage" = 23 chars — TOO LONG
 
-If a long-tail phrase you want to suggest exceeds 20, either:
-  (a) pick a tighter 2-3 word version that fits, or
-  (b) abandon it entirely and choose a different angle.
+🚫 ABSOLUTE HARD RULE — NO NEAR-DUPLICATES:
+A "near-duplicate" is a tag that shares 2+ significant words with the
+tag being replaced OR with any tag already on the listing. Swapping
+"mermaid prom dress" for "mermaid prom gown" is NOT a swap — it's the
+same keyword in a fancy hat. The seller already has those slots
+covered. You MUST pick angles the existing tag set DOESN'T cover.
+
+Examples of bad "swaps" (REJECT these patterns):
+  Current: "mermaid prom dress"
+  ❌ "mermaid prom gown"      (dress→gown, otherwise identical)
+  ❌ "long mermaid dress"     (added one word, same root)
+  ❌ "mermaid evening dress"  (same noun, swapped occasion)
+  ✅ "lace prom gown"         (different material + same occasion)
+  ✅ "fitted bodice gown"     (silhouette angle, no mermaid overlap)
+  ✅ "engagement dress"       (different occasion entirely)
+
+🚫 ABSOLUTE HARD RULE — NO DEAD TAGS:
+Don't suggest hyper-niche phrases nobody searches ("vintage purple
+lavender appliqué gown" is dead, "lavender prom gown" lives). Aim for
+tags you'd EXPECT to have 500–10,000 Etsy listings — proven demand.
+The seller's pipeline will reject suggestions with <200 actual
+listings, so don't waste a slot on something nobody searches.
 
 OTHER RULES:
 1. lowercase, no punctuation
-2. Cover SIMILAR buyer intent to the one being replaced
-3. Lean LONGER and more SPECIFIC (long-tail beats short-tail for new shops) — but STILL ≤20 chars
-4. NOT already in the seller's existing tag list (avoid duplicates / near-duplicates)
-5. NO brand names or trademarks (Disney, Marvel, Nike, etc.)
-6. NO risky / Etsy-flag words: sexy, sensual, erotic, nude, weed, gun, etc. Use neutral descriptors instead.
-7. NO buyer-data-on-product wording (we sell ready stock, no input field): no "personalized" / "personalised", no "customisable" / "customizable", no "monogram" / "monogrammed", no "with name" / "your name on". Everything else is fine — handmade, hand knit, hand stitched, custom made, made to order, bespoke, engraved are all ALLOWED (marketing/feature words, not buyer-data promises).
-8. Vary in approach across the 6: niche-specific, expanded-context (gift/occasion), stylistic (material/aesthetic), audience-targeted, use-case, etc.
+2. Cover SIMILAR buyer intent OR a complementary intent that
+   broadens the listing's surface area
+3. Lean LONGER and more SPECIFIC (long-tail beats short-tail for new
+   shops) — but STILL ≤20 chars
+4. NO brand names or trademarks (Disney, Marvel, Nike, etc.)
+5. NO risky / Etsy-flag words: sexy, sensual, erotic, nude, weed,
+   gun, etc. Use neutral descriptors instead.
+6. NO buyer-data-on-product wording (we sell ready stock, no input
+   field): no "personalized" / "personalised", no "customisable" /
+   "customizable", no "monogram" / "monogrammed", no "with name" /
+   "your name on". Everything else is fine — handmade, hand knit,
+   hand stitched, custom made, made to order, bespoke, engraved are
+   all ALLOWED (marketing/feature words, not buyer-data promises).
+7. Vary FACETS across the 10 — each candidate should explore a
+   different angle. Aim for at least one per facet:
+     • material/surface (lace, satin, 3d applique, beaded)
+     • color (lilac, lavender, sage, ivory)
+     • silhouette (strapless, fitted bodice, A-line)
+     • audience (bridesmaid, mother of bride, plus size)
+     • occasion (engagement, pageant, gala, quinceanera)
+     • length (floor length, midi, mini)
+     • style descriptor (vintage, modern, romantic, gothic)
 
-OUTPUT FORMAT — strict JSON, no prose. Output exactly 6 candidates so the seller has options:
+OUTPUT FORMAT — strict JSON, no prose. Output exactly 10 candidates so the seller has options after the demand filter drops the dead ones:
 {
   "replacements": [
     { "tag": "...", "reason": "1-line why this is a better choice" },
     { "tag": "...", "reason": "..." },
-    { "tag": "...", "reason": "..." },
-    { "tag": "...", "reason": "..." },
-    { "tag": "...", "reason": "..." },
-    { "tag": "...", "reason": "..." }
+    ... 10 items total ...
   ]
 }`,
     messages: [
@@ -334,10 +365,59 @@ Suggest 6 replacement tags. Remember: every tag must be ≤20 chars. Count caref
     );
     const currentLower = opts.currentTag.toLowerCase();
 
+    // Helper — significant words from a tag (3+ chars, no English stop
+    // words). Used by the near-duplicate filter below.
+    const stopWords = new Set([
+      "a", "an", "the", "and", "or", "of", "for", "with", "in",
+      "on", "to", "by", "from", "at",
+    ]);
+    const sigWords = (tag: string): Set<string> => {
+      return new Set(
+        tag
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((w) => w.length >= 3 && !stopWords.has(w)),
+      );
+    };
+
+    const currentSig = sigWords(opts.currentTag);
+    const existingSigs = opts.existingTags.map((t) => sigWords(t));
+
+    // Near-duplicate check: two tags are "near duplicates" if they
+    // share 2+ significant words OR if one is a strict substring of
+    // the other (e.g., "mermaid dress" ⊂ "long mermaid dress").
+    const isNearDup = (candidate: string): boolean => {
+      const candLower = candidate.toLowerCase();
+      const candSig = sigWords(candLower);
+
+      // vs the tag being replaced
+      const overlapWithCurrent = [...candSig].filter((w) =>
+        currentSig.has(w),
+      ).length;
+      if (overlapWithCurrent >= 2) return true;
+      if (currentLower.includes(candLower) || candLower.includes(currentLower)) {
+        return true;
+      }
+
+      // vs every existing tag on the listing
+      for (let i = 0; i < existingSigs.length; i++) {
+        const overlap = [...candSig].filter((w) =>
+          existingSigs[i].has(w),
+        ).length;
+        if (overlap >= 2) return true;
+        const existing = opts.existingTags[i].toLowerCase();
+        if (existing.includes(candLower) || candLower.includes(existing)) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
     // NO MORE TRUNCATION. Previously this was `.slice(0, 20)` which
     // silently chopped "wooden wall key storage" → "wooden wall key stor"
     // — garbage. Now we REJECT anything over 20 chars and rely on the
-    // 2× buffer (asking for 6 to land 3) to absorb the loss.
+    // 3× buffer (asking for 10 to land 3) to absorb the loss.
     const cleaned = (parsed.replacements ?? [])
       .map((r) => ({
         tag: (r.tag ?? "")
@@ -356,6 +436,11 @@ Suggest 6 replacement tags. Remember: every tag must be ≤20 chars. Count caref
         if (r.tag === currentLower) return false;
         if (tagLooksRisky(r.tag)) return false; // sexy/nude/weed/etc.
         if (tagLooksLikeMto(r.tag)) return false; // made-to-order/custom/etc.
+        // Drop suggestions that are barely-different rephrases of the
+        // existing tag set. Haiku consistently produces these — e.g.
+        // "mermaid prom gown" when the listing already has "mermaid
+        // prom dress". That's a fake swap; the seller gains nothing.
+        if (isNearDup(r.tag)) return false;
         return true;
       });
 
@@ -368,7 +453,7 @@ Suggest 6 replacement tags. Remember: every tag must be ≤20 chars. Count caref
       deduped.push(r);
     }
 
-    return deduped.slice(0, 3);
+    return deduped.slice(0, 5);
   } catch {
     return [];
   }
@@ -1392,12 +1477,76 @@ CORE RULES
    • Surface: "Engraved" (product can ship with pre-engraved
      decorative designs — that's a feature, not buyer-input)
 
-3. TAGS:
-   • Exactly 13. Each ≤ 20 characters.
-   • Lowercase. No duplicates or near-duplicates ("leather wallet" + "leather wallets" = wasted slot).
-   • Mix demand types: 5-6 high-volume (covering anchor keywords), 5-6 medium-volume long-tail, 2-3 niche
-   • Multi-word tags (2-3 words) usually outperform single words on Etsy
-   • Lead the array with the strongest anchor phrases
+3. TAGS — these are the single biggest ranking lever after the title.
+   The seller is a NEW shop competing with established sellers, so the
+   mix matters as much as the words.
+
+   ── Hard rules ──
+   • EXACTLY 13. Each ≤ 20 characters.
+   • Lowercase. No punctuation.
+   • Multi-word (2-3 words) almost always beat single words on Etsy.
+
+   ── Demand distribution (CRITICAL — most tag sets fail here) ──
+   Aim for this mix across the 13 slots:
+     • 0 SATURATED tags. NEVER include a tag you'd expect to have
+       >50k listings on Etsy. New shops can't rank these — they're
+       wasted slots. Examples for fashion: "evening dress" (~130k),
+       "wedding guest dress" (~70k), "beaded dress" (~80k) — DROP
+       these even though they sound relevant.
+     • 2-3 HOT anchor tags (~10-30k listings). Use sparingly — these
+       are the "long-shot but possible" rankers. Pick the SHARPEST
+       anchor for the product (e.g. "mermaid prom dress" not
+       "prom dress").
+     • 5-6 MODERATE tags (~1k-10k). The sweet spot — enough
+       searches to drive traffic, low enough that ranking is realistic.
+     • 3-4 NICHE tags (<1k). These are the FREE WINS — easy to rank
+       page 1 for, every sale here adds review velocity that lifts
+       the whole listing. Skipping niche entirely is the #1 mistake
+       most generators make.
+
+   ── Facet variety (NO near-duplicates) ──
+   The 13 slots cover DIFFERENT angles, not the same noun rephrased:
+     ❌ BAD — 4 mermaid variants eating slots:
+        ["mermaid dress", "mermaid prom dress", "mermaid prom gown",
+         "mermaid evening gown"]
+        That's ONE keyword (mermaid + product) restated four ways. You
+        get exactly one ranking surface, wasted three slots.
+     ✅ GOOD — same dress, 13 different angles:
+        - Anchor: "mermaid prom dress" (silhouette + occasion)
+        - Material/feature: "3d floral gown", "lace prom dress"
+        - Color: "lilac prom dress", "lavender gown"
+        - Audience/occasion: "quinceanera dress", "pageant gown",
+          "engagement gown", "bridesmaid gown"
+        - Style: "strapless gown", "cape sleeve gown"
+        - Niche: "flower applique dress", "embellished prom gown"
+
+   Cover at least 5 of these 7 facets across the 13 slots:
+     1. Silhouette (mermaid, A-line, bodycon, fit-and-flare)
+     2. Material/surface (lace, beaded, satin, 3d applique, embroidered)
+     3. Color (lilac, lavender, ivory, sage — Etsy SEO accepts color
+        tags even though alt text can't have them)
+     4. Audience (bridesmaid, mother of bride, plus size, petite)
+     5. Occasion (prom, wedding, quinceanera, gala, engagement, formal)
+     6. Construction (strapless, off-shoulder, V-neck, halter — pick
+        what's ACTUALLY in the photo, don't guess)
+     7. Length (floor length, midi, mini, knee length — same: match
+        the photo)
+
+   ── Visual accuracy — match the photo ──
+   The image is your ground truth. NEVER tag a feature that isn't
+   visible:
+     • Strapless ≠ off-shoulder. Strapless = no shoulder coverage at
+       all. Off-shoulder = fabric band wrapping below the neck.
+     • Sequins ≠ beading ≠ appliqué ≠ embroidery. Don't tag "sequin"
+       if you see floral 3D appliqué.
+     • Floor-length ≠ homecoming. Homecoming is SHORT (above knee).
+       Long formal dresses are prom / evening / gala / wedding.
+     • Wedding-guest = midi or cocktail. A floor-length gown is NOT
+       wedding-guest wear; tagging it as such mislabels the listing.
+
+   ── Lead the array with the strongest anchor ──
+   First 3 tags = your best moderate + hot picks (Etsy uses them as
+   stronger ranking signal). Niche tags toward the end is fine.
 
 4. NO BANNED/TRADEMARKED TERMS:
    Disney, Marvel, Nike, Adidas, NFL/NBA/MLB team names, Pokemon, Harry Potter, Star Wars, Game of Thrones, real celebrity names, etc.
@@ -1975,6 +2124,24 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
   // sell ready-stock with no input field so those tags would mislead
   // buyers. Everything else (handmade, hand-knit, custom made, made
   // to order, bespoke, engraved, etc.) is allowed — see MTO_PATTERNS.
+  //
+  // NEAR-DUPLICATE GUARD (May 19 2026): the same root-noun rephrased
+  // ("mermaid prom dress" + "mermaid prom gown" + "mermaid evening
+  // gown") was eating 3-4 tag slots for ONE keyword. We now cap each
+  // significant-word stem at 2 tags so the 13 slots cover 13 distinct
+  // angles rather than four variants of the same noun.
+  const stopWords = new Set([
+    "a", "an", "the", "and", "or", "of", "for", "with", "in",
+    "on", "to", "by", "from", "at",
+  ]);
+  const sigWordsOf = (tag: string): string[] =>
+    tag
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length >= 4 && !stopWords.has(w));
+  const stemCount = new Map<string, number>();
+  const MAX_PER_STEM = 2;
+
   const seen = new Set<string>();
   const tags: string[] = [];
   for (const raw of out.tags ?? []) {
@@ -1985,6 +2152,19 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
       .slice(0, ETSY_LIMITS.TAG_MAX_CHARS);
     if (!t || seen.has(t)) continue;
     if (tagLooksLikeMto(t)) continue; // safety net for MTO wording
+
+    // Skip if this tag would push any significant-word stem past
+    // MAX_PER_STEM. Lets one slot for "mermaid gown" + one for
+    // "mermaid prom dress" through, but rejects the third "mermaid X"
+    // variant in favour of whatever's next in the list (which Haiku
+    // should have ordered as the better facet anyway).
+    const stems = sigWordsOf(t);
+    const wouldExceed = stems.some(
+      (s) => (stemCount.get(s) ?? 0) >= MAX_PER_STEM,
+    );
+    if (wouldExceed) continue;
+    for (const s of stems) stemCount.set(s, (stemCount.get(s) ?? 0) + 1);
+
     seen.add(t);
     tags.push(t);
     if (tags.length === ETSY_LIMITS.TAG_COUNT) break;
