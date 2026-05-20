@@ -2193,11 +2193,25 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
   // buyers. Everything else (handmade, hand-knit, custom made, made
   // to order, bespoke, engraved, etc.) is allowed — see MTO_PATTERNS.
   //
-  // NEAR-DUPLICATE GUARD (May 19 2026): the same root-noun rephrased
-  // ("mermaid prom dress" + "mermaid prom gown" + "mermaid evening
-  // gown") was eating 3-4 tag slots for ONE keyword. We now cap each
-  // significant-word stem at 2 tags so the 13 slots cover 13 distinct
-  // angles rather than four variants of the same noun.
+  // NEAR-DUPLICATE GUARD (May 19 2026, refined May 20):
+  //   The same root-noun rephrased ("mermaid prom dress" + "mermaid prom
+  //   gown" + "mermaid evening gown") was eating 3-4 tag slots for ONE
+  //   keyword. We cap each significant-word stem at 3 tags so the 13
+  //   slots cover distinct angles rather than four variants of the same
+  //   noun.
+  //
+  //   May 20: bumped from 2 → 3 after CEO flagged 8/13 result on swimwear
+  //   ("high waist bikini" + "bikini shorts set" + "beach swimsuit" +
+  //   "drawstring swimsuit" hit cap on "bikini" and "swimsuit" stems,
+  //   blocking 5 valid tags). Product niches NEED the core noun
+  //   ("bikini", "swimwear", "dress") in most tags — capping at 2 leaves
+  //   empty slots. 3 keeps diversity AND fills the 13-slot inventory.
+  //
+  //   FALLBACK PASS (May 20): if the stem cap leaves us with < 13 tags,
+  //   we do a second pass over Sonnet's output without the cap, adding
+  //   any tag that's only excluded by stems (still dropping MTO + dupes
+  //   + over-length). Better to ship 13 slightly-similar tags than 8
+  //   slots with 5 empty.
   const stopWords = new Set([
     "a", "an", "the", "and", "or", "of", "for", "with", "in",
     "on", "to", "by", "from", "at",
@@ -2208,10 +2222,14 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
       .split(/\s+/)
       .filter((w) => w.length >= 4 && !stopWords.has(w));
   const stemCount = new Map<string, number>();
-  const MAX_PER_STEM = 2;
+  const MAX_PER_STEM = 3;
 
+  // Stage 1 — normalise + dedupe + drop MTO; record what survived the
+  // basic filters so the refill pass can pull from it without re-doing
+  // the work.
+  type Candidate = { tag: string; stems: string[] };
+  const candidates: Candidate[] = [];
   const seen = new Set<string>();
-  const tags: string[] = [];
   for (const raw of out.tags ?? []) {
     const t = (raw ?? "")
       .toString()
@@ -2220,22 +2238,36 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
       .slice(0, ETSY_LIMITS.TAG_MAX_CHARS);
     if (!t || seen.has(t)) continue;
     if (tagLooksLikeMto(t)) continue; // safety net for MTO wording
+    seen.add(t);
+    candidates.push({ tag: t, stems: sigWordsOf(t) });
+  }
 
-    // Skip if this tag would push any significant-word stem past
-    // MAX_PER_STEM. Lets one slot for "mermaid gown" + one for
-    // "mermaid prom dress" through, but rejects the third "mermaid X"
-    // variant in favour of whatever's next in the list (which Haiku
-    // should have ordered as the better facet anyway).
-    const stems = sigWordsOf(t);
-    const wouldExceed = stems.some(
+  // Stage 2 — apply stem cap (MAX_PER_STEM). Skip tags whose stems
+  // are already saturated; the diversity-first pass.
+  const tags: string[] = [];
+  const picked = new Set<string>();
+  for (const c of candidates) {
+    const wouldExceed = c.stems.some(
       (s) => (stemCount.get(s) ?? 0) >= MAX_PER_STEM,
     );
     if (wouldExceed) continue;
-    for (const s of stems) stemCount.set(s, (stemCount.get(s) ?? 0) + 1);
-
-    seen.add(t);
-    tags.push(t);
+    for (const s of c.stems) stemCount.set(s, (stemCount.get(s) ?? 0) + 1);
+    tags.push(c.tag);
+    picked.add(c.tag);
     if (tags.length === ETSY_LIMITS.TAG_COUNT) break;
+  }
+
+  // Stage 3 — refill. If the stem cap left us short of 13, fill the
+  // remaining slots from the candidates we skipped, in original order.
+  // No stem cap on this pass — every Etsy slot is more valuable than
+  // perfect diversity.
+  if (tags.length < ETSY_LIMITS.TAG_COUNT) {
+    for (const c of candidates) {
+      if (picked.has(c.tag)) continue;
+      tags.push(c.tag);
+      picked.add(c.tag);
+      if (tags.length === ETSY_LIMITS.TAG_COUNT) break;
+    }
   }
 
   const description = normalizeDescription(out.description ?? "").slice(
