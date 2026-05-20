@@ -867,6 +867,36 @@ function keywordMatchesGenderRequirement(
 }
 
 /**
+ * Pick a single tag-friendly prefix token to inject into keywords
+ * that don't yet contain the niche's required market-segment word.
+ * Returns the buyer-searchable form ("womens" / "mens" / "kids"),
+ * NOT the broader pronouns ("her" / "his" / "their") which would
+ * read weirdly as a keyword prefix.
+ *
+ * Drives the auto-prepend behaviour in generateNicheBreakdown.
+ */
+function canonicalGenderPrefix(requiresAny: string[]): string | null {
+  if (requiresAny.length === 0) return null;
+  const set = new Set(requiresAny);
+  // Order matters — pick the most natural-sounding prefix first.
+  if (set.has("women") || set.has("lady") || set.has("ladies")) return "womens";
+  if (set.has("men") || set.has("male")) return "mens";
+  if (
+    set.has("kid") ||
+    set.has("children") ||
+    set.has("child") ||
+    set.has("toddler") ||
+    set.has("baby") ||
+    set.has("infant") ||
+    set.has("newborn") ||
+    set.has("preemie")
+  ) {
+    return "kids";
+  }
+  return null;
+}
+
+/**
  * Extract product-anchor stems from a category name. Splits on any
  * non-alphanumeric chars + filters stop words + trims plural/derived
  * suffixes to short stems so AE title `includes()` substring matching
@@ -913,6 +943,22 @@ export async function generateNicheBreakdown(
   const extrasLine = opts.extras?.length
     ? `IMPORTANT — ALSO include these categories the seller specified: ${opts.extras.join(", ")}`
     : "";
+
+  // When both a gender requirement AND a style/audience modifier are
+  // present (e.g. niche="Women Leather", style="Gothic",
+  // audience="Halloween"), Haiku tends to drift onto the modifiers and
+  // skip the gender token in every keyword. Add an in-line reminder
+  // so it doesn't have to remember the system-prompt rule. The post-
+  // filter auto-prepends a fallback token anyway, but reducing the
+  // need for that means cleaner, more search-friendly phrasing
+  // (`gothic womens leather jacket` reads worse than
+  // `womens gothic leather jacket`).
+  const nicheGenderRequirements = getNicheGenderRequirements(opts.niche);
+  const hasModifiers = !!opts.style || !!opts.audience;
+  const genderReminder =
+    nicheGenderRequirements.length > 0 && hasModifiers
+      ? `⚠ REMINDER: This niche is gender-scoped (${nicheGenderRequirements.slice(0, 3).join(" / ")}). Style and audience modifiers DO NOT replace the gender requirement — EVERY keyword must still contain a gender token, even when combined with style or audience.`
+      : "";
 
   const msg = await client().messages.create({
     model: MODEL_VALIDATOR, // Haiku — single call
@@ -1024,6 +1070,7 @@ OUTPUT FORMAT — strict JSON, no prose:
 ${styleLine}
 ${audienceLine}
 ${extrasLine}
+${genderReminder}
 
 Return 6-8 proven-selling categories, each with exactly 7 long-tail buyer-intent keywords. Mix 3+ intent buckets across each category's keywords.`,
       },
@@ -1089,14 +1136,35 @@ Return 6-8 proven-selling categories, each with exactly 7 long-tail buyer-intent
           // / engraved / handmade are NOT banned — those are
           // marketing words. See MTO_PATTERNS comment for full policy.
           if (tagLooksLikeMto(k)) return false;
-          // Gender / audience enforcement — drop keywords missing the
-          // niche's required market-segment tokens.
-          if (!keywordMatchesGenderRequirement(k, genderRequirements)) {
-            droppedForGender++;
-            return false;
-          }
           return true;
         })
+        // Gender / audience enforcement — instead of dropping keywords
+        // that don't mention the niche's market segment, AUTO-PREPEND
+        // the canonical token so the hunt for AE products still scopes
+        // to the right gender. Previously this filter dropped on
+        // mismatch; for a niche like "Women Leather" + style "Gothic"
+        // + audience "Halloween", Haiku produced keywords like "gothic
+        // leather jacket" that lacked any women token — every one got
+        // dropped, every category went empty, and the result was 0
+        // categories total. The CEO hit this May 20 2026.
+        //
+        // Map the niche's first-listed enforcement token (e.g. "women",
+        // "men", "kids") to a tag-friendly prefix and inject it when
+        // missing. Drops only when prepending would exceed Etsy's 80-
+        // char keyword cap.
+        .map((k) => {
+          if (genderRequirements.length === 0) return k;
+          if (keywordMatchesGenderRequirement(k, genderRequirements)) return k;
+          const prefix = canonicalGenderPrefix(genderRequirements);
+          if (!prefix) return k;
+          const prefixed = `${prefix} ${k}`;
+          if (prefixed.length > 80) {
+            droppedForGender++;
+            return null;
+          }
+          return prefixed;
+        })
+        .filter((k): k is string => k !== null)
         // Cap at 6 final keywords per category. Asked Haiku for 7 to
         // leave a 1-2 keyword buffer against filter drops, but we
         // want a consistent visual density in the UI so the cap is 6.
