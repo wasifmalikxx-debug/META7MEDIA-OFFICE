@@ -108,8 +108,9 @@ export function extractSheetId(url: string): string | null {
 }
 
 /**
- * Fetch GROSS PROFIT from an employee's Google Sheet for a specific month
- * Reads cell Y10 from the monthly tab
+ * Fetch the BONUS-INPUT value from an employee's Google Sheet — the
+ * summary cell labeled "AFTER TAX" (typically Y10/Z10 in the V:AD
+ * summary area).
  */
 export async function fetchProfitFromSheet(
   sheetUrl: string,
@@ -118,49 +119,57 @@ export async function fetchProfitFromSheet(
 ): Promise<{ profit: number | null; error: string | null; tabName: string | null }> {
   // BONUS PROGRAM INPUT — DO NOT CHANGE WITHOUT CEO APPROVAL.
   //
-  // The `profit` value this helper returns feeds the sync-profits cron
-  // and is the threshold + tier driver in calculateEligibility ($1,000
-  // floor; PKR 5,000 per $500 tier). The bonus formula was calibrated
-  // against AFTER TAX (gross sale minus Etsy fees, BEFORE subtracting
-  // AliExpress cost), not net profit.
+  // The `profit` returned here feeds calculateEligibility ($1,000 floor;
+  // PKR 5,000 per $500 tier). It MUST equal the value the seller +
+  // CEO see in the summary box's "AFTER TAX" cell — typically Y10/Z10.
   //
-  // History: on May 19 2026 this was briefly switched to (AFTER TAX −
-  // COST) to fix display layers (WhatsApp + analytics) showing inflated
-  // profit. That display fix was correct, but changing the bonus input
-  // silently was wrong — CEO reverted the bonus side: "Bonus program
-  // should take after tax, not gross profit, do not change the bonus
-  // program." Reverted here.
+  // History of why we read the SUMMARY CELL and not the AFTER TAX column:
+  //   May 20 2026 — CEO flagged that bonuses looked inflated. Sufyan EM-3
+  //   was showing PKR 75k because the code summed column H "AFTER TAX"
+  //   (= Sale − Etsy fees, BEFORE supplier cost), which gave $7,550.
+  //   But the sheet's summary box labels that same value "TOTAL SALE",
+  //   and uses a DIFFERENT cell labeled "AFTER TAX" further down
+  //   (= Sale − Etsy fees − Cost − 2% tax), which read $4,047 for him.
   //
-  // Implementation: still uses the row-sum of the AFTER TAX column
-  // (slightly more reliable than the summary cell, which was sometimes
-  // stale) but returns its raw value, NOT (afterTax − cost).
+  //   The sheet template is internally inconsistent: column H says
+  //   "AFTER TAX" but the summary box puts that same number under
+  //   "TOTAL SALE". The CEO reads the summary box, so we follow that.
+  //
+  //   CEO directive (May 20): "Bonus program for etsy should always have
+  //   after tax calculated" — meaning the summary cell labeled AFTER TAX,
+  //   not the row column. Saved in memory/feedback_profit_rules.md.
+  //
+  // Implementation: rely on fetchSheetAnalytics which already parses the
+  // V:AD summary area into `summary.afterTax` by label lookup. That's
+  // exactly the cell the CEO sees.
   const data = await fetchSheetAnalytics(sheetUrl, month, year);
   if (data.error) {
     return { profit: null, error: data.error, tabName: data.tabName };
   }
 
-  let totalAfterTax = 0;
   let totalSale = 0;
-  for (const row of data.orders) {
-    totalAfterTax += row.afterTax;
-    totalSale += row.price;
-  }
+  for (const row of data.orders) totalSale += row.price;
 
-  // Defensive: if the sheet's AFTER TAX column isn't populated, return
-  // null with a clear error so the cron skips the row rather than
-  // misclassifying eligibility. (Pre-this-revert we silently fell back
-  // to Sale − Cost; that hides the data hygiene issue.)
-  if (totalAfterTax === 0 && totalSale > 0) {
+  const summaryAfterTax = data.summary.afterTax;
+
+  // Defensive: if the seller has orders but the summary "AFTER TAX" cell
+  // isn't populated, we can't compute the bonus. Return null with a
+  // pointed error so the cron skips the row and the seller is nudged to
+  // populate their summary box (CEO can see the error on the Bonus
+  // Program page). Don't try to approximate — the summary cell uses a
+  // formula with deductions (2% tax + manual adjustments) we can't
+  // reliably replicate from row data.
+  if (summaryAfterTax <= 0 && totalSale > 0) {
     return {
       profit: null,
       error:
-        "AFTER TAX column not populated for this month. Bonus eligibility cannot be computed until the After Tax column is filled.",
+        "Summary 'AFTER TAX' cell (Y10/Z10) not populated for this month. Bonus eligibility cannot be computed until the summary box totals are filled in.",
       tabName: data.tabName,
     };
   }
 
   return {
-    profit: totalAfterTax,
+    profit: summaryAfterTax,
     error: null,
     tabName: data.tabName,
   };

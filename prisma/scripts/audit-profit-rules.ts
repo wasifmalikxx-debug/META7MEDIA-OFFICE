@@ -1,12 +1,16 @@
 /**
  * STANDING AUDIT — verifies the four profit code paths obey the
- * CEO's locked-in rules (May 19 2026, see
+ * CEO's locked-in rules (May 19 → May 20 2026 update, see
  * memory/feedback_profit_rules.md).
  *
- *   Bonus eligibility input  → AFTER TAX  (Σ afterTax from sheet)
- *   WhatsApp daily report    → GROSS      (Σ sale − Σ cost)
- *   Analytics page           → GROSS      (Σ sale − Σ cost)
- *   Dashboard team snapshot  → GROSS      (Σ sale − Σ cost)
+ *   Bonus eligibility input  → Summary "AFTER TAX" cell (Y10/Z10)
+ *                              = Sale − Etsy fees − Cost − 2% tax
+ *                              i.e. the value the CEO reads from the
+ *                              SUMMARY BOX, not the row column with
+ *                              the same name (sheet labels disagree).
+ *   WhatsApp daily report    → GROSS  (Σ sale − Σ cost)
+ *   Analytics page           → GROSS  (Σ sale − Σ cost)
+ *   Dashboard team snapshot  → GROSS  (Σ sale − Σ cost)
  *
  * Run after any change that touches profit logic:
  *
@@ -15,9 +19,9 @@
  * Exits 1 if any path violates its rule.
  *
  * Mechanism: pick three representative sellers (one per Etsy team),
- * compute the expected number for each rule from the sheet row data,
- * then call each production helper and verify the return matches.
- * No prod data is written.
+ * compute the expected number for each rule from the sheet row data
+ * + summary cells, then call each production helper and verify the
+ * return matches. No prod data is written.
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -47,9 +51,9 @@ async function main() {
   console.log(`PROFIT-RULES AUDIT — ${month}/${year} (PKT)`);
   console.log("═".repeat(98));
   console.log("");
-  console.log("Rules locked May 19 2026 (memory/feedback_profit_rules.md):");
-  console.log("  Bonus input               → AFTER TAX  (Σ afterTax from sheet)");
-  console.log("  WhatsApp + analytics +    → GROSS      (Σ sale − Σ cost)");
+  console.log("Rules locked May 19 2026, updated May 20 (memory/feedback_profit_rules.md):");
+  console.log("  Bonus input               → SUMMARY 'AFTER TAX' cell (Y10/Z10 in sheet)");
+  console.log("  WhatsApp + analytics +    → GROSS  (Σ sale − Σ cost)");
   console.log("  dashboard snapshot");
   console.log("");
 
@@ -74,7 +78,8 @@ async function main() {
   for (const s of sellers) {
     if (!s.googleSheetUrl) continue;
 
-    // Ground truth — sum rows directly from the sheet.
+    // Ground truth — sum rows directly from the sheet, and pull the
+    // summary "AFTER TAX" cell (= what the CEO reads).
     const data = await fetchSheetAnalytics(s.googleSheetUrl, month, year);
     if (data.error) {
       console.log(`${s.employeeId}: ERR ${data.error}`);
@@ -82,17 +87,18 @@ async function main() {
     }
     let sale = 0;
     let cost = 0;
-    let afterTax = 0;
     for (const o of data.orders) {
       sale += o.price;
       cost += o.cost;
-      afterTax += o.afterTax;
     }
     const expectedGross = sale - cost;
-    const expectedBonusInput = afterTax;
+    // Bonus expected value = SUMMARY 'AFTER TAX' cell (label-parsed by
+    // fetchSheetAnalytics into summary.afterTax). NOT Σ row afterTax —
+    // those are different in this sheet template (CEO confirmed May 20).
+    const expectedBonusInput = data.summary.afterTax;
 
     // ─── Rule check 1: bonus input ── fetchProfitFromSheet must
-    //                                  return AFTER TAX (not net).
+    //                                  return the summary AFTER TAX cell.
     const bonusResp = await fetchProfitFromSheet(
       s.googleSheetUrl,
       month,
@@ -102,7 +108,7 @@ async function main() {
     allChecks.push({
       seller: s.employeeId,
       check: {
-        label: "Bonus input (fetchProfitFromSheet) = AFTER TAX",
+        label: "Bonus input (fetchProfitFromSheet) = summary AFTER TAX cell",
         expected: expectedBonusInput,
         actual: bonusValue,
         pass: near(bonusValue, expectedBonusInput),
@@ -180,8 +186,8 @@ async function main() {
   if (failures === 0) {
     console.log(`✓ All ${allChecks.length} checks passed.`);
     console.log("");
-    console.log("  Bonus calc reads AFTER TAX        — calibrated against the $1k threshold");
-    console.log("  WhatsApp / Analytics / Dashboard  — all GROSS (Sale − Cost)");
+    console.log("  Bonus calc reads SUMMARY 'AFTER TAX' cell  — the value CEO sees in the sheet's summary box");
+    console.log("  WhatsApp / Analytics / Dashboard           — all GROSS (Sale − Cost)");
     console.log("  Rules in memory/feedback_profit_rules.md");
   } else {
     console.log(`✗ ${failures}/${allChecks.length} checks FAILED.`);
