@@ -439,6 +439,17 @@ export interface KeywordFrequency {
   count: number;
   /** Percentage of analyzed listings the phrase appears in (0-100). */
   percentage: number;
+  /**
+   * Optional live Etsy demand snapshot for this phrase. Populated by
+   * the generator route AFTER analyzeKeywordFrequencies via
+   * getTagDemandStatsBatch. When present, Sonnet's prompt renders the
+   * tier (saturated / hot / moderate / niche) so it can avoid
+   * recommending saturated anchors. Undefined = demand not measured.
+   */
+  demand?: {
+    totalListings: number;
+    tier: TagTier;
+  };
 }
 
 export interface AnchorKeywords {

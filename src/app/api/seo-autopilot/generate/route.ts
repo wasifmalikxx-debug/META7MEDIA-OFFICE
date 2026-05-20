@@ -9,6 +9,7 @@ import {
   getSellerTaxonomy,
   toCompetitorBriefs,
   analyzeKeywordFrequencies,
+  getTagDemandStats,
   getTagDemandStatsBatch,
   type TagDemand,
   type AnchorKeywords,
@@ -20,6 +21,7 @@ import {
   generateListing,
   pickCategoryFromCandidates,
   createCostAccumulator,
+  suggestTagReplacements,
   type ImagePayload,
   type ComplianceVerdict,
 } from "@/lib/services/anthropic.service";
@@ -475,6 +477,62 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // ─── Stage 3.5 — Demand-annotate anchor keywords ───────────────────
+  //
+  // CEO directive May 20 2026: bring real Etsy demand data into the
+  // Sonnet prompt so it can avoid saturated tags at GEN time, not
+  // just measure them post-hoc.
+  //
+  // Without this, Sonnet was producing 12/13 saturated tags on mature
+  // categories (leather bag = 599k listings, crossbody bag = 309k,
+  // gift for her = 9.5M). Its training-data heuristic for "common
+  // product tag" doesn't match Etsy's current listing density.
+  //
+  // We pre-score the top-10 anchor PHRASES and top-10 anchor TAGS
+  // against live demand (~20 Etsy calls) and annotate each with its
+  // tier so the prompt renders ✗ SATURATED / ⚠ HOT / ✓ MODERATE /
+  // ★ NICHE next to it. Sonnet now SEES the saturation and steers
+  // around it (per the rule we add to the prompt).
+  //
+  // Etsy quota math: previous 14 calls/gen + 20 here = 34/gen. With
+  // ~25 gens/day at EM rollout that's 850 calls/day, well under the
+  // 5K daily cap.
+  try {
+    const phraseTerms = anchorKeywords.topPhrases.slice(0, 10).map((p) => p.phrase);
+    const tagTerms = anchorKeywords.topTags.slice(0, 10).map((t) => t.phrase);
+    const allTerms = [...phraseTerms, ...tagTerms];
+
+    if (allTerms.length > 0) {
+      const demand = await getTagDemandStatsBatch(allTerms);
+      const byTerm = new Map<string, TagDemand>();
+      for (const d of demand) byTerm.set(d.tag, d);
+
+      anchorKeywords = {
+        ...anchorKeywords,
+        topPhrases: anchorKeywords.topPhrases.map((p) => {
+          const d = byTerm.get(p.phrase);
+          return d
+            ? { ...p, demand: { totalListings: d.totalListings, tier: d.tier } }
+            : p;
+        }),
+        topTags: anchorKeywords.topTags.map((t) => {
+          const d = byTerm.get(t.phrase);
+          return d
+            ? { ...t, demand: { totalListings: d.totalListings, tier: d.tier } }
+            : t;
+        }),
+      };
+    }
+  } catch (err) {
+    // Non-fatal — fall through with unscored anchors. Sonnet still has
+    // the demand-distribution rules in the system prompt to guide it;
+    // Layer 2 (post-swap below) is the catch-all safety net.
+    console.warn(
+      "[seo-autopilot] anchor demand pre-check failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   // ─── Stage 4 — Sonnet writes the listing (with vision) ─────────────
   //
   // When `reframe` is set, the reframe constraints get threaded into
@@ -629,9 +687,92 @@ export async function POST(request: NextRequest) {
   // to Etsy's hard limits (140-char title, 13 tags ≤20 chars each,
   // 5000-char description, etc.).
 
-  const tagIntelligence: TagDemand[] = await getTagDemandStatsBatch(
+  let tagIntelligence: TagDemand[] = await getTagDemandStatsBatch(
     listing.tags,
   ).catch(() => []);
+
+  // ─── Stage 5.5 — Auto-swap saturated tags ──────────────────────────
+  //
+  // CEO directive May 20 2026: if any tag in the final listing comes
+  // back with ≥50k listings, the seller can't rank on it. We refuse to
+  // ship a listing where a tag slot is wasted on a saturated keyword.
+  //
+  // For each saturated tag, call the same Haiku swap function the
+  // manual swap-tag endpoint uses — it returns 3 ranked alternatives
+  // already scored against Etsy demand and filtered for near-dupes.
+  // We pick the first one (highest tier preference) and swap in-place.
+  //
+  // Cost: ~$0.0014 per swap × max 5 swaps = $0.007 worst case.
+  // Latency: parallel, ~3-5s added on listings with multiple saturated
+  // tags. Acceptable for the quality bump.
+  //
+  // Edge cases:
+  //   - If swap suggests a tag already in the listing → skip, drop the
+  //     saturated tag and pad refill is handled by normalize() already
+  //     having ensured 13 slots (the swap just replaces, doesn't add)
+  //   - If swap returns nothing → leave the saturated tag (log warning)
+  //   - Swap call cost is rolled into the gen's actualCostUsd via the
+  //     same costAccum (carried through suggestTagReplacements)
+  const SATURATED_THRESHOLD = 50_000;
+  const saturatedTags = tagIntelligence
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.totalListings >= SATURATED_THRESHOLD);
+
+  if (saturatedTags.length > 0) {
+    console.log(
+      `[seo-autopilot] ${saturatedTags.length}/${listing.tags.length} tags saturated, auto-swapping…`,
+    );
+
+    const swapResults = await Promise.all(
+      saturatedTags.map(async ({ d, i }) => {
+        try {
+          const existingTags = listing.tags.filter((_, j) => j !== i);
+          const replacements = await suggestTagReplacements(
+            {
+              currentTag: d.tag,
+              productTitle: listing.title,
+              productType: context.productType,
+              category: category!.path,
+              existingTags,
+              reason: `Original tag had ${d.totalListings.toLocaleString()} Etsy listings (saturated). Need niche/moderate alternative.`,
+            },
+            costAccum,
+          );
+          // Validate each replacement against live demand and pick the
+          // first one in tier-rank order (niche > moderate > hot) that
+          // is NOT also saturated and is NOT a near-dup of any tag.
+          for (const r of replacements) {
+            if (existingTags.includes(r.tag)) continue;
+            const stats = await getTagDemandStats(r.tag).catch(() => null);
+            if (!stats) continue;
+            if (stats.totalListings >= SATURATED_THRESHOLD) continue;
+            return { i, newTag: r.tag, newStats: stats };
+          }
+          return null;
+        } catch (err) {
+          console.warn(
+            `[seo-autopilot] swap failed for "${d.tag}":`,
+            err instanceof Error ? err.message : err,
+          );
+          return null;
+        }
+      }),
+    );
+
+    let swappedCount = 0;
+    for (const result of swapResults) {
+      if (!result) continue;
+      const { i, newTag, newStats } = result;
+      listing.tags[i] = newTag;
+      tagIntelligence[i] = newStats;
+      swappedCount++;
+    }
+    if (swappedCount > 0) {
+      console.log(
+        `[seo-autopilot] auto-swapped ${swappedCount} saturated tags`,
+      );
+    }
+  }
 
   return json({
     compliance: resolvedCompliance,

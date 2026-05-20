@@ -1555,22 +1555,44 @@ CORE RULES
    • Multi-word (2-3 words) almost always beat single words on Etsy.
 
    ── Demand distribution (CRITICAL — most tag sets fail here) ──
-   Aim for this mix across the 13 slots:
-     • 0 SATURATED tags. NEVER include a tag you'd expect to have
-       >50k listings on Etsy. New shops can't rank these — they're
-       wasted slots. Examples for fashion: "evening dress" (~130k),
-       "wedding guest dress" (~70k), "beaded dress" (~80k) — DROP
-       these even though they sound relevant.
-     • 2-3 HOT anchor tags (~10-30k listings). Use sparingly — these
-       are the "long-shot but possible" rankers. Pick the SHARPEST
-       anchor for the product (e.g. "mermaid prom dress" not
-       "prom dress").
-     • 5-6 MODERATE tags (~1k-10k). The sweet spot — enough
-       searches to drive traffic, low enough that ranking is realistic.
-     • 3-4 NICHE tags (<1k). These are the FREE WINS — easy to rank
-       page 1 for, every sale here adds review velocity that lifts
-       the whole listing. Skipping niche entirely is the #1 mistake
-       most generators make.
+   The user prompt will include an ANCHOR KEYWORDS block annotated
+   with live Etsy demand. Each anchor will carry one of these flags:
+     ✗ SATURATED   → ≥50k listings — DO NOT USE AS A TAG
+     ⚠ HOT          → 10k–50k listings — use sparingly (max 2-3)
+     ✓ MODERATE    → 1k–10k listings — primary tag picks
+     ★ NICHE        → <1k listings — free wins, prioritise
+
+   Use those flags as your ground truth. Aim for this mix across the
+   13 slots:
+     • 0 SATURATED tags. NEVER copy a ✗ anchor into your tag array.
+       New shops can't rank against 50k+ listings — wasted slot.
+       Examples seen in production: "leather bag" (599k), "crossbody
+       bag" (309k), "gift for her" (9.5M), "evening dress" (~130k),
+       "beaded dress" (~80k). DROP these even though they sound
+       relevant — they're the most common mistake.
+     • 2-3 HOT anchor tags (⚠, 10-50k). Use sparingly — these are
+       "long-shot but possible." Pick the SHARPEST anchor for the
+       product (e.g. "mermaid prom dress" not "prom dress").
+     • 5-6 MODERATE tags (✓, 1k-10k). The sweet spot.
+     • 3-4 NICHE tags (★, <1k). The FREE WINS — easy page-1 ranking.
+       Skipping niche entirely is the #1 mistake most generators make.
+
+   When the anchors are mostly ✗ SATURATED (very common for mature
+   categories like leather bags, wallets, jewelry), generate your OWN
+   niche/moderate variants by appending qualifiers:
+     ✗ "leather bag" → ✓ "vegan leather laptop bag"
+                     → ✓ "small leather work bag"
+                     → ★ "leather diaper changing bag"
+                     → ★ "leather pencil case organiser"
+     ✗ "crossbody bag" → ✓ "small crossbody travel bag"
+                       → ★ "anti theft crossbody phone bag"
+                       → ★ "vegan crossbody concert bag"
+
+   Qualifiers that turn saturated → niche: material modifier ("vegan",
+   "italian"), audience ("for nurses", "for teachers"), use case
+   ("laptop", "work", "diaper", "concert", "festival"), feature
+   ("anti theft", "rfid blocking", "convertible"), size ("small",
+   "mini", "oversized").
 
    ── Facet variety (NO near-duplicates) ──
    The 13 slots cover DIFFERENT angles, not the same noun rephrased:
@@ -1842,26 +1864,70 @@ function buildGeneratorUserPrompt(input: GenerationInput): string {
 
   // Anchor keyword block — distilled from the competitors above. These
   // are the high-frequency phrases Sonnet MUST front-load.
+  //
+  // DEMAND-ANNOTATED (May 20 2026): when the route pre-checked each
+  // anchor against live Etsy demand, the entries carry a `demand` field
+  // with tier + total listings. We render that as ✗/⚠/✓/★ flags so
+  // Sonnet can SEE which anchor terms are saturated and avoid copying
+  // them into the tag list. Without this signal Sonnet was producing
+  // 12/13 saturated tags for mature categories (leather bag = 599k,
+  // crossbody bag = 309k, gift for her = 9.5M) because its training
+  // data heuristic for "common product tag" mismatches Etsy's actual
+  // demand density. CEO directive May 20: best keywords + top-tier SEO,
+  // no more saturated suggestions in the output.
+  const tierFlag = (tier?: string): string => {
+    switch (tier) {
+      case "saturated":
+        return "✗ SATURATED — DO NOT USE AS A TAG";
+      case "hot":
+        return "⚠ HOT — use sparingly (max 2-3 across the 13 tags)";
+      case "moderate":
+        return "✓ MODERATE — primary target";
+      case "niche":
+        return "★ NICHE — easy win, prioritise";
+      default:
+        return "(demand not measured)";
+    }
+  };
+  const fmtListings = (n?: number) =>
+    n === undefined ? "" : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}k` : `${n}`;
+
   const phrasesBlock = input.anchorKeywords.topPhrases
-    .map(
-      (p) =>
-        `   • "${p.phrase}" (${p.count}/${input.anchorKeywords.totalListings} listings, ${p.percentage}%)`,
-    )
+    .map((p) => {
+      const tierStr = p.demand ? ` — ${tierFlag(p.demand.tier)}` : "";
+      const demandStr = p.demand
+        ? ` [${fmtListings(p.demand.totalListings)} Etsy listings]`
+        : "";
+      return `   • "${p.phrase}" (${p.count}/${input.anchorKeywords.totalListings} comps, ${p.percentage}%)${demandStr}${tierStr}`;
+    })
     .join("\n");
   const tagsBlock = input.anchorKeywords.topTags
-    .map(
-      (t) =>
-        `   • ${t.phrase} (${t.count}/${input.anchorKeywords.totalListings} listings)`,
-    )
+    .map((t) => {
+      const tierStr = t.demand ? ` — ${tierFlag(t.demand.tier)}` : "";
+      const demandStr = t.demand
+        ? ` [${fmtListings(t.demand.totalListings)} Etsy listings]`
+        : "";
+      return `   • ${t.phrase} (${t.count}/${input.anchorKeywords.totalListings} comps)${demandStr}${tierStr}`;
+    })
     .join("\n");
+  const hasDemandData =
+    input.anchorKeywords.topPhrases.some((p) => p.demand) ||
+    input.anchorKeywords.topTags.some((t) => t.demand);
   const anchorBlock =
     input.anchorKeywords.topPhrases.length > 0 ||
     input.anchorKeywords.topTags.length > 0
-      ? `# ANCHOR KEYWORDS — proven buyer-search terms from the top ${input.anchorKeywords.totalListings} listings
+      ? `# ANCHOR KEYWORDS — proven buyer-search terms from the top ${input.anchorKeywords.totalListings} listings${hasDemandData ? " (with live Etsy demand)" : ""}
 
 These phrases / tags appear repeatedly in winning listings for this keyword space. Front-load them in your title (especially the first 40 chars) and lead with them in your tag set.
 
-Top phrases (titles):
+${hasDemandData ? `**CRITICAL — read the tier flags carefully:**
+- ✗ SATURATED entries: NEVER use as standalone tags. They may appear in the title only if they describe what the product literally IS, but as a tag they're wasted slots (>50k competing listings).
+- ⚠ HOT entries: at most 2-3 across your 13 tags.
+- ✓ MODERATE + ★ NICHE: front-load these. They're the easy-win ranking slots.
+
+If most anchors are saturated, generate your own NICHE/MODERATE variants by adding qualifiers (material, style, audience, occasion, color, size) — e.g. saturated "leather bag" → niche "vegan leather laptop bag" / "small leather crossbody work bag" / "leather diaper changing bag".
+
+` : ""}Top phrases (titles):
 ${phrasesBlock || "   (no high-frequency phrases found)"}
 
 Top tags (seller-curated):
