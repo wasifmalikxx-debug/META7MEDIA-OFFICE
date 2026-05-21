@@ -4,119 +4,124 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Shop Profile IP Check</title>
+<meta name="color-scheme" content="light dark">
+<title>Shop Profile IP Check · META7MEDIA</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f7;--surface:#fff;--bd:#e4e4e7;--bd2:#d4d4d8;--tx:#18181b;--mt:#71717a;--mt2:#a1a1aa;--pri:#18181b;--g:#15803d;--gb:#f0fdf4;--gd:#bbf7d0;--r:#b91c1c;--rb:#fef2f2;--rd:#fecaca;--a:#a16207;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.06)}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--surface:#111113;--bd:#27272a;--bd2:#3f3f46;--tx:#fafafa;--mt:#a1a1aa;--mt2:#71717a;--pri:#fafafa;--g:#22c55e;--gb:rgba(34,197,94,.08);--gd:rgba(34,197,94,.25);--r:#ef4444;--rb:rgba(239,68,68,.08);--rd:rgba(239,68,68,.25);--a:#eab308;--shadow:0 1px 2px rgba(0,0,0,.6),0 4px 16px rgba(0,0,0,.4)}}
 html,body{height:100%}
-body{
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  background:#f4f5f7;color:#1a1d24;padding:20px;
-  display:flex;align-items:flex-start;justify-content:center;min-height:100vh;
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-}
-.card{
-  background:#fff;border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,.06);
-  padding:28px;width:100%;max-width:540px;margin:auto;
-}
-h1{font-size:22px;font-weight:700;letter-spacing:-.01em;text-align:center}
-.ts{font-size:12px;color:#6b7280;margin-top:4px;text-align:center}
-.ip-block{text-align:center;padding:22px 0;border-bottom:1px solid #eef0f3;margin:20px 0}
-.flag{font-size:34px;margin-bottom:6px;line-height:1}
-.addr{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;word-break:break-all}
-.loc{color:#6b7280;font-size:14px;margin-top:4px}
-.badges{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
-.badge{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:13px 14px;border-radius:10px;font-size:14px;gap:12px;
-}
-.badge .lbl{font-weight:600;flex-shrink:0}
-.badge .val{font-weight:600;font-size:12.5px;letter-spacing:.02em;text-align:right;word-break:break-all}
-.g{background:#e8f5ee;color:#0f6b3a}
-.r{background:#fde8e8;color:#9b1c1c}
-.n{background:#f3f4f6;color:#374151}
-.rows{margin-bottom:6px}
-.row{
-  display:flex;justify-content:space-between;align-items:center;gap:12px;
-  padding:10px 0;font-size:14px;border-bottom:1px solid #f3f4f6;
-}
-.row:last-child{border:none}
-.k{color:#6b7280;flex-shrink:0}
-.v{color:#1a1d24;font-weight:500;text-align:right;word-break:break-all}
-.actions{margin-top:18px}
-button{
-  width:100%;font:inherit;font-weight:600;font-size:14px;
-  padding:12px 16px;border-radius:10px;border:none;cursor:pointer;
-  background:#1a1d24;color:#fff;transition:opacity .15s,transform .05s;
-}
-button:hover{opacity:.88}
-button:active{transform:translateY(1px)}
-button:disabled{opacity:.5;cursor:wait}
-.loading{
-  display:flex;align-items:center;justify-content:center;
-  padding:50px 20px;color:#6b7280;font-size:14px;gap:10px;
-}
-.spinner{
-  width:16px;height:16px;border:2px solid #e5e7eb;border-top-color:#1a1d24;
-  border-radius:50%;animation:spin .7s linear infinite;
-}
+body{font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:24px 16px;display:flex;align-items:flex-start;justify-content:center;min-height:100vh;-webkit-font-smoothing:antialiased;letter-spacing:-.005em}
+.wrap{width:100%;max-width:480px;margin:auto}
+.brand{display:flex;align-items:center;justify-content:space-between;padding:0 4px 14px}
+.bn{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mt)}
+.bts{font-size:11px;color:var(--mt2);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px}
+.ld{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 0 0 currentColor;animation:pulse 2s infinite;color:var(--g)}
+.ld.idle{background:var(--mt2);color:var(--mt2);animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 currentColor;opacity:1}70%{box-shadow:0 0 0 6px transparent;opacity:.6}100%{box-shadow:0 0 0 0 transparent;opacity:1}}
+.card{background:var(--surface);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.head{padding:18px 22px 14px;border-bottom:1px solid var(--bd)}
+.head h1{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.head p{font-size:11px;color:var(--mt);margin-top:2px}
+.hero{padding:28px 22px;text-align:center;border-bottom:1px solid var(--bd)}
+.flag{font-size:36px;line-height:1;margin-bottom:12px;display:block}
+.ip{font-family:ui-monospace,"SF Mono",Menlo,Monaco,monospace;font-size:28px;font-weight:600;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums}
+.cp{background:transparent;border:1px solid var(--bd);color:var(--mt);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;transition:all .12s;padding:0}
+.cp:hover{border-color:var(--bd2);color:var(--tx);background:var(--bg)}
+.cp.ok{color:var(--g);border-color:var(--gd);background:var(--gb)}
+.loc{font-size:13px;color:var(--mt);margin-top:8px}
+.sg{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--bd)}
+.s{padding:16px 18px;display:flex;flex-direction:column;gap:8px;border-right:1px solid var(--bd)}
+.s:last-child{border-right:none}
+.sl{font-size:11px;font-weight:500;color:var(--mt);letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+.sd{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--mt2)}
+.sd.g{background:var(--g)}.sd.r{background:var(--r)}.sd.a{background:var(--a)}
+.sv{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.sv.g{color:var(--g)}.sv.r{color:var(--r)}.sv.a{color:var(--a)}
+.ss{font-size:11.5px;color:var(--mt);line-height:1.35;min-height:16px}
+.dt{padding:6px 22px}
+.d{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;font-size:13px;border-bottom:1px solid var(--bd)}
+.d:last-child{border-bottom:none}
+.dk{color:var(--mt);font-size:11.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;flex-shrink:0}
+.dv{color:var(--tx);font-weight:500;text-align:right;word-break:break-all;font-size:13px}
+.dv.m{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+.act{padding:16px 22px 18px;border-top:1px solid var(--bd)}
+.btn{width:100%;font:inherit;font-weight:600;font-size:13.5px;padding:11px 16px;border-radius:9px;border:1px solid var(--pri);cursor:pointer;background:var(--pri);color:var(--surface);transition:all .12s;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:-.005em}
+.btn:hover{opacity:.9}
+.btn:active{transform:scale(.99)}
+.btn:disabled{opacity:.55;cursor:wait}
+.bi{display:inline-block;width:14px;height:14px;flex-shrink:0;transition:transform .4s}
+.btn.l .bi{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.error{
-  background:#fde8e8;color:#9b1c1c;padding:14px 16px;border-radius:10px;
-  font-size:14px;text-align:center;line-height:1.5;
-}
-.hidden{display:none}
-@media (max-width:480px){
-  body{padding:12px}
-  .card{padding:20px}
-  .addr{font-size:22px}
-  h1{font-size:19px}
-}
+.lb{padding:60px 22px;text-align:center;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--mt);font-size:13px}
+.sp{width:14px;height:14px;border:2px solid var(--bd2);border-top-color:var(--tx);border-radius:50%;animation:spin .8s linear infinite}
+.eb{margin:18px 22px;padding:14px 16px;border-radius:9px;background:var(--rb);border:1px solid var(--rd);color:var(--r);font-size:13px;line-height:1.5}
+.ft{margin-top:14px;padding:0 4px;text-align:center;font-size:10.5px;color:var(--mt2);letter-spacing:.02em}
+.hid{display:none}
+@media (max-width:520px){body{padding:16px 12px}.hero{padding:24px 18px}.ip{font-size:24px}.flag{font-size:32px}.head,.act,.dt{padding-left:18px;padding-right:18px}.s{padding:14px 16px}.sg{grid-template-columns:1fr}.s{border-right:none;border-bottom:1px solid var(--bd)}.s:last-child{border-bottom:none}}
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>Shop Profile IP Check</h1>
-  <div class="ts" id="ts"></div>
+<div class="wrap">
+  <div class="brand">
+    <span class="bn">META7MEDIA · Antidetect Verification</span>
+    <span class="bts"><span class="ld idle" id="liveDot"></span><span id="ts">ready</span></span>
+  </div>
 
-  <div id="loading" class="loading"><span class="spinner"></span>Checking your connection…</div>
-  <div id="error" class="error hidden"></div>
-
-  <div id="result" class="hidden">
-    <div class="ip-block">
-      <div class="flag" id="flag"></div>
-      <div class="addr" id="ip"></div>
-      <div class="loc" id="loc"></div>
+  <div class="card">
+    <div class="head">
+      <h1>Shop Profile IP Check</h1>
+      <p>Verify your proxy + WebRTC posture before working a shop</p>
     </div>
 
-    <div class="badges">
-      <div class="badge n" id="proxyBadge">
-        <span class="lbl">Proxy / Datacenter</span>
-        <span class="val" id="proxyText">—</span>
+    <div id="loading" class="lb"><span class="sp"></span>Checking connection…</div>
+    <div id="error" class="eb hid"></div>
+
+    <div id="result" class="hid">
+      <div class="hero">
+        <span class="flag" id="flag">🌐</span>
+        <div class="ip">
+          <span id="ip">—</span>
+          <button class="cp" id="copyBtn" type="button" title="Copy IP" aria-label="Copy IP">⧉</button>
+        </div>
+        <div class="loc" id="loc">—</div>
       </div>
-      <div class="badge n" id="webrtcBadge">
-        <span class="lbl">WebRTC Leak</span>
-        <span class="val" id="webrtcText">Checking…</span>
+
+      <div class="sg">
+        <div class="s">
+          <div class="sl"><span class="sd" id="proxyDot"></span>Proxy / Datacenter</div>
+          <div class="sv" id="proxyVerdict">—</div>
+          <div class="ss" id="proxySub"></div>
+        </div>
+        <div class="s">
+          <div class="sl"><span class="sd" id="webrtcDot"></span>WebRTC Leak</div>
+          <div class="sv" id="webrtcVerdict">Checking…</div>
+          <div class="ss" id="webrtcSub">Probing local interfaces</div>
+        </div>
+      </div>
+
+      <div class="dt">
+        <div class="d"><span class="dk">ISP</span><span class="dv" id="isp">—</span></div>
+        <div class="d"><span class="dk">ASN</span><span class="dv m" id="asn">—</span></div>
+        <div class="d"><span class="dk">Connection</span><span class="dv" id="conn">—</span></div>
+        <div class="d"><span class="dk">Timezone</span><span class="dv" id="tz">—</span></div>
       </div>
     </div>
 
-    <div class="rows">
-      <div class="row"><span class="k">ISP</span><span class="v" id="isp">—</span></div>
-      <div class="row"><span class="k">Organization</span><span class="v" id="org">—</span></div>
-      <div class="row"><span class="k">ASN</span><span class="v" id="asn">—</span></div>
-      <div class="row"><span class="k">Connection</span><span class="v" id="conn">—</span></div>
-      <div class="row"><span class="k">Timezone</span><span class="v" id="tz">—</span></div>
+    <div class="act">
+      <button class="btn" id="recheck" type="button">
+        <span class="bi">↻</span><span>Re-check</span>
+      </button>
     </div>
   </div>
 
-  <div class="actions">
-    <button id="recheck" type="button">Re-check</button>
-  </div>
+  <div class="ft">Single ipinfo.io call · ~1.5 KB per check · no tracking · no storage</div>
 </div>
 
 <script>
 (function(){
 var $=function(id){return document.getElementById(id)};
-var btn=$('recheck');
+var btn=$('recheck'),copyBtn=$('copyBtn'),liveDot=$('liveDot');
 
 function flagEmoji(cc){
   if(!cc||cc.length!==2)return'🌐';
@@ -125,55 +130,49 @@ function flagEmoji(cc){
 }
 
 function fmtTs(){
-  var d=new Date();
-  return'Checked '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 
 function show(state){
-  $('loading').classList.toggle('hidden',state!=='loading');
-  $('error').classList.toggle('hidden',state!=='error');
-  $('result').classList.toggle('hidden',state!=='result');
+  $('loading').classList.toggle('hid',state!=='loading');
+  $('error').classList.toggle('hid',state!=='error');
+  $('result').classList.toggle('hid',state!=='result');
 }
 
-// Heuristic: detect datacenter/hosting/VPN via the ISP / org / ASN
-// string returned by ipinfo. Pattern-matches major cloud + VPN
-// providers the team is likely to hit. No structured proxy flag is
-// available on the free tier of any IP API, so the keyword sweep is
-// our best signal — it catches the obvious ones (AWS, DO, Hetzner,
-// NordVPN, etc.).
+function setLive(state){
+  liveDot.classList.toggle('idle',state==='idle');
+}
+
+// Heuristic: detect datacenter/hosting/VPN via ISP/org/ASN string.
+// No structured proxy flag on any free tier — keyword sweep catches
+// obvious cloud + VPN providers.
 function classifyProxy(orgText){
   var blob=(orgText||'').toLowerCase();
-  var keys=['hosting','datacenter','data center','data-center','cloud','vps','dedicated server',
+  var dc=['hosting','datacenter','data center','data-center','cloud','vps','dedicated server',
     'digitalocean','amazon','aws','google cloud','microsoft','azure','linode','vultr','ovh',
     'hetzner','oracle cloud','choopa','contabo','leaseweb','m247','colocrossing','quadranet',
-    'ipxo','psychz','nforce','servermania','iliad','online sas','scaleway','alibaba cloud',
-    'tencent','nordvpn','expressvpn','surfshark','protonvpn','mullvad','private internet access',
-    'cyberghost','pure vpn','windscribe','tunnelbear','vpn'];
-  for(var i=0;i<keys.length;i++){
-    if(blob.indexOf(keys[i])>=0)return{risk:true,reason:'DATACENTER / PROXY — RISK'};
-  }
-  return{risk:false,reason:'RESIDENTIAL — OK'};
+    'ipxo','psychz','nforce','servermania','iliad','online sas','scaleway','alibaba cloud','tencent'];
+  var vpn=['nordvpn','expressvpn','surfshark','protonvpn','mullvad','private internet access',
+    'cyberghost','pure vpn','windscribe','tunnelbear'];
+  for(var i=0;i<vpn.length;i++)if(blob.indexOf(vpn[i])>=0)return{tier:'r',label:'VPN detected',sub:'Commercial VPN provider identified'};
+  for(var j=0;j<dc.length;j++)if(blob.indexOf(dc[j])>=0)return{tier:'r',label:'Datacenter / hosting',sub:'Etsy flags non-residential IPs aggressively'};
+  if(/\bvpn\b/.test(blob))return{tier:'a',label:'Possible VPN',sub:'ISP name contains "vpn"'};
+  return{tier:'g',label:'Residential ISP',sub:'Clean consumer connection'};
 }
 
-function setBadge(id,textId,state,text){
-  var b=$(id);
-  b.classList.remove('g','r','n');
-  b.classList.add(state);
-  $(textId).textContent=text;
+function setStatus(prefix,tier,verdict,sub){
+  $(prefix+'Dot').className='sd '+tier;
+  var v=$(prefix+'Verdict');v.className='sv '+tier;v.textContent=verdict;
+  $(prefix+'Sub').textContent=sub||'';
 }
 
 function countryName(cc){
   if(!cc)return'';
-  try{
-    var d=new Intl.DisplayNames(['en'],{type:'region'});
-    return d.of(cc.toUpperCase())||cc;
-  }catch(e){return cc}
+  try{return new Intl.DisplayNames(['en'],{type:'region'}).of(cc.toUpperCase())||cc}
+  catch(e){return cc}
 }
 
-// Split ipinfo.io's "org" field which combines ASN + ISP name:
-//   "AS17557 Pakistan Telecommunication Company Limited"
-//   →  { asn: "AS17557", isp: "Pakistan Telecommunication Company Limited" }
-// Returns the raw string under both keys when the prefix is missing.
+// Split ipinfo "org": "AS17557 Pakistan Telecom..." → { asn, isp }
 function splitOrg(org){
   if(!org)return{asn:'',isp:''};
   var m=org.match(/^(AS\d+)\s+(.+)$/);
@@ -181,95 +180,84 @@ function splitOrg(org){
   return{asn:'',isp:org};
 }
 
-// Primary: ipinfo.io (free, CORS-enabled, ~50K/month). Returns IP,
-// city, region, country (2-letter code), org (AS<n> + ISP), timezone.
-//
-// Fallback: api.country.is — returns just IP + country code. If
-// ipinfo.io ever rate-limits us or goes down, we still show the IP
-// + WebRTC check, just lose ISP/proxy detection. Better than a hard
-// failure.
-//
-// We deliberately don't use ipwho.is (CORS paywall) or ipapi.co
-// (Cloudflare challenge on programmatic calls).
+// Primary: ipinfo.io (free, 50K/mo, CORS open). Fallback:
+// api.country.is — IP + country only; the team still sees something
+// + the WebRTC verdict if ipinfo ever fails.
 function fetchIp(){
   show('loading');
   btn.disabled=true;
-  $('ts').textContent='';
-  setBadge('webrtcBadge','webrtcText','n','Checking…');
+  btn.classList.add('l');
+  setLive('live');
+  $('ts').textContent='checking…';
+  copyBtn.classList.remove('ok');
+  copyBtn.textContent='⧉';
 
   fetch('https://ipinfo.io/json')
-    .then(function(r){
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      return r.json();
-    })
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
     .then(function(d){
       if(!d||!d.ip)throw new Error('No IP returned');
-      var parts=splitOrg(d.org);
-      var cn=countryName(d.country);
-      $('ip').textContent=d.ip;
-      $('flag').textContent=flagEmoji(d.country||'');
-      var loc=[d.city,d.region,cn].filter(Boolean).join(', ');
-      $('loc').textContent=loc||'—';
-      $('isp').textContent=parts.isp||'—';
-      $('org').textContent=parts.isp||'—';
-      $('asn').textContent=parts.asn||'—';
-      $('conn').textContent=/:/.test(d.ip)?'IPv6':'IPv4';
-      $('tz').textContent=d.timezone||'—';
-
-      var v=classifyProxy(d.org);
-      setBadge('proxyBadge','proxyText',v.risk?'r':'g',v.reason);
-
-      $('ts').textContent=fmtTs();
-      show('result');
-      btn.disabled=false;
-      webrtcCheck(d.ip);
+      renderFull(d);
     })
-    .catch(function(err){
-      // Fallback path — ipinfo unreachable. Hit api.country.is for at
-      // least the IP + country so the team can still see something.
+    .catch(function(){
       fetch('https://api.country.is/').then(function(r){return r.json()})
         .then(function(d){
           if(!d||!d.ip)throw new Error('fallback returned no IP');
-          var cn=countryName(d.country);
-          $('ip').textContent=d.ip;
-          $('flag').textContent=flagEmoji(d.country||'');
-          $('loc').textContent=cn||'—';
-          $('isp').textContent='— (ipinfo unavailable)';
-          $('org').textContent='—';
-          $('asn').textContent='—';
-          $('conn').textContent=/:/.test(d.ip)?'IPv6':'IPv4';
-          $('tz').textContent='—';
-          setBadge('proxyBadge','proxyText','n','UNKNOWN — limited data');
-          $('ts').textContent=fmtTs()+' (limited mode)';
-          show('result');
-          btn.disabled=false;
-          webrtcCheck(d.ip);
+          renderLimited(d);
         })
         .catch(function(){
-          $('error').textContent='Could not reach IP service: '+(err.message||'network error')+'. Check your internet connection and click Re-check.';
-          show('error');
-          btn.disabled=false;
+          $('error').textContent='Could not reach the IP service. Check your internet connection and click Re-check.';
+          $('ts').textContent='failed';setLive('idle');show('error');
+          btn.disabled=false;btn.classList.remove('l');
         });
     });
 }
 
-// WebRTC leak detection — uses RTCPeerConnection to gather ICE
-// candidates. If any PUBLIC IP shows up that differs from the proxy
-// IP, the real IP is leaking through WebRTC. Browsers that block
-// WebRTC (or where it's disabled) are SAFE and we report that.
+function renderFull(d){
+  var parts=splitOrg(d.org);
+  $('ip').textContent=d.ip;
+  $('flag').textContent=flagEmoji(d.country||'');
+  $('loc').textContent=[d.city,d.region,countryName(d.country)].filter(Boolean).join(', ')||'—';
+  $('isp').textContent=parts.isp||'—';
+  $('asn').textContent=parts.asn||'—';
+  $('conn').textContent=/:/.test(d.ip)?'IPv6':'IPv4';
+  $('tz').textContent=d.timezone||'—';
+  var v=classifyProxy(d.org);
+  setStatus('proxy',v.tier,v.label,v.sub);
+  $('ts').textContent=fmtTs();
+  setLive('live');show('result');
+  btn.disabled=false;btn.classList.remove('l');
+  webrtcCheck(d.ip);
+}
+
+function renderLimited(d){
+  $('ip').textContent=d.ip;
+  $('flag').textContent=flagEmoji(d.country||'');
+  $('loc').textContent=countryName(d.country)||'—';
+  $('isp').textContent='—';$('asn').textContent='—';
+  $('conn').textContent=/:/.test(d.ip)?'IPv6':'IPv4';
+  $('tz').textContent='—';
+  setStatus('proxy','a','Cannot verify','ipinfo unavailable — limited mode');
+  $('ts').textContent=fmtTs()+' · limited';
+  setLive('live');show('result');
+  btn.disabled=false;btn.classList.remove('l');
+  webrtcCheck(d.ip);
+}
+
+// WebRTC leak detection via RTCPeerConnection + STUN. If any PUBLIC
+// IP differs from the proxy IP, real IP is leaking.
 function webrtcCheck(publicIp){
+  setStatus('webrtc','','Checking…','Probing local interfaces');
   var RTC=window.RTCPeerConnection||window.webkitRTCPeerConnection||window.mozRTCPeerConnection;
-  if(!RTC){setBadge('webrtcBadge','webrtcText','g','WebRTC blocked — OK');return}
+  if(!RTC)return setStatus('webrtc','g','WebRTC blocked','Browser disabled RTC — safe');
   var pc;
   try{pc=new RTC({iceServers:[{urls:'stun:stun.l.google.com:19302'}]})}
-  catch(e){setBadge('webrtcBadge','webrtcText','g','WebRTC blocked — OK');return}
+  catch(e){return setStatus('webrtc','g','WebRTC blocked','Browser disabled RTC — safe')}
   var found={},done=false;
   var timer=setTimeout(finish,3500);
   try{pc.createDataChannel('')}catch(e){}
   pc.onicecandidate=function(e){
     if(!e||!e.candidate||!e.candidate.candidate)return;
-    var s=e.candidate.candidate;
-    var m=s.match(/([0-9]{1,3}(?:\.[0-9]{1,3}){3})/);
+    var m=e.candidate.candidate.match(/([0-9]{1,3}(?:\.[0-9]{1,3}){3})/);
     if(!m)return;
     var ip=m[1];
     if(isPrivate(ip))return;
@@ -279,26 +267,34 @@ function webrtcCheck(publicIp){
 
   function isPrivate(ip){
     var p=ip.split('.').map(Number);
-    if(p[0]===10||p[0]===127)return true;
+    if(p[0]===10||p[0]===127||p[0]===0)return true;
     if(p[0]===192&&p[1]===168)return true;
     if(p[0]===172&&p[1]>=16&&p[1]<=31)return true;
     if(p[0]===169&&p[1]===254)return true;
-    if(p[0]===0)return true;
     return false;
   }
 
   function finish(){
-    if(done)return;
-    done=true;
-    clearTimeout(timer);
+    if(done)return;done=true;clearTimeout(timer);
     try{pc.close()}catch(e){}
     var ips=Object.keys(found);
-    if(ips.length===0){setBadge('webrtcBadge','webrtcText','g','No leak — OK');return}
+    if(ips.length===0)return setStatus('webrtc','g','No leak','No public IP exposed');
     var leaked=ips.filter(function(ip){return ip!==publicIp});
-    if(leaked.length===0)setBadge('webrtcBadge','webrtcText','g','No leak — OK');
-    else setBadge('webrtcBadge','webrtcText','r','LEAK — '+leaked.join(', '));
+    if(leaked.length===0)setStatus('webrtc','g','No leak','Matches proxy IP');
+    else setStatus('webrtc','r','LEAK detected',leaked.join(', '));
   }
 }
+
+copyBtn.addEventListener('click',function(){
+  var ip=$('ip').textContent;
+  if(!ip||ip==='—')return;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ip).then(function(){
+      copyBtn.classList.add('ok');copyBtn.textContent='✓';
+      setTimeout(function(){copyBtn.classList.remove('ok');copyBtn.textContent='⧉'},1500);
+    }).catch(function(){});
+  }
+});
 
 btn.addEventListener('click',fetchIp);
 fetchIp();
