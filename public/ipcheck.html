@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Shop Profile IP Check</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:#f4f5f7;color:#1a1d24;padding:20px;
+  display:flex;align-items:flex-start;justify-content:center;min-height:100vh;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+.card{
+  background:#fff;border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,.06);
+  padding:28px;width:100%;max-width:540px;margin:auto;
+}
+h1{font-size:22px;font-weight:700;letter-spacing:-.01em;text-align:center}
+.ts{font-size:12px;color:#6b7280;margin-top:4px;text-align:center}
+.ip-block{text-align:center;padding:22px 0;border-bottom:1px solid #eef0f3;margin:20px 0}
+.flag{font-size:34px;margin-bottom:6px;line-height:1}
+.addr{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;word-break:break-all}
+.loc{color:#6b7280;font-size:14px;margin-top:4px}
+.badges{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
+.badge{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:13px 14px;border-radius:10px;font-size:14px;gap:12px;
+}
+.badge .lbl{font-weight:600;flex-shrink:0}
+.badge .val{font-weight:600;font-size:12.5px;letter-spacing:.02em;text-align:right;word-break:break-all}
+.g{background:#e8f5ee;color:#0f6b3a}
+.r{background:#fde8e8;color:#9b1c1c}
+.n{background:#f3f4f6;color:#374151}
+.rows{margin-bottom:6px}
+.row{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:10px 0;font-size:14px;border-bottom:1px solid #f3f4f6;
+}
+.row:last-child{border:none}
+.k{color:#6b7280;flex-shrink:0}
+.v{color:#1a1d24;font-weight:500;text-align:right;word-break:break-all}
+.actions{margin-top:18px}
+button{
+  width:100%;font:inherit;font-weight:600;font-size:14px;
+  padding:12px 16px;border-radius:10px;border:none;cursor:pointer;
+  background:#1a1d24;color:#fff;transition:opacity .15s,transform .05s;
+}
+button:hover{opacity:.88}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.5;cursor:wait}
+.loading{
+  display:flex;align-items:center;justify-content:center;
+  padding:50px 20px;color:#6b7280;font-size:14px;gap:10px;
+}
+.spinner{
+  width:16px;height:16px;border:2px solid #e5e7eb;border-top-color:#1a1d24;
+  border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error{
+  background:#fde8e8;color:#9b1c1c;padding:14px 16px;border-radius:10px;
+  font-size:14px;text-align:center;line-height:1.5;
+}
+.hidden{display:none}
+@media (max-width:480px){
+  body{padding:12px}
+  .card{padding:20px}
+  .addr{font-size:22px}
+  h1{font-size:19px}
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Shop Profile IP Check</h1>
+  <div class="ts" id="ts"></div>
+
+  <div id="loading" class="loading"><span class="spinner"></span>Checking your connection…</div>
+  <div id="error" class="error hidden"></div>
+
+  <div id="result" class="hidden">
+    <div class="ip-block">
+      <div class="flag" id="flag"></div>
+      <div class="addr" id="ip"></div>
+      <div class="loc" id="loc"></div>
+    </div>
+
+    <div class="badges">
+      <div class="badge n" id="proxyBadge">
+        <span class="lbl">Proxy / Datacenter</span>
+        <span class="val" id="proxyText">—</span>
+      </div>
+      <div class="badge n" id="webrtcBadge">
+        <span class="lbl">WebRTC Leak</span>
+        <span class="val" id="webrtcText">Checking…</span>
+      </div>
+    </div>
+
+    <div class="rows">
+      <div class="row"><span class="k">ISP</span><span class="v" id="isp">—</span></div>
+      <div class="row"><span class="k">Organization</span><span class="v" id="org">—</span></div>
+      <div class="row"><span class="k">ASN</span><span class="v" id="asn">—</span></div>
+      <div class="row"><span class="k">Connection</span><span class="v" id="conn">—</span></div>
+      <div class="row"><span class="k">Timezone</span><span class="v" id="tz">—</span></div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="recheck" type="button">Re-check</button>
+  </div>
+</div>
+
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)};
+var btn=$('recheck');
+
+function flagEmoji(cc){
+  if(!cc||cc.length!==2)return'🌐';
+  var a=0x1F1E6,A='A'.charCodeAt(0),c=cc.toUpperCase();
+  return String.fromCodePoint(a+(c.charCodeAt(0)-A),a+(c.charCodeAt(1)-A));
+}
+
+function fmtTs(){
+  var d=new Date();
+  return'Checked '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function show(state){
+  $('loading').classList.toggle('hidden',state!=='loading');
+  $('error').classList.toggle('hidden',state!=='error');
+  $('result').classList.toggle('hidden',state!=='result');
+}
+
+// Heuristic: detect datacenter/hosting/VPN via ISP+org keywords.
+// ipwho.is is free and doesn't expose a structured proxy flag, so we
+// pattern-match the org/ISP string. Covers the major cloud + VPN
+// providers the team is likely to hit.
+function classifyProxy(d){
+  var c=d.connection||{};
+  var blob=((c.org||'')+' '+(c.isp||'')+' '+(c.domain||'')+' '+(d.org||'')).toLowerCase();
+  var keys=['hosting','datacenter','data center','data-center','cloud','vps','dedicated server',
+    'digitalocean','amazon','aws','google cloud','microsoft','azure','linode','vultr','ovh',
+    'hetzner','oracle cloud','choopa','contabo','leaseweb','m247','colocrossing','quadranet',
+    'ipxo','psychz','nforce','servermania','iliad','online sas','scaleway','alibaba cloud',
+    'tencent','nordvpn','expressvpn','surfshark','protonvpn','mullvad','private internet access',
+    'cyberghost','pure vpn','windscribe','tunnelbear','vpn'];
+  for(var i=0;i<keys.length;i++){
+    if(blob.indexOf(keys[i])>=0)return{risk:true,reason:'DATACENTER / PROXY — RISK'};
+  }
+  return{risk:false,reason:'RESIDENTIAL — OK'};
+}
+
+function setBadge(id,textId,state,text){
+  var b=$(id);
+  b.classList.remove('g','r','n');
+  b.classList.add(state);
+  $(textId).textContent=text;
+}
+
+function fetchIp(){
+  show('loading');
+  btn.disabled=true;
+  $('ts').textContent='';
+  setBadge('webrtcBadge','webrtcText','n','Checking…');
+
+  fetch('https://ipwho.is/')
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.success===false)throw new Error(d.message||'API returned failure');
+      $('ip').textContent=d.ip||'—';
+      $('flag').textContent=flagEmoji(d.country_code||'');
+      var loc=[d.city,d.region,d.country].filter(Boolean).join(', ');
+      $('loc').textContent=loc||'—';
+      var c=d.connection||{};
+      $('isp').textContent=c.isp||'—';
+      $('org').textContent=c.org||d.org||'—';
+      $('asn').textContent=c.asn?('AS'+c.asn):'—';
+      $('conn').textContent=d.type||'—';
+      $('tz').textContent=(d.timezone&&d.timezone.id)?d.timezone.id:'—';
+
+      var v=classifyProxy(d);
+      setBadge('proxyBadge','proxyText',v.risk?'r':'g',v.reason);
+
+      $('ts').textContent=fmtTs();
+      show('result');
+      btn.disabled=false;
+      webrtcCheck(d.ip);
+    })
+    .catch(function(err){
+      $('error').textContent='Could not reach IP service: '+(err.message||'network error')+'. Click Re-check to retry.';
+      show('error');
+      btn.disabled=false;
+    });
+}
+
+// WebRTC leak detection — uses RTCPeerConnection to gather ICE
+// candidates. If any PUBLIC IP shows up that differs from the proxy
+// IP, the real IP is leaking through WebRTC. Browsers that block
+// WebRTC (or where it's disabled) are SAFE and we report that.
+function webrtcCheck(publicIp){
+  var RTC=window.RTCPeerConnection||window.webkitRTCPeerConnection||window.mozRTCPeerConnection;
+  if(!RTC){setBadge('webrtcBadge','webrtcText','g','WebRTC blocked — OK');return}
+  var pc;
+  try{pc=new RTC({iceServers:[{urls:'stun:stun.l.google.com:19302'}]})}
+  catch(e){setBadge('webrtcBadge','webrtcText','g','WebRTC blocked — OK');return}
+  var found={},done=false;
+  var timer=setTimeout(finish,3500);
+  try{pc.createDataChannel('')}catch(e){}
+  pc.onicecandidate=function(e){
+    if(!e||!e.candidate||!e.candidate.candidate)return;
+    var s=e.candidate.candidate;
+    var m=s.match(/([0-9]{1,3}(?:\.[0-9]{1,3}){3})/);
+    if(!m)return;
+    var ip=m[1];
+    if(isPrivate(ip))return;
+    found[ip]=true;
+  };
+  pc.createOffer().then(function(o){return pc.setLocalDescription(o)}).catch(function(){});
+
+  function isPrivate(ip){
+    var p=ip.split('.').map(Number);
+    if(p[0]===10||p[0]===127)return true;
+    if(p[0]===192&&p[1]===168)return true;
+    if(p[0]===172&&p[1]>=16&&p[1]<=31)return true;
+    if(p[0]===169&&p[1]===254)return true;
+    if(p[0]===0)return true;
+    return false;
+  }
+
+  function finish(){
+    if(done)return;
+    done=true;
+    clearTimeout(timer);
+    try{pc.close()}catch(e){}
+    var ips=Object.keys(found);
+    if(ips.length===0){setBadge('webrtcBadge','webrtcText','g','No leak — OK');return}
+    var leaked=ips.filter(function(ip){return ip!==publicIp});
+    if(leaked.length===0)setBadge('webrtcBadge','webrtcText','g','No leak — OK');
+    else setBadge('webrtcBadge','webrtcText','r','LEAK — '+leaked.join(', '));
+  }
+}
+
+btn.addEventListener('click',fetchIp);
+fetchIp();
+})();
+</script>
+</body>
+</html>
