@@ -135,13 +135,14 @@ function show(state){
   $('result').classList.toggle('hidden',state!=='result');
 }
 
-// Heuristic: detect datacenter/hosting/VPN via ISP+org keywords.
-// ipwho.is is free and doesn't expose a structured proxy flag, so we
-// pattern-match the org/ISP string. Covers the major cloud + VPN
-// providers the team is likely to hit.
-function classifyProxy(d){
-  var c=d.connection||{};
-  var blob=((c.org||'')+' '+(c.isp||'')+' '+(c.domain||'')+' '+(d.org||'')).toLowerCase();
+// Heuristic: detect datacenter/hosting/VPN via the ISP / org / ASN
+// string returned by ipinfo. Pattern-matches major cloud + VPN
+// providers the team is likely to hit. No structured proxy flag is
+// available on the free tier of any IP API, so the keyword sweep is
+// our best signal — it catches the obvious ones (AWS, DO, Hetzner,
+// NordVPN, etc.).
+function classifyProxy(orgText){
+  var blob=(orgText||'').toLowerCase();
   var keys=['hosting','datacenter','data center','data-center','cloud','vps','dedicated server',
     'digitalocean','amazon','aws','google cloud','microsoft','azure','linode','vultr','ovh',
     'hetzner','oracle cloud','choopa','contabo','leaseweb','m247','colocrossing','quadranet',
@@ -161,28 +162,61 @@ function setBadge(id,textId,state,text){
   $(textId).textContent=text;
 }
 
+function countryName(cc){
+  if(!cc)return'';
+  try{
+    var d=new Intl.DisplayNames(['en'],{type:'region'});
+    return d.of(cc.toUpperCase())||cc;
+  }catch(e){return cc}
+}
+
+// Split ipinfo.io's "org" field which combines ASN + ISP name:
+//   "AS17557 Pakistan Telecommunication Company Limited"
+//   →  { asn: "AS17557", isp: "Pakistan Telecommunication Company Limited" }
+// Returns the raw string under both keys when the prefix is missing.
+function splitOrg(org){
+  if(!org)return{asn:'',isp:''};
+  var m=org.match(/^(AS\d+)\s+(.+)$/);
+  if(m)return{asn:m[1],isp:m[2]};
+  return{asn:'',isp:org};
+}
+
+// Primary: ipinfo.io (free, CORS-enabled, ~50K/month). Returns IP,
+// city, region, country (2-letter code), org (AS<n> + ISP), timezone.
+//
+// Fallback: api.country.is — returns just IP + country code. If
+// ipinfo.io ever rate-limits us or goes down, we still show the IP
+// + WebRTC check, just lose ISP/proxy detection. Better than a hard
+// failure.
+//
+// We deliberately don't use ipwho.is (CORS paywall) or ipapi.co
+// (Cloudflare challenge on programmatic calls).
 function fetchIp(){
   show('loading');
   btn.disabled=true;
   $('ts').textContent='';
   setBadge('webrtcBadge','webrtcText','n','Checking…');
 
-  fetch('https://ipwho.is/')
-    .then(function(r){return r.json()})
+  fetch('https://ipinfo.io/json')
+    .then(function(r){
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return r.json();
+    })
     .then(function(d){
-      if(d.success===false)throw new Error(d.message||'API returned failure');
-      $('ip').textContent=d.ip||'—';
-      $('flag').textContent=flagEmoji(d.country_code||'');
-      var loc=[d.city,d.region,d.country].filter(Boolean).join(', ');
+      if(!d||!d.ip)throw new Error('No IP returned');
+      var parts=splitOrg(d.org);
+      var cn=countryName(d.country);
+      $('ip').textContent=d.ip;
+      $('flag').textContent=flagEmoji(d.country||'');
+      var loc=[d.city,d.region,cn].filter(Boolean).join(', ');
       $('loc').textContent=loc||'—';
-      var c=d.connection||{};
-      $('isp').textContent=c.isp||'—';
-      $('org').textContent=c.org||d.org||'—';
-      $('asn').textContent=c.asn?('AS'+c.asn):'—';
-      $('conn').textContent=d.type||'—';
-      $('tz').textContent=(d.timezone&&d.timezone.id)?d.timezone.id:'—';
+      $('isp').textContent=parts.isp||'—';
+      $('org').textContent=parts.isp||'—';
+      $('asn').textContent=parts.asn||'—';
+      $('conn').textContent=/:/.test(d.ip)?'IPv6':'IPv4';
+      $('tz').textContent=d.timezone||'—';
 
-      var v=classifyProxy(d);
+      var v=classifyProxy(d.org);
       setBadge('proxyBadge','proxyText',v.risk?'r':'g',v.reason);
 
       $('ts').textContent=fmtTs();
@@ -191,9 +225,31 @@ function fetchIp(){
       webrtcCheck(d.ip);
     })
     .catch(function(err){
-      $('error').textContent='Could not reach IP service: '+(err.message||'network error')+'. Click Re-check to retry.';
-      show('error');
-      btn.disabled=false;
+      // Fallback path — ipinfo unreachable. Hit api.country.is for at
+      // least the IP + country so the team can still see something.
+      fetch('https://api.country.is/').then(function(r){return r.json()})
+        .then(function(d){
+          if(!d||!d.ip)throw new Error('fallback returned no IP');
+          var cn=countryName(d.country);
+          $('ip').textContent=d.ip;
+          $('flag').textContent=flagEmoji(d.country||'');
+          $('loc').textContent=cn||'—';
+          $('isp').textContent='— (ipinfo unavailable)';
+          $('org').textContent='—';
+          $('asn').textContent='—';
+          $('conn').textContent=/:/.test(d.ip)?'IPv6':'IPv4';
+          $('tz').textContent='—';
+          setBadge('proxyBadge','proxyText','n','UNKNOWN — limited data');
+          $('ts').textContent=fmtTs()+' (limited mode)';
+          show('result');
+          btn.disabled=false;
+          webrtcCheck(d.ip);
+        })
+        .catch(function(){
+          $('error').textContent='Could not reach IP service: '+(err.message||'network error')+'. Check your internet connection and click Re-check.';
+          show('error');
+          btn.disabled=false;
+        });
     });
 }
 
