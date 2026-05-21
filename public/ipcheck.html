@@ -1,304 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow">
-<meta name="color-scheme" content="light dark">
-<title>Shop Profile IP Check · META7MEDIA</title>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#f5f5f7;--surface:#fff;--bd:#e4e4e7;--bd2:#d4d4d8;--tx:#18181b;--mt:#71717a;--mt2:#a1a1aa;--pri:#18181b;--g:#15803d;--gb:#f0fdf4;--gd:#bbf7d0;--r:#b91c1c;--rb:#fef2f2;--rd:#fecaca;--a:#a16207;--shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.06)}
-@media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--surface:#111113;--bd:#27272a;--bd2:#3f3f46;--tx:#fafafa;--mt:#a1a1aa;--mt2:#71717a;--pri:#fafafa;--g:#22c55e;--gb:rgba(34,197,94,.08);--gd:rgba(34,197,94,.25);--r:#ef4444;--rb:rgba(239,68,68,.08);--rd:rgba(239,68,68,.25);--a:#eab308;--shadow:0 1px 2px rgba(0,0,0,.6),0 4px 16px rgba(0,0,0,.4)}}
-html,body{height:100%}
-body{font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:24px 16px;display:flex;align-items:flex-start;justify-content:center;min-height:100vh;-webkit-font-smoothing:antialiased;letter-spacing:-.005em}
-.wrap{width:100%;max-width:480px;margin:auto}
-.brand{display:flex;align-items:center;justify-content:space-between;padding:0 4px 14px}
-.bn{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mt)}
-.bts{font-size:11px;color:var(--mt2);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px}
-.ld{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 0 0 currentColor;animation:pulse 2s infinite;color:var(--g)}
-.ld.idle{background:var(--mt2);color:var(--mt2);animation:none}
-@keyframes pulse{0%{box-shadow:0 0 0 0 currentColor;opacity:1}70%{box-shadow:0 0 0 6px transparent;opacity:.6}100%{box-shadow:0 0 0 0 transparent;opacity:1}}
-.card{background:var(--surface);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
-.head{padding:18px 22px 14px;border-bottom:1px solid var(--bd)}
-.head h1{font-size:14px;font-weight:600;letter-spacing:-.01em}
-.head p{font-size:11px;color:var(--mt);margin-top:2px}
-.hero{padding:28px 22px;text-align:center;border-bottom:1px solid var(--bd)}
-.flag{font-size:36px;line-height:1;margin-bottom:12px;display:block}
-.ip{font-family:ui-monospace,"SF Mono",Menlo,Monaco,monospace;font-size:28px;font-weight:600;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums}
-.cp{background:transparent;border:1px solid var(--bd);color:var(--mt);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;transition:all .12s;padding:0}
-.cp:hover{border-color:var(--bd2);color:var(--tx);background:var(--bg)}
-.cp.ok{color:var(--g);border-color:var(--gd);background:var(--gb)}
-.loc{font-size:13px;color:var(--mt);margin-top:8px}
-.sg{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--bd)}
-.s{padding:16px 18px;display:flex;flex-direction:column;gap:8px;border-right:1px solid var(--bd)}
-.s:last-child{border-right:none}
-.sl{font-size:11px;font-weight:500;color:var(--mt);letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
-.sd{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--mt2)}
-.sd.g{background:var(--g)}.sd.r{background:var(--r)}.sd.a{background:var(--a)}
-.sv{font-size:14px;font-weight:600;letter-spacing:-.01em}
-.sv.g{color:var(--g)}.sv.r{color:var(--r)}.sv.a{color:var(--a)}
-.ss{font-size:11.5px;color:var(--mt);line-height:1.35;min-height:16px}
-.dt{padding:6px 22px}
-.d{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;font-size:13px;border-bottom:1px solid var(--bd)}
-.d:last-child{border-bottom:none}
-.dk{color:var(--mt);font-size:11.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;flex-shrink:0}
-.dv{color:var(--tx);font-weight:500;text-align:right;word-break:break-all;font-size:13px}
-.dv.m{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
-.act{padding:16px 22px 18px;border-top:1px solid var(--bd)}
-.btn{width:100%;font:inherit;font-weight:600;font-size:13.5px;padding:11px 16px;border-radius:9px;border:1px solid var(--pri);cursor:pointer;background:var(--pri);color:var(--surface);transition:all .12s;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:-.005em}
-.btn:hover{opacity:.9}
-.btn:active{transform:scale(.99)}
-.btn:disabled{opacity:.55;cursor:wait}
-.bi{display:inline-block;width:14px;height:14px;flex-shrink:0;transition:transform .4s}
-.btn.l .bi{animation:spin 1s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.lb{padding:60px 22px;text-align:center;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--mt);font-size:13px}
-.sp{width:14px;height:14px;border:2px solid var(--bd2);border-top-color:var(--tx);border-radius:50%;animation:spin .8s linear infinite}
-.eb{margin:18px 22px;padding:14px 16px;border-radius:9px;background:var(--rb);border:1px solid var(--rd);color:var(--r);font-size:13px;line-height:1.5}
-.ft{margin-top:14px;padding:0 4px;text-align:center;font-size:10.5px;color:var(--mt2);letter-spacing:.02em}
-.hid{display:none}
-@media (max-width:520px){body{padding:16px 12px}.hero{padding:24px 18px}.ip{font-size:24px}.flag{font-size:32px}.head,.act,.dt{padding-left:18px;padding-right:18px}.s{padding:14px 16px}.sg{grid-template-columns:1fr}.s{border-right:none;border-bottom:1px solid var(--bd)}.s:last-child{border-bottom:none}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="brand">
-    <span class="bn">META7MEDIA · Antidetect Verification</span>
-    <span class="bts"><span class="ld idle" id="liveDot"></span><span id="ts">ready</span></span>
-  </div>
-
-  <div class="card">
-    <div class="head">
-      <h1>Shop Profile IP Check</h1>
-      <p>Verify your proxy + WebRTC posture before working a shop</p>
-    </div>
-
-    <div id="loading" class="lb"><span class="sp"></span>Checking connection…</div>
-    <div id="error" class="eb hid"></div>
-
-    <div id="result" class="hid">
-      <div class="hero">
-        <span class="flag" id="flag">🌐</span>
-        <div class="ip">
-          <span id="ip">—</span>
-          <button class="cp" id="copyBtn" type="button" title="Copy IP" aria-label="Copy IP">⧉</button>
-        </div>
-        <div class="loc" id="loc">—</div>
-      </div>
-
-      <div class="sg">
-        <div class="s">
-          <div class="sl"><span class="sd" id="proxyDot"></span>Proxy / Datacenter</div>
-          <div class="sv" id="proxyVerdict">—</div>
-          <div class="ss" id="proxySub"></div>
-        </div>
-        <div class="s">
-          <div class="sl"><span class="sd" id="webrtcDot"></span>WebRTC Leak</div>
-          <div class="sv" id="webrtcVerdict">Checking…</div>
-          <div class="ss" id="webrtcSub">Probing local interfaces</div>
-        </div>
-      </div>
-
-      <div class="dt">
-        <div class="d"><span class="dk">ISP</span><span class="dv" id="isp">—</span></div>
-        <div class="d"><span class="dk">ASN</span><span class="dv m" id="asn">—</span></div>
-        <div class="d"><span class="dk">Connection</span><span class="dv" id="conn">—</span></div>
-        <div class="d"><span class="dk">Timezone</span><span class="dv" id="tz">—</span></div>
-      </div>
-    </div>
-
-    <div class="act">
-      <button class="btn" id="recheck" type="button">
-        <span class="bi">↻</span><span>Re-check</span>
-      </button>
-    </div>
-  </div>
-
-  <div class="ft">Single ipinfo.io call · ~1.5 KB per check · no tracking · no storage</div>
-</div>
-
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="color-scheme" content="light dark"><title>Shop Profile IP Check · META7MEDIA</title><style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--bg:#f5f5f7;--s:#fff;--bd:#e4e4e7;--b2:#d4d4d8;--tx:#18181b;--mt:#71717a;--m2:#a1a1aa;--g:#15803d;--gb:#f0fdf4;--gd:#bbf7d0;--r:#b91c1c;--rb:#fef2f2;--rd:#fecaca;--a:#a16207;--sh:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.06)}@media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--s:#111113;--bd:#27272a;--b2:#3f3f46;--tx:#fafafa;--mt:#a1a1aa;--m2:#71717a;--g:#22c55e;--gb:rgba(34,197,94,.08);--gd:rgba(34,197,94,.25);--r:#ef4444;--rb:rgba(239,68,68,.08);--rd:rgba(239,68,68,.25);--a:#eab308;--sh:0 1px 2px rgba(0,0,0,.6),0 4px 16px rgba(0,0,0,.4)}}html,body{height:100%}body{font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:24px 16px;display:flex;align-items:flex-start;justify-content:center;min-height:100vh;-webkit-font-smoothing:antialiased;letter-spacing:-.005em}.w{width:100%;max-width:480px;margin:auto}.br{display:flex;align-items:center;justify-content:space-between;padding:0 4px 14px}.bn{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mt)}.bt{font-size:11px;color:var(--m2);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px}.ld{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 0 0 currentColor;animation:p 2s infinite;color:var(--g)}.ld.i{background:var(--m2);color:var(--m2);animation:none}@keyframes p{0%{box-shadow:0 0 0 0 currentColor;opacity:1}70%{box-shadow:0 0 0 6px transparent;opacity:.6}to{box-shadow:0 0 0 0 transparent;opacity:1}}.c{background:var(--s);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--sh);overflow:hidden}.h{padding:18px 22px 14px;border-bottom:1px solid var(--bd)}.h h1{font-size:14px;font-weight:600;letter-spacing:-.01em}.h p{font-size:11px;color:var(--mt);margin-top:2px}.hr{padding:28px 22px;text-align:center;border-bottom:1px solid var(--bd)}.f{font-size:36px;line-height:1;margin-bottom:12px;display:block}.ip{font-family:ui-monospace,"SF Mono",Menlo,Monaco,monospace;font-size:28px;font-weight:600;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums}.cp{background:transparent;border:1px solid var(--bd);color:var(--mt);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;transition:all .12s;padding:0}.cp:hover{border-color:var(--b2);color:var(--tx);background:var(--bg)}.cp.ok{color:var(--g);border-color:var(--gd);background:var(--gb)}.lc{font-size:13px;color:var(--mt);margin-top:8px}.sg{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--bd)}.st{padding:16px 18px;display:flex;flex-direction:column;gap:8px;border-right:1px solid var(--bd)}.st:last-child{border-right:none}.sl{font-size:11px;font-weight:500;color:var(--mt);letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:6px}.sd{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--m2)}.sd.g{background:var(--g)}.sd.r{background:var(--r)}.sd.a{background:var(--a)}.sv{font-size:14px;font-weight:600;letter-spacing:-.01em}.sv.g{color:var(--g)}.sv.r{color:var(--r)}.sv.a{color:var(--a)}.ss{font-size:11.5px;color:var(--mt);line-height:1.35;min-height:16px}.dt{padding:6px 22px}.d{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;font-size:13px;border-bottom:1px solid var(--bd)}.d:last-child{border-bottom:none}.dk{color:var(--mt);font-size:11.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;flex-shrink:0}.dv{color:var(--tx);font-weight:500;text-align:right;word-break:break-all;font-size:13px}.dv.m{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}.ac{padding:16px 22px 18px;border-top:1px solid var(--bd)}.b{width:100%;font:inherit;font-weight:600;font-size:13.5px;padding:11px 16px;border-radius:9px;border:1px solid var(--tx);cursor:pointer;background:var(--tx);color:var(--s);transition:all .12s;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:-.005em}.b:hover{opacity:.9}.b:active{transform:scale(.99)}.b:disabled{opacity:.55;cursor:wait}.bi{display:inline-block;width:14px;height:14px;flex-shrink:0}.b.l .bi{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}.lb{padding:60px 22px;text-align:center;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--mt);font-size:13px}.spn{width:14px;height:14px;border:2px solid var(--b2);border-top-color:var(--tx);border-radius:50%;animation:sp .8s linear infinite}.eb{margin:18px 22px;padding:14px 16px;border-radius:9px;background:var(--rb);border:1px solid var(--rd);color:var(--r);font-size:13px;line-height:1.5}.ft{margin-top:14px;padding:0 4px;text-align:center;font-size:10.5px;color:var(--m2);letter-spacing:.02em}.x{display:none}@media (max-width:520px){body{padding:16px 12px}.hr{padding:24px 18px}.ip{font-size:24px}.f{font-size:32px}.h,.ac,.dt{padding-left:18px;padding-right:18px}.sg{grid-template-columns:1fr}.st{padding:14px 16px;border-right:none;border-bottom:1px solid var(--bd)}.st:last-child{border-bottom:none}}</style></head><body><div class="w"><div class="br"><span class="bn">META7MEDIA · Antidetect Verification</span><span class="bt"><span class="ld i" id="L"></span><span id="T">ready</span></span></div><div class="c"><div class="h"><h1>Shop Profile IP Check</h1><p>Verify your proxy + WebRTC posture before working a shop</p></div><div id="LD" class="lb"><span class="spn"></span>Checking connection…</div><div id="E" class="eb x"></div><div id="R" class="x"><div class="hr"><span class="f" id="F">🌐</span><div class="ip"><span id="I">—</span><button class="cp" id="CB" type="button" title="Copy IP" aria-label="Copy IP">⧉</button></div><div class="lc" id="LC">—</div></div><div class="sg"><div class="st"><div class="sl"><span class="sd" id="PD"></span>Proxy / Datacenter</div><div class="sv" id="PV">—</div><div class="ss" id="PS"></div></div><div class="st"><div class="sl"><span class="sd" id="WD"></span>WebRTC Leak</div><div class="sv" id="WV">Checking…</div><div class="ss" id="WS">Probing local interfaces</div></div></div><div class="dt"><div class="d"><span class="dk">ISP</span><span class="dv" id="IS">—</span></div><div class="d"><span class="dk">ASN</span><span class="dv m" id="AS">—</span></div><div class="d"><span class="dk">Connection</span><span class="dv" id="CN">—</span></div><div class="d"><span class="dk">Timezone</span><span class="dv" id="TZ">—</span></div></div></div><div class="ac"><button class="b" id="RC" type="button"><span class="bi">↻</span><span>Re-check</span></button></div></div><div class="ft">Single ipinfo.io call · ~1.5 KB per check · no tracking · no storage</div></div>
 <script>
 (function(){
-var $=function(id){return document.getElementById(id)};
-var btn=$('recheck'),copyBtn=$('copyBtn'),liveDot=$('liveDot');
-
-function flagEmoji(cc){
-  if(!cc||cc.length!==2)return'🌐';
-  var a=0x1F1E6,A='A'.charCodeAt(0),c=cc.toUpperCase();
-  return String.fromCodePoint(a+(c.charCodeAt(0)-A),a+(c.charCodeAt(1)-A));
+var $=function(i){return document.getElementById(i)},B=$('RC'),C=$('CB'),L=$('L');
+function fE(c){if(!c||c.length!==2)return'🌐';var A='A'.charCodeAt(0),x=c.toUpperCase();return String.fromCodePoint(127462+(x.charCodeAt(0)-A),127462+(x.charCodeAt(1)-A))}
+function ts(){return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function sh(s){$('LD').classList.toggle('x',s!=='l');$('E').classList.toggle('x',s!=='e');$('R').classList.toggle('x',s!=='r')}
+function cl(s){L.classList.toggle('i',s==='i')}
+function cn(c){if(!c)return'';try{return new Intl.DisplayNames(['en'],{type:'region'}).of(c.toUpperCase())||c}catch(e){return c}}
+function so(o){if(!o)return{a:'',i:''};var m=o.match(/^(AS\d+)\s+(.+)$/);return m?{a:m[1],i:m[2]}:{a:'',i:o}}
+// Proxy classifier: keyword sweep over ISP/org. Top 30 most-likely
+// hits (clouds + named VPNs) — trimmed from longer list since
+// long-tail providers are rare in real traffic.
+function cp(o){
+  var b=(o||'').toLowerCase();
+  var v=['nordvpn','expressvpn','surfshark','protonvpn','mullvad','cyberghost','windscribe','tunnelbear','private internet access'];
+  var d=['hosting','datacenter','data center','cloud','vps','amazon','aws','google cloud','azure','digitalocean','linode','vultr','ovh','hetzner','oracle','contabo','leaseweb','m247','scaleway','alibaba'];
+  for(var i=0;i<v.length;i++)if(b.indexOf(v[i])>=0)return{t:'r',l:'VPN detected',s:'Commercial VPN provider identified'};
+  for(var j=0;j<d.length;j++)if(b.indexOf(d[j])>=0)return{t:'r',l:'Datacenter / hosting',s:'Etsy flags non-residential IPs aggressively'};
+  if(/\bvpn\b/.test(b))return{t:'a',l:'Possible VPN',s:'ISP name contains "vpn"'};
+  return{t:'g',l:'Residential ISP',s:'Clean consumer connection'};
 }
-
-function fmtTs(){
-  return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-}
-
-function show(state){
-  $('loading').classList.toggle('hid',state!=='loading');
-  $('error').classList.toggle('hid',state!=='error');
-  $('result').classList.toggle('hid',state!=='result');
-}
-
-function setLive(state){
-  liveDot.classList.toggle('idle',state==='idle');
-}
-
-// Heuristic: detect datacenter/hosting/VPN via ISP/org/ASN string.
-// No structured proxy flag on any free tier — keyword sweep catches
-// obvious cloud + VPN providers.
-function classifyProxy(orgText){
-  var blob=(orgText||'').toLowerCase();
-  var dc=['hosting','datacenter','data center','data-center','cloud','vps','dedicated server',
-    'digitalocean','amazon','aws','google cloud','microsoft','azure','linode','vultr','ovh',
-    'hetzner','oracle cloud','choopa','contabo','leaseweb','m247','colocrossing','quadranet',
-    'ipxo','psychz','nforce','servermania','iliad','online sas','scaleway','alibaba cloud','tencent'];
-  var vpn=['nordvpn','expressvpn','surfshark','protonvpn','mullvad','private internet access',
-    'cyberghost','pure vpn','windscribe','tunnelbear'];
-  for(var i=0;i<vpn.length;i++)if(blob.indexOf(vpn[i])>=0)return{tier:'r',label:'VPN detected',sub:'Commercial VPN provider identified'};
-  for(var j=0;j<dc.length;j++)if(blob.indexOf(dc[j])>=0)return{tier:'r',label:'Datacenter / hosting',sub:'Etsy flags non-residential IPs aggressively'};
-  if(/\bvpn\b/.test(blob))return{tier:'a',label:'Possible VPN',sub:'ISP name contains "vpn"'};
-  return{tier:'g',label:'Residential ISP',sub:'Clean consumer connection'};
-}
-
-function setStatus(prefix,tier,verdict,sub){
-  $(prefix+'Dot').className='sd '+tier;
-  var v=$(prefix+'Verdict');v.className='sv '+tier;v.textContent=verdict;
-  $(prefix+'Sub').textContent=sub||'';
-}
-
-function countryName(cc){
-  if(!cc)return'';
-  try{return new Intl.DisplayNames(['en'],{type:'region'}).of(cc.toUpperCase())||cc}
-  catch(e){return cc}
-}
-
-// Split ipinfo "org": "AS17557 Pakistan Telecom..." → { asn, isp }
-function splitOrg(org){
-  if(!org)return{asn:'',isp:''};
-  var m=org.match(/^(AS\d+)\s+(.+)$/);
-  if(m)return{asn:m[1],isp:m[2]};
-  return{asn:'',isp:org};
-}
-
-// Primary: ipinfo.io (free, 50K/mo, CORS open). Fallback:
-// api.country.is — IP + country only; the team still sees something
-// + the WebRTC verdict if ipinfo ever fails.
-function fetchIp(){
-  show('loading');
-  btn.disabled=true;
-  btn.classList.add('l');
-  setLive('live');
-  $('ts').textContent='checking…';
-  copyBtn.classList.remove('ok');
-  copyBtn.textContent='⧉';
-
-  fetch('https://ipinfo.io/json')
-    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
-    .then(function(d){
-      if(!d||!d.ip)throw new Error('No IP returned');
-      renderFull(d);
-    })
-    .catch(function(){
-      fetch('https://api.country.is/').then(function(r){return r.json()})
-        .then(function(d){
-          if(!d||!d.ip)throw new Error('fallback returned no IP');
-          renderLimited(d);
-        })
-        .catch(function(){
-          $('error').textContent='Could not reach the IP service. Check your internet connection and click Re-check.';
-          $('ts').textContent='failed';setLive('idle');show('error');
-          btn.disabled=false;btn.classList.remove('l');
-        });
+function ss(p,t,v,s){$(p+'D').className='sd '+t;var e=$(p+'V');e.className='sv '+t;e.textContent=v;$(p+'S').textContent=s||''}
+// Primary: ipinfo.io (free, CORS open). Fallback: api.country.is.
+function go(){
+  sh('l');B.disabled=true;B.classList.add('l');cl('l');$('T').textContent='checking…';C.classList.remove('ok');C.textContent='⧉';
+  fetch('https://ipinfo.io/json').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
+    if(!d||!d.ip)throw 0;
+    var p=so(d.org);
+    $('I').textContent=d.ip;$('F').textContent=fE(d.country||'');
+    $('LC').textContent=[d.city,d.region,cn(d.country)].filter(Boolean).join(', ')||'—';
+    $('IS').textContent=p.i||'—';$('AS').textContent=p.a||'—';
+    $('CN').textContent=/:/.test(d.ip)?'IPv6':'IPv4';$('TZ').textContent=d.timezone||'—';
+    var v=cp(d.org);ss('P',v.t,v.l,v.s);
+    $('T').textContent=ts();cl('l');sh('r');B.disabled=false;B.classList.remove('l');wr(d.ip);
+  }).catch(function(){
+    fetch('https://api.country.is/').then(function(r){return r.json()}).then(function(d){
+      if(!d||!d.ip)throw 0;
+      $('I').textContent=d.ip;$('F').textContent=fE(d.country||'');
+      $('LC').textContent=cn(d.country)||'—';
+      $('IS').textContent='—';$('AS').textContent='—';
+      $('CN').textContent=/:/.test(d.ip)?'IPv6':'IPv4';$('TZ').textContent='—';
+      ss('P','a','Cannot verify','ipinfo unavailable — limited mode');
+      $('T').textContent=ts()+' · limited';cl('l');sh('r');B.disabled=false;B.classList.remove('l');wr(d.ip);
+    }).catch(function(){
+      $('E').textContent='Could not reach the IP service. Check your internet connection and click Re-check.';
+      $('T').textContent='failed';cl('i');sh('e');B.disabled=false;B.classList.remove('l');
     });
+  });
 }
-
-function renderFull(d){
-  var parts=splitOrg(d.org);
-  $('ip').textContent=d.ip;
-  $('flag').textContent=flagEmoji(d.country||'');
-  $('loc').textContent=[d.city,d.region,countryName(d.country)].filter(Boolean).join(', ')||'—';
-  $('isp').textContent=parts.isp||'—';
-  $('asn').textContent=parts.asn||'—';
-  $('conn').textContent=/:/.test(d.ip)?'IPv6':'IPv4';
-  $('tz').textContent=d.timezone||'—';
-  var v=classifyProxy(d.org);
-  setStatus('proxy',v.tier,v.label,v.sub);
-  $('ts').textContent=fmtTs();
-  setLive('live');show('result');
-  btn.disabled=false;btn.classList.remove('l');
-  webrtcCheck(d.ip);
-}
-
-function renderLimited(d){
-  $('ip').textContent=d.ip;
-  $('flag').textContent=flagEmoji(d.country||'');
-  $('loc').textContent=countryName(d.country)||'—';
-  $('isp').textContent='—';$('asn').textContent='—';
-  $('conn').textContent=/:/.test(d.ip)?'IPv6':'IPv4';
-  $('tz').textContent='—';
-  setStatus('proxy','a','Cannot verify','ipinfo unavailable — limited mode');
-  $('ts').textContent=fmtTs()+' · limited';
-  setLive('live');show('result');
-  btn.disabled=false;btn.classList.remove('l');
-  webrtcCheck(d.ip);
-}
-
-// WebRTC leak detection via RTCPeerConnection + STUN. If any PUBLIC
-// IP differs from the proxy IP, real IP is leaking.
-function webrtcCheck(publicIp){
-  setStatus('webrtc','','Checking…','Probing local interfaces');
-  var RTC=window.RTCPeerConnection||window.webkitRTCPeerConnection||window.mozRTCPeerConnection;
-  if(!RTC)return setStatus('webrtc','g','WebRTC blocked','Browser disabled RTC — safe');
-  var pc;
-  try{pc=new RTC({iceServers:[{urls:'stun:stun.l.google.com:19302'}]})}
-  catch(e){return setStatus('webrtc','g','WebRTC blocked','Browser disabled RTC — safe')}
-  var found={},done=false;
-  var timer=setTimeout(finish,3500);
-  try{pc.createDataChannel('')}catch(e){}
-  pc.onicecandidate=function(e){
+// WebRTC leak via STUN. Public IP ≠ proxy IP → leak.
+function wr(pip){
+  ss('W','','Checking…','Probing local interfaces');
+  var R=window.RTCPeerConnection||window.webkitRTCPeerConnection||window.mozRTCPeerConnection;
+  if(!R)return ss('W','g','WebRTC blocked','Browser disabled RTC — safe');
+  var p;try{p=new R({iceServers:[{urls:'stun:stun.l.google.com:19302'}]})}catch(e){return ss('W','g','WebRTC blocked','Browser disabled RTC — safe')}
+  var f={},done=false,tm=setTimeout(fin,2500);
+  try{p.createDataChannel('')}catch(e){}
+  p.onicecandidate=function(e){
     if(!e||!e.candidate||!e.candidate.candidate)return;
     var m=e.candidate.candidate.match(/([0-9]{1,3}(?:\.[0-9]{1,3}){3})/);
-    if(!m)return;
-    var ip=m[1];
-    if(isPrivate(ip))return;
-    found[ip]=true;
+    if(!m)return;var i=m[1];if(pr(i))return;f[i]=true;
   };
-  pc.createOffer().then(function(o){return pc.setLocalDescription(o)}).catch(function(){});
-
-  function isPrivate(ip){
-    var p=ip.split('.').map(Number);
-    if(p[0]===10||p[0]===127||p[0]===0)return true;
-    if(p[0]===192&&p[1]===168)return true;
-    if(p[0]===172&&p[1]>=16&&p[1]<=31)return true;
-    if(p[0]===169&&p[1]===254)return true;
-    return false;
-  }
-
-  function finish(){
-    if(done)return;done=true;clearTimeout(timer);
-    try{pc.close()}catch(e){}
-    var ips=Object.keys(found);
-    if(ips.length===0)return setStatus('webrtc','g','No leak','No public IP exposed');
-    var leaked=ips.filter(function(ip){return ip!==publicIp});
-    if(leaked.length===0)setStatus('webrtc','g','No leak','Matches proxy IP');
-    else setStatus('webrtc','r','LEAK detected',leaked.join(', '));
-  }
+  p.createOffer().then(function(o){return p.setLocalDescription(o)}).catch(function(){});
+  function pr(i){var q=i.split('.').map(Number);if(q[0]===10||q[0]===127||q[0]===0)return true;if(q[0]===192&&q[1]===168)return true;if(q[0]===172&&q[1]>=16&&q[1]<=31)return true;if(q[0]===169&&q[1]===254)return true;return false}
+  function fin(){if(done)return;done=true;clearTimeout(tm);try{p.close()}catch(e){}var ips=Object.keys(f);if(ips.length===0)return ss('W','g','No leak','No public IP exposed');var lk=ips.filter(function(i){return i!==pip});if(lk.length===0)ss('W','g','No leak','Matches proxy IP');else ss('W','r','LEAK detected',lk.join(', '));}
 }
-
-copyBtn.addEventListener('click',function(){
-  var ip=$('ip').textContent;
-  if(!ip||ip==='—')return;
-  if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(ip).then(function(){
-      copyBtn.classList.add('ok');copyBtn.textContent='✓';
-      setTimeout(function(){copyBtn.classList.remove('ok');copyBtn.textContent='⧉'},1500);
-    }).catch(function(){});
-  }
-});
-
-btn.addEventListener('click',fetchIp);
-fetchIp();
+C.addEventListener('click',function(){var i=$('I').textContent;if(!i||i==='—')return;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(i).then(function(){C.classList.add('ok');C.textContent='✓';setTimeout(function(){C.classList.remove('ok');C.textContent='⧉'},1500)}).catch(function(){})}});
+B.addEventListener('click',go);go();
 })();
-</script>
-</body>
-</html>
+</script></body></html>
