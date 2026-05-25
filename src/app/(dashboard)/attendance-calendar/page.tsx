@@ -121,17 +121,22 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
     coveredSet.add(`${f.userId}|${f.date.toISOString().split("T")[0]}`);
   }
 
-  // ── Per-employee leave balance (canonical rule, per leave-budget.service) ──
-  // Every month each employee earns paidLeavesPerMonth (default 1.0) — no
-  // rollover. ONLY explicit half-day leave applications consume the displayed
-  // budget (half-day = 0.5). Auto-paid absences use a separate per-month
-  // allowance and do NOT subtract here.
+  // ── Per-employee leave balance (UNIFIED rule, locked 2026-05-25) ──
+  // Each employee gets paidLeavesPerMonth (default 1.0) per month from a
+  // SINGLE pool. Both surfaces consume from it:
+  //   HALF_DAY leave   → 0.5
+  //   Covered absence  → 1.0
+  // No rollover. Once exhausted, further half-days are rejected at the
+  // leave POST endpoint and further absences stop being auto-covered.
   //
-  // Pre-fix this page used a months-since-SYS_START × 1.0 formula that
-  // (a) inflated balances for new hires (e.g. ME-1 joined May 4 was showing
-  // 2.0 instead of 1.0) and (b) double-counted absent fines that should have
-  // gone through their own auto-cover allowance, not the half-day budget.
-  // Both were drift from the canonical rule. Now matches leave-budget.service.
+  // This page MUST use the same math as leave-budget.service.ts ::
+  // getMonthlyLeaveUsage so the "Bal" column on the team calendar
+  // matches the employee's own dashboard.
+  //
+  // Pre-2026-05-25 this page only counted half-day usage, which made
+  // Alishba EM-1 (and 5 others) display 0.5 remaining even though a
+  // covered absence had already burned the full 1.0. CEO caught it the
+  // morning the leak was discovered.
   const empIds = employees.map((e) => e.id);
   const paidLeavesPerMonth = settings?.paidLeavesPerMonth ?? 1;
 
@@ -150,10 +155,20 @@ export default async function AttendanceCalendarPage({ searchParams }: { searchP
   const halfDayMap: Record<string, number> = {};
   monthHalfDayLeaves.forEach((a: any) => { halfDayMap[a.userId] = a._count; });
 
+  // Covered-absence count per user, reused from monthCoveredFines that
+  // was already fetched above for the "C" cell badge. Each covered
+  // absence = 1.0 day consumed.
+  const coveredAbsentMap: Record<string, number> = {};
+  for (const f of monthCoveredFines) {
+    coveredAbsentMap[f.userId] = (coveredAbsentMap[f.userId] ?? 0) + 1;
+  }
+
   const leaveBudgets: Record<string, number> = {};
   for (const emp of employees) {
-    const used = (halfDayMap[emp.id] || 0) * 0.5;
-    leaveBudgets[emp.id] = Math.max(0, paidLeavesPerMonth - used);
+    const halfDayUsed = (halfDayMap[emp.id] || 0) * 0.5;
+    const absentCoverUsed = (coveredAbsentMap[emp.id] || 0) * 1.0;
+    const totalUsed = halfDayUsed + absentCoverUsed;
+    leaveBudgets[emp.id] = Math.max(0, paidLeavesPerMonth - totalUsed);
   }
 
   // Build attendance map: userId -> { "YYYY-MM-DD": status data }
