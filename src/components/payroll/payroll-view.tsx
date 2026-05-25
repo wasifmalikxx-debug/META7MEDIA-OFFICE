@@ -186,16 +186,33 @@ export function PayrollView({ records, isAdmin, isCeo = false, currentMonth, cur
 
   function renderTable(deptRecords: any[], deptName: string) {
     const deptTotal = deptRecords.reduce((s: number, r: any) => s + r.netSalary, 0);
+    // Per-team fines + bonuses so the section header reconciles with the
+    // page-level "Total Fines" / "Total Bonuses" KPIs at a glance — CEO
+    // flagged on 2026-05-25 that he couldn't tell if every team was
+    // included in the top-level totals. Now each section shows its
+    // contribution next to the team payable.
+    const deptFines = deptRecords.reduce((s: number, r: any) => s + (r.totalFines || 0), 0);
+    const deptBonuses = deptRecords.reduce((s: number, r: any) => s + (r.totalIncentives || 0), 0);
     return (
       <Card key={deptName} className="overflow-hidden border-0 shadow-sm">
         <CardHeader className={`pb-2 border-b ${deptName === "Etsy" ? "bg-emerald-50/40 dark:bg-emerald-950/10" : deptName === "Facebook" ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-muted/30"}`}>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-1">
             <CardTitle className="text-sm font-bold">{deptName} Team</CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <Badge variant="outline" className="text-[9px] h-5">{deptRecords.length} employees</Badge>
               <Badge className="text-[9px] h-5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
-                PKR {deptTotal.toLocaleString()}
+                Payable PKR {deptTotal.toLocaleString()}
               </Badge>
+              {deptFines > 0 && (
+                <Badge className="text-[9px] h-5 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-0">
+                  Fines PKR {deptFines.toLocaleString()}
+                </Badge>
+              )}
+              {deptBonuses > 0 && (
+                <Badge className="text-[9px] h-5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0">
+                  Bonuses PKR {deptBonuses.toLocaleString()}
+                </Badge>
+              )}
             </div>
           </div>
         </CardHeader>
