@@ -99,7 +99,8 @@ interface TeamGroup {
   monthPending: number;
   unpaidCount: number;
   paidCount: number;
-  monthFines: number;
+  monthFines: number;              // manual / late / non-absent fines (matches payroll "Fines" line)
+  monthAbsentDeductions?: number;  // salary/30 deductions for uncovered absences (matches payroll "Absent" line)
 }
 
 // ─── Financials (sheet-derived revenue/profit) ────────────────────────
@@ -158,7 +159,8 @@ interface AdminDashboardProps {
   lateToday: number;
   absentToday: number;
   totalPayable: number;
-  totalFines: number;
+  totalFines: number;             // manual / late / non-absent fines only (matches payroll "Fines" line)
+  totalAbsentDeductions?: number; // salary/30 deductions for uncovered absences (matches payroll "Absent" line)
   recentAttendances: any[];
   employeeStatuses: EmployeeStatus[];
   dayOffLabel?: string | null;
@@ -251,6 +253,7 @@ export function AdminDashboard({
   lateToday,
   absentToday,
   totalFines,
+  totalAbsentDeductions = 0,
   employeeStatuses,
   dayOffLabel,
   attendanceTrend = [],
@@ -564,7 +567,11 @@ export function AdminDashboard({
           tone="rose"
           sparkData={last7Fines.length > 0 ? last7Fines : undefined}
           sparkKey="fines"
-          subtitle="Last 7 days"
+          subtitle={
+            totalAbsentDeductions > 0
+              ? `+ PKR ${formatCompact(totalAbsentDeductions)} absent deductions`
+              : "Manual fines only · matches payroll"
+          }
           onClick={() => router.push("/fines")}
         />
       </section>
@@ -1332,6 +1339,15 @@ function TeamCard({
             PKR {Math.round(tg.monthFines).toLocaleString()}
           </span>
         </div>
+        {(tg.monthAbsentDeductions ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5">
+            <AlertTriangle className="size-3 text-amber-500" />
+            <span className="text-muted-foreground">Absent</span>
+            <span className="font-semibold tabular-nums">
+              PKR {Math.round(tg.monthAbsentDeductions!).toLocaleString()}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Roster toggle */}

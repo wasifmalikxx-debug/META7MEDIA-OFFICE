@@ -36,7 +36,8 @@ interface TeamSummary {
   absentToday: number;
   onLeaveToday: number;
   lateToday: number;
-  monthFines: number;
+  monthFines: number;              // manual / late fines (matches payroll "Fines" line)
+  monthAbsentDeductions?: number;  // absent-deduction PKR (matches payroll "Absent" line)
   monthPayroll: number;
   pendingLeaves: number;
 }
@@ -102,10 +103,11 @@ export function PartnerDashboard({ partnerName, officeName, dayOffLabel, teams =
       onLeave: acc.onLeave + t.onLeaveToday,
       late: acc.late + t.lateToday,
       fines: acc.fines + t.monthFines,
+      absentDeductions: acc.absentDeductions + (t.monthAbsentDeductions ?? 0),
       payroll: acc.payroll + t.monthPayroll,
       pending: acc.pending + t.pendingLeaves,
     }),
-    { members: 0, present: 0, absent: 0, onLeave: 0, late: 0, fines: 0, payroll: 0, pending: 0 }
+    { members: 0, present: 0, absent: 0, onLeave: 0, late: 0, fines: 0, absentDeductions: 0, payroll: 0, pending: 0 }
   );
 
   const attendanceRate = totals.members > 0 ? Math.round((totals.present / totals.members) * 100) : 0;
@@ -226,7 +228,11 @@ export function PartnerDashboard({ partnerName, officeName, dayOffLabel, teams =
               <div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Fines</p>
                 <p className="text-2xl font-bold mt-1">PKR {totals.fines.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground mt-1">This month</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {totals.absentDeductions > 0
+                    ? `+ PKR ${totals.absentDeductions.toLocaleString()} absent deductions`
+                    : "This month · matches payroll"}
+                </p>
               </div>
               <div className="rounded-xl bg-orange-100 dark:bg-orange-900/30 p-2.5">
                 <AlertTriangle className="size-5 text-orange-600 dark:text-orange-400" />

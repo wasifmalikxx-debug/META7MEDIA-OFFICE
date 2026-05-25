@@ -276,8 +276,11 @@ export default async function DashboardPage() {
       }),
       prisma.fine.findMany({
         where: { month, year },
-        // userId needed so we can roll up per-team fines in the Teams Overview
-        select: { userId: true, amount: true },
+        // userId needed so we can roll up per-team fines in the Teams Overview.
+        // type needed so we can split ABSENT_WITHOUT_LEAVE out of the "Fines"
+        // KPI (matches payroll's Fines vs Absent-deductions line items) —
+        // see comment near totalFines below.
+        select: { userId: true, amount: true, type: true },
       }),
       prisma.leaveRequest.findMany({
         where: { startDate: { lte: today }, endDate: { gte: today }, status: "APPROVED" },
@@ -361,7 +364,20 @@ export default async function DashboardPage() {
       (a) => a.status !== "ABSENT"
     ).length;
     const totalPayable = payrollRecords.reduce((sum, p) => sum + p.netSalary, 0);
-    const totalFines = fines.reduce((sum, f) => sum + f.amount, 0);
+    // Fines KPI = ONLY manual/non-absent fines (matches payroll's "Fines"
+    // line item). Absent deductions are accounted separately under their
+    // own line in payroll, and including them here was confusing the CEO
+    // because the same number was labeled "Fines" on dashboard but
+    // appeared under "Absent deductions" in the payroll page — see
+    // diag-fines-vs-payroll.ts (2026-05-25). Both lines below sum to
+    // the OLD totalFines value, so no money is missing — just split for
+    // labeling consistency with payroll.
+    const totalFines = fines
+      .filter((f) => f.type !== "ABSENT_WITHOUT_LEAVE")
+      .reduce((sum, f) => sum + f.amount, 0);
+    const totalAbsentDeductions = fines
+      .filter((f) => f.type === "ABSENT_WITHOUT_LEAVE")
+      .reduce((sum, f) => sum + f.amount, 0);
 
     // Build attendance map for quick lookup
     const attendanceMap: Record<string, any> = {};
@@ -488,7 +504,8 @@ export default async function DashboardPage() {
       monthPending: number;       // salary still owed (status !== PAID)
       unpaidCount: number;        // employees on this team whose salary isn't paid yet
       paidCount: number;          // employees on this team already paid this month
-      monthFines: number;
+      monthFines: number;             // manual / late / non-absent fines (matches payroll "Fines" line)
+      monthAbsentDeductions: number;  // salary/30 deductions for uncovered absences (matches payroll "Absent" line)
     };
 
     // Index payroll + fines by userId for O(1) lookup during aggregation.
@@ -508,8 +525,19 @@ export default async function DashboardPage() {
         paidStatusByUser[p.userId] = "PAID";
       }
     }
+    // Per-user fines map for team rollups — same split as the global
+    // totalFines KPI above. We track "fines" (manual, non-absent) and
+    // "absent deductions" separately so the Teams Overview can match
+    // what each employee sees on their own payroll page.
     const finesByUser: Record<string, number> = {};
-    for (const f of fines) finesByUser[f.userId] = (finesByUser[f.userId] ?? 0) + f.amount;
+    const absentDeductionsByUser: Record<string, number> = {};
+    for (const f of fines) {
+      if (f.type === "ABSENT_WITHOUT_LEAVE") {
+        absentDeductionsByUser[f.userId] = (absentDeductionsByUser[f.userId] ?? 0) + f.amount;
+      } else {
+        finesByUser[f.userId] = (finesByUser[f.userId] ?? 0) + f.amount;
+      }
+    }
 
     const groupMap = new Map<string, TeamGroup>();
     for (const emp of allEmployees) {
@@ -540,6 +568,7 @@ export default async function DashboardPage() {
           unpaidCount: 0,
           paidCount: 0,
           monthFines: 0,
+          monthAbsentDeductions: 0,
         };
         groupMap.set(key, group);
       }
@@ -550,6 +579,7 @@ export default async function DashboardPage() {
       if (paidStatusByUser[emp.id] === "PAID") group.paidCount += 1;
       else if (paidStatusByUser[emp.id] === "PENDING") group.unpaidCount += 1;
       group.monthFines += finesByUser[emp.id] ?? 0;
+      group.monthAbsentDeductions += absentDeductionsByUser[emp.id] ?? 0;
 
       const att = attendanceMap[emp.id];
       const leave = leaveMap[emp.id];
@@ -596,6 +626,7 @@ export default async function DashboardPage() {
         absentToday={absentToday}
         totalPayable={totalPayable}
         totalFines={totalFines}
+        totalAbsentDeductions={totalAbsentDeductions}
         recentAttendances={todayAttendances}
         employeeStatuses={JSON.parse(JSON.stringify(employeeStatuses))}
         dayOffLabel={holidayName ? `Holiday — ${holidayName}` : isWeekend ? "Sunday" : null}
@@ -646,8 +677,13 @@ export default async function DashboardPage() {
     prisma.payrollRecord.findFirst({
       where: { userId, month, year },
     }),
+    // Employee dashboard "Fines" KPI shows ONLY manual / late / non-absent
+    // fines so it matches the "Fines" line on the employee's payroll page.
+    // Absent deductions are rendered separately by the dashboard component
+    // (see absentDeductionsThisMonth below). Confusion-bug fix 2026-05-25
+    // — see diag-fines-vs-payroll.ts.
     prisma.fine.findMany({
-      where: { userId, month, year },
+      where: { userId, month, year, type: { not: "ABSENT_WITHOUT_LEAVE" } },
       orderBy: { createdAt: "desc" },
     }),
     prisma.incentive.findMany({
@@ -736,6 +772,23 @@ export default async function DashboardPage() {
   const { getAccumulatedLeaveBudget } = await import("@/lib/services/leave-budget.service");
   const leaveBudgetInfo = await getAccumulatedLeaveBudget(userId, officeSettings?.paidLeavesPerMonth ?? 1);
 
+  // Absent deductions this month — fetched separately because the
+  // recentFines query above explicitly excludes them so the "Fines"
+  // KPI on the dashboard matches the "Fines" line on the payroll page.
+  // Absent fines are still PKR coming out of the paycheck, so we sum
+  // them here and pass to the dashboard as a distinct value. Total =
+  // recentFines + absentDeductionsThisMonth → matches what payroll
+  // deducts (excluding tax + fixed deductions which are server-side
+  // only).
+  const absentFinesThisMonth = await prisma.fine.findMany({
+    where: { userId, month, year, type: "ABSENT_WITHOUT_LEAVE" },
+    select: { amount: true },
+  });
+  const absentDeductionsThisMonth = absentFinesThisMonth.reduce(
+    (s, f) => s + (f.amount || 0),
+    0,
+  );
+
   const monthPresent = monthAttendances.filter(
     (a) => a.status === "PRESENT" || a.status === "LATE"
   ).length;
@@ -774,6 +827,7 @@ export default async function DashboardPage() {
       leaveBalance={leaveBalance}
       currentPayroll={currentPayroll}
       recentFines={recentFines}
+      absentDeductionsThisMonth={absentDeductionsThisMonth}
       recentIncentives={recentIncentives}
       announcements={announcements}
       monthPresent={monthPresent}

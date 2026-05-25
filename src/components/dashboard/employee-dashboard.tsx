@@ -41,7 +41,8 @@ interface EmployeeDashboardProps {
   todayAttendance: any;
   leaveBalance: any;
   currentPayroll: any;
-  recentFines: any[];
+  recentFines: any[];                  // manual / late fines (matches payroll "Fines" line)
+  absentDeductionsThisMonth?: number;  // salary/30 deductions (matches payroll "Absent" line)
   recentIncentives: any[];
   announcements: any[];
   monthPresent: number;
@@ -76,6 +77,7 @@ export function EmployeeDashboard({
   leaveBalance,
   currentPayroll,
   recentFines,
+  absentDeductionsThisMonth = 0,
   recentIncentives,
   announcements,
   monthPresent,
@@ -559,7 +561,13 @@ export function EmployeeDashboard({
     }
   }
 
+  // "Fines" KPI is intentionally narrow (manual fines only) to match the
+  // "Fines" line on the payroll page — see page.tsx comment. Absent
+  // deductions are a separate piece of money out and tracked under
+  // `absentDeductionsThisMonth`; the salaryTillNow estimate below
+  // subtracts BOTH so the take-home estimate stays honest.
   const totalFinesAmount = recentFines.reduce((s, f) => s + f.amount, 0);
+  const totalDeductionsAmount = totalFinesAmount + absentDeductionsThisMonth;
   const totalIncentivesAmount = recentIncentives.reduce((s: number, i: any) => s + i.amount, 0);
 
   // Live hours worked: server total from monthAttendances (includes today if checked out)
@@ -583,7 +591,7 @@ export function EmployeeDashboard({
   // `earnedMonthlySalary` comes from the server with joining-date proration already
   // applied; falls back to `monthlySalary` for older callers without the new prop.
   const earnedSalary = typeof earnedMonthlySalary === "number" ? earnedMonthlySalary : monthlySalary;
-  const salaryTillNow = Math.round(earnedSalary + totalIncentivesAmount - totalFinesAmount);
+  const salaryTillNow = Math.round(earnedSalary + totalIncentivesAmount - totalDeductionsAmount);
 
   // Live PKT clock values (re-calculated every second via the tick interval)
   const pktClock = pktNow;
@@ -1033,7 +1041,13 @@ export function EmployeeDashboard({
             title="Fines"
             value={showSalary ? `PKR ${totalFinesAmount.toLocaleString()}` : "PKR ****"}
             icon={AlertTriangle}
-            description="This month"
+            description={
+              absentDeductionsThisMonth > 0
+                ? showSalary
+                  ? `+ PKR ${absentDeductionsThisMonth.toLocaleString()} absent deductions`
+                  : "+ absent deductions"
+                : "Manual fines · matches payroll"
+            }
           />
           <StatCard
             title="Incentives"
@@ -1097,14 +1111,18 @@ export function EmployeeDashboard({
                       {totalFinesAmount > 0 && (
                         <div className="bg-rose-500 h-full transition-all" style={{ width: `${Math.min(100, (totalFinesAmount / barDenom) * 100)}%` }} title={`Fines: PKR ${totalFinesAmount.toLocaleString()}`} />
                       )}
+                      {absentDeductionsThisMonth > 0 && (
+                        <div className="bg-amber-500 h-full transition-all" style={{ width: `${Math.min(100, (absentDeductionsThisMonth / barDenom) * 100)}%` }} title={`Absent deductions: PKR ${absentDeductionsThisMonth.toLocaleString()}`} />
+                      )}
                     </>
                   );
                 })()}
               </div>
               <div className="flex items-center justify-between mt-2 text-[10px]">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-emerald-500" /> Net: PKR {salaryTillNow.toLocaleString()}</span>
                   {totalFinesAmount > 0 && <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-rose-500" /> Fines: PKR {totalFinesAmount.toLocaleString()}</span>}
+                  {absentDeductionsThisMonth > 0 && <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-amber-500" /> Absent: PKR {absentDeductionsThisMonth.toLocaleString()}</span>}
                   {totalIncentivesAmount > 0 && <span className="flex items-center gap-1 text-emerald-600">+ Bonus: PKR {totalIncentivesAmount.toLocaleString()}</span>}
                 </div>
                 <span className="text-muted-foreground">Base: PKR {monthlySalary.toLocaleString()}</span>
