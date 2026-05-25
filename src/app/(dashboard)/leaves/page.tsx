@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { LeavesView } from "@/components/leaves/leaves-view";
+import { getMonthlyLeaveUsage } from "@/lib/services/leave-budget.service";
+import { nowPKT } from "@/lib/pkt";
 
 export const dynamic = "force-dynamic";
 
@@ -32,19 +34,20 @@ export default async function LeavesPage() {
     partnerMemberIds = teams.flatMap((t) => t.members.map((m) => m.id));
   }
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
   if (isPartner) {
-    // Partners see leave requests from their team only
     where.userId =
       partnerMemberIds && partnerMemberIds.length > 0
         ? { in: partnerMemberIds }
         : "__none__";
   } else if (!isAdmin) {
-    // Regular employees see their own
     where.userId = session.user.id;
   }
 
-  const [leaves, balance] = await Promise.all([
+  // Parallel fetch — leaves, annual balance, monthly unified-pool usage.
+  // Monthly usage only for employees (managers don't take leaves themselves).
+  const pkt = nowPKT();
+  const [leaves, balance, monthlyUsage] = await Promise.all([
     prisma.leaveRequest.findMany({
       where,
       include: {
@@ -56,18 +59,22 @@ export default async function LeavesPage() {
       // naturally shows at most the last 3 months.
       orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
     }),
-    // Personal leave balance — only relevant for employees viewing their own page.
-    // Partners and CEO don't take leaves, so we skip this for the manager view.
+    // Annual leave balance — only relevant for employees on their own page.
     isManagerView
       ? Promise.resolve(null)
       : prisma.leaveBalance.findUnique({
           where: {
             userId_year: {
               userId: session.user.id,
-              year: new Date(Date.now() + 5 * 60 * 60_000).getUTCFullYear(),
+              year: pkt.getUTCFullYear(),
             },
           },
         }),
+    // Monthly unified-pool usage (auto-cover absences + half-day leaves).
+    // Same source of truth as the attendance calendar's Bal column.
+    isManagerView
+      ? Promise.resolve(null)
+      : getMonthlyLeaveUsage(session.user.id),
   ]);
 
   return (
@@ -76,17 +83,20 @@ export default async function LeavesPage() {
         title="Leave Management"
         description={
           isAdmin
-            ? "Manage employee leave requests"
+            ? "Review and manage every team's leave requests"
             : isPartner
-            ? "Manage your team's leave requests"
-            : "Apply and track your leaves"
+            ? "Approve or reject your team's leave requests"
+            : "Apply for leave and track your monthly + annual entitlement"
         }
       />
       <LeavesView
         leaves={JSON.parse(JSON.stringify(leaves))}
         balance={balance ? JSON.parse(JSON.stringify(balance)) : null}
+        monthlyUsage={monthlyUsage}
         isAdmin={isManagerView}
         userId={session.user.id}
+        currentMonth={pkt.getUTCMonth() + 1}
+        currentYear={pkt.getUTCFullYear()}
       />
     </div>
   );
