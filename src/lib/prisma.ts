@@ -13,6 +13,37 @@ export const prisma =
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PRODUCTION DATABASE_URL TUNING — DO NOT REGRESS WITHOUT CARE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// Supabase pooler (port 6543) caps at 200 client connections. In a
+// serverless environment, every cold function instance creates its
+// own Prisma client and reserves `connection_limit` connections from
+// the pooler. With 25+ concurrent function instances during a traffic
+// spike, a value as low as 10 puts us OVER the 200 cap and every
+// request after that fails with:
+//
+//   FATAL: max client connections reached, limit: 200
+//
+// Vercel returns those as `---` (no status) in runtime logs and the
+// user sees the generic "A server error occurred. Reload to try
+// again." Next.js error page.
+//
+// On 2026-05-25 the prod URL was running with connection_limit=10
+// and the CEO reported portal-wide outages during peak hours. Fix
+// was to drop it to 2:
+//
+//   DATABASE_URL=...:6543/...?sslmode=require&pgbouncer=true
+//                            &connection_limit=2&pool_timeout=15
+//
+// Rule of thumb for this stack:
+//   - serverless on Vercel + Supabase pooler → connection_limit=2
+//   - pool_timeout=15 (down from 30s — fail fast, don't hang the user)
+//
+// If you ever raise connection_limit, do the math first:
+//   maxConcurrentInstances × connection_limit < 200
+//
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // In-memory settings cache (avoids querying DB on every request)
 //
 // Multi-office aware:
