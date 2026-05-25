@@ -2,78 +2,180 @@ import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 
 /**
- * Monthly leave entitlement shown to the employee on their dashboard.
+ * Monthly paid-leave budget — UNIFIED POOL (rule updated 2026-05-25).
  *
- * RULE (set by Wasif on 2026-05-04):
- *   - Each month, every employee gets `paidLeavesPerMonth` of leave (default 1.0).
- *   - **No rollover.** At the start of a new month, balance resets to the full
- *     monthly entitlement regardless of last month's usage.
- *   - Only explicit half-day leave applications consume the displayed budget
- *     (each half-day = 0.5). Auto-paid absences use a separate per-month
- *     allowance — see hasMonthlyAbsenceCoverageBeenUsed() below.
+ * RULE (locked by Wasif 2026-05-25 after the Alishba EM-1 leak):
+ *   • Each employee gets `paidLeavesPerMonth` (default 1.0 day) per month.
+ *   • This is ONE pool. Both half-day leaves AND covered absences draw
+ *     from the same pool:
+ *       - HALF_DAY leave   → consumes 0.5
+ *       - Covered absence  → consumes 1.0
+ *   • No rollover. Resets the 1st of every month.
+ *   • Once exhausted, further half-day applications are rejected at the
+ *     API and further absences are NOT auto-covered (they deduct
+ *     salary/30).
  *
- * Examples (1.0/month, viewed any time in May):
- *   - Izaan: 0 May half-days → 1.0 available (April history irrelevant)
- *   - Talha: 0 May half-days → 1.0 available
- *   - Anyone who takes a half-day on May 10 → 0.5 available afterward
+ * Why the change: from 2026-05-04 → 2026-05-25 the two were treated as
+ * SEPARATE pools. That let employees take an absence (auto-covered)
+ * plus a half-day in the same month — effectively 1.5 paid days against
+ * a 1.0 budget. The Alishba case + 5 others surfaced on 2026-05-25
+ * forced the unification.
+ *
+ * SOURCE OF TRUTH FOR USAGE:
+ *   - Half-day leaves: count APPROVED rows in LeaveRequest for the month
+ *   - Covered absences: count Fine rows where reason starts with
+ *     "Covered by paid leave" (created by daily-absent cron + payroll
+ *     normalization)
+ *
+ * Both surfaces (UI dashboard, leave POST endpoint, daily-absent cron,
+ * payroll calc) must call getMonthlyLeaveUsage so they agree exactly.
  */
-export async function getAccumulatedLeaveBudget(
-  userId: string,
-  paidLeavesPerMonth: number = 1.0
-): Promise<{ totalEarned: number; totalUsed: number; available: number }> {
-  const now = nowPKT();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth(); // 0-indexed
 
-  const monthStart = new Date(Date.UTC(year, month, 1));
-  const monthEnd = new Date(Date.UTC(year, month + 1, 0)); // last day of month
-
-  const halfDayLeavesThisMonth = await prisma.leaveRequest.count({
-    where: {
-      userId,
-      leaveType: "HALF_DAY",
-      status: "APPROVED",
-      startDate: { gte: monthStart, lte: monthEnd },
-    },
-  });
-
-  const totalEarned = paidLeavesPerMonth;
-  const totalUsed = halfDayLeavesThisMonth * 0.5;
-  const available = Math.max(0, totalEarned - totalUsed);
-
-  return { totalEarned, totalUsed, available };
+export interface MonthlyLeaveUsage {
+  /** The monthly entitlement from OfficeSettings.paidLeavesPerMonth. */
+  budget: number;
+  /** Half-days approved this month × 0.5. */
+  halfDayUsed: number;
+  /** Covered absences this month × 1.0. */
+  absentCoverUsed: number;
+  /** Sum of all paid leave consumed this month. */
+  totalUsed: number;
+  /** Math.max(0, budget − totalUsed). */
+  remaining: number;
+  /** True iff totalUsed >= budget — no more paid leave available. */
+  exhausted: boolean;
 }
 
 /**
- * Per-month auto-paid-absence allowance check.
+ * Compute a user's leave-budget usage for a specific PKT calendar month.
  *
- * Office policy: if an employee is absent without prior leave, the FIRST
- * such absence each month is covered (no salary deduction); subsequent
- * absences in the same month are deducted at salary/30.
+ * When `referenceDate` is omitted, uses the current PKT month/year.
  *
- * Independent of the half-day-leave entitlement above — using the
- * monthly auto-cover does NOT subtract from the dashboard leave balance,
- * and using a half-day leave does NOT consume the auto-cover allowance.
+ * NOTE: this counts ALL approved half-days in the month, including ones
+ * that haven't been served yet (future-dated). That matches CEO intent —
+ * a planned future half-day reserves the budget the moment it's filed.
+ */
+export async function getMonthlyLeaveUsage(
+  userId: string,
+  referenceDate?: Date,
+): Promise<MonthlyLeaveUsage> {
+  const ref = referenceDate ?? nowPKT();
+  const year = ref.getUTCFullYear();
+  const month0 = ref.getUTCMonth(); // 0-indexed
+  const month = month0 + 1;
+  const monthStart = new Date(Date.UTC(year, month0, 1));
+  const monthEnd = new Date(Date.UTC(year, month0 + 1, 0));
+
+  const settings = await prisma.officeSettings.findUnique({
+    where: { id: "default" },
+    select: { paidLeavesPerMonth: true },
+  });
+  const budget = settings?.paidLeavesPerMonth ?? 1.0;
+
+  // Both queries are cheap and only return counts.
+  const [halfDayCount, absentCoverCount] = await Promise.all([
+    prisma.leaveRequest.count({
+      where: {
+        userId,
+        leaveType: "HALF_DAY",
+        status: "APPROVED",
+        startDate: { gte: monthStart, lte: monthEnd },
+      },
+    }),
+    prisma.fine.count({
+      where: {
+        userId,
+        type: "ABSENT_WITHOUT_LEAVE",
+        month,
+        year,
+        reason: { contains: "Covered by paid leave" },
+      },
+    }),
+  ]);
+
+  const halfDayUsed = halfDayCount * 0.5;
+  const absentCoverUsed = absentCoverCount * 1.0;
+  const totalUsed = halfDayUsed + absentCoverUsed;
+  const remaining = Math.max(0, budget - totalUsed);
+  const exhausted = totalUsed >= budget;
+
+  return { budget, halfDayUsed, absentCoverUsed, totalUsed, remaining, exhausted };
+}
+
+/**
+ * Backwards-compat alias used by the dashboard. Mirrors the original
+ * shape but the math now reflects the UNIFIED pool — pre-2026-05-25
+ * callers saw only half-day usage, post-fix they see the true
+ * remaining budget across both pools.
+ */
+export async function getAccumulatedLeaveBudget(
+  userId: string,
+  // Param kept for backwards compatibility with one caller in
+  // dashboard/page.tsx; the real budget always comes from OfficeSettings.
+  _paidLeavesPerMonth: number = 1.0,
+): Promise<{ totalEarned: number; totalUsed: number; available: number }> {
+  void _paidLeavesPerMonth;
+  const u = await getMonthlyLeaveUsage(userId);
+  return {
+    totalEarned: u.budget,
+    totalUsed: u.totalUsed,
+    available: u.remaining,
+  };
+}
+
+/**
+ * Legacy helper kept for the daily-absent cron. After the 2026-05-25
+ * unification, prefer `getMonthlyLeaveUsage` directly which returns
+ * the real remaining budget (not just an absent-cover flag).
  *
- * Returns true if the user has already had a covered absence this month
- * (i.e. allowance is used), false if it's still available.
+ * Returns true iff the user has ANY paid leave consumed this month
+ * (half-day or absent cover). Identical semantics to "the monthly
+ * absent cover is no longer available."
  */
 export async function hasMonthlyAbsenceCoverageBeenUsed(
   userId: string,
   month: number,
   year: number,
-  excludeDate?: Date
+  excludeDate?: Date,
 ): Promise<boolean> {
-  const where: any = {
-    userId,
-    type: "ABSENT_WITHOUT_LEAVE",
-    month,
-    year,
-    reason: { contains: "Covered by paid leave" },
-  };
-  if (excludeDate) {
-    where.date = { not: excludeDate };
-  }
-  const count = await prisma.fine.count({ where });
-  return count > 0;
+  // Mirror old behavior for safety: caller (cron) uses this to decide
+  // whether to cover today's absence. We answer "no, you've already
+  // consumed the budget" if EITHER an absent cover OR enough half-days
+  // exist this month. Building from getMonthlyLeaveUsage means we never
+  // disagree with the dashboard or the leave POST endpoint.
+  const settings = await prisma.officeSettings.findUnique({
+    where: { id: "default" },
+    select: { paidLeavesPerMonth: true },
+  });
+  const budget = settings?.paidLeavesPerMonth ?? 1.0;
+
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0));
+
+  const [halfDayCount, absentCoverCount] = await Promise.all([
+    prisma.leaveRequest.count({
+      where: {
+        userId,
+        leaveType: "HALF_DAY",
+        status: "APPROVED",
+        startDate: { gte: monthStart, lte: monthEnd },
+      },
+    }),
+    prisma.fine.count({
+      where: {
+        userId,
+        type: "ABSENT_WITHOUT_LEAVE",
+        month,
+        year,
+        reason: { contains: "Covered by paid leave" },
+        ...(excludeDate ? { date: { not: excludeDate } } : {}),
+      },
+    }),
+  ]);
+
+  const totalUsed = halfDayCount * 0.5 + absentCoverCount * 1.0;
+  // A new absent today would consume 1.0 more. If that pushes us over
+  // budget, treat the cover as already used (cron falls through to the
+  // deducted-fine branch).
+  return totalUsed + 1.0 > budget;
 }

@@ -167,6 +167,41 @@ export async function POST(request: NextRequest) {
       return error("You already have a leave on this date.");
     }
 
+    // Check unified monthly leave budget for HALF_DAY (rule locked
+    // 2026-05-25 — see leave-budget.service.ts header comment).
+    //
+    // Before this check existed, employees could file unlimited
+    // half-days regardless of how much paid-leave budget they'd
+    // already burned via covered absences. That gave Alishba EM-1
+    // (and 5 others) 1.5 days paid against a 1.0 budget on 2026-05-25.
+    //
+    // The budget reservation is per-month based on the leave's
+    // startDate (not today). If they apply for a future half-day, the
+    // 0.5 is reserved against the month of the leave.
+    if (parsed.leaveType === "HALF_DAY") {
+      const { getMonthlyLeaveUsage } = await import(
+        "@/lib/services/leave-budget.service"
+      );
+      const usage = await getMonthlyLeaveUsage(session.user.id, startDate);
+      if (usage.remaining < 0.5) {
+        const usedParts: string[] = [];
+        if (usage.absentCoverUsed > 0) {
+          usedParts.push(
+            `${usage.absentCoverUsed} day covered for absences`,
+          );
+        }
+        if (usage.halfDayUsed > 0) {
+          usedParts.push(`${usage.halfDayUsed} day in half-day leaves`);
+        }
+        const usedStr = usedParts.length
+          ? usedParts.join(" + ")
+          : `${usage.totalUsed} day used`;
+        return error(
+          `Your monthly paid-leave budget is exhausted (${usedStr} of ${usage.budget} day). This half-day would be unpaid — please coordinate with HR if you still need to take it.`,
+        );
+      }
+    }
+
     // Check leave balance for casual/sick
     if (parsed.leaveType === "CASUAL" || parsed.leaveType === "SICK") {
       const year = startDate.getFullYear();

@@ -307,6 +307,26 @@ export async function generatePayrollForEmployee(
   // covered (0) in one place — no double-counting possible.
   const absentDeductions = roundMoney(absentFineTotal);
 
+  // Unified monthly leave-budget cap (rule locked 2026-05-25 — see
+  // leave-budget.service.ts header comment).
+  //
+  // The leave POST endpoint now rejects new HALF_DAY requests when the
+  // budget is already exhausted (absent cover + half-days >= cap), but
+  // this deduction catches:
+  //   (a) Records that pre-date the 2026-05-25 fix (6 employees on
+  //       May 25: Alishba EM-1 + 5 others all sitting at 1.5/1.0).
+  //   (b) Edge case where an absence happens AFTER a half-day is
+  //       filed for later in the same month — the absence consumes
+  //       budget retroactively and the half-day overflows.
+  //
+  // autoPaidLeaves was computed earlier as
+  //     absentPaidLeaveDays + halfDayLeavesThisMonth * 0.5
+  // — i.e. the total paid leave consumed this month from the unified
+  // pool. Anything past paidLeavesPerMonth becomes a salary/30 × overflow
+  // deduction.
+  const overBudgetLeaveDays = Math.max(0, autoPaidLeaves - paidLeavesPerMonth);
+  const overBudgetLeaveDeductions = roundMoney(overBudgetLeaveDays * dailyRate);
+
   // PRORATION: an employee who joined mid-month earns salary only from their
   // joining date forward, not the full month. Everyone whose joining date is
   // on or before the month start earns their full monthlySalary (no change
@@ -330,7 +350,7 @@ export async function generatePayrollForEmployee(
     salary.socialSecurity + salary.otherDeductions
   );
   const totalDeductions = roundMoney(
-    halfDayDeductions + leaveDeductions + absentDeductions + totalFines + taxDeduction + fixedDeductions
+    halfDayDeductions + leaveDeductions + absentDeductions + overBudgetLeaveDeductions + totalFines + taxDeduction + fixedDeductions
   );
 
   const netSalary = roundMoney(
