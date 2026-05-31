@@ -160,6 +160,119 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // ─── PASS 2 — No-show on the working half of a half-day leave ───
+      //
+      // Catches the gap surfaced 2026-05-31 by the CEO using
+      // SMM-2 M. Ahmad Aslam's May 30 case:
+      //   - Filed APPROVED HALF_DAY FIRST_HALF on May 30
+      //   - Attendance row created with status=HALF_DAY (by Pass 1 above
+      //     OR by an earlier same-day file flow)
+      //   - Never checked in for the SECOND_HALF he was supposed to work
+      //   - Got paid for the half he took off (correct), but NO fine for
+      //     the half he skipped (the bug — he effectively got a full
+      //     unpaid no-show pass)
+      //
+      // Fix: a half-day leave only covers ONE half. If the OTHER half is
+      // a no-show, charge dailyRate × 0.5 (mirror the half they skipped).
+      // Reuses ABSENT_WITHOUT_LEAVE type so the new fine flows through
+      // payroll's "Absent deductions" line + the dashboard split landed
+      // in commit 28efe9c.
+      const halfDayNoShows = await prisma.attendance.findMany({
+        where: {
+          date: today,
+          userId: { in: employees.map((e) => e.id) },
+          status: "HALF_DAY",
+          checkIn: null,
+        },
+        select: { userId: true },
+      });
+
+      if (halfDayNoShows.length > 0) {
+        const halfPeriodByUser = new Map<string, string>();
+        const todayHalfDayLeaves = await prisma.leaveRequest.findMany({
+          where: {
+            userId: { in: halfDayNoShows.map((a) => a.userId) },
+            startDate: { lte: today },
+            endDate: { gte: today },
+            status: "APPROVED",
+            leaveType: "HALF_DAY",
+          },
+          select: { userId: true, halfDayPeriod: true },
+        });
+        for (const l of todayHalfDayLeaves) {
+          if (l.halfDayPeriod) halfPeriodByUser.set(l.userId, l.halfDayPeriod);
+        }
+
+        for (const ns of halfDayNoShows) {
+          const emp = employees.find((e) => e.id === ns.userId);
+          if (!emp) continue;
+
+          const halfPeriod = halfPeriodByUser.get(ns.userId);
+          if (!halfPeriod) {
+            // HALF_DAY status without an approved half-day leave is unusual
+            // (legacy data / manual override). Skip — don't fine in this
+            // case since we can't be sure which half they were supposed
+            // to work.
+            continue;
+          }
+
+          const monthlySalary = emp.salaryStructure?.monthlySalary || 0;
+          const halfDayFine = Math.round((monthlySalary / 30) * 0.5);
+          if (halfDayFine <= 0) continue;
+
+          // Idempotency: cron may be re-run during the same day. The
+          // "marked_absent" path above relies on attendance row presence;
+          // here the attendance row stays HALF_DAY across reruns, so we
+          // de-dupe by checking for an existing no-show fine.
+          const existing = await prisma.fine.findFirst({
+            where: {
+              userId: emp.id,
+              date: today,
+              type: "ABSENT_WITHOUT_LEAVE",
+              reason: { contains: "No-show on working half" },
+            },
+            select: { id: true, amount: true },
+          });
+          if (existing) {
+            officeResults.push({
+              employeeId: emp.employeeId,
+              action: "no_show_half_fine_exists",
+              fine: existing.amount,
+            });
+            continue;
+          }
+
+          const skippedHalf =
+            halfPeriod === "FIRST_HALF" ? "SECOND_HALF" : "FIRST_HALF";
+          const fineReason =
+            `No-show on working half of approved ${halfPeriod} leave — ` +
+            `${skippedHalf} not attended — PKR ${halfDayFine.toLocaleString()} ` +
+            `(salary/30 × 0.5) deducted`;
+
+          await prisma.fine.create({
+            data: {
+              userId: emp.id,
+              type: "ABSENT_WITHOUT_LEAVE",
+              amount: halfDayFine,
+              reason: fineReason,
+              date: today,
+              month,
+              year,
+              issuedById: admin?.id || emp.id,
+            },
+          });
+
+          officeResults.push({
+            employeeId: emp.employeeId,
+            name: `${emp.firstName} ${emp.lastName || ""}`.trim(),
+            action: "no_show_half_day_fined",
+            fine: halfDayFine,
+            leaveTaken: halfPeriod,
+            halfNotAttended: skippedHalf,
+          });
+        }
+      }
+
       perOfficeResults.push({
         office: office.slug,
         processed: officeResults.length,
