@@ -19,8 +19,15 @@ import { sendMetaTemplate, isMetaEnabled } from "@/lib/services/whatsapp-meta.se
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Only these templates may be sent via the bridge. Add names here as needed.
-const ALLOWED_TEMPLATES = new Set(["publisher_daily_report"]);
+// Only these templates may be sent via the bridge. Defaults cover the publisher
+// app's report + alerts; override with BRIDGE_ALLOWED_TEMPLATES (comma-separated)
+// to add more without a redeploy.
+const ALLOWED_TEMPLATES = new Set(
+  (process.env.BRIDGE_ALLOWED_TEMPLATES || "publisher_daily_report,publisher_alert")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+);
 
 export async function POST(req: Request) {
   const secret = process.env.PUBLISHER_BRIDGE_SECRET;
