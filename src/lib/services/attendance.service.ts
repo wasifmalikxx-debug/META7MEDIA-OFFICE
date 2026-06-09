@@ -148,6 +148,11 @@ export async function checkIn(
           },
         });
 
+        // Reflect the late fine in payroll immediately (CEO 2026-06-09:
+        // every daily-activity fine must hit payroll, no exceptions).
+        const { syncPayrollSafe } = await import("@/lib/services/payroll-sync.service");
+        await syncPayrollSafe(userId, pktMonth(), pktYear());
+
         // WhatsApp: notify employee about late fine via template (fire-and-forget)
         const user = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, phone: true } });
         const empName = user ? `${user.firstName} ${user.lastName || ""}`.trim() : "Employee";
@@ -273,7 +278,7 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
   // Early leave
   const earlyLeaveMin = Math.max(0, standardMinutes - workedMinutes);
 
-  return prisma.attendance.update({
+  const updated = await prisma.attendance.update({
     where: { id: attendance.id },
     data: {
       checkOut: now,
@@ -292,6 +297,13 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
         : {}),
     },
   });
+
+  // Reflect any break-skip fine (created above) + the final day status
+  // into payroll immediately (CEO 2026-06-09: no fine left unsynced).
+  const { syncPayrollSafe } = await import("@/lib/services/payroll-sync.service");
+  await syncPayrollSafe(userId, pktMonth(), pktYear());
+
+  return updated;
 }
 
 export async function getAttendanceSummary(

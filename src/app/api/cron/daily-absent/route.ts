@@ -96,6 +96,10 @@ export async function GET(request: NextRequest) {
       const halfDayLeaveSet = new Set(todayLeaves.map((l) => l.userId));
 
       const officeResults: any[] = [];
+      // Track every employee who got a fine this run so we can push the
+      // fine into their payroll record at the end (CEO 2026-06-09: every
+      // daily-activity fine must reflect in payroll, no exceptions).
+      const finedUserIds = new Set<string>();
 
       for (const emp of employees) {
         if (attendanceMap.has(emp.id)) continue;
@@ -136,6 +140,7 @@ export async function GET(request: NextRequest) {
               issuedById: admin?.id || emp.id,
             },
           });
+          finedUserIds.add(emp.id);
 
           // WhatsApp: only employee gets notified directly. Partners don't
           // receive copies (per Wasif: "DAILY REPORT WILL ONLY BE SENT TO MY
@@ -261,6 +266,7 @@ export async function GET(request: NextRequest) {
               issuedById: admin?.id || emp.id,
             },
           });
+          finedUserIds.add(emp.id);
 
           officeResults.push({
             employeeId: emp.employeeId,
@@ -273,9 +279,22 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // ─── Push every fine created this run into the matching payroll ──
+      // record so it reflects immediately (CEO 2026-06-09). Serialized to
+      // avoid hammering the DB pool; each is PAID/locked-safe internally.
+      let synced = 0;
+      if (finedUserIds.size > 0) {
+        const { syncPayrollSafe } = await import("@/lib/services/payroll-sync.service");
+        for (const uid of finedUserIds) {
+          await syncPayrollSafe(uid, month, year);
+          synced++;
+        }
+      }
+
       perOfficeResults.push({
         office: office.slug,
         processed: officeResults.length,
+        payrollSynced: synced,
         results: officeResults,
       });
     }

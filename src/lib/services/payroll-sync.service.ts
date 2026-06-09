@@ -35,3 +35,28 @@ export async function syncPayrollRecord(userId: string, month: number, year: num
   // rather than misattributing to whichever admin happened to act last.
   await generatePayrollForEmployee(userId, month, year, userId);
 }
+
+/**
+ * Fire-and-forget-safe wrapper around syncPayrollRecord.
+ *
+ * Use this from anywhere a fine / incentive is auto-created (attendance
+ * check-in late fine, break-end late fine, daily-absent cron, no-show
+ * cron, end-of-day no-report fine, break-skip fine) so that EVERY fine
+ * that shows in Daily Activities immediately flows into the affected
+ * month's payroll record. CEO directive 2026-06-09: "every daily
+ * activity fine should add in payroll, no exceptions."
+ *
+ * Swallows errors — a payroll-sync failure must never break the
+ * attendance/fine write that triggered it. PAID + locked records are
+ * skipped inside syncPayrollRecord, so this can't mutate settled pay.
+ */
+export async function syncPayrollSafe(userId: string, month: number, year: number) {
+  try {
+    await syncPayrollRecord(userId, month, year);
+  } catch (e) {
+    console.warn(
+      `[payroll-sync] failed for ${userId} ${month}/${year}:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
+}

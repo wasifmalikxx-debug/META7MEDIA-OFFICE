@@ -293,7 +293,23 @@ async function runCheckout(triggerSource: string) {
         });
       }
 
-      results.push({ name, workedMinutes, status, autoCheckout: true });
+      results.push({ name, workedMinutes, status, autoCheckout: true, userId: att.user.id });
+    }
+
+    // Reflect the auto-checkout (status/worked-minutes) + any no-report or
+    // break-skip fines into each affected payroll record (CEO 2026-06-09:
+    // every daily-activity fine must hit payroll, no exceptions).
+    let payrollSynced = 0;
+    if (results.length > 0) {
+      const { syncPayrollSafe } = await import("@/lib/services/payroll-sync.service");
+      const m = pktMonth();
+      const y = pktYear();
+      for (const r of results) {
+        if (r.userId) {
+          await syncPayrollSafe(r.userId, m, y);
+          payrollSynced++;
+        }
+      }
     }
 
     return json({
@@ -302,6 +318,7 @@ async function runCheckout(triggerSource: string) {
       triggerSource,
       ranAt: checkoutTime.toISOString(),
       count: results.length,
+      payrollSynced,
       skipped: skipped.length,
       skippedDetails: skipped,
       results,

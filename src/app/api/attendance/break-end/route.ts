@@ -70,6 +70,11 @@ export async function POST() {
             },
           });
 
+          // Reflect the break-late fine in payroll immediately
+          // (CEO 2026-06-09: every daily-activity fine hits payroll).
+          const { syncPayrollSafe } = await import("@/lib/services/payroll-sync.service");
+          await syncPayrollSafe(session.user.id, pktMonth(), pktYear());
+
           // WhatsApp: notify employee about break late fine via template
           try {
             const { sendBreakFineTemplate } = await import("@/lib/services/whatsapp.service");
