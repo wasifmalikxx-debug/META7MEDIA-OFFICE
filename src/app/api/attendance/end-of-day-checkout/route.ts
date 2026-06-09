@@ -144,11 +144,30 @@ async function runCheckout(triggerSource: string) {
       const name = `${att.user.firstName} ${att.user.lastName || ""}`.trim();
       const checkIn = new Date(att.checkIn!);
 
+      // Dangling-break handling — mirrors the manual checkout fix
+      // (attendance.service.ts, 2026-06-09). A break that was started
+      // but never ended is auto-closed at the scheduled break end so the
+      // standard ~1h deduction applies (not 0, not an inflated value).
       let breakMinutes = 0;
+      let autoClosedBreakEnd: Date | null = null;
       if (att.breakStart && att.breakEnd) {
         breakMinutes = Math.floor(
           (att.breakEnd.getTime() - att.breakStart.getTime()) / (1000 * 60)
         );
+      } else if (att.breakStart && !att.breakEnd) {
+        const isFriday = checkoutTime.getUTCDay() === 5;
+        const schedEndStr = isFriday
+          ? (settings?.fridayBreakEndTime || "14:45")
+          : (settings?.breakEndTime || "16:00");
+        const [seH, seM] = schedEndStr.split(":").map(Number);
+        const bs = att.breakStart;
+        const scheduledEnd = new Date(Date.UTC(
+          bs.getUTCFullYear(), bs.getUTCMonth(), bs.getUTCDate(), seH, seM, 0, 0,
+        ));
+        let capMs = Math.min(checkoutTime.getTime(), scheduledEnd.getTime());
+        if (capMs < bs.getTime()) capMs = bs.getTime();
+        autoClosedBreakEnd = new Date(capMs);
+        breakMinutes = Math.floor((capMs - bs.getTime()) / (1000 * 60));
       }
       const workedMinutes = Math.max(
         0,
@@ -209,6 +228,9 @@ async function runCheckout(triggerSource: string) {
           earlyLeaveMin: earlyLeaveMin > 0 ? earlyLeaveMin : null,
           status,
           notes: `End-of-day auto-checkout (${triggerSource}, route ${ROUTE_VERSION})`,
+          ...(autoClosedBreakEnd
+            ? { breakEnd: autoClosedBreakEnd, breakMinutes }
+            : {}),
         },
       });
 

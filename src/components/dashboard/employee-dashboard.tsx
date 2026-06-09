@@ -323,6 +323,13 @@ export function EmployeeDashboard({
     }
     // On break right now
     if (onBreak) {
+      // Dangling-break rescue (2026-06-09): if they started a break but
+      // it's now past the checkout window, they likely forgot to end it.
+      // Point them at checkout — the server auto-closes the break on
+      // check-out (capped at the scheduled break end).
+      if (canCheckoutByTime) {
+        return { label: "Checkout", countdown: "available now", state: "active", color: "emerald", detail: "Your break will be auto-closed when you check out" };
+      }
       const breakEndSecs = (breakEndMin + 5) * 60; // include grace minutes
       const secsLeft = Math.max(0, breakEndSecs - currentTotalSeconds);
       return { label: "On Break", countdown: secsLeft > 0 ? `end in ${formatCountdown(secsLeft)}` : "break ending now", state: "active", color: "amber", detail: "End break before grace period expires to avoid fine" };
@@ -869,7 +876,17 @@ export function EmployeeDashboard({
                 Report Submitted
               </Badge>
             )}
-            {hasCheckedIn && !hasCheckedOut && !onBreak && (
+            {/* Checkout control.
+                Renders whenever checked in + not yet out. We DON'T gate on
+                `!onBreak` anymore: an employee who started a break but never
+                ended it ("dangling break") used to be trapped here with no
+                checkout button (CEO report 2026-06-09). Now once the checkout
+                time-window opens, the Check Out button always shows and the
+                server auto-closes the dangling break on checkout (capped at
+                the scheduled break end). During the actual mid-day break
+                (before checkout time) we still show nothing here — the
+                separate "End Break" button above handles that. */}
+            {hasCheckedIn && !hasCheckedOut && (
               <>
                 {canCheckout ? (
                   <Button
@@ -881,11 +898,11 @@ export function EmployeeDashboard({
                     <XCircle className="size-4" />
                     {loading ? "..." : "Check Out"}
                   </Button>
-                ) : todayWorkedMin < halfDayThresholdMin ? (
+                ) : !onBreak && todayWorkedMin < halfDayThresholdMin ? (
                   <span className="text-xs text-muted-foreground">
                     Checkout available at {workEndFormatted} PKT
                   </span>
-                ) : (
+                ) : !onBreak ? (
                   <div className="flex flex-col items-end gap-1">
                     <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
                       You&apos;ve worked {Math.floor(todayWorkedMin / 60)}h {todayWorkedMin % 60}m — half day will be recorded
@@ -894,7 +911,7 @@ export function EmployeeDashboard({
                       Full checkout at {workEndFormatted} PKT • Or apply half day leave
                     </span>
                   </div>
-                )}
+                ) : null}
               </>
             )}
             {hasCheckedOut && (

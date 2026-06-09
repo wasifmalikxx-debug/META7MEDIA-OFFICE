@@ -185,12 +185,44 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
     throw new Error("Already checked out today");
   }
 
-  // Subtract break time from worked minutes (only if break was completed)
+  // Subtract break time from worked minutes.
+  //
+  // DANGLING-BREAK FIX (2026-06-09, CEO report "miss break → checkout
+  // not available"): an employee who clicked Start Break but never
+  // clicked End Break used to be stuck — the frontend hid the checkout
+  // control while `breakStart && !breakEnd`. We now auto-close a
+  // dangling break here at checkout, CAPPED AT THE SCHEDULED BREAK END
+  // so they get the standard ~1h deduction and not an inflated one.
+  //   - both set     → use the real recorded break
+  //   - start only   → close at min(now, scheduled break end), never
+  //                    before breakStart; persist so the row isn't
+  //                    left dangling
+  //   - neither      → 0 (they truly skipped; break-skip fine handles it)
   let breakMinutes = 0;
+  let autoClosedBreakEnd: Date | null = null;
   if (attendance.breakStart && attendance.breakEnd) {
     breakMinutes = Math.floor(
       (attendance.breakEnd.getTime() - attendance.breakStart.getTime()) / (1000 * 60)
     );
+  } else if (attendance.breakStart && !attendance.breakEnd) {
+    // Scheduled break end for today (Friday has its own window).
+    const isFriday = now.getUTCDay() === 5;
+    const schedEndStr = isFriday
+      ? (settings.fridayBreakEndTime || "14:45")
+      : (settings.breakEndTime || "16:00");
+    const { hours: seH, minutes: seM } = parseTime(schedEndStr);
+    // Build the scheduled-end instant on the same PKT day as breakStart.
+    // nowPKT()/breakStart are stored as PKT-wall-clock-in-UTC, so we
+    // assemble the cap from breakStart's date parts + scheduled H:M.
+    const bs = attendance.breakStart;
+    const scheduledEnd = new Date(Date.UTC(
+      bs.getUTCFullYear(), bs.getUTCMonth(), bs.getUTCDate(), seH, seM, 0, 0,
+    ));
+    // Cap: not after `now`, not after scheduled end, not before start.
+    let capMs = Math.min(now.getTime(), scheduledEnd.getTime());
+    if (capMs < bs.getTime()) capMs = bs.getTime();
+    autoClosedBreakEnd = new Date(capMs);
+    breakMinutes = Math.floor((capMs - bs.getTime()) / (1000 * 60));
   }
   const workedMinutes = Math.floor(
     (now.getTime() - attendance.checkIn.getTime()) / (1000 * 60)
@@ -252,6 +284,12 @@ export async function checkOut(userId: string, ip: string, lat?: number, lng?: n
       overtimeMinutes: overtimeMinutes > 0 ? overtimeMinutes : null,
       earlyLeaveMin: earlyLeaveMin > 0 ? earlyLeaveMin : null,
       status,
+      // Persist an auto-closed dangling break so the row is consistent
+      // (no breakStart-without-breakEnd left behind) and the break
+      // minutes show correctly on the attendance calendar.
+      ...(autoClosedBreakEnd
+        ? { breakEnd: autoClosedBreakEnd, breakMinutes }
+        : {}),
     },
   });
 }
