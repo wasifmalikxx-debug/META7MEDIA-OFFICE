@@ -92,7 +92,9 @@ export async function POST(request: NextRequest) {
   try {
     await checkAndConsumeProductHunter({
       userId: session.user.id,
-      isUnlimited: access.isUnlimited,
+      // Product-Hunter-specific unlimited: CEO + Izaan (EM-4). His SEO
+      // generator quota stays capped — only this tool is uncapped.
+      isUnlimited: access.productHunterUnlimited,
     });
   } catch (err) {
     if (err instanceof ProductHunterQuotaExceededError) {

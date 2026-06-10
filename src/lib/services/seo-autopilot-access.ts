@@ -32,8 +32,17 @@ export interface SeoAutopilotAccess {
   isMeEmployee: boolean;
   isEtsyPartner: boolean;
   canUseRealTool: boolean;
-  /** True when the user's daily limit doesn't apply (CEO only). */
+  /** True when the SEO Autopilot GENERATOR daily limit doesn't apply (CEO only). */
   isUnlimited: boolean;
+  /**
+   * True when the PRODUCT HUNTER daily limit doesn't apply.
+   * CEO + Izaan (EM-4, team leader). CEO directive 2026-06-09: Izaan
+   * gets unlimited Product Hunter scans to research freely for the EM
+   * team. Kept SEPARATE from `isUnlimited` so his SEO Autopilot
+   * generator quota (8/day) stays capped — only Product Hunter is
+   * uncapped for him.
+   */
+  productHunterUnlimited: boolean;
 }
 
 export async function getSeoAutopilotAccess(user: {
@@ -86,5 +95,6 @@ export async function getSeoAutopilotAccess(user: {
     isEtsyPartner,
     canUseRealTool,
     isUnlimited: isCeo,
+    productHunterUnlimited: isCeo || isManager,
   };
 }

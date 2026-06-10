@@ -1,5 +1,6 @@
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { getProductHunterUsage } from "@/lib/services/product-hunter-quota.service";
+import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
 
 /**
  * GET /api/seo-autopilot/hunt-usage
@@ -33,11 +34,18 @@ export async function GET() {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
-  const isCeo = session.user.role === "SUPER_ADMIN";
+  // Product-Hunter-specific unlimited flag: CEO + Izaan (EM-4). Mirrors
+  // the hunt-by-niche quota check so the UI badge ("Unlimited" vs
+  // "X / 10") matches what the backend will actually enforce.
+  const access = await getSeoAutopilotAccess({
+    id: session.user.id,
+    role: session.user.role,
+    employeeId: session.user.employeeId ?? null,
+  });
 
   const usage = await getProductHunterUsage({
     userId: session.user.id,
-    isUnlimited: isCeo,
+    isUnlimited: access.productHunterUnlimited,
   });
 
   return json({ usage });
