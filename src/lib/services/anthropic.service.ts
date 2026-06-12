@@ -2489,3 +2489,153 @@ function localRuleCheck(l: GeneratedListing): TextComplianceReport["issues"] {
   }
   return issues;
 }
+
+// ════════════════════════════════════════════════════════════════════
+// PROMPT ENGINEER — AliExpress photo → Higgsfield image-gen prompt
+// ════════════════════════════════════════════════════════════════════
+//
+// CEO workflow (2026-06-12): the team uploads an AliExpress product
+// photo and needs a text-to-image prompt for Higgsfield that:
+//   1. keeps the PRODUCT identical (read precisely from the photo)
+//   2. swaps the model for a USA / Western, well-fitted model of the
+//      chosen type (woman / man / girl / boy / kid)
+//   3. uses a DIFFERENT pose than the source photo (never copy it)
+//   4. stays CONSISTENT across a listing's 7-8 images via a locked
+//      "model persona" generated once and reused on every later image
+//
+// Built on Haiku 4.5 (vision, cheap — see the cost analysis). The
+// per-image-prompt cost is ~PKR 0.8; swapping to MODEL_GENERATOR
+// (Sonnet) is a one-line change if prompt quality needs a bump.
+
+export type PromptEngineerModelType =
+  | "woman"
+  | "man"
+  | "girl"
+  | "boy"
+  | "kid";
+
+export interface HiggsfieldPromptInput {
+  /** The AliExpress product photo. */
+  image: ImagePayload;
+  /** Who should wear/hold the product in the generated images. */
+  modelType: PromptEngineerModelType;
+  /** Background setting, e.g. "studio white", "lifestyle indoor". */
+  background?: string;
+  /** Style / mood, e.g. "clean e-commerce", "editorial". */
+  style?: string;
+  /** Optional explicit pose. Empty = auto (always different from source). */
+  pose?: string;
+  /** Image orientation/ratio, e.g. "portrait", "square", "landscape". */
+  orientation?: string;
+  /** Free-text extra instruction from the employee. */
+  freeText?: string;
+  /**
+   * Locked model persona for the listing. Pass null/empty on the FIRST
+   * image of a listing — the model invents one and returns it. Pass it
+   * back verbatim on every subsequent image so the SAME model appears
+   * across all 7-8 photos.
+   */
+  modelPersona?: string | null;
+}
+
+export interface HiggsfieldPromptResult {
+  /** The locked persona — store it client-side and resend for the next image. */
+  modelPersona: string;
+  /** Short summary of the product the vision model read from the photo. */
+  productSummary: string;
+  /** The ready-to-paste Higgsfield text-to-image prompt. */
+  prompt: string;
+  /** Suggested negative prompt (things to avoid). */
+  negativePrompt: string;
+}
+
+const PROMPT_ENGINEER_SYSTEM = `You are a senior AI image-prompt engineer for an e-commerce brand. You look at a supplier's product photo and write a single, production-ready TEXT-TO-IMAGE prompt (for Higgsfield / any modern diffusion model) that recreates the SAME product on a fresh, Western model.
+
+THE THREE HARD RULES (never break):
+
+1. PRODUCT STAYS IDENTICAL. Read the product from the photo with forensic precision and describe it so the generator reproduces the exact same item: garment/object type, every color, fabric/material, pattern/print, neckline, sleeves, length, fit/silhouette, closures, straps, embellishments, hardware, text/graphics on it, trim. The product in the generated image must look like the SAME SKU the buyer will receive. Do NOT restyle, recolor, or "improve" the product.
+
+2. SWAP THE MODEL to a USA / Western, attractive, well-fitted <model type>. Never describe the original photo's model. Use the LOCKED MODEL PERSONA provided (or, if none is provided, invent a specific, detailed one and return it). The persona must be concrete enough to reproduce the same-looking person every time: approximate age, ethnicity/look (default American / Western), face shape, skin tone, hair color + length + style, body build/height. Natural, healthy, catalog-appropriate.
+
+3. CHANGE THE POSE. Never copy the pose from the source photo. If an explicit pose is given, use it. Otherwise choose a flattering, natural pose that shows the product well and differs clearly from a generic supplier shot.
+
+ALSO:
+- Apply the requested background, style/mood, and orientation.
+- Photorealistic, professional fashion / e-commerce photography. Include camera + lighting cues (e.g. "85mm, soft diffused studio light, shallow depth of field") so output looks like a real product shoot.
+- For kids/boys/girls: keep everything wholesome, age-appropriate, fully clothed, modest. No suggestive posing or wording, ever.
+- The prompt should be one rich paragraph (roughly 60-130 words), not a bullet list.
+
+OUTPUT — strict JSON, no prose, no markdown:
+{
+  "modelPersona": "the locked persona you used — detailed + reusable (echo the provided one verbatim if given)",
+  "productSummary": "1 sentence: what the product is, as read from the photo",
+  "prompt": "the full text-to-image prompt, one paragraph",
+  "negativePrompt": "comma-separated things to avoid: deformed hands, extra fingers, altered product, wrong colors, text artifacts, watermark, low quality, duplicate, mismatched garment"
+}`;
+
+export async function generateHiggsfieldPrompt(
+  input: HiggsfieldPromptInput,
+  accum?: CostAccumulator,
+): Promise<HiggsfieldPromptResult> {
+  const hasPersona = !!(input.modelPersona && input.modelPersona.trim());
+
+  const userText = [
+    `Model type: ${input.modelType} (USA / Western, well-fitted, attractive, catalog-appropriate)`,
+    input.background ? `Background: ${input.background}` : `Background: clean studio (choose what suits the product)`,
+    input.style ? `Style / mood: ${input.style}` : `Style: clean professional e-commerce`,
+    input.pose && input.pose.trim()
+      ? `Pose: ${input.pose.trim()}`
+      : `Pose: AUTO — pick a natural flattering pose DIFFERENT from the source photo`,
+    input.orientation ? `Orientation: ${input.orientation}` : `Orientation: portrait`,
+    input.freeText && input.freeText.trim()
+      ? `Extra instructions from the team: ${input.freeText.trim()}`
+      : null,
+    hasPersona
+      ? `LOCKED MODEL PERSONA (reuse this EXACT person for consistency across the listing — do not change it):\n${input.modelPersona!.trim()}`
+      : `No locked persona yet — this is the FIRST image of the listing. INVENT a specific, detailed ${input.modelType} persona (USA / Western) and return it in modelPersona so the next images reuse the same person.`,
+    ``,
+    `Read the attached product photo and produce the JSON.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const userContent: ContentBlock[] = [
+    ...toImageBlocks([input.image]),
+    { type: "text", text: userText },
+  ];
+
+  const msg = await client().messages.create({
+    model: MODEL_COMPLIANCE, // Haiku 4.5 — vision, cheap. Swap to MODEL_GENERATOR for max quality.
+    max_tokens: 900,
+    temperature: 0.7,
+    system: [
+      {
+        type: "text",
+        text: PROMPT_ENGINEER_SYSTEM,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [
+      { role: "user", content: userContent },
+      { role: "assistant", content: "{" },
+    ],
+  });
+  trackUsage(accum, msg, modelKindFromId(MODEL_COMPLIANCE));
+
+  const parsed = safeParseJson<Partial<HiggsfieldPromptResult>>(
+    "{" + extractText(msg),
+  );
+
+  // If the caller already had a persona, keep it authoritative so it
+  // never drifts even if the model echoes it imperfectly.
+  const modelPersona = hasPersona
+    ? input.modelPersona!.trim()
+    : (parsed.modelPersona ?? "").toString().trim();
+
+  return {
+    modelPersona,
+    productSummary: (parsed.productSummary ?? "").toString().trim(),
+    prompt: (parsed.prompt ?? "").toString().trim(),
+    negativePrompt: (parsed.negativePrompt ?? "").toString().trim(),
+  };
+}

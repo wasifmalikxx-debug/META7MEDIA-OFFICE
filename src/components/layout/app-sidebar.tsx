@@ -30,6 +30,7 @@ import {
   FileText,
   Calculator,
   Sparkles,
+  Wand2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -564,6 +565,25 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     >
                       <Sparkles className="size-4" />
                       <span>SEO Autopilot</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {/* Prompt Engineer — AliExpress photo → Higgsfield
+                      image-gen prompt. CEO-only real tool for now
+                      (everyone else lands on Coming Soon), so it carries
+                      a "Soon" pill for non-CEO. Staged rollout like
+                      Product Hunter had. (2026-06-12) */}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      render={<Link href="/prompt-engineer" />}
+                      isActive={isItemActive("/prompt-engineer")}
+                    >
+                      <Wand2 className="size-4" />
+                      <span>Prompt Engineer</span>
+                      {!isCeo && (
+                        <span className="ml-auto inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase">
+                          Soon
+                        </span>
+                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
