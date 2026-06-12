@@ -2565,13 +2565,8 @@ ALSO:
 - For kids/boys/girls: keep everything wholesome, age-appropriate, fully clothed, modest. No suggestive posing or wording, ever.
 - The prompt should be one rich paragraph (roughly 60-130 words), not a bullet list.
 
-OUTPUT — strict JSON, no prose, no markdown:
-{
-  "modelPersona": "the locked persona you used — detailed + reusable (echo the provided one verbatim if given)",
-  "productSummary": "1 sentence: what the product is, as read from the photo",
-  "prompt": "the full text-to-image prompt, one paragraph",
-  "negativePrompt": "comma-separated things to avoid: deformed hands, extra fingers, altered product, wrong colors, text artifacts, watermark, low quality, duplicate, mismatched garment"
-}`;
+OUTPUT — strict single-line minified JSON, no prose, no markdown, NO literal line breaks inside any value (write every field as one continuous line; keep modelPersona under ~60 words and prompt under ~130 words):
+{"modelPersona":"the locked persona you used — detailed + reusable (echo the provided one verbatim if given)","productSummary":"1 sentence: what the product is, as read from the photo","prompt":"the full text-to-image prompt, one paragraph","negativePrompt":"comma-separated things to avoid: deformed hands, extra fingers, altered product, wrong colors, text artifacts, watermark, low quality, duplicate, mismatched garment"}`;
 
 export async function generateHiggsfieldPrompt(
   input: HiggsfieldPromptInput,
@@ -2606,7 +2601,10 @@ export async function generateHiggsfieldPrompt(
 
   const msg = await client().messages.create({
     model: MODEL_COMPLIANCE, // Haiku 4.5 — vision, cheap. Swap to MODEL_GENERATOR for max quality.
-    max_tokens: 900,
+    // Headroom so the persona + paragraph prompt + negative never get
+    // truncated mid-string (truncation → invalid JSON). 900 was too tight
+    // for verbose personas (bug 2026-06-12).
+    max_tokens: 1600,
     temperature: 0.7,
     system: [
       {
@@ -2622,9 +2620,7 @@ export async function generateHiggsfieldPrompt(
   });
   trackUsage(accum, msg, modelKindFromId(MODEL_COMPLIANCE));
 
-  const parsed = safeParseJson<Partial<HiggsfieldPromptResult>>(
-    "{" + extractText(msg),
-  );
+  const parsed = parseHiggsfieldJson("{" + extractText(msg));
 
   // If the caller already had a persona, keep it authoritative so it
   // never drifts even if the model echoes it imperfectly.
@@ -2632,10 +2628,107 @@ export async function generateHiggsfieldPrompt(
     ? input.modelPersona!.trim()
     : (parsed.modelPersona ?? "").toString().trim();
 
+  const prompt = (parsed.prompt ?? "").toString().trim();
+  if (!prompt) {
+    throw new Error(
+      "the model didn't return a usable prompt — try again (Haiku occasionally returns malformed output).",
+    );
+  }
+
   return {
     modelPersona,
     productSummary: (parsed.productSummary ?? "").toString().trim(),
-    prompt: (parsed.prompt ?? "").toString().trim(),
+    prompt,
     negativePrompt: (parsed.negativePrompt ?? "").toString().trim(),
   };
+}
+
+/**
+ * Tolerant parser for the Prompt Engineer JSON. LLM JSON for free-text
+ * fields fails in two common ways: (1) RAW newlines/tabs inside a string
+ * value (JSON forbids unescaped control chars), and (2) truncation that
+ * leaves the object unclosed. This handles both:
+ *   1. direct parse (slice to last brace)
+ *   2. escape raw control chars that sit INSIDE string literals, retry
+ *   3. per-field regex extraction as a last resort (survives truncation
+ *      of later fields — we still recover the earlier ones)
+ */
+function parseHiggsfieldJson(text: string): Partial<HiggsfieldPromptResult> {
+  const tryParse = (s: string): Partial<HiggsfieldPromptResult> | null => {
+    const last = s.lastIndexOf("}");
+    const cand = last >= 0 ? s.slice(0, last + 1) : s;
+    try {
+      return JSON.parse(cand) as Partial<HiggsfieldPromptResult>;
+    } catch {
+      return null;
+    }
+  };
+
+  // 1. straight parse
+  const direct = tryParse(text);
+  if (direct) return direct;
+
+  // 2. escape raw control chars that appear inside "..." string values
+  const sanitized = escapeControlCharsInStrings(text);
+  const fixed = tryParse(sanitized);
+  if (fixed) return fixed;
+
+  // 3. field-level salvage — pull each known field out individually
+  const grab = (key: string): string => {
+    const m = sanitized.match(
+      new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`),
+    );
+    if (!m) return "";
+    return m[1]
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, " ")
+      .replace(/\\t/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+  const salvaged: Partial<HiggsfieldPromptResult> = {
+    modelPersona: grab("modelPersona"),
+    productSummary: grab("productSummary"),
+    prompt: grab("prompt"),
+    negativePrompt: grab("negativePrompt"),
+  };
+  if (salvaged.prompt || salvaged.modelPersona) return salvaged;
+
+  throw new Error(
+    `Claude returned unparseable output. First 200 chars: ${text.slice(0, 200)}`,
+  );
+}
+
+/** Escape raw newline/return/tab characters that occur INSIDE JSON string
+ *  literals (a simple in-string state machine) so JSON.parse accepts them.
+ *  Structural whitespace between tokens is left untouched. */
+function escapeControlCharsInStrings(s: string): string {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (esc) {
+      out += ch;
+      esc = false;
+      continue;
+    }
+    if (ch === "\\") {
+      out += ch;
+      esc = true;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = !inStr;
+      out += ch;
+      continue;
+    }
+    if (inStr) {
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+      if (ch === "\t") { out += "\\t"; continue; }
+    }
+    out += ch;
+  }
+  return out;
 }
