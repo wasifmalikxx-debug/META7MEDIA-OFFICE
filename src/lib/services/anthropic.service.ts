@@ -1623,6 +1623,18 @@ Hard rules:
     "gothic", "kawaii"
   • No word repeats more than 2 times across all 13 tags
 
+  UNIQUENESS IS MANDATORY — all 13 tags must be DISTINCT buyer angles.
+  Do NOT submit a singular AND a plural of the same word ("prom dress"
+  AND "prom dresses" = ONE wasted slot). Do NOT submit two phrasings of
+  the same head noun ("mermaid prom dress" AND "mermaid prom gown"). The
+  pipeline auto-collapses near-duplicates — if you send them you simply
+  LOSE slots, so spend all 13 on genuinely different facets (material,
+  color, silhouette, length, audience, occasion, style, aesthetic).
+  Prefer MODERATE (1k-10k) and NICHE (<1k) long-tail tags a new shop can
+  actually rank for; AVOID SATURATED (>=50k) single-word heads — they get
+  auto-swapped downstream and waste a slot. A long-tail moderate tag
+  converts; a saturated head does not.
+
 Target demand mix (use the ✗/⚠/✓/★ tier flags from anchor block):
   • 0 SATURATED (✗). Never copy a ✗ anchor as a tag. Wasted slot.
     Examples seen in production that ruined listings: "leather bag"
@@ -1693,75 +1705,203 @@ GOOD vs BAD tag set example:
     "long formal dress", "gala dress", "homecoming dress"]
 
 ═══════════════════════════════════════════════════════════════
-DESCRIPTION — 4 SECTIONS, structured (1200-1800 chars)
+DESCRIPTION — CONVERSION-GRADE, 4 SECTIONS (1200-1800 chars)
 ═══════════════════════════════════════════════════════════════
 
+This description has TWO jobs and must do BOTH:
+  1. RANK — long-tail keyword surface (weave anchors into Section 3).
+  2. SELL — turn the browser who clicked into a buyer.
+
+A description that only states specs is a wasted scroll. A description
+that only sells but skips keywords never gets seen. You write copy that
+ranks AND converts — benefit-led, human, scannable, persuasive. Write
+like a sharp human merchandiser who knows the product cold, NOT like a
+form being filled in. NEVER corny fiction.
+
+──────────────────────────────────────────────
+FORMATTING CONTRACT (non-negotiable)
+──────────────────────────────────────────────
 The literal characters \\n MUST appear between bullets and \\n\\n
 between sections in the JSON string. If you skip the newlines, Etsy
-renders the description as one wall of text with stray • characters
-and buyers bounce.
+renders one wall of text with stray • characters and buyers bounce.
+Short paragraphs only — 1-3 sentences max. No non-bullet paragraph
+over ~3 lines (~280 chars). Scannable beats dense.
 
-SECTION 1 — HOOK (1-2 SHORT lines, benefit-led, 1 anchor woven in):
-  State what the product IS and the top benefit, plainly. Buyer
-  should know what they're buying within 5 seconds.
+──────────────────────────────────────────────
+THE CONVERSION RULE (read first — this is the upgrade)
+──────────────────────────────────────────────
+Features tell; benefits sell. For every feature you list, the buyer is
+silently asking "so what does that do for me?" — answer it. Lead with
+the payoff, then prove it with the feature.
+  Feature only:   "Adjustable crossbody strap."
+  Benefit-led:    "Adjustable strap so your hands stay free on the
+                   commute — phone, coffee, keys, all reachable."
 
-  ✅ Example: "Leather crossbody bag built for working women who need
-   their essentials at arm's reach all day."
+The description MUST hit AT LEAST ONE conversion element (pick what
+fits the product — do NOT force all four):
+  (A) GIFTING FRAME — name who it's a great gift for + the occasion
+      ("A go-to gift for the nurse who's on her feet all shift" /
+       "Made for graduation, birthdays, and Mother's Day").
+  (B) STYLING / PAIRING — how the buyer wears, displays, or pairs it
+      ("Pairs with everything from jeans to a slip dress" /
+       "Styles a console table or anchors a gallery wall").
+  (C) PERSUASION ANGLE — earn the price with proof, not hype: material
+      weight, construction, durability, value vs the cheap version
+      ("Full-grain leather that softens with age instead of cracking —
+       the bag you keep for a decade").
+  (D) BUYER-IDENTITY MATCH — the kind of person this is right for
+      ("For the host who notices the details" / "For the bride who
+       wants classic, not costume").
 
-SECTION 2 — FEATURES (4-7 bullets, each "• " on its own line):
-  Each bullet: noun-led benefit statement. Plain, scannable.
+──────────────────────────────────────────────
+SECTION 1 — HOOK (1-2 SHORT lines)
+──────────────────────────────────────────────
+The hook decides whether they keep reading. It MUST:
+  • Lead with the STRONGEST keyword (the primary anchor / product noun)
+    in the first ~6 words — Etsy reads it AND the buyer confirms "yes,
+    this is the thing I searched for."
+  • Pair that keyword with a COMPELLING BENEFIT in the same breath —
+    the payoff, not just the category.
+  • Sound like a confident human, not a catalog. Specific to THIS
+    product.
 
-  ✅ Example bullet: "• Adjustable crossbody strap fits over a
-   shoulder or worn cross-chest"
+Two equally valid hook patterns — pick whichever converts harder for
+this product:
+  (A) PRODUCT-FIRST + benefit (default for functional items):
+      "Leather crossbody bag that keeps your phone, cards, and keys at
+       arm's reach — so you move through a packed day hands-free."
+  (B) BENEFIT / AUDIENCE / OCCASION-FIRST with the keyword woven in
+      fast (default for gifts, apparel, decor):
+      "A standout gift for the coffee lover who has everything — a
+       hand-poured soy candle that fills a whole room with warm vanilla
+       and cedar."
 
-SECTION 3 — WHO IT'S FOR / USE CASES (2-3 lines):
-  Weave 3-5 anchor keywords naturally into this section. This is the
-  long-tail SEO surface for terms that didn't fit title or tag slots.
+The hook is benefit-led and human. It is NOT a fiction opening (see
+BANNED below) and it is NOT a bare spec line ("This is a leather bag.").
 
-  ✅ Example: "Perfect for daily commute, fits a 13-inch laptop, and
-   works equally well as a weekend travel bag or office work tote."
+──────────────────────────────────────────────
+SECTION 2 — FEATURES, TRANSLATED TO BENEFITS (4-7 bullets)
+──────────────────────────────────────────────
+Each bullet on its own line, starting "• ". Each bullet = a real
+benefit + the construction detail that earns it. Lead with the payoff,
+back it with the spec. Scannable, but never a naked spec. Put the most
+persuasive bullet first — many buyers stop after three. No two bullets
+make the same point.
+  ✅ "• Holds its shape all night — boned sweetheart bodice with a
+      hidden back zip, no constant tugging"
+  ✅ "• Interior zip pocket keeps cards and cash secure and separate
+      from the clutter"
+  ❌ "• Boned bodice"  (spec with no payoff — dead bullet)
+  ❌ "• 100% cotton"   → ✅ "• Breathable 100% cotton stays cool
+      through long wear"
+At least 3 of the bullets (or ≥50%) must carry a clear benefit clause,
+not just a spec. Match every feature to what you actually SEE in the
+photo — never invent a material or detail that isn't there.
 
-SECTION 4 — CARE & SIZING (1 short paragraph, 2-3 sentences):
-  Include dimensions, material care, sizing reference.
+──────────────────────────────────────────────
+SECTION 3 — WHO IT'S FOR / USE CASES + ONE CONVERSION ELEMENT
+──────────────────────────────────────────────
+This is the long-tail SEO surface AND the conversion close. Do BOTH:
+  • Weave 3-5 anchor keywords naturally (use cases, occasions,
+    audiences) — this catches searches that didn't fit title or tags.
+    Prefer MODERATE / NICHE anchors; do not pad with SATURATED terms.
+  • Land at least ONE of the conversion elements (A/B/C/D above) in a
+    natural human sentence — gifting, styling, persuasion, or identity.
+  ✅ "Built for the daily commute, weekend travel, and the office —
+      fits a 13-inch laptop with room to spare. A reliable gift for
+      the new grad, the working mom, or anyone upgrading from a bag
+      that never quite held it all."
+  ✗ keyword soup: "Great for prom dress, evening dress, formal dress,
+      gala dress, party dress." (ranks for nothing, sells nothing)
+SEO-heavy is fine, but it must still read like a person wrote it, not
+a keyword list with periods.
 
-  ✅ Example: "Gentle hand-wash in cold water, hang to dry. Store
-   flat or on a padded hanger to preserve the bodice structure.
-   Available in XS through XXL."
+──────────────────────────────────────────────
+SECTION 4 — DETAILS, CARE & SIZING (1 short paragraph)
+──────────────────────────────────────────────
+Close buyer friction so they click Add to Cart instead of bouncing to
+ask a question. Include dimensions, material care, and a sizing/fit
+reference. Mention sizes/variants ONCE here if supplied.
+  ✅ "Measures 9 x 7 inches with an adjustable 22-52 inch strap.
+      Wipe clean with a damp cloth; the leather deepens with age.
+      Available in XS-XXL and 5 colors."
 
-EXAMPLE of correctly-formatted description (note the \\n escapes and
-the plain, benefit-led opening — NO narrative):
+EXAMPLE of a correctly-formatted, conversion-grade description (note
+the \\n escapes, the keyword-led benefit hook, benefit bullets, the
+gifting/identity close — and NO fiction):
 
-"Floor-length princess gown built for cosplay, photo shoots, and themed parties. Heavyweight construction and finished seams give it real costume-grade durability.\\n\\n• Lace-up corset bodice in gradient ombré tones\\n• Puffed short sleeves with sheer mesh overlay\\n• Full A-line skirt in lustrous satin\\n• Ornate embroidered scrollwork at the hem\\n• Available in sizes XS through XL\\n\\nPerfect for renaissance fairs, fantasy weddings, princess-themed photoshoots, and adult cosplay events.\\n\\nGentle hand-wash in cold water, hang to dry. Store flat or on a padded hanger to preserve the bodice structure."
+"Floor-length princess gown built for cosplay and themed events — costume-grade construction that survives a full day of photos, dancing, and crowds without losing its shape.\\n\\n• Cinches and flatters — lace-up corset bodice adjusts to your fit so it sits smooth, no gaping\\n• Reads luxe in photos — puffed sheer-mesh sleeves and a full A-line satin skirt that catch the light instead of looking flat\\n• Moves without snagging — full skirt with finished interior seams\\n• Earns the price up close — ornate embroidered scrollwork at the hem\\n• Available in sizes XS through XL\\n\\nMade for renaissance fairs, fantasy weddings, themed photoshoots, and adult cosplay events — and a standout gift for the fantasy fan who takes their costuming seriously.\\n\\nGentle hand-wash in cold water, hang to dry. Store on a padded hanger to keep the bodice structure. True to size with a fitted bodice and full skirt."
 
-BANNED in description:
-  ❌ Narrative / storytelling / scene-setting openings:
+──────────────────────────────────────────────
+BANNED in description (compliance — non-negotiable)
+──────────────────────────────────────────────
+The line between PERSUASIVE COPY (good) and FICTION (banned) is simple:
+persuasive copy talks about the product and the buyer's real benefit —
+you MAY name a real use case, occasion, or buyer ("a gift for the
+coffee lover", "built for the daily commute"). Fiction narrates a scene
+or stage-directs a moment. Sell the benefit; never stage a movie.
+
+  ❌ Fiction / scene-setting / staged-moment openings:
        ❌ "Picture him / her / them pulling these on…"
        ❌ "Imagine the moment when…"
        ❌ "Soft cotton settles against his legs as he…"
        ❌ "On a quiet Sunday morning…"
        ❌ "She'll smile when she opens the box…"
-  ❌ Second-person scene direction ("you'll feel…", "you'll reach
-     for…")
+       ❌ "Walk into the room and watch heads turn…"
+  ❌ Gratuitous sensory imagery with no product point ("feel the
+     whisper of silk dancing across your skin").
+  ✅ ALLOWED — "you" framing a REAL problem/benefit, NOT a staged
+     scene. Test: if the "you" describes a real, checkable benefit or
+     use → OK. If it stages an emotion or imagined moment → BANNED.
+       ✅ "Designed so you can work without reaching for your bag."
+       ✅ "Keeps your hands free on a packed commute."
+       ✅ "Pairs with your favorite heels."
+       ❌ "You'll feel like a princess…"  ❌ "You'll never take it off."
+       ❌ "Picture yourself stepping out…"
+  ❌ Empty hype / CTA spam with no substance ("absolutely stunning!!!",
+     "you NEED this", "best gift ever", "must-have", "look no further").
+     Persuade with specifics, not exclamation marks — at most one "!"
+     in the whole description.
   ❌ Shipping / processing / dispatch language ("ships in X days",
      "ready to ship in X business days", "delivery in X weeks"). Etsy
-     shop settings handle delivery promises — putting timing in the
-     description creates conflicting promises and TOS risk.
+     shop settings own delivery promises — duplicating them here
+     creates conflicting promises and TOS risk.
+  ❌ Buyer-data-on-product wording (personalised, customisable,
+     monogram, "with name", "add your name/date/message") — there's no
+     input field, so it misleads. Marketing/craft words (handmade,
+     custom made, made to order, bespoke, engraved) ARE allowed.
+  ❌ Fake scarcity / fake reviews / unverifiable claims ("only 2 left",
+     "best-selling", "thousands of happy customers", "voted #1"). Real
+     persuasion = real material/construction/use proof, never invented
+     social proof.
   ❌ Character-defining trait wording, EVEN WHEN REFRAMING away from
      the IP:
-       For Rapunzel-style products: ban "long-haired", "long braid",
-       "golden braid", "magic hair", "tower escape".
-       For Snow White-style: ban "raven-haired", "red apple", "seven
+       Rapunzel-style: ban "long-haired", "long braid", "golden braid",
+       "magic hair", "tower escape".
+       Snow White-style: ban "raven-haired", "red apple", "seven
        dwarfs", "poison apple".
-       For Frozen-style: ban "ice queen", "snow queen", "frozen
-       kingdom", "let it go".
-       For Cinderella-style: ban "glass slipper", "midnight ball",
-       "fairy godmother".
-     The reframed description must read as a generic fairy-tale /
-     fantasy item, NOT "a thinly-veiled <character>".
+       Frozen-style: ban "ice queen", "snow queen", "frozen kingdom",
+       "let it go".
+       Cinderella-style: ban "glass slipper", "midnight ball", "fairy
+       godmother".
+     The reframed description reads as a generic fairy-tale / fantasy
+     item, NOT "a thinly-veiled <character>".
 
-If a voice instruction in the user prompt sounds like it asks for
-narrative, reinterpret it as a benefit-led version. Voice variation
-is for sentence rhythm + vocabulary, NOT for genre.
+COMPLIANCE ≠ BORING. When a product is reframed for policy safety, the
+description must STILL hit Section 1's keyword-led benefit hook AND
+Section 3's conversion element (gifting / styling / persuasion /
+identity). Drop the IP language — never drop the selling. A policy-safe
+listing is allowed to be emotionally smart; it is not allowed to be a
+feature dump.
+
+If a voice instruction in the user prompt sounds like it asks for a
+staged scene or story, reinterpret it as the benefit-led version. Voice
+varies sentence rhythm + vocabulary + which conversion angle leads —
+NEVER the genre, the 4-section structure, or the no-fiction rule.
+
+(Note for the JSON output: the description value is ONE string with
+literal \\n between bullets and \\n\\n between sections — see the
+OUTPUT block below.)
 
 ═══════════════════════════════════════════════════════════════
 IMAGE ALT TEXT — exactly 1 general alt, ≤ 250 chars
@@ -1888,44 +2028,54 @@ OUTPUT — strict JSON, NO prose, NO markdown fences
 
 const GENERATOR_VOICES: { name: string; instruction: string }[] = [
   {
-    name: "practical-specs-first",
+    name: "benefit-translator",
     instruction:
-      "PRACTICAL SPECS-FIRST. Lead with concrete features — material, construction, dimensions, what makes it functionally distinct. Direct, no fluff, no purple prose. Sentences are short and factual.",
+      "BENEFIT-TRANSLATOR. Lead the hook with the strongest anchor keyword + the single most useful thing the product does for the buyer (a problem it solves, a job it does well). Then turn every feature into its payoff — 'X so you can Y'. Plain, action-focused English. No staged scenes, no second-person 'picture yourself', no empty hype. Keep the 4-section structure.",
+  },
+  {
+    name: "gifting-hero",
+    instruction:
+      "GIFTING HERO. Frame the listing around who gives it and who receives it. Hook leads with the product keyword + benefit; the gifting angle anchors Section 3 with concrete recipients and occasions (birthday, graduation, Mother's Day, anniversary, housewarming) — e.g. 'a go-to gift for the coffee lover who has every mug but this one.' Persuade with fit, not sentiment. NEVER a 'she'll smile when she opens it' scene. Keep the 4-section structure.",
+  },
+  {
+    name: "lifestyle-styled",
+    instruction:
+      "LIFESTYLE & STYLING. Center how the buyer actually uses, wears, displays, or pairs the product. Hook = keyword + the everyday benefit. In Section 3 give real styling/pairing guidance ('pairs with minimalist gold and a sleek updo', 'styles over a white tee or under a blazer', 'anchors a console table without crowding it'). Concrete pairings, NOT a runway fantasy or scene-setting. Keep the 4-section structure.",
+  },
+  {
+    name: "value-justifier",
+    instruction:
+      "VALUE-JUSTIFIER. Earn the price with proof, not hype — material weight, construction, durability, finish, and honest value vs the cheap version ('full-grain leather that softens instead of cracking — the bag you keep for a decade'). Reassuring 'built to last' tone. Hook leads with keyword + a quality benefit. Every claim backed by a real construction detail. No invented reviews, no fake scarcity, no exclamation spam. Keep the 4-section structure.",
   },
   {
     name: "designer-aesthetic",
     instruction:
-      "DESIGNER AESTHETIC. Use vocabulary a fashion editor or interior designer would actually reach for — silhouette, drape, hand-feel, texture, finish, palette. Sophisticated and detail-oriented, never generic. Still benefit-led, NEVER narrative.",
+      "DESIGNER AESTHETIC. Use the vocabulary a fashion editor or interior designer actually reaches for — silhouette, drape, hand-feel, texture, finish, palette — and tie each to why it flatters or works for the buyer. Hook = keyword + aesthetic payoff. Sophisticated, specific, benefit-led. Never generic, NEVER narrative. Keep the 4-section structure.",
   },
   {
     name: "premium-minimalist",
     instruction:
-      "PREMIUM MINIMALIST. Short, confident sentences. No filler words. Each line earns its place. The kind of copy that appears on a luxury brand's product page — restrained and assured. Lead with what the product IS, in one sharp line.",
+      "PREMIUM MINIMALIST. Short, confident sentences, zero filler — luxury product-page energy. Each line earns its place and carries one benefit. Hook leads with the keyword and the single sharpest reason to buy. Restrained and assured, persuasive without hype, never a staged scene, never gushy. Keep the 4-section structure.",
+  },
+  {
+    name: "problem-solver",
+    instruction:
+      "PROBLEM / SOLUTION. Open by naming the real, checkable frustration this buyer has, keyword woven in fast, then deliver the product as the fix ('Tired of digging for your keys? This leather crossbody keeps them at your fingertips.'). 'You' is allowed only to state the genuine problem/benefit, never to stage a scene or feeling. Every bullet maps a feature to the friction it removes. Punchy and useful. Keep the 4-section structure.",
   },
   {
     name: "occasion-focused",
     instruction:
-      "OCCASION-FOCUSED. Lead with WHEN and FOR WHOM this product fits — gift moments, life events, daily routines, specific use cases. Concrete and benefit-led: name the occasion, then name the feature that makes the product right for it. NO scene-setting prose.",
+      "OCCASION-FOCUSED. Lead the hook with WHEN and FOR WHICH event this fits, fused to the anchor keyword ('A prom dress built to own the night…'), then the feature that makes it right. Section 3 expands to adjacent occasions (prom, homecoming, quinceañera, galas) as both long-tail SEO surface and conversion. Concrete moments, NO scene-setting prose. Keep the 4-section structure.",
   },
   {
     name: "detail-expert",
     instruction:
-      "DETAILED EXPERT. Comprehensive feature breakdown, construction details, materials vocabulary. Buyer wants confidence that the product is well-made and the seller knows what they're talking about. Authoritative and thorough. Open with a one-line summary of what the product is + the headline feature.",
-  },
-  {
-    name: "benefit-led",
-    instruction:
-      "BENEFIT-LED. Open with the single most useful thing this product does for the buyer (a problem it solves, a job it does well). Then back the claim with the construction detail that makes it true. Plain English, action-focused, no scene-setting.",
-  },
-  {
-    name: "buyer-confidence",
-    instruction:
-      "BUYER-CONFIDENCE. Lead with quality + durability cues — material weight, stitching, reinforcement, finish. Tone is reassuring: 'this is built to last.' Open with a factual line about what the product is and the construction that backs the claim.",
+      "DETAIL-EXPERT. Authoritative, thorough feature and construction breakdown with real materials vocabulary that builds buyer confidence the item is well made — each detail tied to a buyer payoff (longevity, fit, performance). Hook = one-line keyword summary + the headline feature + its payoff. Comprehensive but scannable, never a spec dump, never narrative. Keep the 4-section structure.",
   },
   {
     name: "feature-forward",
     instruction:
-      "FEATURE-FORWARD. Open with a one-line product summary, then immediately call out the standout feature in the same paragraph. Punchy. Buyer should know what's special by the end of line two. No scene-setting, no second-person 'you'll feel…' framing.",
+      "FEATURE-FORWARD. Open with a one-line keyword-led product summary, then immediately call out the standout feature AND its payoff in the same paragraph. Punchy — the buyer knows what's special by line two. No scene-setting, no second-person 'you'll feel…' framing, no hype. Keep the 4-section structure.",
   },
 ];
 
@@ -2168,6 +2318,119 @@ export async function generateListing(
   return normalize(parsed, input.images.length);
 }
 
+// ─── Targeted regeneration (QC layer) ──────────────────────────────
+//
+// Both reuse the cached GENERATOR_SYSTEM (warm prompt cache) + the
+// assistant-prefill "{" JSON contract. The route's Stage 4.6 QC gate
+// calls these to fix a weak description or a short tag set WITHOUT a
+// full re-generation — and WITHOUT re-sending images (vision compliance
+// already ran on the first pass). The description rewrite NEVER touches
+// the title or tags, so tag uniqueness can never be undone by a retry.
+
+export async function regenerateDescription(
+  opts: {
+    categoryPath: string;
+    approvedTitle: string;
+    approvedTags: string[];
+    avoidWords?: string[];
+    failingItems: string[];
+  },
+  accum?: CostAccumulator,
+): Promise<string> {
+  const avoidBlock =
+    opts.avoidWords && opts.avoidWords.length > 0
+      ? `\n# Reframe constraint — NEVER use any of these words anywhere: ${opts.avoidWords.join(", ")}.`
+      : "";
+  const failBlock =
+    opts.failingItems.length > 0
+      ? opts.failingItems.map((i) => `- ${i}`).join("\n")
+      : "- Read like a dry spec sheet — no benefit-led hook and no conversion element (gifting / styling / persuasion / buyer-identity).";
+
+  const user = `# REWRITE THE DESCRIPTION ONLY
+The title and tags below are FINAL and correct — do NOT change them, do NOT output them. Return ONLY: {"description": "..."}.
+
+# Approved title (context only)
+${opts.approvedTitle}
+
+# Approved tags (context only — weave 3-5 naturally into the WHO IT'S FOR section, do NOT list them)
+${opts.approvedTags.join(", ")}
+
+# Category
+${opts.categoryPath}${avoidBlock}
+
+# What was WRONG with the previous description — fix EVERY item:
+${failBlock}
+
+# HARD RULES (restated because they were the failure):
+- Follow the DESCRIPTION section of the system prompt EXACTLY: 4 sections (HOOK → benefit bullets → WHO IT'S FOR / use cases → details, care & sizing), 1200-1800 chars, and use the SAME formatting it requires (the literal two-character newline escape between bullets and a blank-line escape between sections, inside the JSON string value).
+- The HOOK must lead with the strongest keyword + a compelling buyer benefit in the first 1-2 lines.
+- Persuasive, human, benefit-led copy is REQUIRED and GOOD. Corny short-story / scene-direction openings are BANNED — no "Picture…", "Imagine…", "On a quiet…", "She'll smile when…", no "you'll feel…/you'll reach for…". "You" is allowed ONLY to state a real, checkable benefit. Persuade WITHOUT fiction.
+- Section 3 must land at least ONE conversion element (gifting, styling/pairing, persuasion-by-proof, or buyer-identity) in a natural sentence, and weave the approved tags as use cases — never a keyword list with periods.
+- NO shipping / processing / dispatch / delivery timing anywhere.
+- NO empty hype, fake scarcity, or fake reviews; at most one "!" in the whole description.
+- NO buyer-data wording (personalised, customisable, monogram, "with name"); marketing/craft words (handmade, custom made, made to order, bespoke, engraved) ARE allowed.
+- NO trademarked / IP terms and NO character-defining trait wording.
+Output strict JSON, no prose, no markdown fences: {"description":"..."}`;
+
+  const msg = await client().messages.create({
+    model: MODEL_GENERATOR,
+    max_tokens: 1200,
+    temperature: 0.7,
+    system: [
+      {
+        type: "text",
+        text: GENERATOR_SYSTEM,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [
+      { role: "user", content: user },
+      { role: "assistant", content: "{" },
+    ],
+  });
+  trackUsage(accum, msg, modelKindFromId(MODEL_GENERATOR));
+  const raw = "{" + extractText(msg);
+  const parsed = safeParseJson<{ description?: string }>(raw);
+  return normalizeDescription(parsed.description ?? "").slice(
+    0,
+    ETSY_LIMITS.DESCRIPTION_MAX,
+  );
+}
+
+export async function regenerateTags(
+  opts: { categoryPath: string; approvedTitle: string },
+  accum?: CostAccumulator,
+): Promise<string[]> {
+  const user = `# REGENERATE TAGS ONLY — return {"tags": ["..."]}
+Title (final): ${opts.approvedTitle}
+Category: ${opts.categoryPath}
+The previous tag set fell short of 13 UNIQUE tags after near-duplicate folding (singular/plural pairs and shared-core-noun variants were collapsed).
+Output 16 tags (over-supply so the de-dup engine lands exactly 13): each <=20 chars, lowercase, no punctuation, NO personalised / monogram / "with name" wording.
+Each tag must be a DISTINCT buyer angle — vary the FACET (material, color, silhouette, audience, occasion, length, style, aesthetic). Do NOT submit singular+plural pairs or two phrasings of the same head noun (not both "prom dress" and "prom gown"). Prefer MODERATE / NICHE long-tail over saturated short heads.
+Strict JSON only: {"tags":[ ... 16 items ... ]}`;
+
+  const msg = await client().messages.create({
+    model: MODEL_GENERATOR,
+    max_tokens: 400,
+    temperature: 0.6,
+    system: [
+      {
+        type: "text",
+        text: GENERATOR_SYSTEM,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [
+      { role: "user", content: user },
+      { role: "assistant", content: "{" },
+    ],
+  });
+  trackUsage(accum, msg, modelKindFromId(MODEL_GENERATOR));
+  const raw = "{" + extractText(msg);
+  const parsed = safeParseJson<{ tags?: string[] }>(raw);
+  return Array.isArray(parsed.tags) ? parsed.tags : [];
+}
+
 // ─── Stage 3 — Text compliance audit (Haiku) ────────────────────────
 
 export interface TextComplianceReport {
@@ -2223,6 +2486,91 @@ export async function validateListing(
   return {
     ok: parsed.ok && localIssues.every((i) => i.severity !== "block"),
     issues: [...(parsed.issues ?? []), ...localIssues],
+  };
+}
+
+// ─── Description QC scorer (Haiku) — wires the previously-dead ────────
+//     VALIDATOR_SYSTEM intent into a LIVE conversion-quality gate.
+//
+// Cheap (~$0.0007/call, Haiku, temp 0). Persuasive / human / benefit-led
+// copy scores HIGH; corny fiction or scene-direction openings are a HARD
+// FAIL regardless of other quality. The route's Stage 4.6 QC gate calls
+// this and regenerates the description (only) when it fails.
+export interface DescriptionScore {
+  overallScore: number;
+  hasNarrativeOpening: boolean;
+  hasSceneDirection: boolean;
+  hasShippingLanguage: boolean;
+  hasMtoWording: boolean;
+  hasBannedTrademark: boolean;
+  missingHook: boolean;
+  missingWhoItsFor: boolean;
+  notBenefitLed: boolean;
+  bulletCount: number;
+  failingItems: string[];
+}
+
+const DESCRIPTION_SCORER_SYSTEM = `You are an Etsy listing-description QC scorer — NOT a rewriter. Persuasive, human, benefit-led conversion copy is GOOD. Corny fiction / scene-setting is BAD — they are NOT the same thing.
+
+Return strict JSON only:
+{
+  "overallScore": 0-100,
+  "hasNarrativeOpening": boolean,   // "Picture him…","Imagine…","On a quiet Sunday…","She'll smile when…" = true
+  "hasSceneDirection": boolean,     // "you'll feel…","you'll reach for…", stage-directed emotion = true
+  "hasShippingLanguage": boolean,   // ships in X days / dispatch / processing time / business days = true
+  "hasMtoWording": boolean,         // personalised / customisable / monogram / "with name" = true
+  "hasBannedTrademark": boolean,    // Disney / Marvel / Nike / NFL etc. or copyrighted character names = true
+  "missingHook": boolean,           // no clear what-it-IS + top benefit in the first 1-2 lines
+  "missingWhoItsFor": boolean,      // no use-case / audience / occasion section
+  "notBenefitLed": boolean,         // dry spec sheet, zero benefit framing
+  "bulletCount": integer,
+  "failingItems": ["short human-readable reason per failure"]
+}
+
+SCORING:
+- >=70 ships. A persuasive benefit hook like "Built for working women who need their essentials at arm's reach" scores HIGH.
+- A conversion element (gifting / styling / persuasion / buyer-identity) present in a natural sentence RAISES the score; a pure spec sheet with none scores <70.
+- A fiction / staged-scene opening is a HARD FAIL: set hasNarrativeOpening (or hasSceneDirection) true AND overallScore <70.
+- "you" used to state a REAL, checkable benefit ("designed so you can work hands-free") is FINE — only stage-directed emotion ("you'll feel like a princess") is hasSceneDirection.
+- List a verbatim, specific reason in failingItems for every boolean you set true and whenever overallScore <70, so the rewriter knows exactly what to fix.`;
+
+export async function scoreDescription(
+  description: string,
+  accum?: CostAccumulator,
+): Promise<DescriptionScore> {
+  const msg = await client().messages.create({
+    model: MODEL_VALIDATOR,
+    max_tokens: 500,
+    temperature: 0,
+    system: DESCRIPTION_SCORER_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `Description to score:\n\n<<<\n${description}\n>>>`,
+      },
+      { role: "assistant", content: "{" },
+    ],
+  });
+  trackUsage(accum, msg, modelKindFromId(MODEL_VALIDATOR));
+  const raw = "{" + extractText(msg);
+  const parsed = safeParseJson<Partial<DescriptionScore>>(raw);
+  // Defensive coercion — a missing/garbled field must never crash the gate.
+  return {
+    overallScore:
+      typeof parsed.overallScore === "number" ? parsed.overallScore : 0,
+    hasNarrativeOpening: !!parsed.hasNarrativeOpening,
+    hasSceneDirection: !!parsed.hasSceneDirection,
+    hasShippingLanguage: !!parsed.hasShippingLanguage,
+    hasMtoWording: !!parsed.hasMtoWording,
+    hasBannedTrademark: !!parsed.hasBannedTrademark,
+    missingHook: !!parsed.missingHook,
+    missingWhoItsFor: !!parsed.missingWhoItsFor,
+    notBenefitLed: !!parsed.notBenefitLed,
+    bulletCount:
+      typeof parsed.bulletCount === "number" ? parsed.bulletCount : 0,
+    failingItems: Array.isArray(parsed.failingItems)
+      ? parsed.failingItems.map((x) => String(x))
+      : [],
   };
 }
 
@@ -2296,6 +2644,297 @@ function tagLooksLikeMto(tag: string): boolean {
   });
 }
 
+// ════════════════════════════════════════════════════════════════════
+// DETERMINISTIC TAG-UNIQUENESS ENGINE  (merged winner)
+// File: src/lib/services/anthropic.service.ts
+// Insert this block immediately AFTER tagLooksLikeMto() (ends line 2297)
+// and BEFORE normalizeDescription() (line 2299), so ETSY_LIMITS (line 129)
+// + MTO_PATTERNS (2269) + tagLooksLikeMto (2292) are already in scope.
+//
+// GUARANTEE: returns EXACTLY ETSY_LIMITS.TAG_COUNT (13) tags whenever the
+// combined (primary ∪ reserve) pool yields >=13 canonically-distinct,
+// admissible tags. Pure + synchronous + deterministic (same input ⇒ same
+// 13 tags). Documents the one genuinely-impossible case via `short:true`.
+// ════════════════════════════════════════════════════════════════════
+
+const TAG_STOP_WORDS = new Set([
+  "a", "an", "the", "and", "or", "of", "for", "with", "in",
+  "on", "to", "by", "from", "at",
+]);
+
+/**
+ * Plural-aware canonical stem of ONE word. (Grafted from Draft 2 — the
+ * empirically-most-robust of the three stemmers: it is the only one that
+ * collapses shoe/shoes AND avoids the status→statu / scarves→scarfe
+ * over-collapse bugs the other drafts had.)
+ *   dresses→dress, gowns→gown, boxes→box, parties→party, leaves→leaf,
+ *   shoes→shoe. Protects -ss (dress stays dress) and short words (<=3).
+ * NOTE: linguistic perfection is NOT required — dedup only needs the
+ * singular and plural of the SAME word to map to the SAME stem, which
+ * this guarantees for every realistic Etsy tag noun.
+ */
+function stemWord(word: string): string {
+  const w = word.toLowerCase();
+  if (w.length <= 3) return w;                 // ring, bag, tee, ear
+  if (w.endsWith("ss")) return w;              // dress, glass — not a plural
+  if (w.endsWith("ies") && w.length > 4) return w.slice(0, -3) + "y"; // parties→party
+  if (w.endsWith("ves") && w.length > 4) return w.slice(0, -3) + "f"; // scarves→scarf, leaves→leaf
+  if (w.endsWith("es") && w.length > 4) {
+    if (/(s|x|z|ch|sh)es$/.test(w)) return w.slice(0, -2); // boxes→box, dresses→dress, dishes→dish
+    return w.slice(0, -1);                                 // shoes→shoe
+  }
+  if (w.endsWith("s") && !w.endsWith("us") && !w.endsWith("ss")) {
+    return w.slice(0, -1);                     // gowns→gown, bags→bag (status/glass protected above)
+  }
+  return w;
+}
+
+/** Significant, plural-normalised stems of a tag (drops stop words + <4-char noise). */
+function tagStems(tag: string): string[] {
+  return tag
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !TAG_STOP_WORDS.has(w))
+    .map(stemWord);
+}
+
+/**
+ * Canonical signature for EXACT + NEAR dup folding: the sorted SET of
+ * plural-normalised stems, joined. Order-independent + plural-aware:
+ *   "prom dress" / "prom dresses" / "dresses prom"  → "dress prom"
+ * Falls back to the cleaned raw string for tags with no significant
+ * stems (e.g. single aesthetic word "y2k") so they don't all collapse
+ * to canonical "".
+ */
+function tagCanonical(tag: string): string {
+  const stems = tagStems(tag);
+  if (stems.length === 0) return tag.toLowerCase().trim();
+  return [...new Set(stems)].sort().join(" ");
+}
+
+/** Etsy-clean one raw candidate; returns null if it must be dropped. */
+function cleanTag(raw: unknown): string | null {
+  const t = (raw ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")   // Etsy: letters, digits, spaces, hyphens only
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, ETSY_LIMITS.TAG_MAX_CHARS)
+    .trim();                         // re-trim in case slice left a trailing space
+  if (t.length < 3) return null;
+  if (tagLooksLikeMto(t)) return null; // existing single-source-of-truth MTO guard
+  return t;
+}
+
+export interface TagUniquenessResult {
+  tags: string[];           // EXACTLY 13 unless short === true
+  exactDropped: string[];   // dropped as exact/canonical duplicates (or 13-overflow)
+  nearDropped: string[];    // dropped by the shared-core-noun cap (pre-relaxation)
+  short: boolean;           // true ONLY when <13 canonically-distinct tags exist
+}
+
+/**
+ * THE ENGINE. Deterministic, order-preserving (earliest = highest model
+ * confidence wins). Four graceful tiers so we ALWAYS reach 13 if the pool
+ * allows:
+ *   PASS 1  Clean + MTO-strip + canonical de-dup (plural pairs + word-order
+ *           rephrases collapse). First occurrence kept.
+ *   PASS 2  Shared-core-noun cap (MAX_PER_STEM=3, the CEO's May-20
+ *           calibration). Cap-blocked tags are DEFERRED, not discarded.
+ *   PASS 3  Reserve refill — canonical-unique AND cap-aware — pulls clean
+ *           non-colliding tags from the reserve pool to fill cap-freed slots.
+ *   PASS 4  Graceful relaxation. If still <13: (4a) re-admit cap-deferred
+ *           tags (still canonical-UNIQUE, just core-noun-heavy — honours the
+ *           "13 filled slots beat 8 with 5 empty" CEO rule), then (4b)
+ *           canonical-unique reserve ignoring the cap.
+ *
+ * DEFENSIVE SUBSTRING NEAR-DUP GUARD (grafted, hardened from Draft 2):
+ *   On PASSES 1-3 we additionally reject a candidate whose cleaned string
+ *   is a whole-token superset/subset of an already-accepted tag sharing the
+ *   SAME core noun (e.g. "mermaid dress" vs "long mermaid dress"). This is
+ *   scoped to same-core-noun pairs so it can NEVER over-reject legit tags
+ *   like "ring" vs "gold ring stacking set" that share a stem but express
+ *   distinct buyer angles — the cap (PASS 2) already governs those.
+ *
+ * CONTRACT / IMPOSSIBLE CASE: returns exactly 13 whenever (primary ∪
+ * reserve) has >=13 canonically-distinct admissible tags. `short:true`
+ * fires ONLY when the entire input genuinely contains fewer than 13
+ * distinct tags — a generation-quality problem, never an engine bug. We
+ * NEVER pad with duplicates, empties, or garbage. The caller's QC layer
+ * treats short:true as a tags-regeneration trigger (see validationChecks).
+ */
+export function enforceTagUniqueness(
+  primary: unknown[],
+  reserve: unknown[] = [],
+  opts: { maxPerStem?: number } = {},
+): TagUniquenessResult {
+  const MAX_PER_STEM = opts.maxPerStem ?? 3;
+  const CAP = ETSY_LIMITS.TAG_COUNT; // 13
+
+  const exactDropped: string[] = [];
+  const nearDropped: string[] = [];
+
+  // ── PASS 1 — clean + canonical de-dup (plural-aware) ──
+  type Cand = { tag: string; stems: string[]; canon: string; core: string };
+  const canonSeen = new Set<string>();
+  const uniques: Cand[] = [];
+  for (const raw of primary) {
+    const tag = cleanTag(raw);
+    if (!tag) continue;
+    const canon = tagCanonical(tag);
+    if (canonSeen.has(canon)) {
+      exactDropped.push(tag);
+      continue;
+    }
+    canonSeen.add(canon);
+    const stems = tagStems(tag);
+    uniques.push({
+      tag,
+      stems,
+      canon,
+      core: stems.length > 0 ? stems[stems.length - 1] : tag,
+    });
+  }
+
+  const accepted: Cand[] = [];
+  const stemCount = new Map<string, number>();
+  const capDeferred: Cand[] = [];
+
+  // Same-core substring near-dup guard (scoped — never over-rejects
+  // cross-concept tags that merely share a stem).
+  const isSubstringNearDup = (c: Cand): boolean =>
+    accepted.some(
+      (p) =>
+        p.core === c.core &&
+        (p.tag.includes(c.tag) || c.tag.includes(p.tag)),
+    );
+
+  // ── PASS 2 — core-noun cap (defer, don't discard) ──
+  for (const c of uniques) {
+    if (accepted.length >= CAP) {
+      exactDropped.push(c.tag); // model over-supplied past 13
+      continue;
+    }
+    if (isSubstringNearDup(c)) {
+      nearDropped.push(c.tag);
+      continue;
+    }
+    const exceeds = c.stems.some((s) => (stemCount.get(s) ?? 0) >= MAX_PER_STEM);
+    if (exceeds) {
+      capDeferred.push(c);
+      nearDropped.push(c.tag);
+      continue;
+    }
+    for (const s of c.stems) stemCount.set(s, (stemCount.get(s) ?? 0) + 1);
+    accepted.push(c);
+  }
+
+  // ── PASS 3 — reserve refill (canonical-unique + cap-aware + substring-safe) ──
+  if (accepted.length < CAP) {
+    for (const raw of reserve) {
+      if (accepted.length >= CAP) break;
+      const tag = cleanTag(raw);
+      if (!tag) continue;
+      const canon = tagCanonical(tag);
+      if (canonSeen.has(canon)) continue;
+      const stems = tagStems(tag);
+      const cand: Cand = {
+        tag,
+        stems,
+        canon,
+        core: stems.length > 0 ? stems[stems.length - 1] : tag,
+      };
+      if (isSubstringNearDup(cand)) continue;
+      if (stems.some((s) => (stemCount.get(s) ?? 0) >= MAX_PER_STEM)) continue;
+      canonSeen.add(canon);
+      for (const s of stems) stemCount.set(s, (stemCount.get(s) ?? 0) + 1);
+      accepted.push(cand);
+    }
+  }
+
+  // ── PASS 4a — graceful cap relaxation: re-admit deferred (still canonical-
+  //    UNIQUE *and* not a same-core substring near-dup of an accepted tag) ──
+  if (accepted.length < CAP) {
+    for (const c of capDeferred) {
+      if (accepted.length >= CAP) break;
+      // The cap relaxes here, but the substring near-dup guard does NOT —
+      // never ship "gold ring" next to "band gold ring" just to hit 13.
+      if (isSubstringNearDup(c)) continue;
+      accepted.push(c);
+      const idx = nearDropped.indexOf(c.tag);
+      if (idx >= 0) nearDropped.splice(idx, 1); // kept after all
+    }
+  }
+  // ── PASS 4b — last resort: relaxed reserve (canonical-unique + not a
+  //    same-core substring near-dup, ignore cap) ──
+  if (accepted.length < CAP) {
+    for (const raw of reserve) {
+      if (accepted.length >= CAP) break;
+      const tag = cleanTag(raw);
+      if (!tag) continue;
+      const canon = tagCanonical(tag);
+      if (canonSeen.has(canon)) continue;
+      const stems = tagStems(tag);
+      const cand: Cand = {
+        tag,
+        stems,
+        canon,
+        core: stems.length > 0 ? stems[stems.length - 1] : tag,
+      };
+      if (isSubstringNearDup(cand)) continue;
+      canonSeen.add(canon);
+      accepted.push(cand);
+    }
+  }
+
+  const tags = accepted.slice(0, CAP).map((c) => c.tag);
+
+  // Dev-only invariant: no canonical dup may ever leak. Turns a silent
+  // regression into a loud test failure.
+  if (process.env.NODE_ENV !== "production") {
+    const seen = new Set<string>();
+    for (const t of tags) {
+      const k = tagCanonical(t);
+      if (seen.has(k)) {
+        throw new Error(`[enforceTagUniqueness] near-dup leaked: "${t}" canon="${k}"`);
+      }
+      seen.add(k);
+    }
+    // Same-core substring near-dups have a DIFFERENT canon, so the loop
+    // above can't catch them ("gold ring" vs "band gold ring"). Assert
+    // separately so the PASS-4 relaxation can never regress this class.
+    for (let a = 0; a < tags.length; a++) {
+      for (let b = a + 1; b < tags.length; b++) {
+        const sa = tagStems(tags[a]);
+        const sb = tagStems(tags[b]);
+        const ca = sa.length > 0 ? sa[sa.length - 1] : tags[a];
+        const cb = sb.length > 0 ? sb[sb.length - 1] : tags[b];
+        if (
+          ca === cb &&
+          (tags[a].includes(tags[b]) || tags[b].includes(tags[a]))
+        ) {
+          throw new Error(
+            `[enforceTagUniqueness] substring near-dup leaked: "${tags[a]}" <> "${tags[b]}"`,
+          );
+        }
+      }
+    }
+  }
+
+  return {
+    tags,
+    exactDropped,
+    nearDropped,
+    short: tags.length < CAP,
+  };
+}
+
+// Export the canonical-form helper too — route.ts needs it for the
+// serial swap-claim guard (see parallelSwapFix).
+export { tagCanonical };
+
 /**
  * Defensive description formatter. The system prompt asks Sonnet for
  * \n between bullets and \n\n between sections, but it sometimes
@@ -2363,63 +3002,7 @@ function normalize(out: GeneratedListing, expectedAlts: number): GeneratedListin
   //   any tag that's only excluded by stems (still dropping MTO + dupes
   //   + over-length). Better to ship 13 slightly-similar tags than 8
   //   slots with 5 empty.
-  const stopWords = new Set([
-    "a", "an", "the", "and", "or", "of", "for", "with", "in",
-    "on", "to", "by", "from", "at",
-  ]);
-  const sigWordsOf = (tag: string): string[] =>
-    tag
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length >= 4 && !stopWords.has(w));
-  const stemCount = new Map<string, number>();
-  const MAX_PER_STEM = 3;
-
-  // Stage 1 — normalise + dedupe + drop MTO; record what survived the
-  // basic filters so the refill pass can pull from it without re-doing
-  // the work.
-  type Candidate = { tag: string; stems: string[] };
-  const candidates: Candidate[] = [];
-  const seen = new Set<string>();
-  for (const raw of out.tags ?? []) {
-    const t = (raw ?? "")
-      .toString()
-      .trim()
-      .toLowerCase()
-      .slice(0, ETSY_LIMITS.TAG_MAX_CHARS);
-    if (!t || seen.has(t)) continue;
-    if (tagLooksLikeMto(t)) continue; // safety net for MTO wording
-    seen.add(t);
-    candidates.push({ tag: t, stems: sigWordsOf(t) });
-  }
-
-  // Stage 2 — apply stem cap (MAX_PER_STEM). Skip tags whose stems
-  // are already saturated; the diversity-first pass.
-  const tags: string[] = [];
-  const picked = new Set<string>();
-  for (const c of candidates) {
-    const wouldExceed = c.stems.some(
-      (s) => (stemCount.get(s) ?? 0) >= MAX_PER_STEM,
-    );
-    if (wouldExceed) continue;
-    for (const s of c.stems) stemCount.set(s, (stemCount.get(s) ?? 0) + 1);
-    tags.push(c.tag);
-    picked.add(c.tag);
-    if (tags.length === ETSY_LIMITS.TAG_COUNT) break;
-  }
-
-  // Stage 3 — refill. If the stem cap left us short of 13, fill the
-  // remaining slots from the candidates we skipped, in original order.
-  // No stem cap on this pass — every Etsy slot is more valuable than
-  // perfect diversity.
-  if (tags.length < ETSY_LIMITS.TAG_COUNT) {
-    for (const c of candidates) {
-      if (picked.has(c.tag)) continue;
-      tags.push(c.tag);
-      picked.add(c.tag);
-      if (tags.length === ETSY_LIMITS.TAG_COUNT) break;
-    }
-  }
+  const { tags } = enforceTagUniqueness(out.tags ?? []);
 
   const description = normalizeDescription(out.description ?? "").slice(
     0,

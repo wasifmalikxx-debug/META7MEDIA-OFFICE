@@ -22,6 +22,11 @@ import {
   pickCategoryFromCandidates,
   createCostAccumulator,
   suggestTagReplacements,
+  enforceTagUniqueness,
+  tagCanonical,
+  scoreDescription,
+  regenerateDescription,
+  regenerateTags,
   type ImagePayload,
   type ComplianceVerdict,
 } from "@/lib/services/anthropic.service";
@@ -62,6 +67,36 @@ import {
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90; // Sonnet vision can take 20-40s
+
+// ─── Avoid-word scrub helpers (reframe / IP last-line-of-defense) ────
+// Stage 4.5 scrubs the INITIAL generation. The Stage 4.6 QC gate and the
+// saturated-tag swap can REGENERATE the description / tags afterwards, so
+// these let us re-apply the same deterministic strip to the FINAL output —
+// a reframed listing can never ship a banned avoid-word that a rewrite or
+// swap re-introduced. Mirrors the regex used inline in Stage 4.5.
+function buildAvoidRegexes(words: string[]): RegExp[] {
+  return words.map(
+    (w) =>
+      new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"),
+  );
+}
+function stripAvoidFromText(text: string, res: RegExp[]): string {
+  let out = text;
+  for (const re of res) {
+    re.lastIndex = 0;
+    out = out.replace(re, "");
+  }
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+function dropAvoidTags(tags: string[], res: RegExp[]): string[] {
+  return tags.filter(
+    (t) =>
+      !res.some((re) => {
+        re.lastIndex = 0;
+        return re.test(t);
+      }),
+  );
+}
 
 const ImageSchema = z.object({
   base64: z.string().min(100), // any reasonable base64 image is way bigger
@@ -621,9 +656,99 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Listing successfully generated — the slot is now permanently
-  // consumed. Anything that fails AFTER this point (tag intelligence)
-  // is non-billable already (Etsy free + listing already returned).
+  // ─── Stage 4.6 — QC GATE (deterministic-first, regenerate weak output) ──
+  //
+  // Guarantees 13 unique tags + a conversion-grade description BEFORE we
+  // commit the slot. This whole block runs while refundOnFailure is still
+  // true and checkAndConsume has run exactly once, so every retry here is
+  // FREE on the user's daily quota — only Anthropic tokens (billed to
+  // costAccum) are spent. Bounded by retries + cost ceiling + wall-clock
+  // so a slow listing never times the request out.
+  const QC_SCORE_MIN = 70;
+  const QC_MAX_DESC_RETRIES = 2;
+  const QC_COST_CEILING_USD = 0.12;
+  const qcDeadline = Date.now() + 12_000;
+
+  // (a) Tags — normalize() already ran enforceTagUniqueness, so tags are
+  // unique. If it came up SHORT of 13 (the model supplied too few distinct
+  // angles), do ONE tags-only regen and re-fold. Never shrinks the set.
+  if (listing.tags.length < 13) {
+    try {
+      const fresh = await regenerateTags(
+        { categoryPath: category.path, approvedTitle: listing.title },
+        costAccum,
+      );
+      if (fresh.length > 0) {
+        const refolded = enforceTagUniqueness(fresh, listing.tags);
+        if (refolded.tags.length >= listing.tags.length) {
+          listing.tags = refolded.tags;
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[seo-autopilot] tags regen failed (non-fatal):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  // (b) Description — always score it (the only reliable signal for weak /
+  // robotic copy) and regenerate the DESCRIPTION ONLY on failure. Title +
+  // tags stay frozen, so tag uniqueness can never be undone by a rewrite.
+  // Keep the best-scoring attempt so a retry never ships worse copy.
+  let bestDescription = listing.description;
+  let bestScore = -1;
+  let bestClean = false; // a hard-failing attempt must never win over a clean one
+  for (let attempt = 0; attempt <= QC_MAX_DESC_RETRIES; attempt++) {
+    const score = await scoreDescription(listing.description, costAccum).catch(
+      () => null,
+    );
+    if (!score) break; // scorer unavailable → ship what we have
+    const hardFail =
+      score.hasNarrativeOpening ||
+      score.hasSceneDirection ||
+      score.hasShippingLanguage ||
+      score.hasMtoWording ||
+      score.hasBannedTrademark ||
+      score.missingHook ||
+      score.missingWhoItsFor ||
+      score.notBenefitLed;
+    const clean = !hardFail;
+    // Hard-fail-aware "best": a clean (no banned-language) attempt ALWAYS
+    // beats a hard-failing one regardless of numeric score; within the same
+    // bucket the higher score wins. Prevents shipping a shipping/MTO/IP/
+    // fiction description over a compliant rewrite just because Haiku gave
+    // the banned one a higher number.
+    if (
+      bestScore < 0 ||
+      (clean && !bestClean) ||
+      (clean === bestClean && score.overallScore > bestScore)
+    ) {
+      bestScore = score.overallScore;
+      bestDescription = listing.description;
+      bestClean = clean;
+    }
+    const passed = score.overallScore >= QC_SCORE_MIN && !hardFail;
+    if (passed || attempt === QC_MAX_DESC_RETRIES) break;
+    if (Date.now() > qcDeadline || costAccum.totalCostUsd > QC_COST_CEILING_USD)
+      break;
+    const rewritten = await regenerateDescription(
+      {
+        categoryPath: category.path,
+        approvedTitle: listing.title,
+        approvedTags: listing.tags,
+        avoidWords: reframe?.avoidWords ?? [],
+        failingItems: score.failingItems,
+      },
+      costAccum,
+    ).catch(() => null);
+    if (!rewritten) break;
+    listing.description = rewritten;
+  }
+  // Ship the best-scoring description we produced (monotonic — never worse).
+  if (bestScore >= 0) listing.description = bestDescription;
+
+  // Listing successfully generated — the slot is now permanently consumed.
   refundOnFailure = false;
 
   // Final verdict for the audit log + UI:
@@ -634,14 +759,9 @@ export async function POST(request: NextRequest) {
   const finalVerdict = reframe ? "REVIEW" : "ALLOWED";
 
   // The raw `compliance` object from vision can still hold verdict
-  // "BLOCKED" or "REVIEW" if Sonnet vision flagged the photo (e.g.,
-  // spotted a brand logo in an otherwise clean-title product). At
-  // this point we've already RESOLVED that signal — the reframe ran,
-  // Sonnet wrote a policy-safe listing, the avoid-word sweep scrubbed
-  // any leak. Returning the raw vision verdict to the UI made the
-  // client (autopilot-view.tsx line 462/551) hide the listing behind
-  // the BlockedPanel even though we just generated a perfectly good
-  // one. Override here so compliance.verdict matches the real outcome.
+  // "BLOCKED" or "REVIEW" if Sonnet vision flagged the photo. By this
+  // point we've RESOLVED that signal (reframe ran, the listing is
+  // policy-safe), so override it to the real outcome for the UI.
   const resolvedCompliance: ComplianceVerdict = reframe
     ? {
         verdict: "REVIEW",
@@ -650,6 +770,156 @@ export async function POST(request: NextRequest) {
       }
     : compliance;
 
+  // ─── Stage 5 — Tag intelligence ────────────────────────────────────
+  let tagIntelligence: TagDemand[] = await getTagDemandStatsBatch(
+    listing.tags,
+  ).catch(() => []);
+
+  // ─── Stage 5.5 — Auto-swap saturated tags ──────────────────────────
+  //
+  // Any final tag with >=50k listings is a wasted slot for a new shop.
+  // We PROPOSE replacements in parallel (the costly Etsy demand lookups
+  // stay concurrent) but COMMIT them SERIALLY against a mutating
+  // canonical-claim set, so two parallel proposals can never land the
+  // same tag — or a singular/plural variant of it. Collision-free by
+  // construction (the old code committed in parallel with no dedup and
+  // could emit identical tags at different indices).
+  const SATURATED_THRESHOLD = 50_000;
+  const saturatedTags = tagIntelligence
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.totalListings >= SATURATED_THRESHOLD);
+
+  // Declared in the outer scope so the final uniqueness pass below can
+  // mine every demand-validated proposal as a refill reserve.
+  let swapResults: {
+    i: number;
+    currentTag: string;
+    ranked: { tag: string; stats: TagDemand }[];
+  }[] = [];
+
+  if (saturatedTags.length > 0) {
+    console.log(
+      `[seo-autopilot] ${saturatedTags.length}/${listing.tags.length} tags saturated, auto-swapping…`,
+    );
+
+    // PROPOSE — each job returns ALL demand-validated, non-saturated
+    // candidates for its slot, ranked best-first. No in-place mutation.
+    swapResults = await Promise.all(
+      saturatedTags.map(async ({ d, i }) => {
+        try {
+          const existingTags = listing.tags.filter((_, j) => j !== i);
+          const replacements = await suggestTagReplacements(
+            {
+              currentTag: d.tag,
+              productTitle: listing.title,
+              productType: context.productType,
+              category: category!.path,
+              existingTags,
+              reason: `Original tag had ${d.totalListings.toLocaleString()} Etsy listings (saturated). Need niche/moderate alternative.`,
+            },
+            costAccum,
+          );
+          const ranked: { tag: string; stats: TagDemand }[] = [];
+          for (const r of replacements) {
+            if (existingTags.includes(r.tag)) continue;
+            const stats = await getTagDemandStats(r.tag).catch(() => null);
+            if (!stats) continue;
+            if (stats.totalListings >= SATURATED_THRESHOLD) continue;
+            ranked.push({ tag: r.tag, stats });
+          }
+          return { i, currentTag: d.tag, ranked };
+        } catch (err) {
+          console.warn(
+            `[seo-autopilot] swap proposal failed for "${d.tag}":`,
+            err instanceof Error ? err.message : err,
+          );
+          return {
+            i,
+            currentTag: d.tag,
+            ranked: [] as { tag: string; stats: TagDemand }[],
+          };
+        }
+      }),
+    );
+
+    // COMMIT — serially, claiming canonical forms as we go so no two
+    // swaps (or a swap + a kept tag) can collapse to the same keyword.
+    const swappingIdx = new Set(saturatedTags.map(({ i }) => i));
+    const claimed = new Set(
+      listing.tags
+        .filter((_, j) => !swappingIdx.has(j))
+        .map(tagCanonical),
+    );
+    let swappedCount = 0;
+    for (const result of swapResults) {
+      const pick = result.ranked.find((r) => !claimed.has(tagCanonical(r.tag)));
+      if (!pick) {
+        console.warn(
+          `[seo-autopilot] no collision-free swap for "${result.currentTag}" — leaving it for the final pass`,
+        );
+        continue;
+      }
+      listing.tags[result.i] = pick.tag;
+      tagIntelligence[result.i] = pick.stats;
+      claimed.add(tagCanonical(pick.tag));
+      swappedCount++;
+    }
+    if (swappedCount > 0) {
+      console.log(`[seo-autopilot] auto-swapped ${swappedCount} saturated tags`);
+    }
+  }
+
+  // ─── Stage 5.6 — Final tag-uniqueness catch-all (ALWAYS runs) ───────
+  //
+  // The mathematical guarantee the route.ts comment always promised. No
+  // matter what the swap did, this folds exact + near duplicates and
+  // refills any freed slot from a moderate/niche reserve (rejected swap
+  // candidates + unused moderate/niche anchors). Cannot emit a duplicate.
+  let reservePool: string[] = [
+    ...swapResults.flatMap((r) => r.ranked.map((x) => x.tag)),
+    ...anchorKeywords.topTags
+      .filter(
+        (t) =>
+          t.demand &&
+          (t.demand.tier === "moderate" || t.demand.tier === "niche"),
+      )
+      .map((t) => t.phrase),
+    ...anchorKeywords.topPhrases
+      .filter(
+        (p) =>
+          p.demand &&
+          (p.demand.tier === "moderate" || p.demand.tier === "niche"),
+      )
+      .map((p) => p.phrase),
+  ];
+  // Final avoid-word scrub for reframed listings — Stage 4.5 ran BEFORE the
+  // QC rewrite + swap, so re-strip any banned term from the FINAL description,
+  // tags, AND the reserve here (the deterministic last-line-of-defense for IP
+  // reframes). Filtering the reserve means the refill below can't re-add one;
+  // any tag dropped here is topped back up to 13 by enforceTagUniqueness.
+  if (reframe && reframe.avoidWords.length > 0) {
+    const avoidRes = buildAvoidRegexes(reframe.avoidWords);
+    listing.description = stripAvoidFromText(listing.description, avoidRes);
+    listing.tags = dropAvoidTags(listing.tags, avoidRes);
+    reservePool = dropAvoidTags(reservePool, avoidRes);
+  }
+  const tagsBefore = listing.tags.join("|");
+  const finalTags = enforceTagUniqueness(listing.tags, reservePool);
+  listing.tags = finalTags.tags;
+  if (finalTags.short) {
+    console.warn(
+      `[seo-autopilot] final tag set is short: ${listing.tags.length}/13 distinct tags available`,
+    );
+  }
+  // Keep tagIntelligence index-aligned with the final tags for the UI.
+  if (listing.tags.join("|") !== tagsBefore) {
+    tagIntelligence = await getTagDemandStatsBatch(listing.tags).catch(
+      () => tagIntelligence,
+    );
+  }
+
+  // ─── Audit log — MOVED here so the snapshot + actualCostUsd reflect the
+  //     FINAL shipped listing (including QC retries + swap + final pass) ──
   await logGeneration({
     userId: u.id,
     sourceTitle: payload.aliExpressTitle,
@@ -679,101 +949,6 @@ export async function POST(request: NextRequest) {
     variants: payload.variants,
   });
 
-  // ─── Stage 5 — Tag intelligence ────────────────────────────────────
-  //
-  // The Haiku text audit was removed May 14: it produced stylistic
-  // "consider rephrasing" advice rather than hard rule blockers, and
-  // normalize() inside generateListing() already clamps every output
-  // to Etsy's hard limits (140-char title, 13 tags ≤20 chars each,
-  // 5000-char description, etc.).
-
-  let tagIntelligence: TagDemand[] = await getTagDemandStatsBatch(
-    listing.tags,
-  ).catch(() => []);
-
-  // ─── Stage 5.5 — Auto-swap saturated tags ──────────────────────────
-  //
-  // CEO directive May 20 2026: if any tag in the final listing comes
-  // back with ≥50k listings, the seller can't rank on it. We refuse to
-  // ship a listing where a tag slot is wasted on a saturated keyword.
-  //
-  // For each saturated tag, call the same Haiku swap function the
-  // manual swap-tag endpoint uses — it returns 3 ranked alternatives
-  // already scored against Etsy demand and filtered for near-dupes.
-  // We pick the first one (highest tier preference) and swap in-place.
-  //
-  // Cost: ~$0.0014 per swap × max 5 swaps = $0.007 worst case.
-  // Latency: parallel, ~3-5s added on listings with multiple saturated
-  // tags. Acceptable for the quality bump.
-  //
-  // Edge cases:
-  //   - If swap suggests a tag already in the listing → skip, drop the
-  //     saturated tag and pad refill is handled by normalize() already
-  //     having ensured 13 slots (the swap just replaces, doesn't add)
-  //   - If swap returns nothing → leave the saturated tag (log warning)
-  //   - Swap call cost is rolled into the gen's actualCostUsd via the
-  //     same costAccum (carried through suggestTagReplacements)
-  const SATURATED_THRESHOLD = 50_000;
-  const saturatedTags = tagIntelligence
-    .map((d, i) => ({ d, i }))
-    .filter(({ d }) => d.totalListings >= SATURATED_THRESHOLD);
-
-  if (saturatedTags.length > 0) {
-    console.log(
-      `[seo-autopilot] ${saturatedTags.length}/${listing.tags.length} tags saturated, auto-swapping…`,
-    );
-
-    const swapResults = await Promise.all(
-      saturatedTags.map(async ({ d, i }) => {
-        try {
-          const existingTags = listing.tags.filter((_, j) => j !== i);
-          const replacements = await suggestTagReplacements(
-            {
-              currentTag: d.tag,
-              productTitle: listing.title,
-              productType: context.productType,
-              category: category!.path,
-              existingTags,
-              reason: `Original tag had ${d.totalListings.toLocaleString()} Etsy listings (saturated). Need niche/moderate alternative.`,
-            },
-            costAccum,
-          );
-          // Validate each replacement against live demand and pick the
-          // first one in tier-rank order (niche > moderate > hot) that
-          // is NOT also saturated and is NOT a near-dup of any tag.
-          for (const r of replacements) {
-            if (existingTags.includes(r.tag)) continue;
-            const stats = await getTagDemandStats(r.tag).catch(() => null);
-            if (!stats) continue;
-            if (stats.totalListings >= SATURATED_THRESHOLD) continue;
-            return { i, newTag: r.tag, newStats: stats };
-          }
-          return null;
-        } catch (err) {
-          console.warn(
-            `[seo-autopilot] swap failed for "${d.tag}":`,
-            err instanceof Error ? err.message : err,
-          );
-          return null;
-        }
-      }),
-    );
-
-    let swappedCount = 0;
-    for (const result of swapResults) {
-      if (!result) continue;
-      const { i, newTag, newStats } = result;
-      listing.tags[i] = newTag;
-      tagIntelligence[i] = newStats;
-      swappedCount++;
-    }
-    if (swappedCount > 0) {
-      console.log(
-        `[seo-autopilot] auto-swapped ${swappedCount} saturated tags`,
-      );
-    }
-  }
-
   return json({
     compliance: resolvedCompliance,
     listing,
@@ -793,11 +968,8 @@ export async function POST(request: NextRequest) {
     },
     anchorKeywords,
     tagIntelligence,
-    // Reframe metadata — present when the rule engine OR vision
-    // flagged the source product as soft-policy-risk (IP, brand,
-    // commodity tells, personalisation wording). UI renders an
-    // "IP-adjusted" badge + the photo-regen guidance for the team's
-    // identity-shot pass when this is set.
+    // Reframe metadata — present when the rule engine OR vision flagged
+    // the source product as soft-policy-risk.
     reframe: reframe
       ? {
           flaggedRules: ruleHits.map((h) => ({
