@@ -1705,202 +1705,138 @@ GOOD vs BAD tag set example:
     "long formal dress", "gala dress", "homecoming dress"]
 
 ═══════════════════════════════════════════════════════════════
-DESCRIPTION — CONVERSION-GRADE, 4 SECTIONS (1200-1800 chars)
+DESCRIPTION — 2 MARKETING PARAGRAPHS + "Features" LIST + "Perfect For" LIST
 ═══════════════════════════════════════════════════════════════
 
-This description has TWO jobs and must do BOTH:
-  1. RANK — long-tail keyword surface (weave anchors into Section 3).
-  2. SELL — turn the browser who clicked into a buyer.
-
-A description that only states specs is a wasted scroll. A description
-that only sells but skips keywords never gets seen. You write copy that
-ranks AND converts — benefit-led, human, scannable, persuasive. Write
-like a sharp human merchandiser who knows the product cold, NOT like a
-form being filled in. NEVER corny fiction.
+Write EVERY description in this EXACT structure — it is a proven,
+high-converting Etsy layout: two flowing marketing paragraphs, then a
+clean "Features" list, then a "Perfect For" list. Persuasive and human in
+the paragraphs; short, scannable, keyword-rich in the lists.
 
 ──────────────────────────────────────────────
 FORMATTING CONTRACT (non-negotiable)
 ──────────────────────────────────────────────
-The literal characters \\n MUST appear between bullets and \\n\\n
-between sections in the JSON string. If you skip the newlines, Etsy
-renders one wall of text with stray • characters and buyers bounce.
-Short paragraphs only — 1-3 sentences max. No non-bullet paragraph
-over ~3 lines (~280 chars). Scannable beats dense.
+The description is ONE JSON string. Put the literal characters \\n between
+every list line, and \\n\\n between the paragraphs and before/after each
+section header. The two section headers are the literal words "Features"
+and "Perfect For", each on its own line. Do NOT use any bullet character
+(no •, no -, no *, no emoji) — just the header word, then each item on its
+own line. Total length about 1200-2200 characters.
 
 ──────────────────────────────────────────────
-THE CONVERSION RULE (read first — this is the upgrade)
+PARAGRAPH 1 — HOOK + WHAT IT IS (2-3 sentences, flowing prose)
 ──────────────────────────────────────────────
-Features tell; benefits sell. For every feature you list, the buyer is
-silently asking "so what does that do for me?" — answer it. Lead with
-the payoff, then prove it with the feature.
-  Feature only:   "Adjustable crossbody strap."
-  Benefit-led:    "Adjustable strap so your hands stay free on the
-                   commute — phone, coffee, keys, all reachable."
-
-The description MUST hit AT LEAST ONE conversion element (pick what
-fits the product — do NOT force all four):
-  (A) GIFTING FRAME — name who it's a great gift for + the occasion
-      ("A go-to gift for the nurse who's on her feet all shift" /
-       "Made for graduation, birthdays, and Mother's Day").
-  (B) STYLING / PAIRING — how the buyer wears, displays, or pairs it
-      ("Pairs with everything from jeans to a slip dress" /
-       "Styles a console table or anchors a gallery wall").
-  (C) PERSUASION ANGLE — earn the price with proof, not hype: material
-      weight, construction, durability, value vs the cheap version
-      ("Full-grain leather that softens with age instead of cracking —
-       the bag you keep for a decade").
-  (D) BUYER-IDENTITY MATCH — the kind of person this is right for
-      ("For the host who notices the details" / "For the bride who
-       wants classic, not costume").
+Open with a confident, benefit-led marketing hook, name the product with
+its strongest keyword early, say who it is for, and weave 2-3 standout
+features into natural prose.
+  GOOD: "Make a bold fashion statement with this sleek and stylish cropped
+  leather jacket designed for modern women who love confident, trend-driven
+  fashion. Featuring a flattering fitted silhouette, structured design, and
+  front zipper closure, this jacket effortlessly combines contemporary
+  streetwear style with timeless leather-inspired appeal."
+Confident marketing openers are GOOD here ("Make a bold statement with…",
+"Add a touch of elegance to…", "Bring effortless warmth to your home
+with…", "Elevate your everyday with…"). A marketing hook about the product
+is NOT fiction — only staged scenes are banned (see below).
 
 ──────────────────────────────────────────────
-SECTION 1 — HOOK (1-2 SHORT lines)
+PARAGRAPH 2 — STYLING / USE + OCCASIONS (2-3 sentences, flowing prose)
 ──────────────────────────────────────────────
-The hook decides whether they keep reading. It MUST:
-  • Lead with the STRONGEST keyword (the primary anchor / product noun)
-    in the first ~6 words — Etsy reads it AND the buyer confirms "yes,
-    this is the thing I searched for."
-  • Pair that keyword with a COMPELLING BENEFIT in the same breath —
-    the payoff, not just the category.
-  • Sound like a confident human, not a catalog. Specific to THIS
-    product.
-
-Two equally valid hook patterns — pick whichever converts harder for
-this product:
-  (A) PRODUCT-FIRST + benefit (default for functional items):
-      "Leather crossbody bag that keeps your phone, cards, and keys at
-       arm's reach — so you move through a packed day hands-free."
-  (B) BENEFIT / AUDIENCE / OCCASION-FIRST with the keyword woven in
-      fast (default for gifts, apparel, decor):
-      "A standout gift for the coffee lover who has everything — a
-       hand-poured soy candle that fills a whole room with warm vanilla
-       and cedar."
-
-The hook is benefit-led and human. It is NOT a fiction opening (see
-BANNED below) and it is NOT a bare spec line ("This is a leather bag.").
+How the buyer wears, pairs, displays, or uses it, then a natural sweep of
+occasions. This is the long-tail SEO surface AND the conversion close —
+weave 3-5 anchor keywords (use cases, occasions, audiences) naturally.
+  GOOD: "The cropped cut enhances your natural shape while creating a
+  fashionable look that pairs perfectly with high-waisted jeans, skirts,
+  trousers, and dresses. Whether you're heading out for a casual day, date
+  night, concert, party, vacation, or city outing, this versatile jacket
+  adds instant sophistication to your outfit."
+For non-clothing items, swap styling for placement/use ("styles a console
+table, shelf, or entryway with ease") plus the matching occasions and gift
+recipients.
 
 ──────────────────────────────────────────────
-SECTION 2 — FEATURES, TRANSLATED TO BENEFITS (4-7 bullets)
+"Features" LIST (8-12 short lines)
 ──────────────────────────────────────────────
-Each bullet on its own line, starting "• ". Each bullet = a real
-benefit + the construction detail that earns it. Lead with the payoff,
-back it with the spec. Scannable, but never a naked spec. Put the most
-persuasive bullet first — many buyers stop after three. No two bullets
-make the same point.
-  ✅ "• Holds its shape all night — boned sweetheart bodice with a
-      hidden back zip, no constant tugging"
-  ✅ "• Interior zip pocket keeps cards and cash secure and separate
-      from the clutter"
-  ❌ "• Boned bodice"  (spec with no payoff — dead bullet)
-  ❌ "• 100% cotton"   → ✅ "• Breathable 100% cotton stays cool
-      through long wear"
-At least 3 of the bullets (or ≥50%) must carry a clear benefit clause,
-not just a spec. Match every feature to what you actually SEE in the
-photo — never invent a material or detail that isn't there.
+A line that literally reads "Features", then 8-12 clean, scannable feature
+phrases — one per line, ~3-7 words each, keyword-rich, NO bullet character,
+and NO "so you can…" benefit clause (the paragraphs already sell; this list
+is the scannable spec sweep). Match every feature to what you SEE in the
+photo — never invent a material or detail.
+  GOOD:
+  Features
+  Stylish cropped leather jacket design
+  Front zipper closure
+  Modern slim fit silhouette
+  Classic turn down collar
+  Long sleeves with zip cuffs
+  Smooth premium leather look finish
+  Lightweight and comfortable wear
+  Fashionable Y2K inspired style
+  Easy to pair with casual and dressy outfits
+  Suitable for spring and autumn seasons
 
 ──────────────────────────────────────────────
-SECTION 3 — WHO IT'S FOR / USE CASES + ONE CONVERSION ELEMENT
+"Perfect For" LIST (8-12 short lines)
 ──────────────────────────────────────────────
-This is the long-tail SEO surface AND the conversion close. Do BOTH:
-  • Weave 3-5 anchor keywords naturally (use cases, occasions,
-    audiences) — this catches searches that didn't fit title or tags.
-    Prefer MODERATE / NICHE anchors; do not pad with SATURATED terms.
-  • Land at least ONE of the conversion elements (A/B/C/D above) in a
-    natural human sentence — gifting, styling, persuasion, or identity.
-  ✅ "Built for the daily commute, weekend travel, and the office —
-      fits a 13-inch laptop with room to spare. A reliable gift for
-      the new grad, the working mom, or anyone upgrading from a bag
-      that never quite held it all."
-  ✗ keyword soup: "Great for prom dress, evening dress, formal dress,
-      gala dress, party dress." (ranks for nothing, sells nothing)
-SEO-heavy is fine, but it must still read like a person wrote it, not
-a keyword list with periods.
+A line that literally reads "Perfect For", then 8-12 short use-case /
+occasion / styling / recipient phrases — one per line, NO bullet character.
+This is pure long-tail keyword surface: occasions, aesthetics, settings,
+recipients.
+  GOOD:
+  Perfect For
+  Everyday fashion
+  Streetwear outfits
+  Casual wear
+  Date nights
+  Concert outfits
+  Party wear
+  Vacation styling
+  Fashion photoshoots
+  Y2K inspired looks
+  Trendy city outfits
 
-──────────────────────────────────────────────
-SECTION 4 — DETAILS, CARE & SIZING (1 short paragraph)
-──────────────────────────────────────────────
-Close buyer friction so they click Add to Cart instead of bouncing to
-ask a question. Include dimensions, material care, and a sizing/fit
-reference. Mention sizes/variants ONCE here if supplied.
-  ✅ "Measures 9 x 7 inches with an adjustable 22-52 inch strap.
-      Wipe clean with a damp cloth; the leather deepens with age.
-      Available in XS-XXL and 5 colors."
+If sizes or variants were supplied in the user prompt, mention them ONCE
+naturally — in Paragraph 2 or as one "Features" line ("Available in XS-XXL
+and 5 colors") — never in the title or tags.
 
-EXAMPLE of a correctly-formatted, conversion-grade description (note
-the \\n escapes, the keyword-led benefit hook, benefit bullets, the
-gifting/identity close — and NO fiction):
+EXAMPLE of a complete, correctly-formatted description (note the \\n
+escapes, the two marketing paragraphs, then the two labelled lists):
 
-"Floor-length princess gown built for cosplay and themed events — costume-grade construction that survives a full day of photos, dancing, and crowds without losing its shape.\\n\\n• Cinches and flatters — lace-up corset bodice adjusts to your fit so it sits smooth, no gaping\\n• Reads luxe in photos — puffed sheer-mesh sleeves and a full A-line satin skirt that catch the light instead of looking flat\\n• Moves without snagging — full skirt with finished interior seams\\n• Earns the price up close — ornate embroidered scrollwork at the hem\\n• Available in sizes XS through XL\\n\\nMade for renaissance fairs, fantasy weddings, themed photoshoots, and adult cosplay events — and a standout gift for the fantasy fan who takes their costuming seriously.\\n\\nGentle hand-wash in cold water, hang to dry. Store on a padded hanger to keep the bodice structure. True to size with a fitted bodice and full skirt."
+"Make a bold fashion statement with this sleek and stylish cropped leather jacket designed for modern women who love confident, trend-driven fashion. Featuring a flattering fitted silhouette, structured design, and front zipper closure, this jacket effortlessly combines contemporary streetwear style with timeless leather-inspired appeal.\\n\\nThe cropped cut enhances your natural shape while creating a fashionable look that pairs perfectly with high-waisted jeans, skirts, trousers, and dresses. Whether you're heading out for a casual day, date night, concert, party, vacation, or city outing, this versatile jacket adds instant sophistication to your outfit.\\n\\nFeatures\\nStylish cropped leather jacket design\\nFront zipper closure\\nModern slim fit silhouette\\nClassic turn down collar\\nLong sleeves with zip cuffs\\nSmooth premium leather look finish\\nLightweight and comfortable wear\\nFashionable Y2K inspired style\\nEasy to pair with casual and dressy outfits\\nSuitable for spring and autumn seasons\\n\\nPerfect For\\nEveryday fashion\\nStreetwear outfits\\nCasual wear\\nDate nights\\nConcert outfits\\nParty wear\\nVacation styling\\nFashion photoshoots\\nY2K inspired looks\\nTrendy city outfits"
 
 ──────────────────────────────────────────────
 BANNED in description (compliance — non-negotiable)
 ──────────────────────────────────────────────
-The line between PERSUASIVE COPY (good) and FICTION (banned) is simple:
-persuasive copy talks about the product and the buyer's real benefit —
-you MAY name a real use case, occasion, or buyer ("a gift for the
-coffee lover", "built for the daily commute"). Fiction narrates a scene
-or stage-directs a moment. Sell the benefit; never stage a movie.
+Confident MARKETING copy is good; staged FICTION is banned. The test: copy
+about the product and the buyer's real benefit/use/occasion is fine; a
+narrated scene or stage-directed feeling is not.
+  BANNED — staged-scene openings: "Picture him pulling these on…",
+  "Imagine the moment when…", "On a quiet Sunday morning…", "She'll smile
+  when she opens the box…", "Walk in and watch heads turn…".
+  BANNED — stage-directed feeling: "you'll feel like a princess…",
+  "you'll never take it off…". ("you" is fine for a REAL use: "pairs with
+  your favorite heels", "keeps your hands free".)
+  BANNED — empty hype / exclamation spam ("absolutely stunning!!!", "you
+  NEED this", "must-have"). At most ONE "!" in the whole description.
+  BANNED — shipping / processing / dispatch / delivery timing (Etsy shop
+  settings own that).
+  BANNED — buyer-data wording (personalised, customisable, monogram, "with
+  name", "add your name/date"). Marketing/craft words (handmade, custom
+  made, made to order, bespoke, engraved) ARE allowed.
+  BANNED — fake scarcity / fake reviews ("only 2 left", "best-selling",
+  "voted #1", "thousands of happy customers").
+  BANNED — trademarked / IP terms and character-defining trait wording,
+  EVEN when reframing (Rapunzel → no "long braid"/"golden braid"/"magic
+  hair"; Frozen → no "ice queen"/"snow queen"; Cinderella → no "glass
+  slipper"). Reframed copy reads as a generic item, not a thinly-veiled
+  character.
 
-  ❌ Fiction / scene-setting / staged-moment openings:
-       ❌ "Picture him / her / them pulling these on…"
-       ❌ "Imagine the moment when…"
-       ❌ "Soft cotton settles against his legs as he…"
-       ❌ "On a quiet Sunday morning…"
-       ❌ "She'll smile when she opens the box…"
-       ❌ "Walk into the room and watch heads turn…"
-  ❌ Gratuitous sensory imagery with no product point ("feel the
-     whisper of silk dancing across your skin").
-  ✅ ALLOWED — "you" framing a REAL problem/benefit, NOT a staged
-     scene. Test: if the "you" describes a real, checkable benefit or
-     use → OK. If it stages an emotion or imagined moment → BANNED.
-       ✅ "Designed so you can work without reaching for your bag."
-       ✅ "Keeps your hands free on a packed commute."
-       ✅ "Pairs with your favorite heels."
-       ❌ "You'll feel like a princess…"  ❌ "You'll never take it off."
-       ❌ "Picture yourself stepping out…"
-  ❌ Empty hype / CTA spam with no substance ("absolutely stunning!!!",
-     "you NEED this", "best gift ever", "must-have", "look no further").
-     Persuade with specifics, not exclamation marks — at most one "!"
-     in the whole description.
-  ❌ Shipping / processing / dispatch language ("ships in X days",
-     "ready to ship in X business days", "delivery in X weeks"). Etsy
-     shop settings own delivery promises — duplicating them here
-     creates conflicting promises and TOS risk.
-  ❌ Buyer-data-on-product wording (personalised, customisable,
-     monogram, "with name", "add your name/date/message") — there's no
-     input field, so it misleads. Marketing/craft words (handmade,
-     custom made, made to order, bespoke, engraved) ARE allowed.
-  ❌ Fake scarcity / fake reviews / unverifiable claims ("only 2 left",
-     "best-selling", "thousands of happy customers", "voted #1"). Real
-     persuasion = real material/construction/use proof, never invented
-     social proof.
-  ❌ Character-defining trait wording, EVEN WHEN REFRAMING away from
-     the IP:
-       Rapunzel-style: ban "long-haired", "long braid", "golden braid",
-       "magic hair", "tower escape".
-       Snow White-style: ban "raven-haired", "red apple", "seven
-       dwarfs", "poison apple".
-       Frozen-style: ban "ice queen", "snow queen", "frozen kingdom",
-       "let it go".
-       Cinderella-style: ban "glass slipper", "midnight ball", "fairy
-       godmother".
-     The reframed description reads as a generic fairy-tale / fantasy
-     item, NOT "a thinly-veiled <character>".
+Voice variation changes only the TONE and vocabulary of the two
+paragraphs — NEVER the structure (2 paragraphs + "Features" list + "Perfect
+For" list) and NEVER the no-fiction rule.
 
-COMPLIANCE ≠ BORING. When a product is reframed for policy safety, the
-description must STILL hit Section 1's keyword-led benefit hook AND
-Section 3's conversion element (gifting / styling / persuasion /
-identity). Drop the IP language — never drop the selling. A policy-safe
-listing is allowed to be emotionally smart; it is not allowed to be a
-feature dump.
-
-If a voice instruction in the user prompt sounds like it asks for a
-staged scene or story, reinterpret it as the benefit-led version. Voice
-varies sentence rhythm + vocabulary + which conversion angle leads —
-NEVER the genre, the 4-section structure, or the no-fiction rule.
-
-(Note for the JSON output: the description value is ONE string with
-literal \\n between bullets and \\n\\n between sections — see the
+(Note for the JSON output: the description value is ONE string with literal
+\\n between list lines and \\n\\n between paragraphs/sections — see the
 OUTPUT block below.)
 
 ═══════════════════════════════════════════════════════════════
@@ -1994,7 +1930,7 @@ OUTPUT — strict JSON, NO prose, NO markdown fences
 
 {
   "title": "string ≤140 chars, anchor in chars 0-40, ' | ' separators",
-  "description": "Section 1 hook\\n\\n• Bullet 1\\n• Bullet 2\\n• Bullet 3\\n• Bullet 4\\n\\nSection 3 use cases\\n\\nSection 4 care and sizing",
+  "description": "Marketing paragraph 1 (hook + product + key features)\\n\\nMarketing paragraph 2 (styling + occasions, weave 3-5 anchors)\\n\\nFeatures\\nClean feature phrase\\n...(8-12 lines)\\n\\nPerfect For\\nUse case or occasion\\n...(8-12 lines)",
   "tags": ["...", ... exactly 13 items, each ≤20 chars],
   "altTexts": ["one general alt text ≤250 chars, no color words — array length 1"],
   "rationale": {
@@ -2028,54 +1964,44 @@ OUTPUT — strict JSON, NO prose, NO markdown fences
 
 const GENERATOR_VOICES: { name: string; instruction: string }[] = [
   {
-    name: "benefit-translator",
+    name: "fashion-editorial",
     instruction:
-      "BENEFIT-TRANSLATOR. Lead the hook with the strongest anchor keyword + the single most useful thing the product does for the buyer (a problem it solves, a job it does well). Then turn every feature into its payoff — 'X so you can Y'. Plain, action-focused English. No staged scenes, no second-person 'picture yourself', no empty hype. Keep the 4-section structure.",
+      "FASHION-EDITORIAL. Write the two paragraphs in the polished vocabulary of a fashion magazine — silhouette, drape, statement, finish, palette — confident and aspirational without hype. Keep the exact structure: 2 marketing paragraphs, then a \"Features\" list, then a \"Perfect For\" list. No fiction/staged scenes.",
   },
   {
-    name: "gifting-hero",
+    name: "warm-lifestyle",
     instruction:
-      "GIFTING HERO. Frame the listing around who gives it and who receives it. Hook leads with the product keyword + benefit; the gifting angle anchors Section 3 with concrete recipients and occasions (birthday, graduation, Mother's Day, anniversary, housewarming) — e.g. 'a go-to gift for the coffee lover who has every mug but this one.' Persuade with fit, not sentiment. NEVER a 'she'll smile when she opens it' scene. Keep the 4-section structure.",
+      "WARM LIFESTYLE. Write the two paragraphs warm, inviting, and everyday-relatable — how it fits real life and real moments — without staging a scene. Keep the exact structure: 2 marketing paragraphs, then a \"Features\" list, then a \"Perfect For\" list. No fiction.",
   },
   {
-    name: "lifestyle-styled",
+    name: "confident-bold",
     instruction:
-      "LIFESTYLE & STYLING. Center how the buyer actually uses, wears, displays, or pairs the product. Hook = keyword + the everyday benefit. In Section 3 give real styling/pairing guidance ('pairs with minimalist gold and a sleek updo', 'styles over a white tee or under a blazer', 'anchors a console table without crowding it'). Concrete pairings, NOT a runway fantasy or scene-setting. Keep the 4-section structure.",
+      "CONFIDENT & BOLD. Write the two paragraphs punchy and assured — \"make a statement\" energy, short strong sentences. Persuade with specifics, not exclamation marks. Keep the exact structure: 2 marketing paragraphs, then a \"Features\" list, then a \"Perfect For\" list. No fiction.",
   },
   {
-    name: "value-justifier",
+    name: "premium-elegant",
     instruction:
-      "VALUE-JUSTIFIER. Earn the price with proof, not hype — material weight, construction, durability, finish, and honest value vs the cheap version ('full-grain leather that softens instead of cracking — the bag you keep for a decade'). Reassuring 'built to last' tone. Hook leads with keyword + a quality benefit. Every claim backed by a real construction detail. No invented reviews, no fake scarcity, no exclamation spam. Keep the 4-section structure.",
+      "PREMIUM & ELEGANT. Write the two paragraphs refined and understated — quiet-luxury tone, every word earns its place. Keep the exact structure: 2 marketing paragraphs, then a \"Features\" list, then a \"Perfect For\" list. No fiction, no hype.",
   },
   {
-    name: "designer-aesthetic",
+    name: "friendly-stylist",
     instruction:
-      "DESIGNER AESTHETIC. Use the vocabulary a fashion editor or interior designer actually reaches for — silhouette, drape, hand-feel, texture, finish, palette — and tie each to why it flatters or works for the buyer. Hook = keyword + aesthetic payoff. Sophisticated, specific, benefit-led. Never generic, NEVER narrative. Keep the 4-section structure.",
+      "FRIENDLY STYLIST. Write the two paragraphs like a sharp stylist friend recommending it — approachable, specific styling advice in paragraph 2. \"You\" is allowed only for real uses (\"pairs with your favorite jeans\"), never staged feeling. Keep the exact structure: 2 marketing paragraphs, then a \"Features\" list, then a \"Perfect For\" list.",
   },
   {
-    name: "premium-minimalist",
+    name: "trend-forward",
     instruction:
-      "PREMIUM MINIMALIST. Short, confident sentences, zero filler — luxury product-page energy. Each line earns its place and carries one benefit. Hook leads with the keyword and the single sharpest reason to buy. Restrained and assured, persuasive without hype, never a staged scene, never gushy. Keep the 4-section structure.",
+      "TREND-FORWARD. Write the two paragraphs current and aesthetic-driven — name the look/trend it fits (Y2K, cottagecore, clean-girl, coastal, etc.) where it genuinely matches the product. Keep the exact structure: 2 marketing paragraphs, then a \"Features\" list, then a \"Perfect For\" list. No fiction.",
   },
   {
-    name: "problem-solver",
+    name: "practical-clear",
     instruction:
-      "PROBLEM / SOLUTION. Open by naming the real, checkable frustration this buyer has, keyword woven in fast, then deliver the product as the fix ('Tired of digging for your keys? This leather crossbody keeps them at your fingertips.'). 'You' is allowed only to state the genuine problem/benefit, never to stage a scene or feeling. Every bullet maps a feature to the friction it removes. Punchy and useful. Keep the 4-section structure.",
+      "PRACTICAL & CLEAR. Write the two paragraphs straightforward and benefit-focused — what it is, why it's good, how it's used — zero fluff, zero hype. Keep the exact structure: 2 marketing paragraphs, then a \"Features\" list, then a \"Perfect For\" list. No fiction.",
   },
   {
-    name: "occasion-focused",
+    name: "gift-focused",
     instruction:
-      "OCCASION-FOCUSED. Lead the hook with WHEN and FOR WHICH event this fits, fused to the anchor keyword ('A prom dress built to own the night…'), then the feature that makes it right. Section 3 expands to adjacent occasions (prom, homecoming, quinceañera, galas) as both long-tail SEO surface and conversion. Concrete moments, NO scene-setting prose. Keep the 4-section structure.",
-  },
-  {
-    name: "detail-expert",
-    instruction:
-      "DETAIL-EXPERT. Authoritative, thorough feature and construction breakdown with real materials vocabulary that builds buyer confidence the item is well made — each detail tied to a buyer payoff (longevity, fit, performance). Hook = one-line keyword summary + the headline feature + its payoff. Comprehensive but scannable, never a spec dump, never narrative. Keep the 4-section structure.",
-  },
-  {
-    name: "feature-forward",
-    instruction:
-      "FEATURE-FORWARD. Open with a one-line keyword-led product summary, then immediately call out the standout feature AND its payoff in the same paragraph. Punchy — the buyer knows what's special by line two. No scene-setting, no second-person 'you'll feel…' framing, no hype. Keep the 4-section structure.",
+      "GIFT-FOCUSED. Write the two paragraphs around who it's a great gift for and the occasions it suits — concrete recipients and moments woven into the prose, never a \"she'll smile when she opens it\" scene. Keep the exact structure: 2 marketing paragraphs, then a \"Features\" list, then a \"Perfect For\" list. No fiction.",
   },
 ];
 
@@ -2362,10 +2288,10 @@ ${opts.categoryPath}${avoidBlock}
 ${failBlock}
 
 # HARD RULES (restated because they were the failure):
-- Follow the DESCRIPTION section of the system prompt EXACTLY: 4 sections (HOOK → benefit bullets → WHO IT'S FOR / use cases → details, care & sizing), 1200-1800 chars, and use the SAME formatting it requires (the literal two-character newline escape between bullets and a blank-line escape between sections, inside the JSON string value).
+- Follow the DESCRIPTION section of the system prompt EXACTLY: two flowing marketing paragraphs, then a "Features" list (8-12 short lines, NO bullet character), then a "Perfect For" list (8-12 short lines, NO bullet character). ~1200-2200 chars. Use the literal two-character newline escape between list lines and a blank-line escape between paragraphs/sections, inside the JSON string value.
 - The HOOK must lead with the strongest keyword + a compelling buyer benefit in the first 1-2 lines.
 - Persuasive, human, benefit-led copy is REQUIRED and GOOD. Corny short-story / scene-direction openings are BANNED — no "Picture…", "Imagine…", "On a quiet…", "She'll smile when…", no "you'll feel…/you'll reach for…". "You" is allowed ONLY to state a real, checkable benefit. Persuade WITHOUT fiction.
-- Section 3 must land at least ONE conversion element (gifting, styling/pairing, persuasion-by-proof, or buyer-identity) in a natural sentence, and weave the approved tags as use cases — never a keyword list with periods.
+- Paragraph 1 = a confident keyword-led marketing hook + what it is + 2-3 key features in prose. Paragraph 2 = styling/use + an occasions sweep, weaving 3-5 approved tags as use cases. The "Perfect For" list carries the occasions/recipients. Confident marketing openers ("Make a bold statement with…") are GOOD; only staged fiction is banned.
 - NO shipping / processing / dispatch / delivery timing anywhere.
 - NO empty hype, fake scarcity, or fake reviews; at most one "!" in the whole description.
 - NO buyer-data wording (personalised, customisable, monogram, "with name"); marketing/craft words (handmade, custom made, made to order, bespoke, engraved) ARE allowed.
@@ -2510,28 +2436,29 @@ export interface DescriptionScore {
   failingItems: string[];
 }
 
-const DESCRIPTION_SCORER_SYSTEM = `You are an Etsy listing-description QC scorer — NOT a rewriter. Persuasive, human, benefit-led conversion copy is GOOD. Corny fiction / scene-setting is BAD — they are NOT the same thing.
+const DESCRIPTION_SCORER_SYSTEM = `You are an Etsy listing-description QC scorer — NOT a rewriter. The TARGET FORMAT is: TWO flowing marketing paragraphs, then a "Features" list, then a "Perfect For" list. Confident MARKETING copy in the paragraphs is GOOD; corny FICTION / staged scenes are BAD — they are NOT the same thing.
 
 Return strict JSON only:
 {
   "overallScore": 0-100,
-  "hasNarrativeOpening": boolean,   // "Picture him…","Imagine…","On a quiet Sunday…","She'll smile when…" = true
+  "hasNarrativeOpening": boolean,   // staged scene: "Picture him…","Imagine…","On a quiet Sunday…","She'll smile when…" = true. A marketing hook like "Make a bold statement with…" is NOT this.
   "hasSceneDirection": boolean,     // "you'll feel…","you'll reach for…", stage-directed emotion = true
   "hasShippingLanguage": boolean,   // ships in X days / dispatch / processing time / business days = true
   "hasMtoWording": boolean,         // personalised / customisable / monogram / "with name" = true
   "hasBannedTrademark": boolean,    // Disney / Marvel / Nike / NFL etc. or copyrighted character names = true
-  "missingHook": boolean,           // no clear what-it-IS + top benefit in the first 1-2 lines
-  "missingWhoItsFor": boolean,      // no use-case / audience / occasion section
-  "notBenefitLed": boolean,         // dry spec sheet, zero benefit framing
-  "bulletCount": integer,
+  "missingHook": boolean,           // paragraph 1 does NOT open with a confident, keyword-led product hook
+  "missingWhoItsFor": boolean,      // NO "Perfect For" list AND no occasions/use-cases anywhere = true
+  "notBenefitLed": boolean,         // the two PARAGRAPHS are dry/spec-only with no persuasion or styling = true (the plain Features list is EXPECTED — never set this just because the Features list is plain)
+  "bulletCount": integer,           // number of list lines (Features + Perfect For combined)
   "failingItems": ["short human-readable reason per failure"]
 }
 
 SCORING:
-- >=70 ships. A persuasive benefit hook like "Built for working women who need their essentials at arm's reach" scores HIGH.
-- A conversion element (gifting / styling / persuasion / buyer-identity) present in a natural sentence RAISES the score; a pure spec sheet with none scores <70.
-- A fiction / staged-scene opening is a HARD FAIL: set hasNarrativeOpening (or hasSceneDirection) true AND overallScore <70.
-- "you" used to state a REAL, checkable benefit ("designed so you can work hands-free") is FINE — only stage-directed emotion ("you'll feel like a princess") is hasSceneDirection.
+- >=70 ships. A confident marketing hook ("Make a bold fashion statement with this cropped leather jacket…") + a styling/occasions paragraph + a "Features" list + a "Perfect For" list scores HIGH.
+- STRUCTURE matters: a strong description has 2 marketing paragraphs AND a "Features" list AND a "Perfect For" list. If the "Features" list OR the "Perfect For" list is missing, or there is only one short paragraph, score it <70.
+- Confident MARKETING openers are GOOD and must NOT be flagged as fiction. A real fiction / staged-scene opening IS a hard fail: set hasNarrativeOpening (or hasSceneDirection) true AND overallScore <70.
+- "you" used for a REAL use ("pairs with your favorite jeans") is FINE — only stage-directed emotion ("you'll feel like a princess") is hasSceneDirection.
+- The "Features" list SHOULD be plain feature phrases (no "so you can…" clauses) — do NOT penalize that; the paragraphs do the selling.
 - List a verbatim, specific reason in failingItems for every boolean you set true and whenever overallScore <70, so the rewriter knows exactly what to fix.`;
 
 export async function scoreDescription(
