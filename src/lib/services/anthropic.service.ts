@@ -1714,6 +1714,19 @@ clean "Features" list, then a "Perfect For" list. Persuasive and human in
 the paragraphs; short, scannable, keyword-rich in the lists.
 
 ──────────────────────────────────────────────
+PRODUCT LOCK (read first — non-negotiable)
+──────────────────────────────────────────────
+Every word of the description is about the ONE product shown in the uploaded
+photos and named in the source title — nothing else. If the photos show a
+dress, the whole description is about that dress; if they show pants, it is
+about pants. NEVER describe a different product type — not an example product
+mentioned anywhere else in this prompt (bags, jackets, etc.), and not a
+competitor's item from the research data. Naming what to PAIR the item with
+("wear with heels and jeans") is fine; presenting a different product as the
+item for sale is a hard error. The title and tags already identify the
+product correctly — the description MUST describe that same product.
+
+──────────────────────────────────────────────
 FORMATTING CONTRACT (non-negotiable)
 ──────────────────────────────────────────────
 The description is ONE JSON string. Put the literal characters \\n between

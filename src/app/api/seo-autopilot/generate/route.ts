@@ -24,8 +24,6 @@ import {
   suggestTagReplacements,
   enforceTagUniqueness,
   tagCanonical,
-  scoreDescription,
-  regenerateDescription,
   regenerateTags,
   type ImagePayload,
   type ComplianceVerdict,
@@ -69,11 +67,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 90; // Sonnet vision can take 20-40s
 
 // ─── Avoid-word scrub helpers (reframe / IP last-line-of-defense) ────
-// Stage 4.5 scrubs the INITIAL generation. The Stage 4.6 QC gate and the
-// saturated-tag swap can REGENERATE the description / tags afterwards, so
-// these let us re-apply the same deterministic strip to the FINAL output —
-// a reframed listing can never ship a banned avoid-word that a rewrite or
-// swap re-introduced. Mirrors the regex used inline in Stage 4.5.
+// Stage 4.5 scrubs the INITIAL generation. The saturated-tag swap can change
+// tags afterwards, so these re-apply the same deterministic strip to the
+// FINAL output (Stage 5.6) — a reframed listing can never ship a banned
+// avoid-word the swap re-introduced. Mirrors the regex used inline in Stage 4.5.
 function buildAvoidRegexes(words: string[]): RegExp[] {
   return words.map(
     (w) =>
@@ -656,22 +653,18 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ─── Stage 4.6 — QC GATE (deterministic-first, regenerate weak output) ──
+  // ─── Stage 4.6 — Tag safety net (description QC loop removed 2026-06-17) ──
   //
-  // Guarantees 13 unique tags + a conversion-grade description BEFORE we
-  // commit the slot. This whole block runs while refundOnFailure is still
-  // true and checkAndConsume has run exactly once, so every retry here is
-  // FREE on the user's daily quota — only Anthropic tokens (billed to
-  // costAccum) are spent. Bounded by retries + cost ceiling + wall-clock
-  // so a slow listing never times the request out.
-  const QC_SCORE_MIN = 70;
-  const QC_MAX_DESC_RETRIES = 2;
-  const QC_COST_CEILING_USD = 0.12;
-  const qcDeadline = Date.now() + 12_000;
-
-  // (a) Tags — normalize() already ran enforceTagUniqueness, so tags are
-  // unique. If it came up SHORT of 13 (the model supplied too few distinct
-  // angles), do ONE tags-only regen and re-fold. Never shrinks the set.
+  // The description is written ONCE, grounded in the uploaded photos, in the
+  // Stage 4 generation pass (same pass as the title + tags). There is NO
+  // separate image-blind rewrite — so a description can never drift to a
+  // different product — and the per-gen scorer + up-to-2 rewrites that added
+  // ~20-40s of latency are gone. Description quality is owned by the
+  // GENERATOR_SYSTEM prompt (see its PRODUCT LOCK rule).
+  //
+  // Tags come out of normalize() already unique. The only remaining net: if
+  // the model supplied < 13 distinct tags, do one tags-only regen + re-fold.
+  // Runs free on quota (before refundOnFailure clears below).
   if (listing.tags.length < 13) {
     try {
       const fresh = await regenerateTags(
@@ -691,62 +684,6 @@ export async function POST(request: NextRequest) {
       );
     }
   }
-
-  // (b) Description — always score it (the only reliable signal for weak /
-  // robotic copy) and regenerate the DESCRIPTION ONLY on failure. Title +
-  // tags stay frozen, so tag uniqueness can never be undone by a rewrite.
-  // Keep the best-scoring attempt so a retry never ships worse copy.
-  let bestDescription = listing.description;
-  let bestScore = -1;
-  let bestClean = false; // a hard-failing attempt must never win over a clean one
-  for (let attempt = 0; attempt <= QC_MAX_DESC_RETRIES; attempt++) {
-    const score = await scoreDescription(listing.description, costAccum).catch(
-      () => null,
-    );
-    if (!score) break; // scorer unavailable → ship what we have
-    const hardFail =
-      score.hasNarrativeOpening ||
-      score.hasSceneDirection ||
-      score.hasShippingLanguage ||
-      score.hasMtoWording ||
-      score.hasBannedTrademark ||
-      score.missingHook ||
-      score.missingWhoItsFor ||
-      score.notBenefitLed;
-    const clean = !hardFail;
-    // Hard-fail-aware "best": a clean (no banned-language) attempt ALWAYS
-    // beats a hard-failing one regardless of numeric score; within the same
-    // bucket the higher score wins. Prevents shipping a shipping/MTO/IP/
-    // fiction description over a compliant rewrite just because Haiku gave
-    // the banned one a higher number.
-    if (
-      bestScore < 0 ||
-      (clean && !bestClean) ||
-      (clean === bestClean && score.overallScore > bestScore)
-    ) {
-      bestScore = score.overallScore;
-      bestDescription = listing.description;
-      bestClean = clean;
-    }
-    const passed = score.overallScore >= QC_SCORE_MIN && !hardFail;
-    if (passed || attempt === QC_MAX_DESC_RETRIES) break;
-    if (Date.now() > qcDeadline || costAccum.totalCostUsd > QC_COST_CEILING_USD)
-      break;
-    const rewritten = await regenerateDescription(
-      {
-        categoryPath: category.path,
-        approvedTitle: listing.title,
-        approvedTags: listing.tags,
-        avoidWords: reframe?.avoidWords ?? [],
-        failingItems: score.failingItems,
-      },
-      costAccum,
-    ).catch(() => null);
-    if (!rewritten) break;
-    listing.description = rewritten;
-  }
-  // Ship the best-scoring description we produced (monotonic — never worse).
-  if (bestScore >= 0) listing.description = bestDescription;
 
   // Listing successfully generated — the slot is now permanently consumed.
   refundOnFailure = false;
