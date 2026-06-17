@@ -27,6 +27,7 @@ import {
   Ruler,
   Palette,
   Type,
+  ListChecks,
   Lightbulb,
   Crown,
   Eye,
@@ -231,7 +232,7 @@ function formatCount(n: number): string {
  * cards in on open.
  *
  * Backend contract is untouched — same POST /api/seo-autopilot/generate
- * with { aliExpressTitle, images, sizes, variants }, same response shape.
+ * with { aliExpressTitle, images, sizes, variants, specifications }, same response shape.
  */
 export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
   // ─── Form state ───────────────────────────────────────────────────
@@ -239,6 +240,7 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [sizes, setSizes] = useState<string[]>([]);
   const [variants, setVariants] = useState<string[]>([]);
+  const [specs, setSpecs] = useState("");
 
   // ─── Generation state ─────────────────────────────────────────────
   const [generating, setGenerating] = useState(false);
@@ -348,6 +350,7 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
     setResult(restored);
     setSizes(entry.sizes);
     setVariants(entry.variants);
+    setSpecs("");
     setErrorMsg(null);
     toast.success("Restored from history", {
       description: relativeFromNow(entry.createdAt),
@@ -386,6 +389,7 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
           })),
           sizes,
           variants,
+          specifications: specs.trim(),
         }),
       });
 
@@ -453,6 +457,7 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
     setImages([]);
     setSizes([]);
     setVariants([]);
+    setSpecs("");
     setResult(null);
     setErrorMsg(null);
   }
@@ -491,6 +496,11 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
               titleValid={titleValid}
               imagesValid={imagesValid}
             />
+            <SpecsCard
+              specs={specs}
+              onSpecsChange={setSpecs}
+              disabled={generating}
+            />
             <VariationsCard
               sizes={sizes}
               onSizesChange={setSizes}
@@ -507,7 +517,8 @@ export function SeoAutopilotView({ isCeo = false }: { isCeo?: boolean }) {
                 aliTitle.length > 0 ||
                 images.length > 0 ||
                 sizes.length > 0 ||
-                variants.length > 0
+                variants.length > 0 ||
+                specs.length > 0
               }
               usage={usage}
               atLimit={atLimit}
@@ -720,6 +731,55 @@ function AliWarningBanner() {
   );
 }
 
+// ─── Specifications card ─────────────────────────────────────────────
+//
+// Optional. The seller pastes the product's real specs/features (straight
+// from the AliExpress supplier listing). These become the verified source of
+// truth for the DESCRIPTION + the "Features" list — accurate, specific copy
+// instead of generic guesses. Title + tags are unaffected.
+
+function SpecsCard({
+  specs,
+  onSpecsChange,
+  disabled,
+}: {
+  specs: string;
+  onSpecsChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <PremiumCard>
+      <CardContent className="p-6 sm:p-8 space-y-4">
+        <StepHeader
+          stepN={2}
+          title="Product specifications & features"
+          subtitle="Optional — paste the real specs from the supplier listing. The description and Features list are built from these for accurate, specific copy."
+        />
+        <div className="space-y-2.5">
+          <SectionLabel icon={ListChecks}>Specifications & features</SectionLabel>
+          <div className="relative">
+            <Textarea
+              value={specs}
+              onChange={(e) => onSpecsChange(e.target.value)}
+              placeholder={
+                "Paste the product's real specs & features, one per line — e.g.\nMaterial: faux leather\nClosure: front zipper\nFit: cropped slim fit\nCollar: turn-down\nSleeves: long with zip cuffs\nCare: wipe clean"
+              }
+              className="min-h-[150px] resize-none text-sm leading-relaxed bg-muted/20 border-border/70 focus-visible:border-orange-500/60 focus-visible:ring-orange-500/15 transition-colors placeholder:text-muted-foreground/55"
+              disabled={disabled}
+            />
+            <div className="absolute bottom-2.5 right-3 text-[10px] font-bold tabular-nums text-muted-foreground/60 bg-card/80 backdrop-blur-sm rounded px-1.5 py-0.5">
+              {specs.length}
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground/75 leading-snug">
+            Drives the description and the Features list — the more real detail you paste, the more specific and convincing the copy. Title and tags are unaffected.
+          </p>
+        </div>
+      </CardContent>
+    </PremiumCard>
+  );
+}
+
 // ─── Variations card ────────────────────────────────────────────────
 
 function VariationsCard({
@@ -739,7 +799,7 @@ function VariationsCard({
     <PremiumCard>
       <CardContent className="p-6 sm:p-8 space-y-6">
         <StepHeader
-          stepN={2}
+          stepN={3}
           title="Product variations"
           subtitle="Sizes and options available to buyers."
         />

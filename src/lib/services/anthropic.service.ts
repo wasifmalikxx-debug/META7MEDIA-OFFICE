@@ -1442,6 +1442,8 @@ Review the product image(s) above and the title. Decide whether this product is 
 export interface GenerationInput {
   /** The AliExpress title (or any product description). Used as the primary cue. */
   productBrief: string;
+  /** Optional seller-provided specs/features — drives the DESCRIPTION + Features list (not title/tags). */
+  specifications?: string;
   /** Up to 2 regenerated product images. */
   images: ImagePayload[];
   /** Confirmed Etsy taxonomy node we're targeting. */
@@ -1727,6 +1729,17 @@ item for sale is a hard error. The title and tags already identify the
 product correctly — the description MUST describe that same product.
 
 ──────────────────────────────────────────────
+WHEN "PRODUCT SPECIFICATIONS" ARE PROVIDED (use them as the truth)
+──────────────────────────────────────────────
+If the user prompt includes a "PRODUCT SPECIFICATIONS & FEATURES" block, those
+are seller-verified facts: build the description's details and the "Features"
+list FROM THEM (material, closure, fit, dimensions, etc.), and never state
+anything that contradicts them. You still write the hook + styling in your own
+persuasive words — the specs supply the facts, you supply the selling. Specs
+enrich the DESCRIPTION + Features list ONLY; keep the title and tags on their
+keyword/anchor rules.
+
+──────────────────────────────────────────────
 FORMATTING CONTRACT (non-negotiable)
 ──────────────────────────────────────────────
 The description is ONE JSON string. Put the literal characters \\n between
@@ -1739,18 +1752,39 @@ own line. Total length about 1200-2200 characters.
 ──────────────────────────────────────────────
 PARAGRAPH 1 — HOOK + WHAT IT IS (2-3 sentences, flowing prose)
 ──────────────────────────────────────────────
-Open with a confident, benefit-led marketing hook, name the product with
-its strongest keyword early, say who it is for, and weave 2-3 standout
-features into natural prose.
-  GOOD: "Make a bold fashion statement with this sleek and stylish cropped
-  leather jacket designed for modern women who love confident, trend-driven
-  fashion. Featuring a flattering fitted silhouette, structured design, and
-  front zipper closure, this jacket effortlessly combines contemporary
-  streetwear style with timeless leather-inspired appeal."
-Confident marketing openers are GOOD here ("Make a bold statement with…",
-"Add a touch of elegance to…", "Bring effortless warmth to your home
-with…", "Elevate your everyday with…"). A marketing hook about the product
-is NOT fiction — only staged scenes are banned (see below).
+Lead with the ONE most eye-catching, SPECIFIC thing about THIS exact item — a
+real detail you can see in the photo (the neckline, the fabric, the
+silhouette, the print, the finish) or its sharpest genuine benefit. By the end
+of the first sentence the buyer should think "that's the one." Name the
+product + its strongest keyword in that first sentence, then add 1-2 more
+concrete, true details.
+
+VARY THE OPENER on every listing — do NOT start with the same formula each
+time. A whole shop of identical openings is the #1 thing that makes listings
+read as AI-written. These are fine ONCE IN A WHILE but must NOT be your
+default opener:
+  ✗ "Elevate your wardrobe with…"     ✗ "Make a bold statement with…"
+  ✗ "Bring effortless style to…"      ✗ "Treat the [woman] in your life to…"
+  ✗ "Step into … with…"               ✗ "Add a touch of elegance to…"
+Open instead on the product's actual detail or benefit — notice how each of
+these starts DIFFERENTLY and leads with something specific:
+  ✓ "This off-shoulder satin midi dress drapes from a sweetheart neckline into a fluid skirt that moves with every step."
+  ✓ "Cut from breathable cotton-linen, these high-waist wide-leg pants stay cool all day and still look pulled-together."
+  ✓ "A hand-glazed ceramic vase with an organic, sculptural shape that gives any shelf or entryway a quiet designer touch."
+  ✓ "Soft ribbed knit and a cropped boxy cut give this cardigan that easy, thrown-on-and-still-put-together look."
+
+──────────────────────────────────────────────
+BE SPECIFIC — CUT THE FILLER (this is what stops it sounding "AI")
+──────────────────────────────────────────────
+Every sentence must say something REAL about THIS product. Empty praise is
+exactly what makes copy forgettable — replace it with the actual detail. Do
+NOT use these hollow phrases unless a concrete detail immediately backs them:
+  ✗ "designed for women who value style and comfort"
+  ✗ "the perfect blend of comfort and style"
+  ✗ "a must-have wardrobe staple"   ✗ "effortless style" / "timeless appeal" (alone)
+Name the real thing instead — the ruched waist, the satin finish, the lace-up
+back, the adjustable strap, the hand-stitched hem, the ribbed cuffs. Specific
+sells; generic gets scrolled past.
 
 ──────────────────────────────────────────────
 PARAGRAPH 2 — STYLING / USE + OCCASIONS (2-3 sentences, flowing prose)
@@ -1789,24 +1823,22 @@ photo — never invent a material or detail.
   Suitable for spring and autumn seasons
 
 ──────────────────────────────────────────────
-"Perfect For" LIST (8-12 short lines)
+"Perfect For" LIST (5-6 SHARP lines — shorter & smarter, no padding)
 ──────────────────────────────────────────────
-A line that literally reads "Perfect For", then 8-12 short use-case /
-occasion / styling / recipient phrases — one per line, NO bullet character.
-This is pure long-tail keyword surface: occasions, aesthetics, settings,
-recipients.
-  GOOD:
+A line that literally reads "Perfect For", then ONLY 5-6 short phrases — one
+per line, NO bullet character. SHORTER and SMARTER beats long: pick the
+highest-intent, most search-relevant occasions / recipients / aesthetics —
+the exact things a real buyer would type or relate to for THIS product. Cut
+the padding and near-duplicates: NO vague filler ("everyday fashion",
+"trendy outfits", "casual wear"), and no two lines that mean the same thing.
+Each line must earn its place; combine related ideas into one strong line.
+  GOOD (sharp, distinct, high-intent — 5 lines):
   Perfect For
-  Everyday fashion
-  Streetwear outfits
-  Casual wear
-  Date nights
-  Concert outfits
-  Party wear
-  Vacation styling
-  Fashion photoshoots
-  Y2K inspired looks
-  Trendy city outfits
+  Night out & club wear
+  Date night looks
+  Concert & festival outfits
+  Y2K / streetwear styling
+  Gifts for her
 
 If sizes or variants were supplied in the user prompt, mention them ONCE
 naturally — in Paragraph 2 or as one "Features" line ("Available in XS-XXL
@@ -1815,7 +1847,7 @@ and 5 colors") — never in the title or tags.
 EXAMPLE of a complete, correctly-formatted description (note the \\n
 escapes, the two marketing paragraphs, then the two labelled lists):
 
-"Make a bold fashion statement with this sleek and stylish cropped leather jacket designed for modern women who love confident, trend-driven fashion. Featuring a flattering fitted silhouette, structured design, and front zipper closure, this jacket effortlessly combines contemporary streetwear style with timeless leather-inspired appeal.\\n\\nThe cropped cut enhances your natural shape while creating a fashionable look that pairs perfectly with high-waisted jeans, skirts, trousers, and dresses. Whether you're heading out for a casual day, date night, concert, party, vacation, or city outing, this versatile jacket adds instant sophistication to your outfit.\\n\\nFeatures\\nStylish cropped leather jacket design\\nFront zipper closure\\nModern slim fit silhouette\\nClassic turn down collar\\nLong sleeves with zip cuffs\\nSmooth premium leather look finish\\nLightweight and comfortable wear\\nFashionable Y2K inspired style\\nEasy to pair with casual and dressy outfits\\nSuitable for spring and autumn seasons\\n\\nPerfect For\\nEveryday fashion\\nStreetwear outfits\\nCasual wear\\nDate nights\\nConcert outfits\\nParty wear\\nVacation styling\\nFashion photoshoots\\nY2K inspired looks\\nTrendy city outfits"
+"This off-shoulder satin midi dress drapes from a sweetheart neckline into a fluid skirt that catches the light with every step — a romantic, elevated look that feels custom-fit the moment you put it on. The fitted bodice and soft stretch satin flatter your shape without clinging, the kind of dress you reach for whenever the occasion calls for a little more.\\n\\nStyle it with strappy heels and gold jewelry for a wedding or date night, or keep it easy with sandals and a denim jacket for a garden party or summer evening. It carries you from cocktail events to bridal-shower brunches to a night out.\\n\\nFeatures\\nOff-shoulder satin design\\nSweetheart neckline\\nFitted bodice with soft stretch\\nFluid midi-length skirt\\nLight-catching satin finish\\nHidden back zip closure\\nComfortable all-day wear\\nElegant feminine silhouette\\n\\nPerfect For\\nWedding guest outfits\\nDate night looks\\nCocktail events\\nGarden party style\\nSpecial occasion dressing"
 
 ──────────────────────────────────────────────
 BANNED in description (compliance — non-negotiable)
@@ -2192,7 +2224,7 @@ ${voice.instruction}
 
 ${reframeBlock}# Source title
 ${input.productBrief}
-
+${input.specifications && input.specifications.trim() ? `\n# PRODUCT SPECIFICATIONS & FEATURES (verified by the seller — build the DESCRIPTION + Features list from these EXACT facts; keep the title + tags on their keyword/anchor rules)\n${input.specifications.trim()}\n` : ""}
 # Target Etsy category
 ${input.category.path}  (taxonomy_id: ${input.category.id})
 

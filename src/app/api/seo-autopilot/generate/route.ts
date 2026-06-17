@@ -120,6 +120,9 @@ const RequestSchema = z.object({
   // dimension write-up + leaves room for material/finish qualifiers.
   sizes: z.array(z.string().min(1).max(250)).max(30).default([]),
   variants: z.array(z.string().min(1).max(250)).max(30).default([]),
+  // Optional seller-provided specs/features — drives the DESCRIPTION +
+  // Features list only (title/tags keep their keyword logic). Generous cap.
+  specifications: z.string().max(4000).optional().default(""),
 });
 
 export async function POST(request: NextRequest) {
@@ -586,6 +589,7 @@ export async function POST(request: NextRequest) {
         style: context.styleHint || undefined,
         sizes: payload.sizes,
         variants: payload.variants,
+        specifications: payload.specifications || undefined,
         reframeConstraints: reframe
           ? {
               listingApproach: reframe.listingApproach,
