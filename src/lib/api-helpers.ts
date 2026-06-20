@@ -15,6 +15,22 @@ export function error(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+// Image-upload safety (M18 + M19). Accepts ONLY data: URLs for the raster image
+// types we allow — explicitly NOT image/svg+xml, which can carry executable
+// scripts and is rendered in lightbox / open-in-new-tab links. Also bounds the
+// base64 length to limit DB bloat and vision-API cost. Use to validate any
+// client-supplied image data URL before persisting it.
+const ALLOWED_IMAGE_DATA_URL = /^data:image\/(jpeg|jpg|png|webp|gif)[;,]/i;
+export const MAX_IMAGE_DATA_URL_LEN = 9_000_000; // ~6.7 MB binary
+
+export function isAllowedImageDataUrl(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    value.length <= MAX_IMAGE_DATA_URL_LEN &&
+    ALLOWED_IMAGE_DATA_URL.test(value)
+  );
+}
+
 export async function getSession() {
   return auth();
 }

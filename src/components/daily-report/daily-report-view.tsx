@@ -198,10 +198,17 @@ export function DailyReportView({
                 <div className="space-y-0.5">
                   {links.map((link: string, i: number) => {
                     const hit = dupHitFor(r.id, link);
+                    const url = link.trim();
+                    // M17: only render a clickable link for real http(s) URLs.
+                    // An employee-entered value could otherwise be a
+                    // javascript:/data: URI that runs in the CEO's session when
+                    // clicked. Anything else is shown as inert text.
+                    const isSafeUrl = /^https?:\/\//i.test(url);
                     return (
                       <div key={i} className="flex items-center gap-1.5">
+                        {isSafeUrl ? (
                         <a
-                          href={link.trim()}
+                          href={url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={`flex items-center gap-1 hover:underline truncate max-w-[450px] ${
@@ -210,9 +217,18 @@ export function DailyReportView({
                               : "text-blue-600 dark:text-blue-400"
                           }`}
                         >
-                          {link.trim()}
+                          {url}
                           <ExternalLink className="size-2.5 shrink-0" />
                         </a>
+                        ) : (
+                        <span
+                          className={`flex items-center gap-1 truncate max-w-[450px] ${
+                            hit ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"
+                          }`}
+                        >
+                          {url}
+                        </span>
+                        )}
                         {hit && (
                           <Tooltip>
                             <TooltipTrigger className="inline-flex items-center">

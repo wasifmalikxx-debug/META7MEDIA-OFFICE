@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, requireAuth, isAllowedImageDataUrl } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 import { notifyAdmins, createNotification } from "@/lib/services/notification.service";
@@ -70,8 +70,8 @@ export async function POST(request: NextRequest) {
     if (!VALID_PRIORITIES.includes(priority as any)) {
       return error("Invalid priority");
     }
-    if (imageUrl && !imageUrl.startsWith("data:image/")) {
-      return error("Invalid image");
+    if (imageUrl && !isAllowedImageDataUrl(imageUrl)) {
+      return error("Only JPG, PNG, WEBP or GIF images under 9MB are allowed");
     }
 
     const role = (session.user as any).role;

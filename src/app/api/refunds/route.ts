@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, requireAuth, isAllowedImageDataUrl } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 import { notifyAdmins } from "@/lib/services/notification.service";
@@ -131,8 +131,8 @@ export async function POST(request: NextRequest) {
       if (!aliexpressProofUrl) {
         return error("Screenshot proof is required when AliExpress refund is marked as Yes");
       }
-      if (!aliexpressProofUrl.startsWith("data:image/")) {
-        return error("Invalid screenshot format");
+      if (!isAllowedImageDataUrl(aliexpressProofUrl)) {
+        return error("Screenshot must be a JPG/PNG/WEBP/GIF image under 9MB");
       }
     } else {
       // When AliExpress refund was NOT applied, require a detailed explanation

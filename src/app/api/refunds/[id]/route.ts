@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, requireAuth, isAllowedImageDataUrl } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 
@@ -129,8 +129,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         return error("AliExpress refund amount is required when marked as refunded");
       }
       if (newProofUrl) {
-        if (!newProofUrl.startsWith("data:image/")) {
-          return error("Invalid screenshot format");
+        if (!isAllowedImageDataUrl(newProofUrl)) {
+          return error("Screenshot must be a JPG/PNG/WEBP/GIF image under 9MB");
         }
         aliexpressProofUrl = newProofUrl;
       } else if (keepExistingProof && existing.aliexpressProofUrl) {

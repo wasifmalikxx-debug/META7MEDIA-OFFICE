@@ -233,18 +233,32 @@ export function MyReportsView({ reports, currentMonth, currentYear, employeeId }
                             Listing Links ({links.length})
                           </p>
                           <div className="space-y-0.5 max-h-[120px] overflow-y-auto rounded bg-muted/20 p-2">
-                            {links.map((link, i) => (
+                            {links.map((link, i) => {
+                              // M17: render a clickable link only for http(s)
+                              // URLs; anything else (e.g. a javascript: URI) is
+                              // shown inert.
+                              const url = String(link).trim();
+                              const isSafeUrl = /^https?:\/\//i.test(url);
+                              return isSafeUrl ? (
                               <a
                                 key={i}
-                                href={link}
+                                href={url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline text-[11px] truncate"
                               >
                                 <ExternalLink className="size-2.5 shrink-0" />
-                                <span className="truncate">{link}</span>
+                                <span className="truncate">{url}</span>
                               </a>
-                            ))}
+                              ) : (
+                              <span
+                                key={i}
+                                className="flex items-center gap-1 text-muted-foreground text-[11px] truncate"
+                              >
+                                <span className="truncate">{url}</span>
+                              </span>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>

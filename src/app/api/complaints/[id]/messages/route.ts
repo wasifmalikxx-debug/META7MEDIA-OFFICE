@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, requireAuth, isAllowedImageDataUrl } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 import { createNotification, notifyAdmins } from "@/lib/services/notification.service";
@@ -23,8 +23,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!message && !imageUrl) return error("Message or image required");
     if (message.length > 4000) return error("Message too long (max 4000 characters)");
     // Basic validation: imageUrl must be a data URL
-    if (imageUrl && !imageUrl.startsWith("data:image/")) {
-      return error("Invalid image URL");
+    if (imageUrl && !isAllowedImageDataUrl(imageUrl)) {
+      return error("Only JPG, PNG, WEBP or GIF images under 9MB are allowed");
     }
 
     const complaint = await prisma.complaint.findUnique({
