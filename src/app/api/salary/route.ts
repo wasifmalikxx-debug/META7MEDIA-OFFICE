@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
+import { json, error, requireAuth, requireRole, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { salaryStructureSchema } from "@/lib/validations/payroll";
 
@@ -9,11 +9,15 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get("userId") || session.user.id;
-  const role = (session.user as any).role;
 
-  if (role === "EMPLOYEE" && userId !== session.user.id) {
-    return error("Forbidden", 403);
-  }
+  // Object-level authz (H2): CEO → anyone; PARTNER → own-team members;
+  // everyone else (MANAGER/EMPLOYEE/HR) → self only. Salary is highly
+  // sensitive; the old check only blocked EMPLOYEE, letting a MANAGER/PARTNER
+  // read any user's salary via ?userId=.
+  const scope = await getCallerScope(session);
+  if (!scope) return error("Forbidden", 403);
+  const denied = await assertCanActOnUser(scope, userId);
+  if (denied) return denied;
 
   const salary = await prisma.salaryStructure.findUnique({
     where: { userId },

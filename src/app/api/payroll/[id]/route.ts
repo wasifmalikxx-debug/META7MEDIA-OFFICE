@@ -28,9 +28,15 @@ export async function GET(
 
   if (!record) return error("Not found", 404);
 
+  // Object-level authz (H3): CEO + HR_ADMIN → any record; PARTNER → own-team
+  // members; MANAGER/EMPLOYEE → self only. The old check only blocked EMPLOYEE,
+  // which let a MANAGER/PARTNER read any employee's full payslip via the id.
   const role = (session.user as any).role;
-  if (role === "EMPLOYEE" && record.userId !== session.user.id) {
-    return error("Forbidden", 403);
+  if (role !== "SUPER_ADMIN" && role !== "HR_ADMIN") {
+    const scope = await getCallerScope(session);
+    if (!scope) return error("Forbidden", 403);
+    const denied = await assertCanActOnUser(scope, record.userId);
+    if (denied) return denied;
   }
 
   // Get fines and incentives breakdown
@@ -74,14 +80,22 @@ export async function PATCH(
   }
   if (body.notes !== undefined) updateData.notes = body.notes;
   if (body.paymentProof !== undefined) updateData.paymentProof = body.paymentProof;
-  // CEO can edit all salary fields
-  if (body.monthlySalary !== undefined) updateData.monthlySalary = body.monthlySalary;
-  if (body.absentDays !== undefined) updateData.absentDays = body.absentDays;
-  if (body.totalFines !== undefined) updateData.totalFines = body.totalFines;
-  if (body.totalDeductions !== undefined) updateData.totalDeductions = body.totalDeductions;
-  if (body.totalIncentives !== undefined) updateData.totalIncentives = body.totalIncentives;
-  if (body.netSalary !== undefined) updateData.netSalary = body.netSalary;
-  if (body.earnedSalary !== undefined) updateData.earnedSalary = body.earnedSalary;
+  // H7: only the CEO may hand-edit payroll MONEY fields. A PARTNER reaching
+  // here (their own team) can still transition status / notes / paymentProof —
+  // e.g. mark a record PAID — but must NOT silently alter settled amounts
+  // (netSalary, fines, deductions, incentives, etc.). This closes the vector
+  // where a non-CEO actor changes a settled/locked employee's pay. The
+  // single source of truth stays payroll.service.ts; this is only the manual
+  // override path.
+  if (scope.isCeo) {
+    if (body.monthlySalary !== undefined) updateData.monthlySalary = body.monthlySalary;
+    if (body.absentDays !== undefined) updateData.absentDays = body.absentDays;
+    if (body.totalFines !== undefined) updateData.totalFines = body.totalFines;
+    if (body.totalDeductions !== undefined) updateData.totalDeductions = body.totalDeductions;
+    if (body.totalIncentives !== undefined) updateData.totalIncentives = body.totalIncentives;
+    if (body.netSalary !== undefined) updateData.netSalary = body.netSalary;
+    if (body.earnedSalary !== undefined) updateData.earnedSalary = body.earnedSalary;
+  }
 
   const updated = await prisma.payrollRecord.update({
     where: { id },

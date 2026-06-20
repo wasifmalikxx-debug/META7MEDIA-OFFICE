@@ -75,13 +75,34 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = bonusEligibilitySchema.parse(body);
 
-    // PARTNER scope: target user must be on one of their teams.
+    // Scope (H6): PARTNER → own-team targets; MANAGER (Izaan) → own-department
+    // targets and NEVER his own row (the CEO enters Izaan's bonus, mirroring
+    // the review-bonus self-approval guard). Without this a MANAGER could set
+    // any user's eligibility with an arbitrary profit, self-grant a Profit
+    // Bonus, and/or inflate his own Team Lead Bonus. CEO (SUPER_ADMIN) skips
+    // both branches and keeps full control.
     if (role === "PARTNER") {
       const { getCallerScope, assertCanActOnUser } = await import("@/lib/api-helpers");
       const scope = await getCallerScope(session);
       if (!scope) return error("Forbidden", 403);
       const denied = await assertCanActOnUser(scope, parsed.userId);
       if (denied) return denied;
+    } else if (role === "MANAGER") {
+      // MANAGER (Izaan, EM-4) may set eligibility ONLY for his own department's
+      // employees — INCLUDING his own EM-4 row, which is legitimate: he runs his
+      // own EM shops, appears in the EM bonus list (May-19-2026 design), and his
+      // "Sync Profits" button loops every EM row incl. his own. His own row
+      // cannot inflate his Team Lead Bonus because that tally already excludes
+      // EM-4 everywhere (this route's team-lead block, the sync-profits cron, and
+      // the BonusProgramView eligibleCount). Cross-department (AE/ME) writes stay
+      // blocked, which is the actual escalation this guard prevents.
+      const [me, target] = await Promise.all([
+        prisma.user.findUnique({ where: { id: session.user.id }, select: { departmentId: true } }),
+        prisma.user.findUnique({ where: { id: parsed.userId }, select: { departmentId: true } }),
+      ]);
+      if (!me?.departmentId || me.departmentId !== target?.departmentId) {
+        return error("Forbidden — you can only act on your own department's employees", 403);
+      }
     }
 
     // Auto-compute eligibility and bonus amount in PKR

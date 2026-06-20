@@ -77,6 +77,17 @@ export async function PATCH(
     const isPartnerTarget = target?.role === "PARTNER";
 
     const updateData: any = { ...parsed };
+    // H4: only the CEO may change privileged org/role fields. Without this, a
+    // PARTNER could mass-assign role:"SUPER_ADMIN" (to a teammate OR themselves,
+    // since assertCanActOnUser allows self) and escalate to god-mode, or
+    // silently move people between teams/departments/managers. The CEO's Edit
+    // Employee form keeps full control because scope.isCeo is true for him.
+    if (!scope.isCeo) {
+      delete updateData.role;
+      delete updateData.departmentId;
+      delete updateData.teamId;
+      delete updateData.managerId;
+    }
     if (parsed.joiningDate) updateData.joiningDate = new Date(parsed.joiningDate);
     delete updateData.monthlySalary;
     // Handle employee ID
@@ -99,6 +110,16 @@ export async function PATCH(
     const employee = await prisma.user.update({
       where: { id },
       data: updateData,
+      // H5: never echo secrets back in the response. The base GET already uses
+      // a whitelist that excludes these; PATCH must match so a partner editing
+      // a teammate (or the CEO) can't receive the bcrypt hash / bank details.
+      omit: {
+        password: true,
+        bankName: true,
+        accountNumber: true,
+        accountTitle: true,
+        googleSheetUrl: true,
+      },
     });
 
     // Update salary if provided — never for partners.
