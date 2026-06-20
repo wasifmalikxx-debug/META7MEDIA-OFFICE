@@ -1327,6 +1327,26 @@ export async function logTagSwap(opts: {
   }
 }
 
+/**
+ * M11: count a user's tag-swap calls so far TODAY (PKT day), used to enforce a
+ * daily cap on the otherwise-uncapped swap-tag endpoint. Reuses the existing
+ * SeoAutopilotTagSwapLog table (each swap is logged), so no new table/counter.
+ * One indexed count query; fail-safe (returns 0 on error so a DB blip never
+ * blocks a legitimate swap).
+ */
+export async function countTagSwapsToday(userId: string): Promise<number> {
+  try {
+    return await prisma.seoAutopilotTagSwapLog.count({
+      where: { userId, createdAt: { gte: pktDateAsUtcMidnight() } },
+    });
+  } catch {
+    return 0;
+  }
+}
+
+/** M11: per-user daily cap on tag swaps (CEO is exempt). */
+export const TAG_SWAP_DAILY_LIMIT = 30;
+
 // ─── Per-user history (for the "Your recent generations" UI) ────────
 
 export interface MyHistoryEntry {

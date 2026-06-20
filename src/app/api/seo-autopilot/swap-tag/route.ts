@@ -6,7 +6,7 @@ import {
   createCostAccumulator,
 } from "@/lib/services/anthropic.service";
 import { getTagDemandStats } from "@/lib/services/etsy-api.service";
-import { logTagSwap } from "@/lib/services/seo-autopilot-quota.service";
+import { logTagSwap, countTagSwapsToday, TAG_SWAP_DAILY_LIMIT } from "@/lib/services/seo-autopilot-quota.service";
 import { getSeoAutopilotAccess } from "@/lib/services/seo-autopilot-access";
 
 /**
@@ -58,6 +58,19 @@ export async function POST(request: NextRequest) {
       "Forbidden — SEO Autopilot is not enabled for your account",
       403,
     );
+  }
+
+  // M11: per-user daily cap on tag swaps (CEO exempt). Each swap costs a Haiku
+  // call + Etsy lookups; without a cap one account could drive unbounded spend.
+  // Counter is the existing swap log (no new table); fail-safe.
+  if (!access.isCeo) {
+    const usedToday = await countTagSwapsToday(u.id);
+    if (usedToday >= TAG_SWAP_DAILY_LIMIT) {
+      return error(
+        `Daily tag-swap limit reached (${TAG_SWAP_DAILY_LIMIT}/day). Please try again tomorrow.`,
+        429,
+      );
+    }
   }
 
   let payload: z.infer<typeof RequestSchema>;
