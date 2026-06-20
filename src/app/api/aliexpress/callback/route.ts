@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { encryptSecret } from "@/lib/crypto";
 import {
   exchangeCodeForToken,
   resolveAccessExpiry,
@@ -86,8 +87,8 @@ export async function GET(request: NextRequest) {
         },
       },
       update: {
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token,
+        accessToken: encryptSecret(token.access_token),
+        refreshToken: encryptSecret(token.refresh_token),
         aliUserNick: token.user_nick ?? null,
         expiresAt,
         refreshExpiresAt,
@@ -96,8 +97,8 @@ export async function GET(request: NextRequest) {
         userId: session.user.id,
         aliUserId: token.user_id ?? "default",
         aliUserNick: token.user_nick ?? null,
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token,
+        accessToken: encryptSecret(token.access_token),
+        refreshToken: encryptSecret(token.refresh_token),
         expiresAt,
         refreshExpiresAt,
       },

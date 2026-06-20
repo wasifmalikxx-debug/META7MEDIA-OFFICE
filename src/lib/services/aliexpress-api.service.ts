@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 
 /**
  * AliExpress Open Platform — Drop Shipping (DS) API client.
@@ -477,21 +478,23 @@ export async function getActiveTokenForUser(
   const expiresAtMs = token.expiresAt.getTime();
   const now = Date.now();
 
-  // Still has more than 24h left — use as-is
+  // Still has more than 24h left — use as-is. (M20: stored value may be
+  // encrypted; decryptSecret returns plaintext as-is for legacy/no-key rows.)
   if (expiresAtMs - now > oneDay) {
-    return token.accessToken;
+    return decryptSecret(token.accessToken);
   }
 
   // Within 24h of expiry — refresh
   try {
-    const fresh = await refreshAccessToken(token.refreshToken);
+    const fresh = await refreshAccessToken(decryptSecret(token.refreshToken));
     const newExpiresAt = resolveAccessExpiry(fresh);
     const newRefreshExpiresAt = resolveRefreshExpiry(fresh);
     await prisma.aliExpressToken.update({
       where: { id: token.id },
       data: {
-        accessToken: fresh.access_token,
-        refreshToken: fresh.refresh_token,
+        // M20: encrypt at rest (no-op plaintext until ENCRYPTION_KEY is set).
+        accessToken: encryptSecret(fresh.access_token),
+        refreshToken: encryptSecret(fresh.refresh_token),
         expiresAt: newExpiresAt,
         refreshExpiresAt: newRefreshExpiresAt,
       },
@@ -500,7 +503,7 @@ export async function getActiveTokenForUser(
   } catch (err) {
     // Refresh failed — if still in the valid window, use the existing
     // token and let the next call surface the auth error.
-    if (expiresAtMs > now) return token.accessToken;
+    if (expiresAtMs > now) return decryptSecret(token.accessToken);
     console.error("[aliexpress] refresh failed, no fallback:", err);
     return null;
   }
