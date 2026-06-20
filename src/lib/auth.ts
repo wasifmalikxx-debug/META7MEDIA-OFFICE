@@ -3,6 +3,35 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
+// ── M6: in-memory login throttle ────────────────────────────────────────────
+// Per-instance brute-force guard. Zero DB (respects connection_limit=2). It is
+// NOT a distributed limit (serverless instances each have their own memory and
+// reset on cold start), so it's defense-in-depth — but it stops naive repeated
+// guessing against a warm instance. Threshold is generous so a user who
+// fat-fingers their password a few times is never locked out; the window
+// auto-expires and a successful login clears the counter.
+const LOGIN_MAX_FAILS = 10;
+const LOGIN_WINDOW_MS = 15 * 60_000;
+const loginFails = new Map<string, { count: number; first: number }>();
+function isLoginThrottled(email: string): boolean {
+  const rec = loginFails.get(email);
+  if (!rec) return false;
+  if (Date.now() - rec.first > LOGIN_WINDOW_MS) {
+    loginFails.delete(email);
+    return false;
+  }
+  return rec.count >= LOGIN_MAX_FAILS;
+}
+function noteLoginFail(email: string): void {
+  const now = Date.now();
+  const rec = loginFails.get(email);
+  if (!rec || now - rec.first > LOGIN_WINDOW_MS) loginFails.set(email, { count: 1, first: now });
+  else rec.count++;
+}
+function clearLoginFails(email: string): void {
+  loginFails.delete(email);
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
@@ -18,18 +47,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
+        const email = credentials.email as string;
+
+        // M6: brute-force throttle (per-instance, in-memory).
+        if (isLoginThrottled(email)) return null;
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email },
         });
 
-        if (!user || user.status === "RESIGNED" || user.status === "TERMINATED") return null;
+        if (!user || user.status === "RESIGNED" || user.status === "TERMINATED") {
+          noteLoginFail(email);
+          return null;
+        }
 
         const isValid = await bcrypt.compare(
           credentials.password as string,
           user.password
         );
-        if (!isValid) return null;
+        if (!isValid) {
+          noteLoginFail(email);
+          return null;
+        }
+        clearLoginFails(email);
 
         // ── Device-binding decision (carried in the session as a claim) ──
         // This is computed at every login. It is ENFORCED only when
