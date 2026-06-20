@@ -59,6 +59,10 @@ export default function LoginPage() {
       const result = await signIn("credentials", {
         email,
         password,
+        // Sent so the server can decide this device's status at login. Harmless
+        // when DEVICE_ENFORCEMENT is off; required for it to work when on.
+        fingerprint: fingerprint ?? "",
+        deviceName: getDeviceName(),
         redirect: false,
       });
 

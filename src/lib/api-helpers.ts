@@ -19,9 +19,51 @@ export async function getSession() {
   return auth();
 }
 
-export async function requireAuth() {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Device-binding enforcement (C1)
+//
+// Gated behind DEVICE_ENFORCEMENT — OFF by default, exactly like
+// ENABLE_PARTNER_ROLES. When OFF, isDeviceSessionBlocked() always returns
+// false and nothing changes. When ON, a session whose device was NOT
+// approved at login is rejected by requireAuth/requireRole (API) and the
+// dashboard layout (pages).
+//
+// Activation runbook (zero-lockout): deploy with the flag OFF, approve every
+// active device from the CEO's device-approval screen, THEN set the flag to
+// "true". SUPER_ADMIN is always bypassed. Sessions issued before enforcement
+// (no deviceStatus claim) are intentionally NOT blocked so nobody is kicked
+// mid-shift — they pick up a claim on their next login.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export function isDeviceEnforcementEnabled(): boolean {
+  return process.env.DEVICE_ENFORCEMENT === "true";
+}
+
+/**
+ * True when this session must be blocked because device enforcement is on and
+ * the session's device is not approved. SUPER_ADMIN and legacy/no-claim
+ * sessions are never blocked.
+ */
+export function isDeviceSessionBlocked(
+  session: { user?: { role?: string; deviceStatus?: string } } | null | undefined
+): boolean {
+  if (!isDeviceEnforcementEnabled()) return false;
+  const user = session?.user;
+  if (!user) return false;
+  if (user.role === "SUPER_ADMIN") return false;
+  const status = user.deviceStatus;
+  // No claim (sessions predating enforcement) → don't kick them mid-shift.
+  if (!status) return false;
+  return status !== "APPROVED" && status !== "BYPASS";
+}
+
+export async function requireAuth(opts?: { deviceCheck?: boolean }) {
   const session = await auth();
   if (!session?.user) return null;
+  // Block sessions from unapproved devices (only when DEVICE_ENFORCEMENT=true).
+  // Routes that a pending-device user legitimately needs (e.g. registering the
+  // device for approval) pass { deviceCheck: false }.
+  if (opts?.deviceCheck !== false && isDeviceSessionBlocked(session)) return null;
   return session;
 }
 

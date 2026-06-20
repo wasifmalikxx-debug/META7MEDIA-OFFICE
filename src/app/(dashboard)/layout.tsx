@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isDeviceSessionBlocked } from "@/lib/api-helpers";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
@@ -13,6 +14,14 @@ export default async function DashboardLayout({
 }) {
   const session = await auth();
   if (!session?.user) {
+    redirect("/login");
+  }
+
+  // Device-binding enforcement (only active when DEVICE_ENFORCEMENT=true).
+  // A session from an unapproved device is sent back to /login, where the
+  // device screens explain the pending/rejected state. SUPER_ADMIN and
+  // pre-enforcement sessions are never blocked (see isDeviceSessionBlocked).
+  if (isDeviceSessionBlocked(session)) {
     redirect("/login");
   }
 

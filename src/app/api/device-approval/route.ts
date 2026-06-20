@@ -28,7 +28,10 @@ export async function GET() {
 // pollute the CEO's approval queue.
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAuth();
+    // deviceCheck:false — a user whose device is still PENDING must be able to
+    // (re)register it; this is the one route that an unapproved-device session
+    // legitimately needs while enforcement is on.
+    const session = await requireAuth({ deviceCheck: false });
     if (!session) return error("Unauthorized", 401);
     const userId = session.user.id;
 
