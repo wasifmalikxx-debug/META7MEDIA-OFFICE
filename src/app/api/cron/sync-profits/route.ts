@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error } from "@/lib/api-helpers";
+import { json, error, requireCronSecret } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 import { fetchAllProfits } from "@/lib/services/google-sheets.service";
@@ -14,15 +14,8 @@ import { calculateEligibility } from "@/lib/services/bonus.service";
  * - Manually via GET /api/cron/sync-profits
  */
 export async function GET(request: NextRequest) {
-  // Optional: verify cron secret for security
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    // Allow without secret in development
-    if (process.env.NODE_ENV === "production") {
-      return error("Unauthorized", 401);
-    }
-  }
+  const gate = requireCronSecret(request);
+  if (gate) return gate;
 
   try {
     const now = nowPKT();

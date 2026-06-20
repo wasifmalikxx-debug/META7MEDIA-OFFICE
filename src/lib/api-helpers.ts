@@ -41,6 +41,52 @@ export function getClientIp(request: NextRequest): string {
   );
 }
 
+/**
+ * Cron endpoint auth gate. Returns a NextResponse on failure (caller does
+ * `const gate = requireCronSecret(request); if (gate) return gate;`) or null
+ * on success.
+ *
+ * FAIL-CLOSED in production — mirrors the proven pattern in
+ * /api/attendance/end-of-day-checkout:
+ *   - prod + CRON_SECRET unset/blank   → 500 (never run a privileged cron
+ *                                         unauthenticated; a missing secret is
+ *                                         a misconfiguration, not a free pass)
+ *   - prod + Bearer mismatch           → 401
+ *   - prod + Bearer match              → allowed
+ *   - non-production                   → allowed without a secret (local /
+ *                                         manual cron testing), BUT if a secret
+ *                                         IS set in dev it is still enforced.
+ *
+ * Vercel Cron automatically attaches `Authorization: Bearer <CRON_SECRET>`
+ * when the env var exists, so legitimate scheduled runs are unaffected.
+ *
+ * This replaces the older `if (cronSecret && authHeader !== ... && NODE_ENV
+ * === "production")` guard which FAILED OPEN: when CRON_SECRET was unset the
+ * leading `cronSecret &&` short-circuited the whole check and the handler ran
+ * for any anonymous caller.
+ */
+export function requireCronSecret(request: NextRequest): NextResponse | null {
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get("authorization");
+
+  if (process.env.NODE_ENV === "production") {
+    if (!cronSecret) {
+      return error("Server misconfigured: CRON_SECRET not set", 500);
+    }
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return error("Unauthorized", 401);
+    }
+    return null;
+  }
+
+  // Non-production: allow unauthenticated for local/manual testing, but honor
+  // a secret if one is configured locally.
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return error("Unauthorized", 401);
+  }
+  return null;
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Multi-office scoping helpers
 //

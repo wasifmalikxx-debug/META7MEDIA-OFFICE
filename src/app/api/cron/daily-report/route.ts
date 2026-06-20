@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error } from "@/lib/api-helpers";
+import { json, error, requireCronSecret } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 import { extractSheetId, normalizeTabName, getAlternativeTabNames } from "@/lib/services/google-sheets.service";
@@ -267,11 +267,8 @@ async function readEmployeeSheetReport(
 }
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}` && process.env.NODE_ENV === "production") {
-    return error("Unauthorized", 401);
-  }
+  const gate = requireCronSecret(request);
+  if (gate) return gate;
 
   // Check if today is Sunday in PKT — skip
   const pktNow = new Date(Date.now() + 5 * 60 * 60_000);

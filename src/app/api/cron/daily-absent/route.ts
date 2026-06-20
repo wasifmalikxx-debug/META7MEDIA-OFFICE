@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error } from "@/lib/api-helpers";
+import { json, error, requireCronSecret } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { todayPKT, pktMonth, pktYear, nowPKT } from "@/lib/pkt";
 
@@ -18,11 +18,8 @@ import { todayPKT, pktMonth, pktYear, nowPKT } from "@/lib/pkt";
  *     office, per Wasif's rule that he controls all WhatsApp / fine routing.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}` && process.env.NODE_ENV === "production") {
-    return error("Unauthorized", 401);
-  }
+  const gate = requireCronSecret(request);
+  if (gate) return gate;
 
   try {
     const today = todayPKT();

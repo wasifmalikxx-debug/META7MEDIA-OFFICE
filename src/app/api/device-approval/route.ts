@@ -19,14 +19,24 @@ export async function GET() {
   return json(devices);
 }
 
-// POST /api/device-approval — Employee: register device on login
+// POST /api/device-approval — Employee: register THIS device on login.
+//
+// Auth-gated: the caller must already hold a valid session (the login page
+// calls this right after signIn succeeds). The userId is taken from the
+// SESSION, never from the request body — otherwise an unauthenticated /
+// spoofing caller could inject PENDING device rows for arbitrary users and
+// pollute the CEO's approval queue.
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { userId, fingerprint, deviceName } = body;
+    const session = await requireAuth();
+    if (!session) return error("Unauthorized", 401);
+    const userId = session.user.id;
 
-    if (!userId || !fingerprint) {
-      return error("userId and fingerprint required");
+    const body = await request.json();
+    const { fingerprint, deviceName } = body;
+
+    if (!fingerprint) {
+      return error("fingerprint required");
     }
 
     const ip = getClientIp(request);
