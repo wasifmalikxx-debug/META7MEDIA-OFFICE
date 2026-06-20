@@ -69,6 +69,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: `${user.firstName} ${user.lastName}`,
           role: user.role,
           employeeId: user.employeeId,
+          status: user.status,
           deviceStatus,
         };
       },
@@ -80,6 +81,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.role = (user as any).role;
         token.employeeId = (user as any).employeeId;
         token.deviceStatus = (user as any).deviceStatus;
+        (token as any).status = (user as any).status;
+        (token as any).checkedAt = Date.now();
+      } else if (token.sub) {
+        // H1: periodically re-validate the live account so a TERMINATED/
+        // RESIGNED user (or a role change/demotion) takes effect without
+        // waiting ~30 days for the JWT to expire. Bounded to once per interval
+        // to respect the connection_limit=2 pool. Never throws — a transient DB
+        // error leaves the token untouched rather than logging the user out.
+        const REVALIDATE_MS = 5 * 60_000;
+        const last = typeof (token as any).checkedAt === "number" ? (token as any).checkedAt : 0;
+        if (Date.now() - last > REVALIDATE_MS) {
+          try {
+            const fresh = await prisma.user.findUnique({
+              where: { id: token.sub },
+              select: { role: true, status: true },
+            });
+            if (!fresh) {
+              (token as any).status = "GONE";
+            } else {
+              token.role = fresh.role;
+              (token as any).status = fresh.status;
+            }
+            (token as any).checkedAt = Date.now();
+          } catch {
+            // leave token as-is on transient error
+          }
+        }
       }
       return token;
     },
@@ -89,6 +117,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         (session.user as any).role = token.role;
         (session.user as any).employeeId = token.employeeId;
         (session.user as any).deviceStatus = (token as any).deviceStatus;
+        (session.user as any).status = (token as any).status;
       }
       return session;
     },

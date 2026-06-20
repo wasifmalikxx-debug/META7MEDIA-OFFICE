@@ -30,6 +30,7 @@ export default async function DashboardLayout({
   const dbUser = await prisma.user.findUnique({
     where: { id: (session.user as any).id },
     select: {
+      status: true,
       officeId: true,
       office: { select: { id: true, name: true, slug: true, isPrimary: true } },
       partnerTeams: {
@@ -41,6 +42,13 @@ export default async function DashboardLayout({
       },
     },
   });
+
+  // H1: live employment-status gate for page navigation. Folded into the
+  // existing lookup (no extra query). A terminated/resigned/deleted account is
+  // sent back to /login immediately, not just blocked on its next API call.
+  if (!dbUser || dbUser.status === "RESIGNED" || dbUser.status === "TERMINATED") {
+    redirect("/login");
+  }
 
   const user = {
     name: session.user.name || "",

@@ -57,9 +57,24 @@ export function isDeviceSessionBlocked(
   return status !== "APPROVED" && status !== "BYPASS";
 }
 
+/**
+ * True when the session's underlying account is no longer active — its JWT is
+ * still cryptographically valid but the employee was RESIGNED/TERMINATED (or
+ * deleted → "GONE"). Status is refreshed periodically in the jwt callback (H1).
+ */
+export function isSessionUserInactive(
+  session: { user?: { status?: string } } | null | undefined
+): boolean {
+  const s = session?.user?.status;
+  return s === "RESIGNED" || s === "TERMINATED" || s === "GONE";
+}
+
 export async function requireAuth(opts?: { deviceCheck?: boolean }) {
   const session = await auth();
   if (!session?.user) return null;
+  // H1: reject sessions whose account is no longer active (terminated/resigned/
+  // deleted) even though the JWT hasn't expired yet.
+  if (isSessionUserInactive(session)) return null;
   // Block sessions from unapproved devices (only when DEVICE_ENFORCEMENT=true).
   // Routes that a pending-device user legitimately needs (e.g. registering the
   // device for approval) pass { deviceCheck: false }.
