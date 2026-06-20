@@ -16,8 +16,11 @@ export default async function WarningsPage() {
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
+  // M2: only CEO/HR see all warnings; everyone else (incl. MANAGER/PARTNER)
+  // sees only their own. Previously any non-EMPLOYEE saw EVERY employee's
+  // warnings (empty where).
   const where: any = {};
-  if (role === "EMPLOYEE") where.userId = session.user.id;
+  if (role !== "SUPER_ADMIN" && role !== "HR_ADMIN") where.userId = session.user.id;
 
   const warnings = await prisma.warning.findMany({
     where,

@@ -12,11 +12,15 @@ export async function GET(request: NextRequest) {
   const role = (session.user as any).role;
   const userId = searchParams.get("userId");
 
+  // Object-level authz (M2): CEO + HR_ADMIN → all warnings (optionally drilled
+  // to ?userId=); everyone else → self only. The old code let any non-EMPLOYEE
+  // read every employee's warnings (empty where = full dump) or any single one
+  // via ?userId=. Matches the incentives page's admin-vs-self model.
   const where: any = {};
-  if (role === "EMPLOYEE") {
+  if (role === "SUPER_ADMIN" || role === "HR_ADMIN") {
+    if (userId) where.userId = userId;
+  } else {
     where.userId = session.user.id;
-  } else if (userId) {
-    where.userId = userId;
   }
 
   const warnings = await prisma.warning.findMany({

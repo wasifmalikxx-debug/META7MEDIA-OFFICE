@@ -15,11 +15,16 @@ export async function GET(request: NextRequest) {
   const month = parseInt(searchParams.get("month") || String(_pkt.getUTCMonth() + 1));
   const year = parseInt(searchParams.get("year") || String(_pkt.getUTCFullYear()));
 
+  // Object-level authz (M3): CEO + HR_ADMIN → all (optionally drilled to
+  // ?userId=); everyone else → self only. The old code let any non-EMPLOYEE
+  // read every employee's incentive amounts (no userId = full month dump) or
+  // any single user via ?userId=. Matches the incentives page's admin-vs-self
+  // model (which is already self-only for non-admins).
   const where: any = { month, year };
-  if (role === "EMPLOYEE") {
+  if (role === "SUPER_ADMIN" || role === "HR_ADMIN") {
+    if (userId) where.userId = userId;
+  } else {
     where.userId = session.user.id;
-  } else if (userId) {
-    where.userId = userId;
   }
 
   const incentives = await prisma.incentive.findMany({

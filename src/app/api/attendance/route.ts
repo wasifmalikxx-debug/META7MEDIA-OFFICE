@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
+import { json, error, requireAuth, requireRole, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { manualAttendanceSchema } from "@/lib/validations/attendance";
 
@@ -12,11 +12,16 @@ export async function GET(request: NextRequest) {
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
   const month = parseInt(searchParams.get("month") || String(_pkt.getUTCMonth() + 1));
   const year = parseInt(searchParams.get("year") || String(_pkt.getUTCFullYear()));
+  // Object-level authz (M1): CEO + HR_ADMIN → any employee's attendance (HR's
+  // company-wide view); PARTNER → own-team members; MANAGER/EMPLOYEE → self
+  // only. The old check only blocked EMPLOYEE, letting a MANAGER/PARTNER read
+  // anyone's attendance via ?userId=.
   const role = (session.user as any).role;
-
-  // Employees can only see their own
-  if (role === "EMPLOYEE" && userId !== session.user.id) {
-    return error("Forbidden", 403);
+  if (role !== "SUPER_ADMIN" && role !== "HR_ADMIN") {
+    const scope = await getCallerScope(session);
+    if (!scope) return error("Forbidden", 403);
+    const denied = await assertCanActOnUser(scope, userId);
+    if (denied) return denied;
   }
 
   const startDate = new Date(year, month - 1, 1);
