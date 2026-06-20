@@ -24,6 +24,29 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // M8: baseline security headers (the safe subset — NO Content-Security-Policy
+  // yet; a strict CSP needs Report-Only tuning first because App Router emits
+  // inline scripts/styles and the app calls external APIs). These four carry no
+  // business-logic impact:
+  //   - X-Frame-Options DENY: the portal is never iframed → blocks clickjacking
+  //     of privileged actions (approve leave, lock payroll, send WhatsApp).
+  //   - X-Content-Type-Options nosniff: stops MIME-confusion on uploaded images.
+  //   - Referrer-Policy: don't leak full URLs to third parties.
+  //   - HSTS (1y, no includeSubDomains/preload to stay reversible): enforce HTTPS.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
