@@ -127,5 +127,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   session: {
     strategy: "jwt",
+    // M4: cap session lifetime at 7 days (was next-auth's 30-day default) to
+    // bound how long a stolen/leaked session cookie stays usable. This is a
+    // ROLLING window — the token refreshes on use (updateAge default 24h), so
+    // daily users never re-login; only an account inactive for 7+ consecutive
+    // days has to sign in again. No abrupt logout: existing tokens keep their
+    // original expiry until their next refresh.
+    maxAge: 7 * 24 * 60 * 60,
   },
 });

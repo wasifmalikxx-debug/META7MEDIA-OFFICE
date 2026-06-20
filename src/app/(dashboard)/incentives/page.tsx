@@ -11,13 +11,19 @@ export default async function IncentivesPage() {
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any).role;
-  const isAdmin = role === "SUPER_ADMIN";
+  // M3: HR_ADMIN is CEO-equivalent for the company-wide incentives VIEW (matches
+  // the incentives API + the rest of the portal); everyone else sees self only.
+  // Creating incentives stays SUPER_ADMIN-only (the POST is requireRole
+  // SUPER_ADMIN), so the Add form is gated separately on canManage — no dead
+  // button for HR.
+  const canViewAll = role === "SUPER_ADMIN" || role === "HR_ADMIN";
+  const canManage = role === "SUPER_ADMIN";
   const _pkt = new Date(Date.now() + 5 * 60 * 60_000);
   const month = _pkt.getUTCMonth() + 1;
   const year = _pkt.getUTCFullYear();
 
   const where: any = { month, year };
-  if (!isAdmin) where.userId = session.user.id;
+  if (!canViewAll) where.userId = session.user.id;
 
   const [incentives, employees] = await Promise.all([
     prisma.incentive.findMany({
@@ -28,7 +34,7 @@ export default async function IncentivesPage() {
       },
       orderBy: { createdAt: "desc" },
     }),
-    isAdmin
+    canManage
       ? prisma.user.findMany({
           where: { status: { in: ["HIRED", "PROBATION"] } },
           select: { id: true, firstName: true, lastName: true, employeeId: true },
@@ -43,7 +49,7 @@ export default async function IncentivesPage() {
       <IncentivesView
         incentives={JSON.parse(JSON.stringify(incentives))}
         employees={employees}
-        isAdmin={isAdmin}
+        isAdmin={canManage}
       />
     </div>
   );
