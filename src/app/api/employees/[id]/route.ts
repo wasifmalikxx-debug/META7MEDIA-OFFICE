@@ -77,26 +77,38 @@ export async function PATCH(
     const isPartnerTarget = target?.role === "PARTNER";
 
     const updateData: any = { ...parsed };
-    // H4: only the CEO may change privileged org/role fields. Without this, a
-    // PARTNER could mass-assign role:"SUPER_ADMIN" (to a teammate OR themselves,
-    // since assertCanActOnUser allows self) and escalate to god-mode, or
-    // silently move people between teams/departments/managers. The CEO's Edit
-    // Employee form keeps full control because scope.isCeo is true for him.
+    // H4 (full): only the CEO may change privileged identity / role / org /
+    // credential / status fields. These reach the update via TWO paths — the
+    // parsed-body spread (role/email/dept/team/manager) AND the raw-body
+    // handling below (employeeId/newPassword/status) — so a non-CEO must be
+    // blocked on BOTH. Without this a PARTNER editing a teammate (or, since
+    // assertCanActOnUser allows self, themselves) could escalate to
+    // SUPER_ADMIN, move people between teams/depts, reset a teammate's password
+    // (full account takeover), hijack their login email, rewrite their
+    // employeeId, or set status=TERMINATED to lock them out (DoS via the H1
+    // gate). The CEO's Edit-Employee form keeps full control (scope.isCeo).
+    // A partner retains benign profile edits (name/phone/designation/joining)
+    // plus the existing Phase-5 bank/salary capability (handled below).
     if (!scope.isCeo) {
       delete updateData.role;
       delete updateData.departmentId;
       delete updateData.teamId;
       delete updateData.managerId;
+      delete updateData.email; // login identity — CEO only (comes via parsed)
     }
     if (parsed.joiningDate) updateData.joiningDate = new Date(parsed.joiningDate);
     delete updateData.monthlySalary;
-    // Handle employee ID
-    if (body.employeeId) updateData.employeeId = body.employeeId;
-    // Handle email
-    if (body.email) updateData.email = body.email;
-    // Handle password reset
-    if (body.newPassword && body.newPassword.length >= 6) {
-      updateData.password = await bcrypt.hash(body.newPassword, 12);
+
+    // Privileged identity / credential / status fields come from the RAW body
+    // (not the validated `parsed`), so the schema is not a gate — this is.
+    // CEO only.
+    if (scope.isCeo) {
+      if (body.employeeId) updateData.employeeId = body.employeeId;
+      if (body.email) updateData.email = body.email;
+      if (body.newPassword && body.newPassword.length >= 6) {
+        updateData.password = await bcrypt.hash(body.newPassword, 12);
+      }
+      if (body.status) updateData.status = body.status;
     }
     delete updateData.newPassword;
     // Handle bank details (skipped for partners)
@@ -105,7 +117,6 @@ export async function PATCH(
       if (body.accountNumber !== undefined) updateData.accountNumber = body.accountNumber || null;
       if (body.accountTitle !== undefined) updateData.accountTitle = body.accountTitle || null;
     }
-    if (body.status) updateData.status = body.status;
 
     const employee = await prisma.user.update({
       where: { id },
