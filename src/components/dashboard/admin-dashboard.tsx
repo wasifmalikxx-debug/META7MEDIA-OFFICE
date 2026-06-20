@@ -404,10 +404,25 @@ export function AdminDashboard({
 
   // Live updates — reload server-rendered data every 30s. Permanent
   // requirement per Wasif: new hires, new check-ins, etc. surface without
-  // a manual refresh.
+  // a manual refresh. (30s cadence is intentional and unchanged.)
+  //
+  // H8: only refresh while the tab is actually VISIBLE. A backgrounded/minimized
+  // tab would otherwise keep firing the full ~20-query dashboard batch every 30s
+  // against the deliberately small connection_limit=2 pool — the documented path
+  // to the 2026-05-25 max-connections outage when several tabs are left open. On
+  // returning to the tab we refresh once immediately so data is never stale.
   useEffect(() => {
-    const interval = setInterval(() => router.refresh(), 30_000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, 30_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [router]);
 
   // Roster expand/collapse state. Each team card has a "Show roster" toggle;
