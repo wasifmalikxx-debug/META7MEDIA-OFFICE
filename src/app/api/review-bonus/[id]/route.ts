@@ -65,6 +65,17 @@ export async function PATCH(
       }
     }
 
+    // M15: check PROBATION BEFORE flipping the status, so a probation approval
+    // can never leave an APPROVED-but-unpaid row. The old code updated status to
+    // APPROVED first, then returned an error for probation employees — leaving
+    // the record corrupted (shows APPROVED, no incentive ever created).
+    if (parsed.action === "APPROVED") {
+      const emp = await prisma.user.findUnique({ where: { id: submission.userId }, select: { status: true } });
+      if (emp?.status === "PROBATION") {
+        return error("Probation employees are not eligible for incentives.");
+      }
+    }
+
     const updated = await prisma.reviewBonus.update({
       where: { id },
       data: {
@@ -80,12 +91,6 @@ export async function PATCH(
       : "Employee";
 
     if (parsed.action === "APPROVED") {
-      // Block PROBATION employees from receiving incentives
-      const emp = await prisma.user.findUnique({ where: { id: submission.userId }, select: { status: true } });
-      if (emp?.status === "PROBATION") {
-        return error("Probation employees are not eligible for incentives. Approve the review but no bonus will be paid.");
-      }
-
       // Create an Incentive record so it flows into payroll
       await prisma.incentive.create({
         data: {

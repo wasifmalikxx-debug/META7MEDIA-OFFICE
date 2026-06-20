@@ -124,12 +124,21 @@ export async function DELETE(request: NextRequest) {
     const year = parseInt(searchParams.get("year") || "0");
     if (!month || !year) return error("Invalid month/year");
 
+    // M16: scope the unlock to the PRIMARY office, mirroring POST. Without the
+    // office filter, unlocking OFFICE 1's month also cleared lockedAt and
+    // deleted the snapshot for EVERY office's records for that month.
+    const primaryOffice = await prisma.office.findFirst({
+      where: { isPrimary: true },
+      select: { id: true },
+    });
+    if (!primaryOffice) return error("Primary office not configured");
+
     await prisma.$transaction([
       prisma.payrollSnapshot.deleteMany({
-        where: { month, year },
+        where: { month, year, officeId: primaryOffice.id },
       }),
       prisma.payrollRecord.updateMany({
-        where: { month, year },
+        where: { month, year, user: { officeId: primaryOffice.id } },
         data: { lockedAt: null },
       }),
     ]);
