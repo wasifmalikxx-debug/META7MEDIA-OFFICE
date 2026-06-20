@@ -44,3 +44,9 @@ next-env.d.ts
 
 # Google Service Account
 google-credentials.json
+
+# M7: user-uploaded files (review-bonus screenshots etc.) must never be
+# committed — they contain confidential order/review data and public/ is served
+# without auth. Current uploads are stored as base64 data URLs in the DB, so
+# nothing should land here anyway.
+/public/uploads/
