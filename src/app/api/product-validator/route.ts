@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { sanitizeMaybePromptInput } from "@/lib/prompt-safety";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { getActiveTokenForUser } from "@/lib/services/aliexpress-api.service";
@@ -41,7 +42,7 @@ const ManualImageSchema = z.object({
 const RequestSchema = z
   .object({
     url: z.string().min(8).max(2000).optional(),
-    manualTitle: z.string().min(3).max(500).optional(),
+    manualTitle: z.string().min(3).max(500).optional().transform((v) => sanitizeMaybePromptInput(v, 500)),
     /** Up to 2 base64-encoded photos from Manual check uploader. */
     manualImages: z.array(ManualImageSchema).max(2).optional(),
   })

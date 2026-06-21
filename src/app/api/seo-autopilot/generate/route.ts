@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { sanitizePromptInput } from "@/lib/prompt-safety";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import {
   searchActiveListings,
@@ -102,7 +103,7 @@ const ImageSchema = z.object({
 
 const RequestSchema = z.object({
   // Required source
-  aliExpressTitle: z.string().min(8, "Need at least 8 characters").max(2000),
+  aliExpressTitle: z.string().min(8, "Need at least 8 characters").max(2000).transform((v) => sanitizePromptInput(v, 2000)),
   // 1–2 product images (at least one is required — vision compliance
   // gate needs to see the product, and we generate alt text per image).
   images: z
@@ -118,11 +119,11 @@ const RequestSchema = z.object({
   // 80cm, Height 45cm, Diameter 22cm, Inside cavity depth 35cm" that
   // some AliExpress products ship with. 250 fits any reasonable
   // dimension write-up + leaves room for material/finish qualifiers.
-  sizes: z.array(z.string().min(1).max(250)).max(30).default([]),
-  variants: z.array(z.string().min(1).max(250)).max(30).default([]),
+  sizes: z.array(z.string().min(1).max(250).transform((v) => sanitizePromptInput(v, 250))).max(30).default([]),
+  variants: z.array(z.string().min(1).max(250).transform((v) => sanitizePromptInput(v, 250))).max(30).default([]),
   // Optional seller-provided specs/features — drives the DESCRIPTION +
   // Features list only (title/tags keep their keyword logic). Generous cap.
-  specifications: z.string().max(4000).optional().default(""),
+  specifications: z.string().max(4000).optional().default("").transform((v) => sanitizePromptInput(v, 4000)),
 });
 
 export async function POST(request: NextRequest) {

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { sanitizePromptInput, sanitizeMaybePromptInput } from "@/lib/prompt-safety";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import { huntByNiche } from "@/lib/services/product-hunter.service";
 import { getActiveTokenForUser } from "@/lib/services/aliexpress-api.service";
@@ -49,10 +50,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const RequestSchema = z.object({
-  niche: z.string().min(2, "Niche must be at least 2 chars").max(80),
-  style: z.string().max(40).optional().nullable(),
-  audience: z.string().max(40).optional().nullable(),
-  extraCategories: z.array(z.string().min(2).max(40)).max(10).optional(),
+  niche: z.string().min(2, "Niche must be at least 2 chars").max(80).transform((v) => sanitizePromptInput(v, 80)),
+  style: z.string().max(40).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 40)),
+  audience: z.string().max(40).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 40)),
+  extraCategories: z.array(z.string().min(2).max(40).transform((v) => sanitizePromptInput(v, 40))).max(10).optional(),
 });
 
 export async function POST(request: NextRequest) {

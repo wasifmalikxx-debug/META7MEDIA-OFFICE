@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { sanitizePromptInput, sanitizeMaybePromptInput } from "@/lib/prompt-safety";
 import { json, error, requireAuth } from "@/lib/api-helpers";
 import {
   suggestTagReplacements,
@@ -33,12 +34,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 const RequestSchema = z.object({
-  currentTag: z.string().min(1).max(40),
-  productTitle: z.string().min(1).max(2000),
-  productType: z.string().min(1).max(80),
-  category: z.string().min(1).max(200),
-  existingTags: z.array(z.string()).max(20).default([]),
-  reason: z.string().max(120).optional().nullable(),
+  currentTag: z.string().min(1).max(40).transform((v) => sanitizePromptInput(v, 40)),
+  productTitle: z.string().min(1).max(2000).transform((v) => sanitizePromptInput(v, 2000)),
+  productType: z.string().min(1).max(80).transform((v) => sanitizePromptInput(v, 80)),
+  category: z.string().min(1).max(200).transform((v) => sanitizePromptInput(v, 200)),
+  existingTags: z.array(z.string().transform((v) => sanitizePromptInput(v, 60))).max(20).default([]),
+  reason: z.string().max(120).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 120)),
 });
 
 export async function POST(request: NextRequest) {

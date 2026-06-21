@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { sanitizeMaybePromptInput } from "@/lib/prompt-safety";
 import { json, error, requireRole } from "@/lib/api-helpers";
 import {
   generateHiggsfieldPrompt,
@@ -29,12 +30,12 @@ const RequestSchema = z.object({
     mediaType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]),
   }),
   modelType: z.enum(["woman", "man", "girl", "boy", "kid"]),
-  background: z.string().max(120).optional().nullable(),
-  style: z.string().max(120).optional().nullable(),
-  pose: z.string().max(200).optional().nullable(),
-  orientation: z.string().max(40).optional().nullable(),
-  freeText: z.string().max(800).optional().nullable(),
-  modelPersona: z.string().max(2000).optional().nullable(),
+  background: z.string().max(120).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 120)),
+  style: z.string().max(120).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 120)),
+  pose: z.string().max(200).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 200)),
+  orientation: z.string().max(40).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 40)),
+  freeText: z.string().max(800).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 800)),
+  modelPersona: z.string().max(2000).optional().nullable().transform((v) => sanitizeMaybePromptInput(v, 2000)),
 });
 
 export async function POST(request: NextRequest) {
