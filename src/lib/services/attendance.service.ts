@@ -4,6 +4,7 @@ import { sendLateFineTemplate } from "@/lib/services/whatsapp.service";
 import { todayPKT, nowPKT, pktMinutesSinceMidnight, pktMonth, pktYear } from "@/lib/pkt";
 import { resolveAttendanceStatus } from "@/lib/services/attendance-status";
 import { maybeCreateBreakSkipFine } from "@/lib/services/break-fine";
+import { createFineDedup } from "@/lib/services/fine.service";
 
 function parseTime(timeStr: string): { hours: number; minutes: number } {
   const [hours, minutes] = timeStr.split(":").map(Number);
@@ -134,7 +135,7 @@ export async function checkIn(
         where: { role: "SUPER_ADMIN" },
       });
       if (adminUser) {
-        await prisma.fine.create({
+        await createFineDedup({
           data: {
             userId,
             type: "LATE_ARRIVAL",

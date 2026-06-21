@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { AttendanceStatus } from "@prisma/client";
+import { createFineDedup } from "@/lib/services/fine.service";
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -158,7 +159,7 @@ export async function generatePayrollForEmployee(
 
     if (!existingFine) {
       if (admin) {
-        await prisma.fine.create({
+        await createFineDedup({
           data: {
             userId,
             type: "ABSENT_WITHOUT_LEAVE",

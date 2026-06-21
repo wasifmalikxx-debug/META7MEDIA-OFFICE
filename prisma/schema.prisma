@@ -545,6 +545,12 @@ model Fine {
 
   createdAt DateTime @default(now())
 
+  // M14: block accidental duplicate fines (same employee, same day, same type
+  // AND same reason text). Auto-fine paths already check-before-create, but that
+  // is a TOCTOU race; this makes the second concurrent insert fail atomically
+  // (handled via createFineDedup / P2002). Legit same-day fines differ in their
+  // reason text, so they are unaffected.
+  @@unique([userId, date, type, reason])
   @@index([userId, month, year])
   @@index([date])
 }

@@ -1,5 +1,6 @@
 import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
+import { createFineDedup } from "@/lib/services/fine.service";
 import { todayPKT, nowPKT, pktMinutesSinceMidnight, pktMonth, pktYear } from "@/lib/pkt";
 
 export async function POST() {
@@ -57,7 +58,7 @@ export async function POST() {
         const lateMinutes = currentPKTMin - scheduledEndMin;
         const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
         if (admin) {
-          await prisma.fine.create({
+          await createFineDedup({
             data: {
               userId: session.user.id,
               type: "POLICY_VIOLATION",

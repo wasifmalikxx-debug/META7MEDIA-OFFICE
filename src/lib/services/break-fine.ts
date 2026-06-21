@@ -13,6 +13,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { createFineDedup } from "@/lib/services/fine.service";
 import { pktMonth, pktYear, pktMinutesSinceMidnight, nowPKT } from "@/lib/pkt";
 
 export const BREAK_SKIP_FINE_REASON = "Break skipped — did not log break attendance";
@@ -91,8 +92,10 @@ export async function maybeCreateBreakSkipFine(
     return { created: false, reason: "Fine already exists" };
   }
 
-  // 6. Create the fine
-  await prisma.fine.create({
+  // 6. Create the fine (race-safe: the unique constraint + createFineDedup
+  // swallow a concurrent duplicate insert, so the check above + this insert
+  // can't produce two identical break-skip fines).
+  const created = await createFineDedup({
     data: {
       userId,
       type: "POLICY_VIOLATION",
@@ -105,5 +108,5 @@ export async function maybeCreateBreakSkipFine(
     },
   });
 
-  return { created: true, reason: "Fine created" };
+  return { created, reason: created ? "Fine created" : "Fine already exists" };
 }

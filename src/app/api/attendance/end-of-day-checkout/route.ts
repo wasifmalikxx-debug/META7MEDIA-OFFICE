@@ -5,6 +5,7 @@ import { todayPKT, nowPKT, pktMonth, pktYear, pktMinutesSinceMidnight } from "@/
 import { createNotification } from "@/lib/services/notification.service";
 import { resolveAttendanceStatus } from "@/lib/services/attendance-status";
 import { maybeCreateBreakSkipFine } from "@/lib/services/break-fine";
+import { createFineDedup } from "@/lib/services/fine.service";
 
 // Build marker — bumped whenever this file changes. Returned in every
 // response so the live deployed version is visible in Vercel logs.
@@ -257,7 +258,7 @@ async function runCheckout(triggerSource: string) {
           settings.noReportFineAmt > 0 &&
           admin
         ) {
-          await prisma.fine.create({
+          await createFineDedup({
             data: {
               userId: att.user.id,
               type: "POLICY_VIOLATION",

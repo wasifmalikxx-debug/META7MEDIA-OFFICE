@@ -81,18 +81,31 @@ export async function POST(request: NextRequest) {
     const fineDate = new Date(parsed.date);
     fineDate.setUTCHours(0, 0, 0, 0);
 
-    const fine = await prisma.fine.create({
-      data: {
-        userId: parsed.userId,
-        type: parsed.type as any,
-        amount: parsed.amount,
-        reason: parsed.reason,
-        date: fineDate,
-        month: fineDate.getUTCMonth() + 1,
-        year: fineDate.getUTCFullYear(),
-        issuedById: session.user.id,
-      },
-    });
+    let fine;
+    try {
+      fine = await prisma.fine.create({
+        data: {
+          userId: parsed.userId,
+          type: parsed.type as any,
+          amount: parsed.amount,
+          reason: parsed.reason,
+          date: fineDate,
+          month: fineDate.getUTCMonth() + 1,
+          year: fineDate.getUTCFullYear(),
+          issuedById: session.user.id,
+        },
+      });
+    } catch (e: any) {
+      // M14: unique(userId, date, type, reason). An identical fine for that day
+      // already exists — return a clear message instead of a 500.
+      if (e?.code === "P2002") {
+        return error(
+          "An identical fine (same employee, date, type and reason) already exists for that day. Change the reason to add a separate one.",
+          409,
+        );
+      }
+      throw e;
+    }
 
     await createNotification(
       parsed.userId,

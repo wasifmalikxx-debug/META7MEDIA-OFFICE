@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error, serverError, requireCronSecret } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { createFineDedup } from "@/lib/services/fine.service";
 import { todayPKT, pktMonth, pktYear, nowPKT } from "@/lib/pkt";
 
 /**
@@ -125,7 +126,7 @@ export async function GET(request: NextRequest) {
             ? `Absent on ${dateStr} — Covered by paid leave (1.0 day used)`
             : `Absent on ${dateStr} — PKR ${fineAmount.toLocaleString()} (salary/30) deducted`;
 
-          await prisma.fine.create({
+          await createFineDedup({
             data: {
               userId: emp.id,
               type: "ABSENT_WITHOUT_LEAVE",
@@ -251,7 +252,7 @@ export async function GET(request: NextRequest) {
             `${skippedHalf} not attended — PKR ${halfDayFine.toLocaleString()} ` +
             `(salary/30 × 0.5) deducted`;
 
-          await prisma.fine.create({
+          await createFineDedup({
             data: {
               userId: emp.id,
               type: "ABSENT_WITHOUT_LEAVE",
