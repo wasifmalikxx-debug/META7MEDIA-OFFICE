@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { sendMetaTemplate, isMetaEnabled } from "@/lib/services/whatsapp-meta.service";
+import { timingSafeEqualStr } from "@/lib/api-helpers";
+
+// L10: cap how many recipients one bridge call can fan out to, so a leaked
+// bridge secret can't be used to blast WhatsApp (cost + Meta policy strike).
+const MAX_BRIDGE_RECIPIENTS = 50;
 
 /**
  * POST /api/whatsapp/send-template
@@ -34,7 +39,7 @@ export async function POST(req: Request) {
   if (!secret) {
     return NextResponse.json({ error: "Bridge not configured (PUBLISHER_BRIDGE_SECRET unset)" }, { status: 503 });
   }
-  if (req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!timingSafeEqualStr(req.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -61,6 +66,12 @@ export async function POST(req: Request) {
   const recipients = Array.isArray(body.to) ? body.to : body.to ? [body.to] : [];
   if (recipients.length === 0) {
     return NextResponse.json({ error: "No recipients" }, { status: 400 });
+  }
+  if (recipients.length > MAX_BRIDGE_RECIPIENTS) {
+    return NextResponse.json(
+      { error: `Too many recipients (max ${MAX_BRIDGE_RECIPIENTS})` },
+      { status: 400 },
+    );
   }
   const params = Array.isArray(body.params) ? body.params.map((v) => String(v)) : [];
   const lang = body.languageCode || "en";

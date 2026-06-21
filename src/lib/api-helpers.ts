@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { auth } from "@/lib/auth";
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+
+/**
+ * L5: constant-time string comparison for shared secrets (cron / bridge bearer
+ * tokens), so a comparison can't leak the secret via timing. Length mismatch
+ * short-circuits (lengths aren't secret here).
+ */
+export function timingSafeEqualStr(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
 
 export function json(data: any, status = 200, cacheSeconds = 0) {
   const headers: Record<string, string> = {};
@@ -146,7 +159,7 @@ export function requireCronSecret(request: NextRequest): NextResponse | null {
     if (!cronSecret) {
       return error("Server misconfigured: CRON_SECRET not set", 500);
     }
-    if (authHeader !== `Bearer ${cronSecret}`) {
+    if (!timingSafeEqualStr(authHeader ?? "", `Bearer ${cronSecret}`)) {
       return error("Unauthorized", 401);
     }
     return null;
@@ -154,7 +167,7 @@ export function requireCronSecret(request: NextRequest): NextResponse | null {
 
   // Non-production: allow unauthenticated for local/manual testing, but honor
   // a secret if one is configured locally.
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (cronSecret && !timingSafeEqualStr(authHeader ?? "", `Bearer ${cronSecret}`)) {
     return error("Unauthorized", 401);
   }
   return null;
