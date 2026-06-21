@@ -1029,6 +1029,8 @@ model SeoAutopilotTagSwapLog {
 
   @@index([userId])
   @@index([createdAt])
+  // M23: covering index for the CEO dashboard 7-day window + all-time/MTD swap-cost rollups
+  @@index([createdAt, userId, actualCostUsd])
 }
 
 model SeoAutopilotLog {
@@ -1075,6 +1077,37 @@ model SeoAutopilotLog {
   @@index([userId])
   @@index([createdAt])
   @@index([verdict])
+  // M23: covering index so the dashboard 7-day read + all-time/MTD rollups stay index-only
+  @@index([createdAt, userId, verdict, actualCostUsd])
+}
+
+// M12: global per-day outbound API call counter — a circuit breaker against a
+// runaway loop / leaked key exhausting Etsy or AliExpress daily quota. One row
+// per provider per PKT day, incremented inside the fetch choke points. Reads are
+// fail-open so a counter blip can never block a legitimate API call.
+model ApiCallBudget {
+  id        String   @id @default(cuid())
+  provider  String   @db.VarChar(20) // "etsy" | "aliexpress"
+  date      DateTime @db.Date // PKT day, stored at UTC midnight
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, date])
+  @@index([date])
+}
+
+// L8/L18: per-recipient-per-day idempotency marker for cron WhatsApp/report
+// sends. A row is claimed (create) before each send; a same-day re-trigger hits
+// the unique key and skips, preventing duplicate blasts. Marker failures other
+// than a unique-collision fall through to send (never suppress a real first send).
+model CronSendLog {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([sentAt])
 }
 
 // AliExpress OAuth access token. One row per user-platform pair —

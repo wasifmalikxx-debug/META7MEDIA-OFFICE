@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { json, error, serverError, requireCronSecret } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
+import { claimCronSend, releaseCronSend } from "@/lib/services/cron-send-log.service";
 import { nowPKT } from "@/lib/pkt";
 import { extractSheetId, normalizeTabName, getAlternativeTabNames } from "@/lib/services/google-sheets.service";
 import { google } from "googleapis";
@@ -381,6 +382,8 @@ export async function GET(request: NextRequest) {
     // Build the message
     const now = nowPKT();
     const dateFormatted = `${now.getUTCDate()}/${now.getUTCMonth() + 1}/${now.getUTCFullYear()}`;
+    // L8/L18: stable PKT day-key (YYYY-MM-DD) for per-send idempotency markers.
+    const drDay = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
     const monthNamesFull = [
       "January", "February", "March", "April", "May", "June",
       "July", "August", "September", "October", "November", "December",
@@ -641,15 +644,32 @@ export async function GET(request: NextRequest) {
         };
 
         const partnerSent: string[] = [];
+        // L8/L18: claim a per-recipient day marker BEFORE sending so a manual
+        // cron re-trigger can't re-blast the partner. Only a P2002 collision
+        // skips; a failed send releases the marker so it can retry later.
         if (partner.phone) {
-          await sendDailyReport(partner.phone, partnerPayload);
-          partnerSent.push(partner.phone);
-          sent.push(partner.phone);
+          const k = `dr:partner:${partner.id}:${partner.phone}:${drDay}`;
+          if (await claimCronSend(k)) {
+            const ok = await sendDailyReport(partner.phone, partnerPayload);
+            if (ok) {
+              partnerSent.push(partner.phone);
+              sent.push(partner.phone);
+            } else {
+              await releaseCronSend(k);
+            }
+          }
         }
         if (partner.phone2) {
-          await sendDailyReport(partner.phone2, partnerPayload);
-          partnerSent.push(partner.phone2);
-          sent.push(partner.phone2);
+          const k = `dr:partner:${partner.id}:${partner.phone2}:${drDay}`;
+          if (await claimCronSend(k)) {
+            const ok = await sendDailyReport(partner.phone2, partnerPayload);
+            if (ok) {
+              partnerSent.push(partner.phone2);
+              sent.push(partner.phone2);
+            } else {
+              await releaseCronSend(k);
+            }
+          }
         }
 
         partnerReports.push({
@@ -716,9 +736,9 @@ export async function GET(request: NextRequest) {
       // Team" parses faster at a glance than the internal department
       // shorthand.
       const teamRounds = [
-        { label: "Izaan's Team", data: emTotals },
-        { label: "Awais's Team", data: ae },
-        { label: "Mubeen's Team", data: me },
+        { key: "em", label: "Izaan's Team", data: emTotals },
+        { key: "ae", label: "Awais's Team", data: ae },
+        { key: "me", label: "Mubeen's Team", data: me },
       ];
 
       for (let i = 0; i < teamRounds.length; i++) {
@@ -744,8 +764,15 @@ export async function GET(request: NextRequest) {
         // recipient.
         await Promise.all(
           ceoPhones.map(async (phone) => {
+            // L8/L18: per-team, per-phone, per-day idempotency marker.
+            const k = `dr:ceo:${round.key}:${phone}:${drDay}`;
+            if (!(await claimCronSend(k))) return; // already sent today
             const ok = await sendDailyReport(phone, payload);
-            if (ok && !ceoSent.includes(phone)) {
+            if (!ok) {
+              await releaseCronSend(k);
+              return;
+            }
+            if (!ceoSent.includes(phone)) {
               ceoSent.push(phone);
               sent.push(phone);
             }
@@ -776,8 +803,15 @@ export async function GET(request: NextRequest) {
       };
       await Promise.all(
         ceoPhones.map(async (phone) => {
+          // L8/L18: combined-total, per-phone, per-day idempotency marker.
+          const k = `dr:ceo:combined:${phone}:${drDay}`;
+          if (!(await claimCronSend(k))) return; // already sent today
           const ok = await sendCeoCombinedTotalTemplate(phone, totalPayload);
-          if (ok && !ceoSent.includes(phone)) {
+          if (!ok) {
+            await releaseCronSend(k);
+            return;
+          }
+          if (!ceoSent.includes(phone)) {
             ceoSent.push(phone);
             sent.push(phone);
           }

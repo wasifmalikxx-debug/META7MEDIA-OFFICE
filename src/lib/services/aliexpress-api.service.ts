@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
+import { isOverApiBudget } from "@/lib/services/api-call-budget.service";
 
 // L17: serialize a response/error body for logging with OAuth secrets redacted.
 // The token create/refresh responses contain access_token/refresh_token; without
@@ -243,6 +244,12 @@ export async function aliExpressCall<T = unknown>(
   // dozen retries pushed effective queue depth to 50+ tokens, which
   // is what was making the last categories' previews time out
   // before they ever fetched.
+  // M12: global per-day budget circuit breaker (fail-open), before acquireSlot
+  // so it counts once per logical call (acquireSlot is already outside retries).
+  if (await isOverApiBudget("aliexpress")) {
+    throw new Error("Daily AliExpress API budget reached — resets at PKT midnight.");
+  }
+
   await acquireSlot();
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {

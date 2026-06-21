@@ -466,6 +466,10 @@ export async function getTeamStats(): Promise<TeamStatsResponse> {
     prisma.seoAutopilotLog.findMany({
       where: { createdAt: { gte: sevenDaysAgo } },
       orderBy: { createdAt: "desc" },
+      // M23: drop the large listingJson blob — getTeamStats never reads it (only
+      // getMyHistory does, on a separate query). Provably identical output, less
+      // row payload over the wire on every CEO dashboard refresh.
+      omit: { listingJson: true },
       include: { user: { select: userSelect } },
     }),
     // Tag-swap suggestion calls — separate Anthropic spend that's

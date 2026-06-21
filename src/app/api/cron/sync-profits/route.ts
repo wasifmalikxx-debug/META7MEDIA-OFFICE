@@ -79,6 +79,13 @@ export async function GET(request: NextRequest) {
     let errors = 0;
     const results: any[] = [];
 
+    // L26 (intentional — keep SEQUENTIAL): the slow network-bound work (Google
+    // Sheets fetch) is ALREADY parallel in fetchAllProfits above. This per-
+    // employee DB write loop must stay sequential — the prod Prisma pool is
+    // pinned to connection_limit=2 (Supabase pooler; raising it caused the
+    // 2026-05-25 outage). A Promise.all here would queue dozens of writes behind
+    // 2 connections and risk pool_timeout mid-sync, partially writing bonus
+    // eligibility. Do NOT parallelize without bounded concurrency of <=2.
     for (const emp of employees) {
       const profitData = profits[emp.id];
       if (!profitData || profitData.profit === null) {

@@ -63,7 +63,16 @@ export async function generatePayrollForEmployee(
   });
 
   const workingDays = await getWorkingDaysInMonth(month, year);
-  // Fixed 30-day formula: 30K salary = 1K/day deduction
+  // Fixed 30-day formula: 30K salary = 1K/day deduction.
+  //
+  // L14 (INTENTIONAL — do NOT "unify"): this dailyRate is roundMoney (2dp) and
+  // drives the half-day / leave / earned-salary lines. The absent-FINE amount is
+  // rounded SEPARATELY to whole rupees (Math.round(salary/30)) in
+  // cron/daily-absent + its WhatsApp + reason text. The two diverge by ≤₨0.33
+  // per absent by design; absentDeductions below SUMS the stored fine amounts
+  // (not this value), so they never double-count. Unifying them would restate
+  // already-paid payrolls by sub-rupee amounts — leave as-is unless the CEO
+  // explicitly accepts that restatement.
   const dailyRate = roundMoney(salary.monthlySalary / 30);
 
   // Get attendance records for the month.

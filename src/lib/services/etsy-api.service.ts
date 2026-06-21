@@ -22,6 +22,8 @@
  * components — the API key must stay on the server.
  */
 
+import { isOverApiBudget } from "@/lib/services/api-call-budget.service";
+
 const ETSY_BASE = "https://openapi.etsy.com/v3/application";
 
 // ─── Token bucket — keeps us under Etsy's 5 QPS cap ──────────────────
@@ -90,6 +92,12 @@ async function etsyFetch<T>(
   // concurrent Vercel functions can briefly exceed the global 5 QPS
   // even with our token bucket — the retry catches that. Backoff:
   // 800 ms → 1.6 s → 3.2 s.
+  // M12: global per-day budget circuit breaker (fail-open). Counted once per
+  // logical fetch — before the retry loop so retries don't inflate the count.
+  if (await isOverApiBudget("etsy")) {
+    throw new Error("Daily Etsy API budget reached — resets at PKT midnight.");
+  }
+
   const MAX_ATTEMPTS = 4;
   let lastError: Error | null = null;
 
