@@ -38,9 +38,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { fingerprint, deviceName } = body;
 
-    if (!fingerprint) {
-      return error("fingerprint required");
+    // L24: validate + length-cap the client-supplied fields (they're stored and
+    // rendered in the CEO's device-approval list).
+    if (typeof fingerprint !== "string" || fingerprint.length < 1 || fingerprint.length > 256) {
+      return error("Invalid fingerprint");
     }
+    if (deviceName != null && (typeof deviceName !== "string" || deviceName.length > 120)) {
+      return error("Invalid device name");
+    }
+    const safeDeviceName =
+      (typeof deviceName === "string" ? deviceName.trim().slice(0, 120) : "") || "Unknown Device";
 
     const ip = getClientIp(request);
 
@@ -58,7 +65,7 @@ export async function POST(request: NextRequest) {
       data: {
         userId,
         fingerprint,
-        deviceName: deviceName || "Unknown Device",
+        deviceName: safeDeviceName,
         ipAddress: ip,
         status: "PENDING",
       },

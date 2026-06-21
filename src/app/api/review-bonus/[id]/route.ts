@@ -203,7 +203,11 @@ export async function DELETE(
           userId: submission.userId,
           month: submission.month,
           year: submission.year,
-          reason: { contains: submission.storeName },
+          // L13: match the EXACT review-fix-bonus reason this submission
+          // created (see the approval path: `Bad Review Fix Bonus - <store>`).
+          // The old `contains: storeName` could also wipe unrelated incentives
+          // whose reason merely mentioned the store name (e.g. a profit bonus).
+          reason: `Bad Review Fix Bonus - ${submission.storeName}`,
         },
       });
       // Sync payroll after incentive removal

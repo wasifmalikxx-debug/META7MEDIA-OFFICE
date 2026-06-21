@@ -81,6 +81,12 @@ export async function POST(request: NextRequest) {
       if (!body.notes?.trim()) return error("Please enter your daily work summary");
     }
 
+    // L22: cap free-text field sizes (were uncapped → DB bloat / abuse).
+    if (typeof body.notes === "string" && body.notes.length > 5000) return error("Notes too long (max 5000 characters)");
+    if (typeof body.storeName === "string" && body.storeName.length > 200) return error("Store name too long (max 200 characters)");
+    if (typeof body.listingLinks === "string" && body.listingLinks.length > 8000) return error("Listing links too long (max 8000 characters)");
+    if (typeof body.pageNames === "string" && body.pageNames.length > 1000) return error("Page names too long (max 1000 characters)");
+
     // Store using FB-style shape when manager: notes only, Etsy columns null
     const storeEtsyFields = isEtsy && !isManager;
 
