@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireCronSecret } from "@/lib/api-helpers";
+import { json, error, serverError, requireCronSecret } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 
@@ -118,6 +118,6 @@ export async function GET(request: NextRequest) {
       deleted: results,
     });
   } catch (err: any) {
-    return error(err.message, 500);
+    return serverError(err, "Something went wrong. Please try again.", 500);
   }
 }

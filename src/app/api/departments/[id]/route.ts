@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 export async function PATCH(
@@ -32,7 +32,7 @@ export async function PATCH(
     if (typeof err?.message === "string" && err.message.includes("Unique constraint")) {
       return error("A department with that name already exists in the target office.");
     }
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
 
@@ -55,6 +55,6 @@ export async function DELETE(
     await prisma.department.delete({ where: { id } });
     return json({ success: true });
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

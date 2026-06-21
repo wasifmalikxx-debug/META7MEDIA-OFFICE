@@ -1,4 +1,4 @@
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 const DEFAULT_TEMPLATES = [
@@ -62,7 +62,7 @@ export async function GET() {
 
     return json(templates);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
 
@@ -86,6 +86,6 @@ export async function PUT(request: Request) {
 
     return json(updated);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

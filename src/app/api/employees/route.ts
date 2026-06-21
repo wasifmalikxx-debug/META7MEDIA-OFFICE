@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
-import { json, error, requireAuth, requireRole, getCallerScope } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, requireRole, getCallerScope } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { createEmployeeSchema } from "@/lib/validations/employee";
 
@@ -182,6 +182,6 @@ export async function POST(request: NextRequest) {
 
     return json(employee, 201);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, requireRole } from "@/lib/api-helpers";
 import { prisma, invalidateSettingsCache } from "@/lib/prisma";
 
 // Phase 3: settings are per-office. Each request resolves the caller's
@@ -33,7 +33,7 @@ export async function GET() {
 
     return json(settings);
   } catch (err: any) {
-    return error(err.message || "Failed to fetch settings", 500);
+    return serverError(err, "Failed to fetch settings", 500);
   }
 }
 
@@ -56,6 +56,6 @@ export async function PATCH(request: NextRequest) {
 
     return json(settings);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

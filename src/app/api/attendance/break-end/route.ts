@@ -1,4 +1,4 @@
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
 import { todayPKT, nowPKT, pktMinutesSinceMidnight, pktMonth, pktYear } from "@/lib/pkt";
 
@@ -90,6 +90,6 @@ export async function POST() {
 
     return json(updated);
   } catch (err: any) {
-    return error(err.message || "Failed to end break", 500);
+    return serverError(err, "Failed to end break", 500);
   }
 }

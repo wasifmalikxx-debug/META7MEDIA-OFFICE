@@ -1,4 +1,4 @@
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireRole } from "@/lib/api-helpers";
 import { sendWhatsApp } from "@/lib/services/whatsapp.service";
 
 // POST /api/whatsapp/test — Admin only test endpoint
@@ -13,6 +13,6 @@ export async function POST(request: Request) {
     const sent = await sendWhatsApp(to, message);
     return json({ success: sent, to, message });
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

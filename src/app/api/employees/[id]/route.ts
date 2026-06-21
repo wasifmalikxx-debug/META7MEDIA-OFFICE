@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, requireRole, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { updateEmployeeSchema } from "@/lib/validations/employee";
 import bcrypt from "bcryptjs";
@@ -148,7 +148,7 @@ export async function PATCH(
 
     return json(employee);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
 

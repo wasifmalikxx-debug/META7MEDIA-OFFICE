@@ -1,4 +1,4 @@
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { todayPKT } from "@/lib/pkt";
 
@@ -15,6 +15,6 @@ export async function GET() {
 
     return json(attendance);
   } catch (err: any) {
-    return error(err.message || "Failed to fetch attendance", 500);
+    return serverError(err, "Failed to fetch attendance", 500);
   }
 }

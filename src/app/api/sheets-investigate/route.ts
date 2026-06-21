@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { fetchSheetAnalytics } from "@/lib/services/google-sheets.service";
 
@@ -212,6 +212,6 @@ export async function GET(request: NextRequest) {
 
     return json({ month, year, investigations: results });
   } catch (err: any) {
-    return error(err.message, 500);
+    return serverError(err, "Something went wrong. Please try again.", 500);
   }
 }

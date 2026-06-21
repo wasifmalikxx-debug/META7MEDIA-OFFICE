@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -15,7 +15,7 @@ export async function GET() {
 
     return json(notifications);
   } catch (err: any) {
-    return error(err.message || "Failed to fetch notifications", 500);
+    return serverError(err, "Failed to fetch notifications", 500);
   }
 }
 
@@ -44,6 +44,6 @@ export async function PATCH(request: NextRequest) {
 
     return error("Invalid request");
   } catch (err: any) {
-    return error(err.message || "Failed to update notifications", 500);
+    return serverError(err, "Failed to update notifications", 500);
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, getCallerScope } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, getCallerScope } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { leaveRequestSchema } from "@/lib/validations/leave";
 import { createNotification, notifyAdmins } from "@/lib/services/notification.service";
@@ -305,6 +305,6 @@ export async function POST(request: NextRequest) {
 
     return json(leave, 201);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

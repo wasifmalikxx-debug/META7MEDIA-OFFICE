@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
+import { ZodError } from "zod";
 import { auth } from "@/lib/auth";
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -26,6 +27,65 @@ export function json(data: any, status = 200, cacheSeconds = 0) {
 
 export function error(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
+}
+
+/**
+ * L4: safe responder for catch blocks. Replaces the old `return error(err.message)`
+ * pattern, which leaked internal detail (Prisma error text exposes table/column
+ * names; native runtime errors expose code structure) straight to the client.
+ *
+ * Behaviour by error kind:
+ *   - zod ZodError      → a clean one-line "field: message" (400). Never the raw
+ *                         multi-line zod dump, which is both ugly and leaky.
+ *   - Prisma / native   → the generic `publicMessage` (these carry internal
+ *     runtime error          detail and must never reach the client).
+ *   - app-thrown Error  → its message is PRESERVED (capped to 300 chars). The
+ *                         service layer uses `throw new Error("friendly text")`
+ *                         as its user-feedback channel (e.g. "Already checked in
+ *                         today"); genericising those would regress UX.
+ *
+ * Always logs the full error server-side — most catch blocks logged nothing,
+ * so this is also an observability win. `status` mirrors what the call site
+ * used before (400 default, or 500 for the infra/cron routes) so client-side
+ * status handling is unchanged.
+ */
+function isInternalError(err: unknown): boolean {
+  if (
+    err instanceof TypeError ||
+    err instanceof RangeError ||
+    err instanceof ReferenceError ||
+    err instanceof SyntaxError
+  ) {
+    return true;
+  }
+  const e = err as { code?: unknown; name?: unknown; constructor?: { name?: unknown } };
+  // Prisma known-request errors carry a "Pxxxx" code (e.g. P2002).
+  if (typeof e?.code === "string" && /^P\d{3,4}$/.test(e.code)) return true;
+  // Other Prisma client errors (validation/init/panic) by class name.
+  const name = (typeof e?.name === "string" && e.name) || (typeof e?.constructor?.name === "string" && e.constructor.name) || "";
+  if (name.startsWith("PrismaClient")) return true;
+  return false;
+}
+
+export function serverError(
+  err: unknown,
+  publicMessage = "Something went wrong. Please try again.",
+  status = 500,
+): NextResponse {
+  console.error(`[api] ${publicMessage}:`, err);
+
+  if (err instanceof ZodError) {
+    const first = err.issues?.[0];
+    const path = first?.path?.length ? first.path.join(".") : "input";
+    return error(first ? `${path}: ${first.message}` : "Invalid input", 400);
+  }
+
+  if (isInternalError(err)) {
+    return error(publicMessage, status);
+  }
+
+  const msg = err instanceof Error && err.message ? err.message.slice(0, 300) : publicMessage;
+  return error(msg, status);
 }
 
 // Image-upload safety (M18 + M19). Accepts ONLY data: URLs for the raster image

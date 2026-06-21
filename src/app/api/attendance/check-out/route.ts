@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, getClientIp } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, getClientIp } from "@/lib/api-helpers";
 import { checkOut } from "@/lib/services/attendance.service";
 
 export async function POST(request: NextRequest) {
@@ -25,6 +25,6 @@ export async function POST(request: NextRequest) {
 
     return json(attendance);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

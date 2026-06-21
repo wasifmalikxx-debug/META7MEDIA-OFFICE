@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireRole } from "@/lib/api-helpers";
 import { generatePayrollForAll } from "@/lib/services/payroll.service";
 import { generatePayrollSchema } from "@/lib/validations/payroll";
 
@@ -19,6 +19,6 @@ export async function POST(request: NextRequest) {
 
     return json(results);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireRole } from "@/lib/api-helpers";
 import { sendMetaTemplate, sendMetaText, isMetaEnabled } from "@/lib/services/whatsapp-meta.service";
 
 /**
@@ -64,6 +64,6 @@ export async function POST(request: NextRequest) {
     const result = await sendMetaTemplate(to, String(template), vars, language || "en");
     return json({ mode: "template", template, variables: vars, ...result });
   } catch (err: any) {
-    return error(err.message || "Invalid request body", 500);
+    return serverError(err, "Invalid request body", 500);
   }
 }

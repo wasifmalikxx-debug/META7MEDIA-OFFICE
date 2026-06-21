@@ -1,4 +1,4 @@
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/notifications/unread-count
@@ -14,6 +14,6 @@ export async function GET() {
     });
     return json({ count });
   } catch (err: any) {
-    return error(err.message || "Failed to fetch unread count", 500);
+    return serverError(err, "Failed to fetch unread count", 500);
   }
 }

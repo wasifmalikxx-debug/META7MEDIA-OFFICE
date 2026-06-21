@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole, getClientIp } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, requireRole, getClientIp } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/device-approval — Admin: list all pending/approved devices
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     return json({ status: "PENDING", id: device.id }, 201);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
 
@@ -102,7 +102,7 @@ export async function PATCH(request: NextRequest) {
 
     return json(updated);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
 
@@ -119,6 +119,6 @@ export async function DELETE(request: NextRequest) {
     await prisma.deviceApproval.delete({ where: { id } });
     return json({ success: true });
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

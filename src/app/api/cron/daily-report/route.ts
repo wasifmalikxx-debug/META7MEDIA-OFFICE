@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireCronSecret } from "@/lib/api-helpers";
+import { json, error, serverError, requireCronSecret } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 import { extractSheetId, normalizeTabName, getAlternativeTabNames } from "@/lib/services/google-sheets.service";
@@ -827,6 +827,6 @@ export async function GET(request: NextRequest) {
       snapshotError,
     });
   } catch (err: any) {
-    return error(err.message, 500);
+    return serverError(err, "Something went wrong. Please try again.", 500);
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, isAllowedImageDataUrl } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, isAllowedImageDataUrl } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 
@@ -166,7 +166,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return json(updated);
   } catch (err: any) {
-    return error(err.message || "Failed to update refund", 500);
+    return serverError(err, "Failed to update refund", 500);
   }
 }
 

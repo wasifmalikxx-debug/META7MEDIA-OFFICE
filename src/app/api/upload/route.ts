@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -27,6 +27,6 @@ export async function POST(request: NextRequest) {
 
     return json({ url: dataUrl }, 201);
   } catch (err: any) {
-    return error(err.message || "Upload failed", 500);
+    return serverError(err, "Upload failed", 500);
   }
 }

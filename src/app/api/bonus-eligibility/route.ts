@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { bonusEligibilitySchema } from "@/lib/validations/bonus";
 import { calculateEligibility } from "@/lib/services/bonus.service";
@@ -271,6 +271,6 @@ export async function POST(request: NextRequest) {
 
     return json(record, 201);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

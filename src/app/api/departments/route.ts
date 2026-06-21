@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -56,6 +56,6 @@ export async function POST(request: NextRequest) {
     if (typeof err?.message === "string" && err.message.includes("Unique constraint")) {
       return error("A department with that name already exists in this office.");
     }
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

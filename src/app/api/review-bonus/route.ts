@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { pktMonth, pktYear } from "@/lib/pkt";
 import { reviewBonusSubmitSchema } from "@/lib/validations/bonus";
@@ -153,6 +153,6 @@ export async function POST(request: NextRequest) {
 
     return json(submission, 201);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

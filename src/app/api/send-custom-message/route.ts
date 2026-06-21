@@ -1,4 +1,4 @@
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { sendWhatsApp } from "@/lib/services/whatsapp.service";
 
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
     return json({ success: true, sentCount, total: employees.length });
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
 
@@ -60,6 +60,6 @@ export async function GET() {
     });
     return json(messages);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

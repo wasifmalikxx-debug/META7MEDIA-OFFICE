@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireRole } from "@/lib/api-helpers";
+import { json, error, serverError, requireRole } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 // POST /api/payroll/lock
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: any) {
     console.error("[payroll/lock]", err);
-    return error(err.message || "Failed to lock payroll", 500);
+    return serverError(err, "Failed to lock payroll", 500);
   }
 }
 
@@ -146,6 +146,6 @@ export async function DELETE(request: NextRequest) {
     return json({ success: true });
   } catch (err: any) {
     console.error("[payroll/lock DELETE]", err);
-    return error(err.message || "Failed to unlock payroll", 500);
+    return serverError(err, "Failed to unlock payroll", 500);
   }
 }

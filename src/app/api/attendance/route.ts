@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, requireRole, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, requireRole, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { manualAttendanceSchema } from "@/lib/validations/attendance";
 
@@ -85,6 +85,6 @@ export async function POST(request: NextRequest) {
 
     return json(attendance);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

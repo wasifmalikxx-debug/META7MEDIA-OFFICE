@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, isAllowedImageDataUrl } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, isAllowedImageDataUrl } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 import { notifyAdmins, createNotification } from "@/lib/services/notification.service";
@@ -164,6 +164,6 @@ export async function POST(request: NextRequest) {
 
     return json(complaint);
   } catch (err: any) {
-    return error(err.message || "Failed to submit complaint", 500);
+    return serverError(err, "Failed to submit complaint", 500);
   }
 }

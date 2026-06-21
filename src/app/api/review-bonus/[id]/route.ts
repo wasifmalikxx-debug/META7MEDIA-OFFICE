@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth, getCallerScope, assertCanActOnUser } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT, formatPKTDate } from "@/lib/pkt";
 import { reviewBonusActionSchema } from "@/lib/validations/bonus";
@@ -131,7 +131,7 @@ export async function PATCH(
 
     return json(updated);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
 
@@ -173,7 +173,7 @@ export async function PUT(
     });
     return json(updated);
   } catch (err: any) {
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
 

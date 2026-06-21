@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, serverError, requireAuth } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 
 // L22: validate + length-cap profile edits (was unvalidated raw body — no email
@@ -48,6 +48,6 @@ export async function PUT(request: NextRequest) {
     if (err.code === "P2002") {
       return error("Email already in use", 400);
     }
-    return error(err.message);
+    return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
