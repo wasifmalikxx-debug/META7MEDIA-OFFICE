@@ -40,6 +40,10 @@ export async function GET(request: NextRequest) {
       },
     },
     orderBy: [{ updatedAt: "desc" }],
+    // L19: bound the result set (this list is polled every 60-120s). The
+    // cleanup cron already caps total complaints, so 200 is far above any real
+    // month's volume for the team while protecting the payload + the pool.
+    take: 200,
   });
 
   return json(complaints);

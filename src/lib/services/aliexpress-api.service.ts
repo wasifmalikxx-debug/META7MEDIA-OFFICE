@@ -2,6 +2,19 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
 
+// L17: serialize a response/error body for logging with OAuth secrets redacted.
+// The token create/refresh responses contain access_token/refresh_token; without
+// this they were written verbatim into the (prod) logs.
+function redactTokens(obj: unknown): string {
+  try {
+    return JSON.stringify(obj, (k, v) =>
+      k === "access_token" || k === "refresh_token" ? "[REDACTED]" : v,
+    );
+  } catch {
+    return "[unserializable]";
+  }
+}
+
 /**
  * AliExpress Open Platform — Drop Shipping (DS) API client.
  *
@@ -289,7 +302,7 @@ export async function aliExpressCall<T = unknown>(
         json?.code === "InvalidAccessToken" ||
         json?.code === "AccessTokenExpired"
       ) {
-        console.error(`[aliexpress] ${method} token invalid:`, json);
+        console.error(`[aliexpress] ${method} token invalid: ${redactTokens(json)}`);
         throw new Error(
           `AliExpress token invalid (${json.code}) — reconnect on Product Hunter`,
         );
@@ -298,7 +311,7 @@ export async function aliExpressCall<T = unknown>(
       // Success — log full response (truncated) so we can debug parser
       // mismatches without trial-and-error. This is verbose but cheap
       // and 90% of debugging time comes from missing response shapes.
-      const bodyPreview = JSON.stringify(json).slice(0, 2000);
+      const bodyPreview = redactTokens(json).slice(0, 2000);
       console.log(
         `[aliexpress] ${method} ok — keys: [${Object.keys(json).join(", ")}] — body: ${bodyPreview}`,
       );
@@ -363,7 +376,7 @@ function unwrapTokenResponse(raw: unknown): OAuthTokenResponse {
   }
 
   throw new Error(
-    `Token response missing access_token: ${JSON.stringify(raw).slice(0, 300)}`,
+    `Token response missing access_token: ${redactTokens(raw).slice(0, 300)}`,
   );
 }
 

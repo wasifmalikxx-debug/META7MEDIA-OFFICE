@@ -21,12 +21,21 @@ export async function GET(request: NextRequest) {
   if (dept) where.departmentId = dept;
   if (status) where.status = status;
 
-  // Phase 5 multi-office scoping: PARTNER sees only their team(s); CEO/MANAGER
-  // unchanged. Filter applied in addition to dept/status.
+  // Multi-office scoping: PARTNER sees only their team(s); CEO + HR_ADMIN see
+  // the full roster. L3: MANAGER (Izaan) is scoped to his OWN department
+  // (Etsy - EM) — he must not see the full cross-office roster (matches the
+  // documented Izaan-EM-only rule). The forced departmentId overrides any
+  // ?department query param so he can't read other departments.
   const scope = await getCallerScope(session);
   if (scope?.isPartner) {
     where.officeId = scope.officeId;
     where.teamId = { in: [...(scope.teamIds ?? [])] };
+  } else if (role === "MANAGER") {
+    const me = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { departmentId: true },
+    });
+    where.departmentId = me?.departmentId ?? "__none__";
   }
 
   const employees = await prisma.user.findMany({
