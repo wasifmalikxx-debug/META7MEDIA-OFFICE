@@ -182,10 +182,19 @@ export async function generatePayrollForEmployee(
         });
       }
     } else if (existingFine.amount !== expectedAmount || existingFine.reason !== expectedReason) {
-      await prisma.fine.update({
-        where: { id: existingFine.id },
-        data: { amount: expectedAmount, reason: expectedReason },
-      });
+      try {
+        await prisma.fine.update({
+          where: { id: existingFine.id },
+          data: { amount: expectedAmount, reason: expectedReason },
+        });
+      } catch (e: any) {
+        // M14/M24: when a date carries a SECOND absent fine (e.g. a manual fine
+        // alongside the auto one), renaming this row to the canonical reason can
+        // hit the unique (userId,date,type,reason) constraint. The canonical
+        // absent fine already exists, so skip rather than aborting the entire
+        // payroll run. (Pre-M14 this update silently created a duplicate row.)
+        if (e?.code !== "P2002") throw e;
+      }
     }
   }
 
