@@ -223,6 +223,38 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; i
   DENIED: { label: "Denied", bg: "bg-rose-50 dark:bg-rose-950/40", text: "text-rose-700 dark:text-rose-400", icon: Ban, border: "border-rose-200 dark:border-rose-900" },
 };
 
+// Solid left-rail colour per status — lets the CEO scan status down the list
+// without reading. Matches the status pill family.
+const STATUS_RAIL: Record<string, string> = {
+  OPEN: "bg-blue-500",
+  IN_PROGRESS: "bg-amber-500",
+  APPROVED: "bg-emerald-500",
+  RESOLVED: "bg-emerald-500",
+  DENIED: "bg-rose-500",
+};
+
+// Deterministic avatar tint per person, so the same employee always gets the
+// same colour and the CEO can recognise them at a glance.
+const AVATAR_PALETTE = [
+  "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+  "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
+  "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-300",
+];
+function initialsOf(first: string, last?: string | null): string {
+  const a = (first || "").trim()[0] || "";
+  const b = (last || "").trim()[0] || "";
+  return ((a + b) || a || "?").toUpperCase();
+}
+function avatarColor(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
 function StatusPill({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.OPEN;
   const Icon = cfg.icon;
@@ -258,81 +290,105 @@ function CategoryIcon({ category, size = "md" }: { category: string; size?: "sm"
 
 function ComplaintCard({ c, isAdmin, onOpen }: { c: Complaint; isAdmin: boolean; onOpen: (id: string) => void }) {
   const cat = CATEGORY_MAP[c.category];
+  const CatIcon = cat?.icon;
   const employeeName = `${c.user.firstName} ${c.user.lastName || ""}`.trim();
   const lastMessage = c.messages?.[0];
   const unread = isAdmin ? c.unreadByCeo : c.unreadByEmployee;
+  const rail = STATUS_RAIL[c.status] || STATUS_RAIL.OPEN;
+  const teamLabel = c.user.team?.name ?? c.user.department?.name;
+  // Prefix the preview with who spoke last: "You" for the CEO's own view,
+  // "CEO" for the employee's view.
+  const ceoPrefix = isAdmin ? "You: " : "CEO: ";
+
   return (
     <Card
-      className={`border-0 shadow-sm hover:shadow-md transition-all cursor-pointer group ${unread ? "ring-2 ring-violet-300 dark:ring-violet-700" : ""}`}
+      className={`relative overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-px transition-all cursor-pointer group ${unread ? "ring-1 ring-violet-300 dark:ring-violet-800" : ""}`}
       onClick={() => onOpen(c.id)}
     >
-      <CardContent className="p-3.5">
+      {/* status rail — colour-coded left edge for at-a-glance status */}
+      <span className={`absolute inset-y-0 left-0 w-1 ${rail}`} aria-hidden />
+      <CardContent className="p-3 pl-4">
         <div className="flex items-start gap-3">
-          <CategoryIcon category={c.category} size="sm" />
+          {/* Avatar: CEO view shows the employee's initials (scan by person);
+              employee's own view shows the category icon. */}
+          {isAdmin ? (
+            <div className={`size-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${avatarColor(c.user.employeeId || employeeName)}`}>
+              {initialsOf(c.user.firstName, c.user.lastName)}
+            </div>
+          ) : (
+            <div className={`size-10 rounded-full flex items-center justify-center shrink-0 ${cat?.bg || "bg-muted"}`}>
+              {CatIcon && <CatIcon className={`size-5 ${cat?.color}`} />}
+            </div>
+          )}
+
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-3 mb-1">
-              <h3 className="font-semibold text-xs truncate flex items-center gap-2">
-                {c.subject}
-                {unread && <span className="size-1.5 rounded-full bg-violet-500 animate-pulse" />}
-              </h3>
-              <div className="flex items-center gap-1 shrink-0">
+            {/* Row 1: identity (admin) or subject (employee) + priority/status */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                {isAdmin ? (
+                  <>
+                    <span className="font-semibold text-sm truncate">{employeeName}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">{c.user.employeeId}</span>
+                  </>
+                ) : (
+                  <span className="font-semibold text-[13px] truncate">{c.subject}</span>
+                )}
+                {unread && <span className="size-1.5 rounded-full bg-violet-500 animate-pulse shrink-0" />}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
                 <PriorityPill priority={c.priority} />
                 <StatusPill status={c.status} />
               </div>
             </div>
-            <p className="text-[11px] text-muted-foreground line-clamp-1 mb-1.5">
+
+            {/* Row 2: subject (CEO view only — employee already shows it above) */}
+            {isAdmin && <div className="font-medium text-[13px] truncate mt-1">{c.subject}</div>}
+
+            {/* Row 3: latest-message preview */}
+            <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
               {lastMessage ? (
                 <>
-                  {lastMessage.senderRole === "CEO" && <span className="font-semibold text-emerald-600 dark:text-emerald-400">CEO: </span>}
+                  {lastMessage.senderRole === "CEO" && <span className="font-semibold text-emerald-600 dark:text-emerald-400">{ceoPrefix}</span>}
                   {lastMessage.message}
                 </>
               ) : (
                 c.description
               )}
             </p>
-            <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
-              {isAdmin && (
-                <>
-                  <span className="flex items-center gap-1 font-medium">
-                    <Users className="size-3" />
-                    {employeeName} · {c.user.employeeId}
-                  </span>
-                  {/* Team / partner label so the CEO knows whose employee
-                      is complaining (e.g. "Awais Team · Awais" or "Etsy - EM
-                      · CEO direct"). Falls back to department for OFFICE 1
-                      employees who have no Team row. */}
-                  {(c.user.team?.name || c.user.department?.name) && (
-                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal">
-                      {c.user.team?.name ?? c.user.department?.name}
-                      {c.user.team?.partner && (
-                        <span className="ml-1 text-muted-foreground/70">
-                          · {c.user.team.partner.firstName}
-                        </span>
-                      )}
-                      {c.user.office?.name && (
-                        <span className="ml-1 text-muted-foreground/50">
-                          · {c.user.office.name.replace(/^META7MEDIA\s*/i, "")}
-                        </span>
-                      )}
-                    </Badge>
+
+            {/* Row 4: meta — team + category on the left, dates pushed right */}
+            <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground mt-2 flex-wrap">
+              {isAdmin && teamLabel && (
+                <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-normal shrink-0">
+                  {teamLabel}
+                  {c.user.team?.partner && (
+                    <span className="ml-1 text-muted-foreground/70">· {c.user.team.partner.firstName}</span>
                   )}
-                </>
+                  {c.user.office?.name && (
+                    <span className="ml-1 text-muted-foreground/50">· {c.user.office.name.replace(/^META7MEDIA\s*/i, "")}</span>
+                  )}
+                </Badge>
               )}
-              <span className="text-muted-foreground/70">{cat?.label}</span>
-              <span className="flex items-center gap-1" title={`Filed ${formatPKTDisplay(new Date(c.createdAt), "EEE, MMM d, yyyy")}`}>
-                <CalendarDays className="size-3" />
-                Filed {formatPKTDisplay(new Date(c.createdAt), "MMM d")}
+              <span className="flex items-center gap-1">
+                {CatIcon && <CatIcon className={`size-3 ${cat?.color}`} />}
+                {cat?.label}
               </span>
-              <span className="flex items-center gap-1" title={`Last activity ${formatPKTDisplay(new Date(c.updatedAt), "EEE, MMM d, yyyy")} · ${formatPKTTime(new Date(c.updatedAt))}`}>
-                <Clock className="size-3" />
-                Updated {formatPKTDisplay(new Date(c.updatedAt), "MMM d")} · {formatPKTTime(new Date(c.updatedAt))}
-              </span>
-              {(c._count?.messages ?? 0) > 1 && (
-                <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400 font-medium">
-                  <MessageSquare className="size-3" />
-                  {c._count?.messages}
+              <span className="ml-auto flex items-center gap-3 shrink-0">
+                <span className="flex items-center gap-1" title={`Filed ${formatPKTDisplay(new Date(c.createdAt), "EEE, MMM d, yyyy")}`}>
+                  <CalendarDays className="size-3" />
+                  Filed {formatPKTDisplay(new Date(c.createdAt), "MMM d")}
                 </span>
-              )}
+                <span className="flex items-center gap-1" title={`Last activity ${formatPKTDisplay(new Date(c.updatedAt), "EEE, MMM d, yyyy")} · ${formatPKTTime(new Date(c.updatedAt))}`}>
+                  <Clock className="size-3" />
+                  {formatPKTDisplay(new Date(c.updatedAt), "MMM d")} · {formatPKTTime(new Date(c.updatedAt))}
+                </span>
+                {(c._count?.messages ?? 0) > 1 && (
+                  <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400 font-medium">
+                    <MessageSquare className="size-3" />
+                    {c._count?.messages}
+                  </span>
+                )}
+              </span>
             </div>
           </div>
         </div>
