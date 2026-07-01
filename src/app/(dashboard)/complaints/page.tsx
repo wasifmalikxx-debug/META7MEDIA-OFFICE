@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/common/page-header";
 import { ComplaintsView } from "@/components/complaints/complaints-view";
+import { nowPKT } from "@/lib/pkt";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,12 @@ export default async function ComplaintsPage() {
         isAdmin={isAdmin}
         currentUserId={userId}
         targetEmployees={JSON.parse(JSON.stringify(targetEmployees))}
+        currentMonthKey={(() => {
+          // Authoritative current PKT month (YYYY-MM) from the server — the
+          // month switcher's default, independent of the browser clock.
+          const p = nowPKT();
+          return `${p.getUTCFullYear()}-${String(p.getUTCMonth() + 1).padStart(2, "0")}`;
+        })()}
       />
     </div>
   );

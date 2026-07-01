@@ -51,8 +51,36 @@ import {
   Paperclip,
   ImageIcon,
   X,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  Inbox,
 } from "lucide-react";
 import { formatPKTDisplay, formatPKTTime } from "@/lib/pkt";
+
+// ── Month grouping (PKT) ─────────────────────────────
+// createdAt is stored PKT-shifted (nowPKT()), so its UTC fields ARE the PKT
+// calendar values — group + label straight off them, no timezone math.
+const MONTHS_LONG = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+function monthKeyOf(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+function monthLabelOf(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTHS_LONG[(m || 1) - 1]} ${y}`;
+}
+function monthLabelShort(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTHS_LONG[(m || 1) - 1].slice(0, 3)} ${y}`;
+}
+function dayKeyOf(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
 
 interface ComplaintMessage {
   id: string;
@@ -162,6 +190,9 @@ interface ComplaintsViewProps {
   currentUserId: string;
   /** CEO-only — employees the CEO can launch a complaint against. */
   targetEmployees?: TargetEmployee[];
+  /** Authoritative current PKT month (YYYY-MM) from the server — the month
+   *  switcher's default. Falls back to "" for older callers. */
+  currentMonthKey?: string;
 }
 
 const CATEGORIES = [
@@ -288,9 +319,13 @@ function ComplaintCard({ c, isAdmin, onOpen }: { c: Complaint; isAdmin: boolean;
                 </>
               )}
               <span className="text-muted-foreground/70">{cat?.label}</span>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1" title={`Filed ${formatPKTDisplay(new Date(c.createdAt), "EEE, MMM d, yyyy")}`}>
+                <CalendarDays className="size-3" />
+                Filed {formatPKTDisplay(new Date(c.createdAt), "MMM d")}
+              </span>
+              <span className="flex items-center gap-1" title={`Last activity ${formatPKTDisplay(new Date(c.updatedAt), "EEE, MMM d, yyyy")} · ${formatPKTTime(new Date(c.updatedAt))}`}>
                 <Clock className="size-3" />
-                {formatPKTDisplay(new Date(c.updatedAt), "MMM d")} · {formatPKTTime(new Date(c.updatedAt))}
+                Updated {formatPKTDisplay(new Date(c.updatedAt), "MMM d")} · {formatPKTTime(new Date(c.updatedAt))}
               </span>
               {(c._count?.messages ?? 0) > 1 && (
                 <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400 font-medium">
@@ -306,9 +341,19 @@ function ComplaintCard({ c, isAdmin, onOpen }: { c: Complaint; isAdmin: boolean;
   );
 }
 
-export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targetEmployees = [] }: ComplaintsViewProps) {
+export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targetEmployees = [], currentMonthKey = "" }: ComplaintsViewProps) {
   const router = useRouter();
   const [complaints, setComplaints] = useState<Complaint[]>(initialComplaints);
+  // Fallback current month if the server prop is missing (older callers):
+  // derive it from the newest complaint, else today via the browser.
+  const resolvedCurrentMonth =
+    currentMonthKey ||
+    (initialComplaints[0] ? monthKeyOf(initialComplaints[0].createdAt) : (() => {
+      const n = new Date();
+      return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, "0")}`;
+    })());
+  // Which month the CEO is browsing (admin only). Employees see their full list.
+  const [selectedMonth, setSelectedMonth] = useState<string>(resolvedCurrentMonth);
   const [newOpen, setNewOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [viewing, setViewing] = useState<Complaint | null>(null);
@@ -435,16 +480,50 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
     return () => clearInterval(id);
   }, [isAdmin, router]);
 
+  // Months present in the data (newest first). Always include the current
+  // month and whatever's selected so the switcher never has a dangling value.
+  const availableMonths = useMemo(() => {
+    const keys = new Set<string>();
+    for (const c of complaints) keys.add(monthKeyOf(c.createdAt));
+    keys.add(resolvedCurrentMonth);
+    keys.add(selectedMonth);
+    return Array.from(keys).sort().reverse();
+  }, [complaints, resolvedCurrentMonth, selectedMonth]);
+
+  // Count per month for the switcher dropdown badges.
+  const monthCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of complaints) {
+      const k = monthKeyOf(c.createdAt);
+      m[k] = (m[k] || 0) + 1;
+    }
+    return m;
+  }, [complaints]);
+
+  // Admin browses one month at a time; employees see their full (small) list.
+  const monthComplaints = useMemo(
+    () => (isAdmin ? complaints.filter((c) => monthKeyOf(c.createdAt) === selectedMonth) : complaints),
+    [complaints, isAdmin, selectedMonth],
+  );
+
+  const monthIndex = availableMonths.indexOf(selectedMonth);
+  const goOlderMonth = () => {
+    if (monthIndex < availableMonths.length - 1) setSelectedMonth(availableMonths[monthIndex + 1]);
+  };
+  const goNewerMonth = () => {
+    if (monthIndex > 0) setSelectedMonth(availableMonths[monthIndex - 1]);
+  };
+
   const stats = useMemo(() => {
     return {
-      open: complaints.filter((c) => c.status === "OPEN").length,
-      inProgress: complaints.filter((c) => c.status === "IN_PROGRESS").length,
-      resolved: complaints.filter((c) => c.status === "RESOLVED" || c.status === "APPROVED").length,
-      denied: complaints.filter((c) => c.status === "DENIED").length,
-      urgent: complaints.filter((c) => c.priority === "URGENT" && c.status !== "RESOLVED" && c.status !== "DENIED").length,
-      total: complaints.length,
+      open: monthComplaints.filter((c) => c.status === "OPEN").length,
+      inProgress: monthComplaints.filter((c) => c.status === "IN_PROGRESS").length,
+      resolved: monthComplaints.filter((c) => c.status === "RESOLVED" || c.status === "APPROVED").length,
+      denied: monthComplaints.filter((c) => c.status === "DENIED").length,
+      urgent: monthComplaints.filter((c) => c.priority === "URGENT" && c.status !== "RESOLVED" && c.status !== "DENIED").length,
+      total: monthComplaints.length,
     };
-  }, [complaints]);
+  }, [monthComplaints]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -475,6 +554,9 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
           : "Complaint submitted — delivered securely to the CEO",
       );
       setComplaints([data, ...complaints]);
+      // A newly filed complaint lands in the current month — snap the switcher
+      // there so the CEO isn't left staring at a past month wondering where it went.
+      setSelectedMonth(resolvedCurrentMonth);
       setForm({ subject: "", category: "BUG", priority: "MEDIUM", description: "", targetUserId: "" });
       setFormImage(null);
       setNewOpen(false);
@@ -651,7 +733,7 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
     resolved: stats.resolved,
     denied: stats.denied,
   };
-  const filteredComplaints = complaints.filter((c) => {
+  const filteredComplaints = monthComplaints.filter((c) => {
     if (filter === "all") return true;
     if (filter === "active") return c.status === "OPEN" || c.status === "IN_PROGRESS";
     if (filter === "resolved") return c.status === "RESOLVED" || c.status === "APPROVED";
@@ -668,6 +750,67 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
 
   return (
     <div className="space-y-4">
+      {/* MONTH SWITCHER (CEO only) — browse requests by month. Requests are now
+          kept on a rolling 12-month history instead of being wiped on the 1st,
+          so past months are reviewable here. */}
+      {isAdmin && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-xl border bg-card shadow-sm overflow-hidden">
+              <button
+                type="button"
+                onClick={goOlderMonth}
+                disabled={monthIndex >= availableMonths.length - 1}
+                className="h-9 px-2.5 hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Older month"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <Select value={selectedMonth} onValueChange={(v) => v && setSelectedMonth(v)}>
+                <SelectTrigger className="h-9 min-w-[150px] justify-center border-x border-y-0 rounded-none shadow-none font-semibold focus-visible:ring-0">
+                  <CalendarDays className="size-4 text-violet-500" />
+                  <span>{monthLabelOf(selectedMonth)}</span>
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMonths.map((k) => (
+                    <SelectItem key={k} value={k}>
+                      <span className="flex items-center gap-2">
+                        {monthLabelOf(k)}
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {monthCounts[k] || 0}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <button
+                type="button"
+                onClick={goNewerMonth}
+                disabled={monthIndex <= 0}
+                className="h-9 px-2.5 hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Newer month"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+            {selectedMonth !== resolvedCurrentMonth && (
+              <button
+                type="button"
+                onClick={() => setSelectedMonth(resolvedCurrentMonth)}
+                className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:underline whitespace-nowrap"
+              >
+                Back to this month
+              </button>
+            )}
+          </div>
+          <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+            <span className="font-semibold text-foreground">{monthComplaints.length}</span>{" "}
+            {monthComplaints.length === 1 ? "request" : "requests"} in {monthLabelShort(selectedMonth)}
+          </span>
+        </div>
+      )}
+
       {/* Toolbar — filter pills on the left, New Complaint on the right.
           Replaces the previous five-card KPI row + standalone button row.
           Filter pills double as counters AND filters; one element instead
@@ -730,8 +873,8 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
                 </p>
                 <p className="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
                   {isAdmin
-                    ? "Only you and the targeted employee see this thread. Resets on the 1st of each month along with all complaints."
-                    : "Every complaint is stored securely and handled one-to-one with the CEO. Your coworkers and managers never see this. All complaints reset automatically on the 1st of every month. Speak honestly."}
+                    ? "Only you and the targeted employee can see this thread. It's kept on record and organized by month."
+                    : "Every complaint is stored securely and handled one-to-one with the CEO. Your coworkers and managers never see this. Speak honestly."}
                 </p>
               </div>
             </div>
@@ -890,13 +1033,13 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
         </Dialog>
       </div>
 
-      {/* Subtle monthly-reset note. Replaces the previous full-width banner —
-          same message, less visual weight so it doesn't compete with the
-          actual list. */}
+      {/* Context note — accurate now that requests are retained per month. */}
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground/80">
         <Sparkles className="size-3 text-violet-500" />
         <span>
-          Auto-resets on the 1st of every month — speak freely, nothing kept long-term.
+          {isAdmin
+            ? "Requests are saved by month — use the month switcher above to review past requests. A rolling 12-month history is kept."
+            : "A private, confidential line to the CEO. Only you and the CEO ever see this — speak honestly."}
         </span>
       </div>
 
@@ -915,14 +1058,26 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
             </p>
           </CardContent>
         </Card>
+      ) : isAdmin && monthComplaints.length === 0 ? (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-14 text-center">
+            <div className="size-12 mx-auto rounded-2xl bg-muted flex items-center justify-center mb-3">
+              <Inbox className="size-6 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-semibold">No requests in {monthLabelOf(selectedMonth)}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Use the month switcher above to review other months.
+            </p>
+          </CardContent>
+        </Card>
       ) : filteredComplaints.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="py-12 text-center">
             <p className="text-sm font-semibold text-muted-foreground">
-              {filter === "active" && "No active complaints — you're all caught up."}
-              {filter === "resolved" && "No resolved complaints in this window."}
-              {filter === "denied" && "No denied complaints."}
-              {filter === "all" && "No complaints found."}
+              {filter === "active" && "No active requests this month — you're all caught up."}
+              {filter === "resolved" && "No resolved requests in this month."}
+              {filter === "denied" && "No denied requests this month."}
+              {filter === "all" && "No requests found."}
             </p>
           </CardContent>
         </Card>
@@ -953,6 +1108,14 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
                       </span>
                     )}
                   </DialogDescription>
+                  {/* Filed date — always visible so the CEO immediately knows
+                      when a request came in, even months later. */}
+                  <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground">
+                    <CalendarDays className="size-3 shrink-0" />
+                    <span className="truncate">
+                      Filed {formatPKTDisplay(new Date(viewing.createdAt), "EEE, MMM d, yyyy")} · {formatPKTTime(new Date(viewing.createdAt))}
+                    </span>
+                  </div>
                 </div>
               </DialogHeader>
 
@@ -998,12 +1161,26 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
                     <Loader2 className="size-4 animate-spin mr-2" /> Loading...
                   </div>
                 ) : (
-                  (viewing.messages || []).filter(isFullMessage).map((m) => {
+                  (() => {
+                    const msgs = (viewing.messages || []).filter(isFullMessage);
+                    let lastDay = "";
+                    return msgs.map((m) => {
                     const isMine = m.senderId === currentUserId;
                     const isCeoMessage = m.senderRole === "CEO";
                     const senderName = `${m.sender.firstName} ${m.sender.lastName || ""}`.trim();
+                    const dk = dayKeyOf(m.createdAt);
+                    const showDay = dk !== lastDay;
+                    lastDay = dk;
                     return (
-                      <div key={m.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                      <div key={m.id}>
+                        {showDay && (
+                          <div className="flex items-center justify-center my-3">
+                            <span className="text-[9px] font-semibold text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full">
+                              {formatPKTDisplay(new Date(m.createdAt), "EEE, MMM d, yyyy")}
+                            </span>
+                          </div>
+                        )}
+                        <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                         <div className="max-w-[78%]">
                           <div className={`flex items-center gap-1.5 mb-0.5 ${isMine ? "justify-end" : "justify-start"}`}>
                             <span className="text-[9px] font-semibold text-muted-foreground">
@@ -1040,9 +1217,11 @@ export function ComplaintsView({ initialComplaints, isAdmin, currentUserId, targ
                             )}
                           </div>
                         </div>
+                        </div>
                       </div>
                     );
-                  })
+                    });
+                  })()
                 )}
                 {isClosed && (
                   <div className="flex items-center justify-center py-2">

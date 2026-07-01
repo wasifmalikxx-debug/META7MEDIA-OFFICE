@@ -7,7 +7,7 @@ import { nowPKT } from "@/lib/pkt";
  * Monthly cleanup cron — runs on 1st of every month
  * Keeps only last 3 months of data, deletes everything older.
  *
- * Data cleaned:
+ * Data cleaned (3-month retention):
  * - Attendance records
  * - Fine records
  * - Incentive records
@@ -16,6 +16,11 @@ import { nowPKT } from "@/lib/pkt";
  * - Bonus eligibility records
  * - Review bonus records
  * - Notifications
+ *
+ * EXCEPTION — Complaints/requests use a 12-month rolling retention (NOT 3),
+ * so the CEO can browse past requests by month. See the inline note below.
+ * (This cron used to wipe ALL complaints every 1st; that destroyed open
+ * requests and was removed.)
  */
 export async function GET(request: NextRequest) {
   const gate = requireCronSecret(request);
@@ -103,9 +108,15 @@ export async function GET(request: NextRequest) {
     });
     results.notifications = notifs.count;
 
-    // Delete ALL complaints (full monthly reset — user wants no long-term records)
-    // Messages cascade-delete via the schema relation
-    const complaints = await prisma.complaint.deleteMany({});
+    // Complaints: KEEP a rolling 12-month history.
+    // (PREVIOUSLY this did `deleteMany({})` — a full wipe every 1st — which
+    // silently destroyed the CEO's still-open employee requests each month.
+    // The CEO now browses requests by month, so we retain a year and prune
+    // only threads older than that by creation date. Messages cascade-delete.)
+    const complaintCutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 12, 1));
+    const complaints = await prisma.complaint.deleteMany({
+      where: { createdAt: { lt: complaintCutoff } },
+    });
     results.complaints = complaints.count;
 
     const totalDeleted = Object.values(results).reduce((s, v) => s + v, 0);
@@ -114,6 +125,8 @@ export async function GET(request: NextRequest) {
       message: `Cleanup complete — removed ${totalDeleted} old records`,
       keepingFrom: `${cutoffMonth}/${cutoffYear}`,
       keepingMonths: 3,
+      complaintsKeepingMonths: 12,
+      complaintsKeepingFrom: `${complaintCutoff.getUTCMonth() + 1}/${complaintCutoff.getUTCFullYear()}`,
       timestamp: now.toISOString(),
       deleted: results,
     });
