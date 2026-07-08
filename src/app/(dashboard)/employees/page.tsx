@@ -94,6 +94,7 @@ export default async function EmployeesPage() {
       <EmployeesView
         employees={JSON.parse(JSON.stringify(employees))}
         departments={departments}
+        isCeo={!isPartner}
       />
     </div>
   );

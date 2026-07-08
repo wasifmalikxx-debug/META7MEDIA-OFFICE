@@ -72,7 +72,7 @@ export async function PATCH(
     // payroll list. Look up the target's current role to decide.
     const target = await prisma.user.findUnique({
       where: { id },
-      select: { role: true },
+      select: { role: true, status: true },
     });
     const isPartnerTarget = target?.role === "PARTNER";
 
@@ -109,6 +109,23 @@ export async function PATCH(
         updateData.password = await bcrypt.hash(body.newPassword, 12);
       }
       if (body.status) updateData.status = body.status;
+    } else if (body.status && body.status !== target?.status) {
+      // H4 (scoped relaxation, Jul 2026 — CEO request): a PARTNER may toggle
+      // their OWN team member between PROBATION and HIRED. Safe because
+      // assertCanActOnUser already limits partners to their own team and
+      // status is not a privilege (role stays untouched). BOTH the current and
+      // the new status must be active {HIRED, PROBATION}: this blocks a partner
+      // both from OFFBOARDING (→ RESIGNED/TERMINATED, which locks login) AND
+      // from REACTIVATING a cut-off account (RESIGNED/TERMINATED → HIRED).
+      // All account-state control stays with the CEO. Guarded on an actual
+      // CHANGE, so editing other fields (which resend the current status) is
+      // never blocked.
+      const ACTIVE = ["HIRED", "PROBATION"];
+      if (ACTIVE.includes(body.status) && ACTIVE.includes(target?.status ?? "")) {
+        updateData.status = body.status;
+      } else {
+        return error("Only the CEO can change this employee's status. Partners can switch between Hired and Probation.", 403);
+      }
     }
     delete updateData.newPassword;
     // Handle bank details (skipped for partners)

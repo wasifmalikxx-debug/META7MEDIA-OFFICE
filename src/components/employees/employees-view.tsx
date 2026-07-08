@@ -35,6 +35,8 @@ import { Plus, Search, Pencil, Trash2 } from "lucide-react";
 interface EmployeesViewProps {
   employees: any[];
   departments: any[];
+  /** CEO (SUPER_ADMIN) — gates CEO-only status options like Resigned. */
+  isCeo?: boolean;
 }
 
 const emptyForm = {
@@ -56,7 +58,7 @@ const emptyForm = {
   accountTitle: "",
 };
 
-export function EmployeesView({ employees, departments }: EmployeesViewProps) {
+export function EmployeesView({ employees, departments, isCeo = false }: EmployeesViewProps) {
   const router = useRouter();
   // Live updates: refresh server data every 30s so the CEO sees newly-added
   // partner-team members appear without a manual reload. Cleared on unmount.
@@ -435,7 +437,9 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
                       <SelectContent>
                         <SelectItem value="HIRED">Hired</SelectItem>
                         <SelectItem value="PROBATION">Probation</SelectItem>
-                        <SelectItem value="TERMINATED">Terminated</SelectItem>
+                        {/* Terminated locks the account out of login — CEO only.
+                            Partners can only switch between Hired and Probation. */}
+                        {isCeo && <SelectItem value="TERMINATED">Terminated</SelectItem>}
                       </SelectContent>
                     </Select>
                   </div>
