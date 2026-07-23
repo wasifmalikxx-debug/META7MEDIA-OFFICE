@@ -110,21 +110,29 @@ export async function PATCH(
       }
       if (body.status) updateData.status = body.status;
     } else if (body.status && body.status !== target?.status) {
-      // H4 (scoped relaxation, Jul 2026 — CEO request): a PARTNER may toggle
-      // their OWN team member between PROBATION and HIRED. Safe because
-      // assertCanActOnUser already limits partners to their own team and
-      // status is not a privilege (role stays untouched). BOTH the current and
-      // the new status must be active {HIRED, PROBATION}: this blocks a partner
-      // both from OFFBOARDING (→ RESIGNED/TERMINATED, which locks login) AND
-      // from REACTIVATING a cut-off account (RESIGNED/TERMINATED → HIRED).
-      // All account-state control stays with the CEO. Guarded on an actual
-      // CHANGE, so editing other fields (which resend the current status) is
-      // never blocked.
-      const ACTIVE = ["HIRED", "PROBATION"];
-      if (ACTIVE.includes(body.status) && ACTIVE.includes(target?.status ?? "")) {
+      // Partner status control (CEO authorized Jul 10 2026): a PARTNER may set
+      // ANY employment status — including offboarding (RESIGNED/TERMINATED) and
+      // reversing it — on their OWN team's EMPLOYEES. assertCanActOnUser already
+      // limits them to their team; status is not a privilege (role/org/email/
+      // credentials stay CEO-only via the deletes above + the CEO-only raw
+      // block). Guard: a partner may NOT change the status of another PARTNER or
+      // the CEO — no locking out a peer/admin (also covers the self-edit path,
+      // since the caller here is a partner). Only fires on an actual CHANGE, so
+      // editing other fields (which resend the current status) is never blocked.
+      const VALID_STATUSES = ["HIRED", "PROBATION", "RESIGNED", "TERMINATED"];
+      // Allowlist (NOT a denylist): partners may change status ONLY for a
+      // regular EMPLOYEE on their team — never the CEO (SUPER_ADMIN), an
+      // HR_ADMIN, another PARTNER, or a MANAGER. Using role==="EMPLOYEE" is
+      // robust to any privileged role added to the enum later; a denylist would
+      // silently let a new role through. assertCanActOnUser already scopes to
+      // their team; this protects the privileged tiers that can sit within it.
+      if (target?.role !== "EMPLOYEE") {
+        return error("Partners can only change the status of their team's employees.", 403);
+      }
+      if (VALID_STATUSES.includes(body.status)) {
         updateData.status = body.status;
       } else {
-        return error("Only the CEO can change this employee's status. Partners can switch between Hired and Probation.", 403);
+        return error("Invalid employee status.", 400);
       }
     }
     delete updateData.newPassword;
