@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     employeeId: u.employeeId ?? null,
   });
 
-  if (!access.canUseRealTool) {
+  if (!access.canUseSeoAutopilot) {
     return error(
       "Forbidden — SEO Autopilot is not enabled for your account",
       403,

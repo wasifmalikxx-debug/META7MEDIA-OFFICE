@@ -172,9 +172,13 @@ export function SeoAutopilotComingSoon() {
       </Card>
 
       {/* ─────────────── Footer note ─────────────── */}
+      {/* Aug 6 2026: the tool is CEO-only, so anyone landing here does NOT
+          have access — the old "you're on the Etsy team" line was wrong for
+          the Facebook team / HR / non-Etsy partners who can now reach this
+          page (the pre-lock redirect was removed). */}
       <p className="text-center text-[11px] text-muted-foreground">
         <CheckCircle2 className="inline size-3 mr-1 -translate-y-px text-emerald-500" />
-        Approved access: visible because you&apos;re on the Etsy team. You&apos;ll be notified the moment it&apos;s live.
+        This tool isn&apos;t enabled for your account yet. You&apos;ll be notified if it becomes available.
       </p>
     </div>
   );

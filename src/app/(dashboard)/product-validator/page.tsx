@@ -24,8 +24,8 @@ export const dynamic = "force-dynamic";
  * Goal: prevent Etsy shop strikes by catching policy-violating
  * sourcing decisions BEFORE the listing goes live.
  *
- * Access: currently CEO-only while the rule set is being tuned (see
- * getProductValidatorAccess). Etsy team rollout to follow.
+ * Access: CEO-ONLY (Aug 6 2026 CEO directive — see
+ * getProductValidatorAccess). Everyone else sees Coming Soon.
  */
 export default async function ProductValidatorPage() {
   const session = await auth();

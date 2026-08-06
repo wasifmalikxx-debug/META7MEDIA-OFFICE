@@ -29,7 +29,7 @@ import {
  * Response shape for ?id=<id>:
  *   { entry: MyHistoryEntry }
  *
- * Anyone authenticated can call this — they only ever see their own
+ * CEO-only since Aug 6 2026 (see the gate below) — they only ever see their own
  * rows (filtered by session.user.id in the service).
  */
 
@@ -38,6 +38,11 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
+
+  // CEO-ONLY (Aug 6 2026): SEO Autopilot is locked to SUPER_ADMIN, and this
+  // route only ever served that UI. Self-scoped already (own rows), so this
+  // is defense in depth — it keeps the locked tool's whole surface closed.
+  if (session.user.role !== "SUPER_ADMIN") return error("Forbidden", 403);
 
   const url = new URL(request.url);
   const id = url.searchParams.get("id");

@@ -1,16 +1,11 @@
-import { prisma } from "@/lib/prisma";
-
 /**
  * Single source of truth for the Product Validator role gate.
  *
- * Access policy (May 18 2026 — full Etsy team rollout):
- *  - CEO / SUPER_ADMIN                     → real tool, unlimited
- *  - MANAGER (Izaan, EM-4)                 → real tool, unlimited
- *  - EM employees (EM-* except EM-4L)      → real tool, unlimited
- *  - AE employees (AE-*)                   → real tool, unlimited
- *  - ME employees (ME-*)                   → real tool, unlimited
- *  - Etsy PARTNERs (Awais, Mubeen)         → real tool, unlimited
- *  - HR / Facebook / Zain                  → Coming Soon
+ * Access policy — **LOCKED TO CEO (Aug 6 2026, CEO directive)**:
+ *  - CEO / SUPER_ADMIN → real tool, unlimited
+ *  - EVERYONE else (managers incl. Izaan, EM/AE/ME employees, partners,
+ *    HR, Facebook team) → Coming Soon placeholder
+ * (Was the full Etsy team from May 18 2026 until the lock.)
  *
  * No daily quota — validation is cheap (~$0.006/check with vision,
  * $0 for hard-block or cleared products) and high-value since it
@@ -46,27 +41,18 @@ export async function getProductValidatorAccess(user: {
   const isAeEmployee = typeof empId === "string" && empId.startsWith("AE");
   const isMeEmployee = typeof empId === "string" && empId.startsWith("ME");
 
-  let isEtsyPartner = false;
-  if (user.role === "PARTNER") {
-    const partnerTeams = await prisma.team.findMany({
-      where: { partnerId: user.id },
-      select: { department: { select: { name: true } } },
-    });
-    isEtsyPartner = partnerTeams.some(
-      (t) =>
-        t.department?.name.includes(" - EM") ||
-        t.department?.name.includes(" - AE") ||
-        t.department?.name.includes(" - ME"),
-    );
-  }
+  // Etsy-partner lookup is skipped entirely under the CEO lock below: it
+  // fed only `canUseRealTool`, so running it would be a pointless DB
+  // round-trip on every partner page load / API call. If the lock is ever
+  // lifted, restore the prisma.team.findMany query here (see
+  // seo-autopilot-access.ts, which still needs it for Product Hunter).
+  const isEtsyPartner = false;
 
-  const canUseRealTool =
-    isCeo ||
-    isManager ||
-    isEmEmployee ||
-    isAeEmployee ||
-    isMeEmployee ||
-    isEtsyPartner;
+  // LOCKED TO CEO (Aug 6 2026, CEO directive): Product Validator is no
+  // longer available to employees, managers, or partners. Only SUPER_ADMIN
+  // can use the tool. Every surface — the page and /api/product-validator —
+  // reads this one predicate, so this is the single place the lock lives.
+  const canUseRealTool = isCeo;
 
   return {
     isCeo,

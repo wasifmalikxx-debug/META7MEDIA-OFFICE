@@ -8,20 +8,20 @@ import { prisma } from "@/lib/prisma";
  * helper consolidates the predicate so adding a new role is a one-line
  * change instead of a 3-file edit.
  *
- * Access policy (May 18 2026 — full Etsy team rollout):
- *  - CEO / SUPER_ADMIN                     → unlimited
- *  - MANAGER (Izaan, EM-4)                 → 8/day
- *  - EM employees (EM-* except EM-4 / 4L)  → 8/day
- *  - AE employees (AE-*)                   → 8/day  (NEW)
- *  - ME employees (ME-*)                   → 8/day  (NEW)
- *  - Etsy PARTNERs (Awais, Mubeen)         → 8/day
- *  - Everyone else                         → blocked
+ * Access policy — TWO separate predicates since Aug 6 2026:
+ *  - `canUseSeoAutopilot` → **CEO / SUPER_ADMIN ONLY** (CEO directive;
+ *    the generator was the full Etsy team until the lock).
+ *  - `canUseProductHunter` → still the full Etsy team: CEO, MANAGER
+ *    (Izaan EM-4), EM/AE/ME employees, Etsy PARTNERs (Awais, Mubeen).
+ *    Product Hunter was NOT part of the lock — keep these apart so
+ *    locking one tool never silently locks the other.
  *
  * Zain (Facebook-only partner) is excluded — he has no EM/AE/ME teams
  * so `isEtsyPartner` resolves false for him.
  *
- * Note: SEO Autopilot generator quota stays 8/day; Product Hunter has
- * a separate quota (5/day) tracked in `ProductHunterUsage`.
+ * Note: the generator's 8/day quota is now moot (CEO is unlimited) but
+ * kept in place so lifting the lock restores it; Product Hunter has a
+ * separate quota (5/day) tracked in `ProductHunterUsage`.
  */
 
 export interface SeoAutopilotAccess {
@@ -31,7 +31,10 @@ export interface SeoAutopilotAccess {
   isAeEmployee: boolean;
   isMeEmployee: boolean;
   isEtsyPartner: boolean;
-  canUseRealTool: boolean;
+  /** SEO Autopilot generator — CEO-ONLY since Aug 6 2026 (CEO directive). */
+  canUseSeoAutopilot: boolean;
+  /** Product Hunter — still the full Etsy team (NOT part of the Aug 2026 lock). */
+  canUseProductHunter: boolean;
   /** True when the SEO Autopilot GENERATOR daily limit doesn't apply (CEO only). */
   isUnlimited: boolean;
   /**
@@ -78,7 +81,9 @@ export async function getSeoAutopilotAccess(user: {
     );
   }
 
-  const canUseRealTool =
+  // The Etsy-team predicate. Product Hunter still uses this — it was NOT
+  // part of the Aug 6 2026 lock.
+  const isEtsyTeam =
     isCeo ||
     isManager ||
     isEmEmployee ||
@@ -93,7 +98,14 @@ export async function getSeoAutopilotAccess(user: {
     isAeEmployee,
     isMeEmployee,
     isEtsyPartner,
-    canUseRealTool,
+    // LOCKED TO CEO (Aug 6 2026, CEO directive): the SEO Autopilot
+    // GENERATOR (page + /api/seo-autopilot/generate + swap-tag) is
+    // CEO-only. Kept as its own predicate — deliberately separate from
+    // Product Hunter below, so locking one can never silently lock the
+    // other (they share this service).
+    canUseSeoAutopilot: isCeo,
+    // Product Hunter keeps the full Etsy-team access it had.
+    canUseProductHunter: isEtsyTeam,
     isUnlimited: isCeo,
     productHunterUnlimited: isCeo || isManager,
   };

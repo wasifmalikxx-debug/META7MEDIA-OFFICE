@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
   if (!session) return error("Unauthorized", 401);
 
   // ─── Role gate ──────────────────────────────────────────────────
-  // CEO + Izaan + EM employees + Etsy partners (Awais, Mubeen).
+  // CEO only — SEO Autopilot locked Aug 6 2026.
   // Shared helper keeps this in lockstep with page.tsx and swap-tag.
   const u = session.user;
   const access = await getSeoAutopilotAccess({
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
   });
   const isCeo = access.isCeo;
 
-  if (!access.canUseRealTool) {
+  if (!access.canUseSeoAutopilot) {
     return error(
       "Forbidden — SEO Autopilot is not enabled for your account",
       403,

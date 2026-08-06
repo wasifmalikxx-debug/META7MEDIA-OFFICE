@@ -44,7 +44,7 @@ export default async function ProductHunterPage() {
     employeeId: user.employeeId ?? null,
   });
 
-  if (access.canUseRealTool) {
+  if (access.canUseProductHunter) {
     // Full-bleed hero + constrained content column — same layout as
     // the Price Calculator and Product Validator pages so the four
     // Etsy Tools all read as one consistent product family.

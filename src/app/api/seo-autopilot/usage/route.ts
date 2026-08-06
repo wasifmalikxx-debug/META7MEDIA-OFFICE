@@ -28,8 +28,8 @@ import {
  *     stats: { today, limit, totalToday, totalYesterday, total7Day, entries }
  *   }
  *
- * Non-CEO callers asking for stats get only the usage block (the
- * `stats` field is omitted, no error).
+ * CEO-only since Aug 6 2026 — non-CEO callers now get 403. (Before the
+ * lock they received the usage block with `stats` omitted, no error.)
  */
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,11 @@ export async function GET(request: NextRequest) {
   if (!session) return error("Unauthorized", 401);
 
   const isCeo = session.user.role === "SUPER_ADMIN";
+  // CEO-ONLY (Aug 6 2026): SEO Autopilot is locked to SUPER_ADMIN, and this
+  // quota badge only ever served that UI (generator hero + the CEO-only
+  // Autopilot Dashboard). Defense in depth alongside the page/API locks.
+  if (!isCeo) return error("Forbidden", 403);
+
   const wantsStats = new URL(request.url).searchParams.get("stats") === "true";
 
   const usage = await getUsage({

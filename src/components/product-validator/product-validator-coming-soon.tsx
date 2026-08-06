@@ -13,9 +13,9 @@ import {
 /**
  * Pre-launch placeholder for /product-validator.
  *
- * Shown to roles outside the Etsy team (HR, Facebook, Zain). The tool
- * is Etsy-seller-specific, so other roles see this informational view
- * but can't use it.
+ * Shown to everyone except the CEO — the tool was locked to SUPER_ADMIN
+ * on Aug 6 2026 (CEO directive), so the Etsy team lands here too. Copy
+ * must NOT claim the viewer has access.
  */
 export function ProductValidatorComingSoon() {
   const features = [
@@ -79,7 +79,7 @@ export function ProductValidatorComingSoon() {
               <span className="relative inline-flex size-1.5 rounded-full bg-violet-300" />
             </span>
             <span className="text-[10px] font-bold text-violet-100 uppercase tracking-[0.18em]">
-              Etsy team access
+              CEO access only
             </span>
           </div>
 
@@ -106,7 +106,7 @@ export function ProductValidatorComingSoon() {
 
           <div className="mt-6 inline-flex items-center gap-2 text-xs text-white/65">
             <Hourglass className="size-3.5" />
-            <span>Built for the Etsy team · live for sellers today</span>
+            <span>Currently limited to the CEO account</span>
           </div>
         </div>
       </div>
@@ -146,13 +146,12 @@ export function ProductValidatorComingSoon() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-amber-900 dark:text-amber-200 leading-tight">
-              Etsy team access only
+              CEO access only
             </p>
             <p className="text-[12px] text-amber-800/85 dark:text-amber-200/80 mt-1 leading-relaxed">
-              The Product Validator is restricted to sellers actively
-              listing on Etsy (EM, AE, and ME teams, Izaan, and Etsy
-              partners). Other roles do not have an Etsy shop to validate
-              against.
+              The Product Validator is currently limited to the CEO
+              account. If you need a product checked before listing it,
+              send it to the CEO and he&apos;ll run the validation.
             </p>
           </div>
         </CardContent>

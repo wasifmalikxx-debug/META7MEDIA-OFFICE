@@ -33,7 +33,7 @@ import { findCeoUser } from "@/lib/services/ceo-user.service";
  * Returns the results organized by category.
  *
  * Access (May 18 2026 — full Etsy team rollout): anyone with
- * canUseRealTool from the shared SEO Autopilot predicate — CEO +
+ * canUseProductHunter from the shared predicate — CEO +
  * Izaan + EM + AE + ME + Etsy partners.
  *
  * Quota: PRODUCT_HUNTER_DAILY_LIMIT (5/day) per non-CEO user. Each
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   const session = await requireAuth();
   if (!session) return error("Unauthorized", 401);
 
-  // Same role gate as the page. Anyone with canUseRealTool can hunt:
+  // Same role gate as the page. Anyone with canUseProductHunter can hunt:
   // CEO + Etsy partners + Izaan + EM employees. Backend-side check
   // mirrors the UI so a stale bundle can't bypass the gate.
   const access = await getSeoAutopilotAccess({
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     role: session.user.role,
     employeeId: session.user.employeeId ?? null,
   });
-  if (!access.canUseRealTool) {
+  if (!access.canUseProductHunter) {
     return error(
       "Manual Hunting access is not enabled for your account",
       403,

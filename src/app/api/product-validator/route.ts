@@ -19,7 +19,7 @@ import { getProductValidatorAccess } from "@/lib/services/product-validator-acce
  *
  * Returns: { verdict, summary, flags, product, fetchPath, durationMs }
  *
- * Access: all Etsy team members (see getProductValidatorAccess).
+ * Access: CEO only (see getProductValidatorAccess) — locked Aug 6 2026.
  * AE token is borrowed from the CEO's connection for the DS API call.
  */
 

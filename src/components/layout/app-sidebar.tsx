@@ -527,21 +527,21 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       Product Hunter is now a single-pane tool — no tabs,
                       no sub-routes. */}
 
-                  {/* Product Validator — pre-listing Etsy policy check.
-                      Launched to the full Etsy team May 18 2026 (CEO +
-                      Izaan + EM + AE + ME + Etsy partners). No pill,
-                      matching the Price Calculator + Product Hunter
-                      pattern — settled tools without a Beta badge feel
-                      cleaner in the sidebar. */}
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      render={<Link href="/product-validator" />}
-                      isActive={isItemActive("/product-validator")}
-                    >
-                      <ShieldCheck className="size-4" />
-                      <span>Product Validator</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  {/* Product Validator — CEO-ONLY since Aug 6 2026 (CEO
+                      directive). Hidden from everyone else so employees
+                      don't click into a Coming Soon dead end; the page
+                      and API enforce the same lock server-side. */}
+                  {isCeo && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        render={<Link href="/product-validator" />}
+                        isActive={isItemActive("/product-validator")}
+                      >
+                        <ShieldCheck className="size-4" />
+                        <span>Product Validator</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
 
                   <SidebarMenuItem>
                     <SidebarMenuButton
@@ -552,40 +552,36 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       <span>Price Calculator</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  {/* SEO Autopilot — launched to the full Etsy team
-                      May 18 2026 (CEO + Izaan + EM + AE + ME + Etsy
-                      partners). No pill — matches the Calculator +
-                      Product Hunter + Product Validator pattern.
-                      Users without access still land on Coming Soon
-                      when clicking through. */}
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      render={<Link href="/seo-autopilot" />}
-                      isActive={isItemActive("/seo-autopilot")}
-                    >
-                      <Sparkles className="size-4" />
-                      <span>SEO Autopilot</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  {/* SEO Autopilot — CEO-ONLY since Aug 6 2026 (CEO
+                      directive; was full Etsy team). Hidden from
+                      everyone else; page + generate/swap-tag APIs
+                      enforce the same lock server-side. */}
+                  {isCeo && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        render={<Link href="/seo-autopilot" />}
+                        isActive={isItemActive("/seo-autopilot")}
+                      >
+                        <Sparkles className="size-4" />
+                        <span>SEO Autopilot</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
                   {/* Prompt Engineer — AliExpress photo → Higgsfield
-                      image-gen prompt. CEO-only real tool for now
-                      (everyone else lands on Coming Soon), so it carries
-                      a "Soon" pill for non-CEO. Staged rollout like
-                      Product Hunter had. (2026-06-12) */}
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      render={<Link href="/prompt-engineer" />}
-                      isActive={isItemActive("/prompt-engineer")}
-                    >
-                      <Wand2 className="size-4" />
-                      <span>Prompt Engineer</span>
-                      {!isCeo && (
-                        <span className="ml-auto inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase">
-                          Soon
-                        </span>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                      image-gen prompt. CEO-only (page + API); hidden
+                      from everyone else since Aug 6 2026 instead of
+                      showing a "Soon" pill. */}
+                  {isCeo && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        render={<Link href="/prompt-engineer" />}
+                        isActive={isItemActive("/prompt-engineer")}
+                      >
+                        <Wand2 className="size-4" />
+                        <span>Prompt Engineer</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
