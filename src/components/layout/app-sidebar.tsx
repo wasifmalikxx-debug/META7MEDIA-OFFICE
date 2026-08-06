@@ -31,6 +31,7 @@ import {
   Calculator,
   Sparkles,
   Wand2,
+  Lock,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,7 +54,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-
+/**
+ * "CEO only" lock pill (Aug 6 2026). Marks the tools that are locked to
+ * SUPER_ADMIN — Product Validator, SEO Autopilot, Prompt Engineer — so the
+ * CEO can see at a glance that his team can't reach them. Only ever
+ * rendered inside `{isCeo && …}` blocks, since nobody else sees those
+ * entries at all.
+ */
+function CeoOnlyPill() {
+  return (
+    <span
+      title="Locked — only you (CEO) can access this tool. Employees, managers and partners can't see or use it."
+      className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase"
+    >
+      <Lock className="size-2.5" />
+      CEO
+    </span>
+  );
+}
 
 interface PartnerTeamInfo {
   id: string;
@@ -539,6 +557,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       >
                         <ShieldCheck className="size-4" />
                         <span>Product Validator</span>
+                        <CeoOnlyPill />
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
@@ -564,6 +583,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       >
                         <Sparkles className="size-4" />
                         <span>SEO Autopilot</span>
+                        <CeoOnlyPill />
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
@@ -579,6 +599,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       >
                         <Wand2 className="size-4" />
                         <span>Prompt Engineer</span>
+                        <CeoOnlyPill />
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
