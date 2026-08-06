@@ -69,6 +69,50 @@ interface EmployeeDashboardProps {
   weekAttendances?: { date: string; status: string }[];
 }
 
+// ── Attendance state reconciliation ─────────────────────────────
+// Within one PKT day an attendance row only ever GAINS fields
+// (checkIn → breakStart → breakEnd → checkOut), so "more fields set"
+// means "newer". Used to merge server snapshots into client state so a
+// stale payload (router cache, in-flight fetch race) can never flip a
+// checked-in dashboard back to "not checked in" — the bug employees
+// reported as "checked in, then it suddenly shows not checked in".
+function attendanceProgress(a: any): number {
+  if (!a) return -1;
+  let s = 0;
+  if (a.checkIn) s++;
+  if (a.breakStart) s++;
+  if (a.breakEnd) s++;
+  if (a.checkOut) s++;
+  return s;
+}
+
+// The row's `date` reaches us in TWO forms: a Date instance (RSC-serialized
+// server prop — page.tsx passes the raw Prisma row) and an ISO string (every
+// /api fetch). String(dateInstance) would give locale text ("Wed Aug 06"),
+// silently breaking the same-day comparison — so normalize both to the
+// YYYY-MM-DD key. toISOString() on the midnight-UTC `date` IS the PKT day key
+// per this app's storage convention.
+function dayKey(d: any): string {
+  if (!d) return "";
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  return String(d).slice(0, 10);
+}
+
+function reconcileAttendance(prev: any, next: any, serverOffsetMs: number): any {
+  if (!prev) return next;
+  if (!next) {
+    // A null snapshot is legit only when the PKT day rolled over (no row yet
+    // for the new day). If prev is still TODAY's row, the null is stale — keep prev.
+    const pkt = new Date(Date.now() + serverOffsetMs + 5 * 3600e3);
+    const todayIso = `${pkt.getUTCFullYear()}-${String(pkt.getUTCMonth() + 1).padStart(2, "0")}-${String(pkt.getUTCDate()).padStart(2, "0")}`;
+    return dayKey(prev.date) === todayIso ? prev : next;
+  }
+  // Different day → always take the server's row (new day started).
+  if (dayKey(prev.date) !== dayKey(next.date)) return next;
+  // Same day → prefer the row with more progress; tie → server copy (freshest).
+  return attendanceProgress(next) >= attendanceProgress(prev) ? next : prev;
+}
+
 export function EmployeeDashboard({
   employeeName,
   employeeId,
@@ -137,6 +181,16 @@ export function EmployeeDashboard({
     const interval = setInterval(syncServerTime, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
+
+  // Sync attendance state whenever the server sends fresh props (the 5-min
+  // router.refresh, tab-visible refresh, or a remount after navigation).
+  // useState(todayAttendance) alone captures only the FIRST payload — without
+  // this effect a stale remount showed "not checked in" forever after a
+  // successful check-in, and no refresh could heal it.
+  useEffect(() => {
+    setAttendance((prev: any) => reconcileAttendance(prev, todayAttendance, serverTimeOffset));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayAttendance]);
   const [reportOpen, setReportOpen] = useState(false);
   const [hasReport, setHasReport] = useState(!!initialHasReport);
   const [reportForm, setReportForm] = useState({
@@ -205,13 +259,13 @@ export function EmployeeDashboard({
       setLeaveForm({ type: "HALF", date: "", reason: "", halfDayPeriod: "" });
       // Refresh leaves and attendance in parallel
       const [leavesRes, attRes] = await Promise.all([
-        fetch("/api/leaves"),
-        fetch("/api/attendance/today"),
+        fetch("/api/leaves", { cache: "no-store" }),
+        fetch("/api/attendance/today", { cache: "no-store" }),
       ]);
       if (leavesRes.ok) setLeaves(await leavesRes.json());
       if (attRes.ok) {
         const attData = await attRes.json();
-        setAttendance(attData);
+        setAttendance((prev: any) => reconcileAttendance(prev, attData, serverTimeOffset));
       }
     } catch (err: any) {
       toast.error(err.message);
@@ -228,8 +282,11 @@ export function EmployeeDashboard({
       setLeaves(leaves.filter((l: any) => l.id !== id));
       toast.success("Leave cancelled");
       // Refresh attendance in case it was auto-checkout
-      const attRes = await fetch("/api/attendance/today");
-      if (attRes.ok) setAttendance(await attRes.json());
+      const attRes = await fetch("/api/attendance/today", { cache: "no-store" });
+      if (attRes.ok) {
+        const attData = await attRes.json();
+        setAttendance((prev: any) => reconcileAttendance(prev, attData, serverTimeOffset));
+      }
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -496,9 +553,27 @@ export function EmployeeDashboard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Check-in failed");
-      setAttendance(data);
+      setAttendance((prev: any) => reconcileAttendance(prev, data, serverTimeOffset));
       toast.success("Checked in successfully!");
+      // Refresh the server payload so a navigation/remount right after
+      // check-in can't resurrect a stale "not checked in" snapshot.
+      router.refresh();
     } catch (err: any) {
+      // The write may have landed even though the response was lost (flaky
+      // network / pool hiccup) or a second tap raced into "Already checked
+      // in today". Ask the server for the truth before showing an error.
+      try {
+        const r = await fetch("/api/attendance/today", { cache: "no-store" });
+        if (r.ok) {
+          const att = await r.json();
+          if (att?.checkIn) {
+            setAttendance((prev: any) => reconcileAttendance(prev, att, serverTimeOffset));
+            toast.success("Checked in successfully!");
+            router.refresh();
+            return;
+          }
+        }
+      } catch {}
       toast.error(err.message);
     } finally {
       setLoading(false);
@@ -529,9 +604,23 @@ export function EmployeeDashboard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Check-out failed");
-      setAttendance(data);
+      setAttendance((prev: any) => reconcileAttendance(prev, data, serverTimeOffset));
       toast.success("Checked out successfully!");
+      router.refresh();
     } catch (err: any) {
+      // Same lost-response recovery as check-in.
+      try {
+        const r = await fetch("/api/attendance/today", { cache: "no-store" });
+        if (r.ok) {
+          const att = await r.json();
+          if (att?.checkOut) {
+            setAttendance((prev: any) => reconcileAttendance(prev, att, serverTimeOffset));
+            toast.success("Checked out successfully!");
+            router.refresh();
+            return;
+          }
+        }
+      } catch {}
       toast.error(err.message);
     } finally {
       setLoading(false);
@@ -544,8 +633,9 @@ export function EmployeeDashboard({
       const res = await fetch("/api/attendance/break-start", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start break");
-      setAttendance(data);
+      setAttendance((prev: any) => reconcileAttendance(prev, data, serverTimeOffset));
       toast.success("Break started!");
+      router.refresh();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -559,8 +649,9 @@ export function EmployeeDashboard({
       const res = await fetch("/api/attendance/break-end", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to end break");
-      setAttendance(data);
+      setAttendance((prev: any) => reconcileAttendance(prev, data, serverTimeOffset));
       toast.success("Break ended!");
+      router.refresh();
     } catch (err: any) {
       toast.error(err.message);
     } finally {

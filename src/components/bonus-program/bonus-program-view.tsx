@@ -181,24 +181,88 @@ export function BonusProgramView({
   // No auto-fetch on page load — hourly cron handles background sync
   // Use "Fetch Profits from Sheets" button for manual refresh
 
-  const autoSaveTimers = useRef<Record<string, NodeJS.Timeout>>({});
+  // Pending debounced saves, tagged with the month/year they will write to —
+  // the re-sync keep-guard must only preserve a row when its pending save
+  // targets the month now on screen (an August-pending row must NOT survive
+  // into July's grid, or an edit there would push August values into July).
+  const autoSaveTimers = useRef<Record<string, { t: NodeJS.Timeout; month: string; year: string }>>({});
+  // Live mirror of rowStates so async code (the Sync-Profits bulk loop) always
+  // reads the LATEST values instead of a stale snapshot. The Aug-2026
+  // "listings removed reset" incident: the bulk loop saved a pre-edit snapshot
+  // over rows the CEO had just typed into, silently reverting his numbers.
+  const rowStatesRef = useRef<Record<string, RowState>>(rowStates);
+  // In-flight saves, tagged the same way (ref twin of savingRows — readable
+  // inside effects without stale-closure issues).
+  const savingRef = useRef<Record<string, { month: string; year: string } | undefined>>({});
+  // True while the Sync-Profits bulk loop runs. The re-sync effect must stand
+  // down for its duration: each save's refresh payload would otherwise rebuild
+  // rowStatesRef from PRE-sync server truth mid-loop, and the remaining
+  // iterations would re-save the OLD profits (into incentives + payroll).
+  const bulkSyncingRef = useRef(false);
+
+  // True while the selected month/year hasn't been loaded from the server yet
+  // (user changed the dropdowns and/or the Load navigation is in flight). All
+  // edits are blocked in this window — otherwise the on-screen rows (still the
+  // PREVIOUS month's values) would be saved into the NEWLY selected month.
+  const monthLoading = String(currentMonth) !== month || String(currentYear) !== year;
+
+  // Re-sync the grid whenever fresh server data arrives (month Load, any
+  // router.refresh). Without this the grid kept showing the previously loaded
+  // month forever — past months LOOKED like their data was lost, and any save
+  // wrote those stale values over the selected month's real rows.
+  useEffect(() => {
+    if (bulkSyncingRef.current) return; // Sync-Profits owns the grid; converge after
+    const m = String(currentMonth);
+    const y = String(currentYear);
+    setMonth(m);
+    setYear(y);
+    const fresh = buildInitialStates();
+    const merged: Record<string, RowState> = { ...fresh };
+    // Keep local values for rows the admin is actively editing/saving — but
+    // ONLY when that pending work targets the month now arriving, so nothing
+    // leaks across a month switch.
+    for (const id of Object.keys(rowStatesRef.current)) {
+      const pending = autoSaveTimers.current[id];
+      const saving = savingRef.current[id];
+      const pendingMatches = pending && pending.month === m && pending.year === y;
+      const savingMatches = saving && saving.month === m && saving.year === y;
+      if (pendingMatches || savingMatches) {
+        merged[id] = rowStatesRef.current[id];
+      }
+    }
+    rowStatesRef.current = merged;
+    setRowStates(merged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildInitialStates, currentMonth, currentYear]);
 
   function updateRow(userId: string, field: keyof RowState, value: boolean | number) {
-    setRowStates((prev) => {
-      const newState = { ...prev[userId], [field]: value };
-      // Auto-save after 500ms debounce
-      if (autoSaveTimers.current[userId]) {
-        clearTimeout(autoSaveTimers.current[userId]);
-      }
-      autoSaveTimers.current[userId] = setTimeout(() => {
+    if (monthLoading) {
+      toast.error("Loading the selected month — please wait a moment before editing.");
+      return;
+    }
+    // Compute from the live ref (kept in perfect sync) so the updater below
+    // stays pure — no timers or ref writes inside a function React may re-run.
+    const newState: RowState = { ...rowStatesRef.current[userId], [field]: value };
+    rowStatesRef.current = { ...rowStatesRef.current, [userId]: newState };
+    const existing = autoSaveTimers.current[userId];
+    if (existing) clearTimeout(existing.t);
+    autoSaveTimers.current[userId] = {
+      // month/year captured from THIS render — the save targets what's on
+      // screen now, and the keep-guard can match it against arriving props.
+      month,
+      year,
+      t: setTimeout(() => {
+        delete autoSaveTimers.current[userId];
         autoSaveRow(userId, newState);
-      }, 500);
-      return { ...prev, [userId]: newState };
-    });
+      }, 500),
+    };
+    setRowStates((prev) => ({ ...prev, [userId]: newState }));
   }
 
-  async function autoSaveRow(userId: string, state: RowState) {
+  async function autoSaveRow(userId: string, state: RowState, opts?: { refresh?: boolean }) {
     const { isEligible, bonusAmount } = calculateBonus(state);
+    // Tag with this closure's month/year — exactly what the POST below writes.
+    savingRef.current[userId] = { month, year };
     setSavingRows((prev) => ({ ...prev, [userId]: true }));
     try {
       const res = await fetch("/api/bonus-eligibility", {
@@ -217,41 +281,11 @@ export function BonusProgramView({
         const data = await res.json();
         throw new Error(data.error || "Failed to save");
       }
-      router.refresh();
+      if (opts?.refresh !== false) router.refresh();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
-      setSavingRows((prev) => ({ ...prev, [userId]: false }));
-    }
-  }
-
-  async function handleSave(userId: string) {
-    const state = rowStates[userId];
-    if (!state) return;
-
-    const { isEligible, bonusAmount } = calculateBonus(state);
-
-    setSavingRows((prev) => ({ ...prev, [userId]: true }));
-    try {
-      const res = await fetch("/api/bonus-eligibility", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          month: parseInt(month),
-          year: parseInt(year),
-          ...state,
-          isEligible,
-          bonusAmount,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save");
-      toast.success("Bonus eligibility saved!");
-      router.refresh();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
+      delete savingRef.current[userId];
       setSavingRows((prev) => ({ ...prev, [userId]: false }));
     }
   }
@@ -263,7 +297,16 @@ export function BonusProgramView({
   }
 
   async function handleFetchProfits() {
+    if (monthLoading) {
+      toast.error("Loading the selected month — please wait a moment before syncing profits.");
+      return;
+    }
     setFetchingProfits(true);
+    // Stand the re-sync effect down for the whole bulk run — otherwise each
+    // save's refresh payload rebuilds the ref from PRE-sync server truth and
+    // the remaining iterations re-save OLD profits (the exact silent-reversion
+    // class this component is being fixed for).
+    bulkSyncingRef.current = true;
     try {
       const res = await fetch(`/api/sheets-profit?month=${month}&year=${year}&team=${teamKey}`);
       const data = await res.json();
@@ -271,7 +314,10 @@ export function BonusProgramView({
 
       let updated = 0;
       let errors = 0;
-      const newStates = { ...rowStates };
+      // Merge profits into the LIVE states (ref), never a render snapshot —
+      // a snapshot here is what silently reverted hand-typed values (the
+      // Aug-2026 listings-removed incident).
+      const newStates = { ...rowStatesRef.current };
 
       for (const emp of employees) {
         const profitData = data.profits?.[emp.id];
@@ -283,15 +329,19 @@ export function BonusProgramView({
         }
       }
 
+      rowStatesRef.current = newStates;
       setRowStates(newStates);
 
       // Auto-save all employees to sync incentives to database
       if (updated > 0) {
         toast.success(`Fetched profits for ${updated} employees — syncing to database...`);
         for (const emp of employees) {
-          const state = newStates[emp.id];
+          // Re-read the live state at EACH save so values typed while this
+          // loop is running are saved, not overwritten. refresh:false — one
+          // converging refresh happens after the loop (see finally).
+          const state = rowStatesRef.current[emp.id];
           if (state) {
-            await autoSaveRow(emp.id, state);
+            await autoSaveRow(emp.id, state, { refresh: false });
           }
         }
         toast.success("All employee bonuses synced!");
@@ -301,6 +351,9 @@ export function BonusProgramView({
     } catch (err: any) {
       toast.error(err.message);
     } finally {
+      bulkSyncingRef.current = false;
+      // Single converge: pull server truth once, now that every write landed.
+      router.refresh();
       setFetchingProfits(false);
     }
   }
@@ -368,7 +421,18 @@ export function BonusProgramView({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Calendar className="size-5 text-muted-foreground" />
-            <Select value={month} onValueChange={(v) => v && setMonth(v)}>
+            {/* Changing month/year navigates immediately — the grid re-syncs
+                from the server so the selected month's SAVED values always
+                show (edits are blocked until they arrive). */}
+            <Select
+              value={month}
+              onValueChange={(v) => {
+                if (!v) return;
+                setMonth(v);
+                router.push(`/bonus-program?${new URLSearchParams({ month: v, year }).toString()}`);
+                router.refresh();
+              }}
+            >
               <SelectTrigger className="w-[130px] h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {MONTHS.map((m, i) => (
@@ -376,7 +440,15 @@ export function BonusProgramView({
                 ))}
               </SelectContent>
             </Select>
-            <Select value={year} onValueChange={(v) => v && setYear(v)}>
+            <Select
+              value={year}
+              onValueChange={(v) => {
+                if (!v) return;
+                setYear(v);
+                router.push(`/bonus-program?${new URLSearchParams({ month, year: v }).toString()}`);
+                router.refresh();
+              }}
+            >
               <SelectTrigger className="w-[90px] h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {yearOptions.map((y) => (
@@ -384,10 +456,13 @@ export function BonusProgramView({
                 ))}
               </SelectContent>
             </Select>
-            <Button size="sm" onClick={handleMonthChange} className="h-9 rounded-lg">Load</Button>
+            <Button size="sm" onClick={handleMonthChange} className="h-9 rounded-lg gap-2">
+              {monthLoading && <RefreshCw className="size-3.5 animate-spin" />}
+              {monthLoading ? "Loading..." : "Load"}
+            </Button>
           </div>
         </div>
-        <Button size="sm" variant="outline" onClick={handleFetchProfits} disabled={fetchingProfits} className="gap-2 rounded-lg">
+        <Button size="sm" variant="outline" onClick={handleFetchProfits} disabled={fetchingProfits || monthLoading} className="gap-2 rounded-lg">
           {fetchingProfits ? <RefreshCw className="size-3.5 animate-spin" /> : <Cloud className="size-3.5" />}
           {fetchingProfits ? "Fetching..." : "Sync Profits"}
         </Button>
