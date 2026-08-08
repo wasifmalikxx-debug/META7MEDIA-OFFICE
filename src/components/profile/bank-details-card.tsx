@@ -1,33 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import * as React from "react";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Pencil, Save, X } from "lucide-react";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Pencil, Save, X } from "lucide-react";
+
+/**
+ * Bank details — the one thing staff can edit about themselves.
+ *
+ * The explicit Edit → Save/Cancel gate is kept on purpose: this is the account
+ * payroll pays into, so it should take a deliberate click to open, not stray
+ * typing. Only the styling changed in the Aug 2026 redesign.
+ *
+ * Note there is no `userId` prop. The PATCH route writes to `session.user.id`
+ * and always has; the old prop was passed in but never read, which made it
+ * look like the caller could target another user.
+ */
 
 interface BankDetailsCardProps {
-  userId: string;
   bankName: string | null;
   accountNumber: string | null;
   accountTitle: string | null;
 }
 
+const FIELDS = [
+  { key: "bankName", label: "Bank name", placeholder: "e.g. Meezan Bank" },
+  { key: "accountNumber", label: "Account number", placeholder: "e.g. 00300110239903", mono: true },
+  { key: "accountTitle", label: "Account title", placeholder: "e.g. Muhammad Sufyan" },
+] as const;
+
 export function BankDetailsCard({
-  userId,
   bankName,
   accountNumber,
   accountTitle,
 }: BankDetailsCardProps) {
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    bankName: bankName || "",
-    accountNumber: accountNumber || "",
-    accountTitle: accountTitle || "",
-  });
+  const initial = React.useMemo(
+    () => ({
+      bankName: bankName || "",
+      accountNumber: accountNumber || "",
+      accountTitle: accountTitle || "",
+    }),
+    [bankName, accountNumber, accountTitle],
+  );
+
+  const [editing, setEditing] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [form, setForm] = React.useState(initial);
+  // What's actually stored. Cancel restores this, so a discarded edit can't
+  // leave the read view showing a value that was never saved.
+  const [saved, setSaved] = React.useState(initial);
 
   async function handleSave() {
     setSaving(true);
@@ -38,80 +70,82 @@ export function BankDetailsCard({
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success("Bank details updated!");
+      if (!res.ok) throw new Error(data.error || "Failed to save");
+      toast.success("Bank details updated");
+      setSaved(form);
       setEditing(false);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
   }
 
+  function cancel() {
+    setForm(saved);
+    setEditing(false);
+  }
+
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Bank Details</CardTitle>
+      <CardHeader className="border-b">
+        <CardTitle>Bank Details</CardTitle>
+        <CardDescription className="text-[13px]">
+          The account your salary is paid into.
+        </CardDescription>
         {!editing && (
-          <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-            <Pencil className="size-3.5 mr-1" /> Edit
-          </Button>
+          <CardAction>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Pencil />
+              Edit
+            </Button>
+          </CardAction>
         )}
       </CardHeader>
-      <CardContent>
-        {editing ? (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Bank Name</Label>
+
+      <CardContent className="grid gap-4 sm:grid-cols-3">
+        {FIELDS.map((field) => (
+          <div key={field.key} className="space-y-1.5">
+            <Label
+              htmlFor={`bank-${field.key}`}
+              className="text-[13px] font-medium text-muted-foreground"
+            >
+              {field.label}
+            </Label>
+            {editing ? (
               <Input
-                value={form.bankName}
-                onChange={(e) => setForm({ ...form, bankName: e.target.value })}
-                placeholder="e.g. Meezan Bank"
+                id={`bank-${field.key}`}
+                value={form[field.key]}
+                placeholder={field.placeholder}
+                onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Account Number</Label>
-              <Input
-                value={form.accountNumber}
-                onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
-                placeholder="e.g. 00300110239903"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Account Title</Label>
-              <Input
-                value={form.accountTitle}
-                onChange={(e) => setForm({ ...form, accountTitle: e.target.value })}
-                placeholder="e.g. Muhammad Sufyan"
-              />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button size="sm" onClick={handleSave} disabled={saving}>
-                <Save className="size-3.5 mr-1" />
-                {saving ? "Saving..." : "Save"}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
-                <X className="size-3.5 mr-1" /> Cancel
-              </Button>
-            </div>
+            ) : (
+              // Same 32px box as the Input it replaces, so toggling Edit
+              // doesn't change the card's height.
+              <p
+                className={`flex h-8 items-center truncate text-sm ${
+                  "mono" in field && field.mono ? "font-mono" : ""
+                }`}
+              >
+                {saved[field.key] || <span className="text-muted-foreground">Not set</span>}
+              </p>
+            )}
           </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Bank</span>
-              <span className="font-medium">{form.bankName || "Not set"}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Account No.</span>
-              <span className="font-medium font-mono">{form.accountNumber || "Not set"}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Account Title</span>
-              <span className="font-medium">{form.accountTitle || "Not set"}</span>
-            </div>
-          </div>
-        )}
+        ))}
       </CardContent>
+
+      {editing && (
+        <CardFooter className="justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={cancel} disabled={saving}>
+            <X />
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            <Save />
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 }
