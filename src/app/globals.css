@@ -51,6 +51,12 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Login page motion. `orbit` reads --duration and --radius off the element,
+     which OrbitingCircles sets inline, so one utility drives every ring.
+     Keyframes are at the bottom of this file with the rest. */
+  --animate-ripple: ripple 3400ms ease-in-out infinite;
+  --animate-orbit: orbit calc(var(--duration) * 1s) linear infinite;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -356,5 +362,78 @@
   .ap-orb-pulse, .ap-orb-spin, .ap-shimmer,
   .ap-bar-fill, .ap-tag-pop, .ap-text-reveal, .ap-stagger-in {
     animation: none !important;
+  }
+}
+
+/* ─── Login page: ripple rings + orbiting icons ───────────────────── */
+
+/* The ring is centred with a translate, so the keyframes have to carry it —
+   an inline `transform` would be overridden by the animation and every ring
+   would jump to the top-left corner mid-cycle. */
+@keyframes ripple {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(0.92); }
+}
+
+/* Counter-rotating the child keeps each icon upright while it travels. */
+@keyframes orbit {
+  0% {
+    transform: rotate(0deg) translateY(calc(var(--radius) * 1px)) rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg) translateY(calc(var(--radius) * 1px)) rotate(-360deg);
+  }
+}
+
+/* BoxReveal: a coloured panel wipes off to the right, uncovering the content.
+   CSS rather than JS on purpose — see the note in
+   components/blocks/modern-animated-sign-in.tsx. `both` fill-mode is what
+   holds the start state before the delay and the end state after. */
+@keyframes reveal-wipe {
+  from { transform: translateX(0); }
+  to { transform: translateX(101%); }
+}
+
+@keyframes reveal-content {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.reveal-wipe {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  border-radius: 4px;
+  animation-name: reveal-wipe;
+  animation-timing-function: ease-in;
+  animation-fill-mode: both;
+}
+
+.reveal-content {
+  animation-name: reveal-content;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ripple,
+  .animate-orbit {
+    animation: none !important;
+  }
+
+  /* The wipe must not simply stop — parked in place it covers the field.
+     Send it straight to its end state instead. */
+  .reveal-wipe {
+    animation: none !important;
+    transform: translateX(101%);
+  }
+
+  .reveal-content {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
   }
 }
