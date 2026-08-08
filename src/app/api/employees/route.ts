@@ -67,8 +67,11 @@ export async function POST(request: NextRequest) {
   const session = await requireRole("SUPER_ADMIN", "PARTNER");
   if (!session) return error("Forbidden", 403);
 
+  // Declared outside the try so the P2002 handler below can name the field
+  // the caller actually sent.
+  let body: any;
   try {
-    const body = await request.json();
+    body = await request.json();
     const parsed = createEmployeeSchema.parse(body);
 
     // Check uniqueness
@@ -182,6 +185,29 @@ export async function POST(request: NextRequest) {
 
     return json(employee, 201);
   } catch (err: any) {
+    // Same duplicate-id trap as the PATCH handler: a RESIGNED/TERMINATED
+    // person still holds their employee id but isn't in the employee list, so
+    // a free-looking id 400s with no explanation. Name it.
+    if (err?.code === "P2002") {
+      const fields: string[] = Array.isArray(err?.meta?.target) ? err.meta.target : [];
+      if (fields.includes("employeeId") && body?.employeeId) {
+        const holder = await prisma.user.findUnique({
+          where: { employeeId: String(body.employeeId) },
+          select: { firstName: true, lastName: true, status: true },
+        }).catch(() => null);
+        const who = holder
+          ? ` — already used by ${holder.firstName} ${holder.lastName ?? ""}`.trimEnd() +
+            (holder.status === "RESIGNED" || holder.status === "TERMINATED"
+              ? ` (${holder.status.toLowerCase()}, so they don't show in the employee list)`
+              : "")
+          : " — already used by another account";
+        return error(`Employee ID "${body.employeeId}" is taken${who}. Pick a different ID.`, 409);
+      }
+      if (fields.includes("email") && body?.email) {
+        return error(`The email "${body.email}" is already used by another account.`, 409);
+      }
+      return error("That value is already used by another account.", 409);
+    }
     return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }

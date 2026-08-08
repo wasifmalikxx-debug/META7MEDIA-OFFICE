@@ -62,8 +62,11 @@ export async function PATCH(
   const denied = await assertCanActOnUser(scope, id);
   if (denied) return denied;
 
+  // Declared outside the try so the P2002 handler below can name the field
+  // the caller actually sent.
+  let body: any;
   try {
-    const body = await request.json();
+    body = await request.json();
     const parsed = updateEmployeeSchema.parse(body);
 
     // Partners aren't on payroll — block salary/bank writes regardless of
@@ -173,6 +176,31 @@ export async function PATCH(
 
     return json(employee);
   } catch (err: any) {
+    // A duplicate employee ID / email is the most common edit failure and the
+    // generic message told the CEO nothing — a RESIGNED or TERMINATED person
+    // still holds their id but doesn't appear in the employee list, so a free
+    // -looking id silently 400s (hit Aug 8 2026 renaming "EM5" to "ME-5",
+    // which Ahmad Mehmood still holds). Name the field AND who holds it.
+    if (err?.code === "P2002") {
+      const fields: string[] = Array.isArray(err?.meta?.target) ? err.meta.target : [];
+      if (fields.includes("employeeId") && body?.employeeId) {
+        const holder = await prisma.user.findUnique({
+          where: { employeeId: String(body.employeeId) },
+          select: { firstName: true, lastName: true, status: true },
+        }).catch(() => null);
+        const who = holder
+          ? ` — already used by ${holder.firstName} ${holder.lastName ?? ""}`.trimEnd() +
+            (holder.status === "RESIGNED" || holder.status === "TERMINATED"
+              ? ` (${holder.status.toLowerCase()}, so they don't show in the employee list)`
+              : "")
+          : " — already used by another account";
+        return error(`Employee ID "${body.employeeId}" is taken${who}. Pick a different ID.`, 409);
+      }
+      if (fields.includes("email") && body?.email) {
+        return error(`The email "${body.email}" is already used by another account.`, 409);
+      }
+      return error("That value is already used by another account.", 409);
+    }
     return serverError(err, "Something went wrong. Please try again.", 400);
   }
 }
