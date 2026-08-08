@@ -100,7 +100,21 @@ export default async function DailyReportPage({
       },
     };
   } else if (isEtsyTeamLead && !isAdmin) {
-    baseWhere = { user: { employeeId: { startsWith: "EM" } } };
+    // Scope Izaan to his OWN DEPARTMENT (Etsy - EM, OFFICE 1) — never by an
+    // employee-ID prefix. The old `employeeId startsWith "EM"` matched ANY id
+    // beginning with those two letters, so a malformed OFFICE 2 id (e.g.
+    // "EM5", created on Mubeen's Etsy - ME team on 2026-08-04) leaked that
+    // employee's reports into Izaan's inbox. Izaan has no involvement with
+    // OFFICE 2, and department scoping is what every other Izaan surface
+    // already uses (refunds, review-bonus, bonus-eligibility). Fails CLOSED
+    // if he somehow has no department, rather than showing everything.
+    const me = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { departmentId: true },
+    });
+    baseWhere = me?.departmentId
+      ? { user: { departmentId: me.departmentId } }
+      : { userId: { in: ["__none__"] } };
   } else if (isAdmin && params.team) {
     const deptName = TEAM_KEY_TO_DEPT_NAME[params.team];
     if (deptName) {
