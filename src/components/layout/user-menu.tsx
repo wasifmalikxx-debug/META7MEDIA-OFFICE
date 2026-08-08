@@ -44,7 +44,11 @@ export function UserMenu({ user }: { user: NavUser }) {
         title={user.employeeId ? `${user.name} · ${user.employeeId}` : user.name}
         className={cn(
           "ml-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full",
-          "bg-muted text-muted-foreground ring-1 ring-border outline-none",
+          // --background, not --muted: in light mode it matches the header
+          // exactly, so the control reads as an outlined circle rather than a
+          // grey pill. Dark mode keeps a faint disc, which it needs to stay
+          // visible against the darker --sidebar.
+          "bg-background text-muted-foreground ring-1 ring-border outline-none",
           "transition-colors duration-200 ease-out",
           "hover:bg-accent hover:text-foreground",
           "focus-visible:ring-2 focus-visible:ring-ring",
@@ -61,7 +65,7 @@ export function UserMenu({ user }: { user: NavUser }) {
       <DropdownMenuContent align="end" sideOffset={8} className="w-72 p-1.5">
         {/* Identity */}
         <div className="flex items-center gap-2.5 px-1.5 py-2">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground ring-1 ring-border">
             <User className="size-[18px]" />
           </span>
           <div className="flex min-w-0 flex-1 flex-col">
