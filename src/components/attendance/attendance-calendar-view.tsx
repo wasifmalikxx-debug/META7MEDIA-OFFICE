@@ -47,8 +47,8 @@ const STATUS_CELL: Record<string, { label: string; bg: string }> = {
   ABSENT: { label: "A", bg: "bg-rose-500" },
   COVERED: { label: "C", bg: "bg-purple-500" },
   ON_LEAVE: { label: "LV", bg: "bg-violet-500" },
-  HOLIDAY: { label: "", bg: "bg-slate-300 dark:bg-slate-600" },
-  WEEKEND: { label: "", bg: "bg-slate-200 dark:bg-slate-700" },
+  HOLIDAY: { label: "", bg: "bg-neutral-300 dark:bg-neutral-600" },
+  WEEKEND: { label: "", bg: "bg-neutral-300 dark:bg-neutral-600" },
 };
 
 const DAY_NAMES = ["S", "M", "T", "W", "T", "F", "S"];
@@ -245,7 +245,7 @@ export function AttendanceCalendarView({
                   <tr className={`group transition-colors hover:bg-muted/20 ${idx % 2 === 0 ? "bg-card" : "bg-muted/5"}`}>
                     <td rowSpan={3} className={`sticky left-0 z-10 px-3 py-1 border-r border-b ${idx % 2 === 0 ? "bg-card" : "bg-muted/5"} group-hover:bg-muted/20 transition-colors align-middle`}>
                       <div className="flex items-center gap-2">
-                        <div className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                        <div className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-muted to-accent text-[9px] font-bold text-foreground shrink-0">
                           {emp.firstName[0]}{emp.lastName?.[0] || ""}
                         </div>
                         <div className="flex flex-col min-w-0">
@@ -338,7 +338,7 @@ export function AttendanceCalendarView({
         <Card className="border-0 shadow-sm bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
           <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
-              <Users className="size-3.5 text-slate-500" />
+              <Users className="size-3.5 text-muted-foreground" />
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Employees</p>
             </div>
             <p className="text-3xl font-bold">{employees.length}</p>
@@ -389,7 +389,7 @@ export function AttendanceCalendarView({
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-rose-500" /><span>Absent</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-blue-500" /><span>Half Day</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-violet-500" /><span>On Leave</span></div>
-        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-slate-300 dark:bg-slate-600" /><span>Day Off</span></div>
+        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-neutral-300 dark:bg-neutral-600" /><span>Day Off</span></div>
       </div>
 
       {/* Team Grids — one card per team, separated and labeled.

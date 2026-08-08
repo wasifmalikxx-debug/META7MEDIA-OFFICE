@@ -403,7 +403,7 @@ export function DailyReportView({
         <Card className="border-0 shadow-sm">
           <CardContent className="py-3.5 px-4">
             <div className="flex items-center gap-2 mb-1">
-              <FileText className="size-3.5 text-slate-500" />
+              <FileText className="size-3.5 text-muted-foreground" />
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Reports</p>
             </div>
             <p className="text-3xl font-bold">{reports.length}</p>

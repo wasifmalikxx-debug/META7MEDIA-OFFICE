@@ -536,7 +536,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
           <Card key={dept} className="border-0 shadow-sm overflow-hidden">
             <div className={`flex items-center justify-between px-5 py-2.5 border-b ${dept === "Etsy" ? "bg-emerald-50/40 dark:bg-emerald-950/10" : dept === "Facebook" ? "bg-blue-50/40 dark:bg-blue-950/10" : "bg-muted/20"}`}>
               <div className="flex items-center gap-2.5">
-                <div className={`size-7 rounded-lg flex items-center justify-center ${dept === "Etsy" ? "bg-emerald-100 dark:bg-emerald-900/30" : dept === "Facebook" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-slate-100 dark:bg-slate-800"}`}>
+                <div className={`size-7 rounded-lg flex items-center justify-center ${dept === "Etsy" ? "bg-emerald-100 dark:bg-emerald-900/30" : dept === "Facebook" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-muted"}`}>
                   <span className="text-[10px] font-bold">{dept[0]}</span>
                 </div>
                 <h3 className="text-xs font-bold">{dept} Team</h3>
@@ -547,7 +547,7 @@ export function EmployeesView({ employees, departments }: EmployeesViewProps) {
               <div className="divide-y divide-muted/30">
               {grouped[dept].map((emp) => (
                 <div key={emp.id} className="flex items-center gap-4 px-5 py-3 hover:bg-muted/20 transition-colors">
-                  <div className="size-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                  <div className="size-8 rounded-full bg-gradient-to-br from-muted to-accent flex items-center justify-center text-[10px] font-bold text-foreground shrink-0">
                     {emp.firstName[0]}{emp.lastName?.[0] || ""}
                   </div>
                   <div className="flex-1 min-w-0 grid grid-cols-6 gap-3 items-center text-xs">

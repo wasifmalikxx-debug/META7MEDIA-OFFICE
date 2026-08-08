@@ -177,7 +177,7 @@ export function MyReportsView({ reports, currentMonth, currentYear, employeeId }
         <Card className="border-0 shadow-sm">
           <CardContent className="py-16 text-center">
             <div className="size-14 mx-auto rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center mb-3">
-              <FileText className="size-7 text-slate-500" />
+              <FileText className="size-7 text-muted-foreground" />
             </div>
             <p className="text-sm font-semibold">No reports for {monthName}</p>
             <p className="text-xs text-muted-foreground mt-1">

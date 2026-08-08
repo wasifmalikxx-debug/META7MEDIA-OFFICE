@@ -483,7 +483,7 @@ export function PayrollView({ records, isAdmin, isCeo = false, currentMonth, cur
           <Card className="border-0 shadow-sm">
             <CardContent className="py-3.5 px-4">
               <div className="flex items-center gap-2 mb-1">
-                <Users className="size-3.5 text-slate-500" />
+                <Users className="size-3.5 text-muted-foreground" />
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{isAdmin ? "Paid" : "Status"}</p>
               </div>
               <p className="text-2xl font-bold">{isAdmin ? `${paidCount}/${records.length}` : (records[0]?.status === "PAID" ? "Paid" : "Pending")}</p>

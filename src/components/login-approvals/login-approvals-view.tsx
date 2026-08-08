@@ -75,7 +75,7 @@ export function LoginApprovalsView({ devices: initialDevices }: LoginApprovalsVi
         className={`flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-muted/20 transition-colors ${isPending ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}`}
       >
         {/* Avatar */}
-        <div className="size-9 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+        <div className="size-9 rounded-full bg-gradient-to-br from-muted to-accent flex items-center justify-center text-[10px] font-bold text-foreground shrink-0">
           {device.user.firstName[0]}
           {device.user.lastName?.[0] || ""}
         </div>

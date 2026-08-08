@@ -80,7 +80,7 @@ const TYPE_META: Record<
 > = {
   CASUAL:    { label: "Casual",     tone: "text-violet-700 dark:text-violet-300",   ring: "bg-violet-50 dark:bg-violet-950/30 ring-violet-200 dark:ring-violet-900/50",   icon: Briefcase },
   SICK:      { label: "Sick",       tone: "text-rose-700 dark:text-rose-300",       ring: "bg-rose-50 dark:bg-rose-950/30 ring-rose-200 dark:ring-rose-900/50",         icon: Heart },
-  UNPAID:    { label: "Unpaid",     tone: "text-slate-700 dark:text-slate-300",     ring: "bg-slate-100 dark:bg-slate-800/60 ring-slate-200 dark:ring-slate-700",       icon: AlertCircle },
+  UNPAID:    { label: "Unpaid",     tone: "text-foreground",     ring: "bg-muted ring-border",       icon: AlertCircle },
   EMERGENCY: { label: "Emergency",  tone: "text-amber-700 dark:text-amber-300",     ring: "bg-amber-50 dark:bg-amber-950/30 ring-amber-200 dark:ring-amber-900/50",     icon: Sparkles },
   HALF_DAY:  { label: "Half Day",   tone: "text-blue-700 dark:text-blue-300",       ring: "bg-blue-50 dark:bg-blue-950/30 ring-blue-200 dark:ring-blue-900/50",         icon: Clock },
 };
@@ -92,7 +92,7 @@ const STATUS_META: Record<
   PENDING:   { label: "Pending",   tone: "text-amber-700 dark:text-amber-300",     ring: "bg-amber-50 dark:bg-amber-950/30 ring-amber-200 dark:ring-amber-900/50",     icon: Hourglass },
   APPROVED:  { label: "Approved",  tone: "text-emerald-700 dark:text-emerald-300", ring: "bg-emerald-50 dark:bg-emerald-950/30 ring-emerald-200 dark:ring-emerald-900/50", icon: CheckCircle2 },
   REJECTED:  { label: "Rejected",  tone: "text-rose-700 dark:text-rose-300",       ring: "bg-rose-50 dark:bg-rose-950/30 ring-rose-200 dark:ring-rose-900/50",         icon: XCircle },
-  CANCELLED: { label: "Cancelled", tone: "text-slate-600 dark:text-slate-400",     ring: "bg-slate-100 dark:bg-slate-800/60 ring-slate-200 dark:ring-slate-700",       icon: X },
+  CANCELLED: { label: "Cancelled", tone: "text-muted-foreground",     ring: "bg-muted ring-border",       icon: X },
 };
 
 // ─── Small inline atoms ─────────────────────────────────────────────
@@ -128,7 +128,7 @@ function Avatar({ name }: { name: string }) {
     .join("")
     .toUpperCase();
   return (
-    <div className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 text-[10px] font-bold text-slate-700 dark:text-slate-200 shrink-0">
+    <div className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-muted to-accent text-[10px] font-bold text-foreground shrink-0">
       {initials || "?"}
     </div>
   );
@@ -507,7 +507,7 @@ function MiniStat({
   tone: "slate" | "amber" | "emerald" | "rose";
 }) {
   const accent: Record<typeof tone, { bg: string; ring: string; text: string }> = {
-    slate:   { bg: "bg-slate-100 dark:bg-slate-800/60",     ring: "ring-slate-200 dark:ring-slate-700",       text: "text-slate-700 dark:text-slate-300" },
+    slate:   { bg: "bg-muted",     ring: "ring-border",       text: "text-foreground" },
     amber:   { bg: "bg-amber-50 dark:bg-amber-950/30",     ring: "ring-amber-200 dark:ring-amber-900/50",   text: "text-amber-700 dark:text-amber-300" },
     emerald: { bg: "bg-emerald-50 dark:bg-emerald-950/30", ring: "ring-emerald-200 dark:ring-emerald-900/50", text: "text-emerald-700 dark:text-emerald-300" },
     rose:    { bg: "bg-rose-50 dark:bg-rose-950/30",       ring: "ring-rose-200 dark:ring-rose-900/50",     text: "text-rose-700 dark:text-rose-300" },

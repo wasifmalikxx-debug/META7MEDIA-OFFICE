@@ -172,7 +172,7 @@ export default async function HowItWorksPage() {
         </div>
       </PolicyCard>
 
-      <PolicyCard icon={ShieldCheck} title="Login Security" color="bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-400">
+      <PolicyCard icon={ShieldCheck} title="Login Security" color="bg-muted text-muted-foreground">
         <Rule>First login requires <strong>one-time CEO approval</strong></Rule>
         <Rule>Only <strong>one device</strong> per employee (browser fingerprint secured)</Rule>
         <Rule>New device login is <strong>blocked</strong> until approved by CEO</Rule>

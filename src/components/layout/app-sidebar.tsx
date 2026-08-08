@@ -1,310 +1,261 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { signOut } from "next-auth/react";
-import { useState, useEffect } from "react";
-import { Badge } from "@/components/ui/badge";
+import { motion, type Transition, type Variants } from "framer-motion";
+import { ChevronRight, Lock, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useShell } from "@/components/layout/shell";
+import { FULL_W, RAIL_W_CSS, FULL_W_CSS } from "@/lib/shell-constants";
 import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  Wallet,
-  AlertTriangle,
-  CalendarClock,
-  Settings,
-  User,
-  LogOut,
-  ShieldCheck,
-  HelpCircle,
-  Target,
-  Star,
-  BookOpen,
-  Rocket,
-  MessageSquare,
-  BarChart3,
-  CalendarDays,
-  CalendarMinus,
-  AlertOctagon,
-  RefreshCcw,
-  FileText,
-  Calculator,
-  Sparkles,
-  Wand2,
-  Lock,
-} from "lucide-react";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarSeparator,
-} from "@/components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+  buildNav,
+  type NavGroup,
+  type NavItem,
+  type NavUser,
+  type BadgeKey,
+} from "@/components/layout/nav-config";
+
+/* ─── Motion ───────────────────────────────────────────────────────────
+ *
+ * Ported from the 21st.dev SessionNavBar the CEO asked for: the rail tweens
+ * between 3.05rem and 15rem on easeOut/0.2s and labels slide in from x:-20.
+ *
+ * That animation belongs to the HOVER PEEK ONLY. The collapse button is a
+ * deliberate switch and uses pinLabelVariants/pinTransition instead — when
+ * both shared one animation, the button inherited the peek's stagger and
+ * felt broken. `motionSource` on the shell context is what separates them.
+ *
+ * One thing is deliberately NOT copied. The reference unmounts each label
+ * (`{!isCollapsed && <p>}`). That is safe for its fixed-height rows, but
+ * this sidebar also has group headings whose height comes from their text —
+ * unmounting those collapsed ~16px per group the instant the toggle was
+ * clicked and made the whole nav lurch. So every label stays mounted and is
+ * animated instead. The rail's overflow-hidden clips it either way, so the
+ * result looks identical.
+ */
+
+const sidebarVariants: Variants = {
+  open: { width: FULL_W_CSS },
+  closed: { width: RAIL_W_CSS },
+};
+
+const transitionProps: Transition = {
+  type: "tween",
+  ease: "easeOut",
+  duration: 0.2,
+};
+
+/** Label slide-and-fade, from the reference. Used for the HOVER peek. */
+const hoverLabelVariants: Variants = {
+  open: { x: 0, opacity: 1, transition: { x: { stiffness: 1000, velocity: -100 } } },
+  closed: { x: -20, opacity: 0, transition: { x: { stiffness: 100 } } },
+};
 
 /**
- * "CEO only" lock pill (Aug 6 2026). Marks the tools that are locked to
- * SUPER_ADMIN — Product Validator, SEO Autopilot, Prompt Engineer — so the
- * CEO can see at a glance that his team can't reach them. Only ever
- * rendered inside `{isCeo && …}` blocks, since nobody else sees those
- * entries at all.
+ * The collapse BUTTON is a deliberate switch, not a peek, so it gets no
+ * slide and no stagger — just a quick fade in step with the width. Sharing
+ * the peek's animation made the button feel like it was lagging.
  */
-function CeoOnlyPill() {
+const pinLabelVariants: Variants = {
+  open: { x: 0, opacity: 1, transition: { duration: 0.15, ease: "easeOut" } },
+  closed: { x: 0, opacity: 0, transition: { duration: 0.1, ease: "easeIn" } },
+};
+
+/**
+ * NO cascade — every label animates together.
+ *
+ * The reference staggers by 0.03s, which is pleasant across its ~10 rows.
+ * This nav has 42, and any per-row delay compounds down the list: 0.03 put
+ * the last labels 1.26s behind, and even 0.006 left FB Program and Settings
+ * visibly arriving after everything above them. The CEO reported that twice.
+ * The slide-and-fade below still gives the reference's character; the
+ * cascade is what had to go.
+ */
+const noStaggerVariants: Variants = {
+  open: { transition: { staggerChildren: 0 } },
+  closed: { transition: { staggerChildren: 0 } },
+};
+
+const pinTransition: Transition = { type: "tween", ease: "easeOut", duration: 0.18 };
+
+/* ─── Trailing tags ───────────────────────────────────────────────────── */
+
+/**
+ * "CEO only" lock pill. Marks the tools locked to SUPER_ADMIN — Product
+ * Validator, SEO Autopilot, Prompt Engineer — so the CEO can see at a glance
+ * that his team can't reach them.
+ */
+function Pill({ kind }: { kind: "ceo" | "admin" }) {
+  if (kind === "ceo") {
+    return (
+      <span
+        title="Locked — only you (CEO) can access this tool. Employees, managers and partners can't see or use it."
+        className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+      >
+        <Lock className="size-2.5" />
+        CEO
+      </span>
+    );
+  }
   return (
-    <span
-      title="Locked — only you (CEO) can access this tool. Employees, managers and partners can't see or use it."
-      className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase"
-    >
-      <Lock className="size-2.5" />
-      CEO
+    <span className="inline-flex shrink-0 items-center rounded-full bg-violet-100 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
+      Admin
     </span>
   );
 }
 
-interface PartnerTeamInfo {
-  id: string;
-  name: string;
-  departmentName: string;
-}
-
-interface AppSidebarProps {
-  user: {
-    name: string;
-    email: string;
-    role: string;
-    employeeId: string;
-    officeId?: string;
-    officeName?: string;
-    isPrimaryOffice?: boolean;
-    partnerTeams?: PartnerTeamInfo[];
-  };
-}
-
-function getMainNav(userRole: string) {
-  const isAdmin = userRole === "SUPER_ADMIN" || userRole === "HR_ADMIN";
-  return [
-    { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["all"] },
-    { title: "Daily Activities", href: "/fines", icon: CalendarClock, roles: ["all"] },
-    { title: "Attendance Calendar", href: "/attendance", icon: CalendarDays, roles: ["EMPLOYEE", "MANAGER"] },
-    { title: "My Reports", href: "/my-reports", icon: BarChart3, roles: ["EMPLOYEE", "MANAGER"] },
-    // Daily Reports moved entirely into the per-team partner sections below
-    // (Izaan EM / Awais AE / Mubeen ME) and the FB Program section (HQ /
-    // Zain). The old aggregated main-nav entry was confusing — every viewer
-    // now drills into reports per-team, never mixed.
-    { title: "Attendance Calendar", href: "/attendance-calendar", icon: CalendarDays, roles: ["SUPER_ADMIN", "PARTNER"] },
-    // Single label for everyone — "Complaints". CEO/HR see the inbox of all
-    // complaints (incoming employee complaints + ones the CEO launched). For
-    // partners/managers/employees, /complaints scopes to their own thread
-    // history only (their incoming complaints from the CEO + outgoing ones
-    // they launched themselves).
-    { title: "Complaints", href: "/complaints", icon: AlertOctagon, roles: ["all"] },
-  ];
-}
-
-const managementNav = [
-  // PARTNER also sees Employees + Leave Management — server-side scoped to their team
-  { title: "Employees", href: "/employees", icon: Users, roles: ["SUPER_ADMIN", "PARTNER"] },
-  { title: "Departments", href: "/departments", icon: Building2, roles: ["SUPER_ADMIN"] },
-  { title: "Leave Management", href: "/leaves", icon: CalendarMinus, roles: ["SUPER_ADMIN", "PARTNER"] },
-  { title: "Login Approvals", href: "/login-approvals", icon: ShieldCheck, roles: ["SUPER_ADMIN"] },
-];
-
-const financeNav = [
-  { title: "Payroll", href: "/payroll", icon: Wallet, roles: ["all"] },
-];
-
-// Common Etsy items everyone in the program sees (Reviews, Refunds, Bonus Guide).
-// Per-team Bonus Program / Analytics / Team Reports moved into partner-specific
-// groups below — see getPartnerSections().
-function getEtsyNav(userRole: string, employeeId: string) {
-  const isAdminOrManager = userRole === "SUPER_ADMIN" || userRole === "MANAGER";
-  const isPartner = userRole === "PARTNER";
-  // Izaan (EM-4, MANAGER) runs the EM team AND owns shops himself (May 19
-  // 2026). He gets FOUR Etsy items instead of two — submit/manage split
-  // into separate sidebar entries so "my own shop" actions and "team"
-  // actions are visually distinct. Everyone else gets the original two.
-  const isIzaan = userRole === "MANAGER" && employeeId === "EM-4";
-  const isAdminLikeView = isAdminOrManager || isPartner;
-
-  if (isIzaan) {
-    return [
-      // Personal submit surfaces first — he lands on them most often
-      // (daily shop work). Approval surfaces sit below.
-      {
-        title: "Submit Review",
-        href: "/my-reviews",
-        icon: Star,
-        roles: ["all"],
-      },
-      {
-        title: "Submit Refund",
-        href: "/my-refunds",
-        icon: RefreshCcw,
-        roles: ["all"],
-      },
-      {
-        title: "Review Approvals",
-        href: "/review-bonus",
-        icon: Star,
-        roles: ["all"],
-      },
-      {
-        title: "Refunds",
-        href: "/refunds",
-        icon: RefreshCcw,
-        roles: ["all"],
-      },
-      { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] },
-    ];
-  }
-
-  return [
-    {
-      title: isAdminLikeView ? "Review Approvals" : "Submit Review",
-      href: "/review-bonus",
-      icon: Star,
-      roles: ["all"],
-    },
-    {
-      title: isAdminLikeView ? "Refunds" : "Submit Refund",
-      href: "/refunds",
-      icon: RefreshCcw,
-      roles: ["all"],
-    },
-    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen, roles: ["all"] },
-  ];
-}
-
-// Per-partner sidebar sections. Each partner section is a self-contained
-// home for that team: Bonus Program, Analytics, Review Approvals, Refunds,
-// Bonus Guide (+ Team Reports for Izaan). CEO sees all three sections;
-// partners see only their own; Izaan (MANAGER) sees the EM section.
-//
-// The query param ?team=em|ae|me drives server-side scoping on every page —
-// CEO clicking "Refunds" under Awais sees only AE-team refunds.
-type PartnerSectionItem = {
-  title: string;
-  href: string;
-  icon: any;
-  // Marks the Review Approvals link so the badge renders on it. Set on
-  // exactly one item per section.
-  isReviewLink?: boolean;
-};
-
-type PartnerSection = {
-  key: "em" | "ae" | "me";
-  label: string;
-  items: PartnerSectionItem[];
-};
-
-function teamItems(key: "em" | "ae" | "me", isIzaan: boolean): PartnerSectionItem[] {
-  const items: PartnerSectionItem[] = [
-    { title: "Bonus Program", href: `/bonus-program?team=${key}`, icon: Target },
-  ];
-  // Analytics is CEO + PARTNER only. Izaan is a team lead (MANAGER), not a
-  // partner, so the analytics tab is hidden from his EM section. The
-  // /etsy-analytics page also blocks MANAGER role server-side as a backstop.
-  if (!isIzaan) {
-    items.push({ title: "Analytics", href: `/etsy-analytics?team=${key}`, icon: BarChart3 });
-  }
-  // Team Reports — every Etsy team gets one, scoped server-side via ?team=.
-  // CEO sees them per-section now (the global "Daily Reports" main-nav entry
-  // was dropped to stop everything mixing together).
-  items.push({ title: "Team Reports", href: `/daily-work-report?team=${key}`, icon: FileText });
-  items.push(
-    {
-      title: "Review Approvals",
-      href: `/review-bonus?team=${key}`,
-      icon: Star,
-      isReviewLink: true,
-    },
-    { title: "Refunds", href: `/refunds?team=${key}`, icon: RefreshCcw },
-    { title: "Bonus Guide", href: "/etsy-bonus-guide", icon: BookOpen },
+function CountBadge({ count }: { count: number }) {
+  return (
+    // Dark mode's --destructive is a LIGHT red, so white-on-red drops to
+    // ~3:1 there. Flip the text dark instead of dimming the badge — this
+    // number is the one thing in the sidebar that must catch the eye.
+    <span className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-white tabular-nums dark:text-neutral-950">
+      {count > 99 ? "99+" : count}
+    </span>
   );
-  return items;
 }
 
-function getPartnerSections(
-  userRole: string,
-  employeeId: string,
-  partnerTeams?: PartnerTeamInfo[]
-): PartnerSection[] {
-  const isCeo = userRole === "SUPER_ADMIN";
-  const isIzaan = userRole === "MANAGER" && employeeId === "EM-4";
-  const partnerDeptHas = (suffix: string) =>
-    partnerTeams?.some((t) => t.departmentName.includes(suffix)) ?? false;
+/* ─── Nav row ─────────────────────────────────────────────────────────── */
 
-  const sections: PartnerSection[] = [];
+type RowProps = {
+  item: NavItem;
+  depth: number;
+  expanded: boolean;
+  active: boolean;
+  badge: number;
+  /** Count for the rail dot. Defaults to `badge`; team parents pass their
+   *  children's total so the dot doesn't mount from nothing on collapse. */
+  railBadge?: number;
+  /** Which label animation to use — peek (slide + stagger) vs button (fade). */
+  labelVariants: Variants;
+  /** Parent rows render a chevron and toggle instead of navigating. */
+  open?: boolean;
+  onToggle?: () => void;
+};
 
-  if (isCeo || isIzaan || partnerDeptHas(" - EM")) {
-    sections.push({ key: "em", label: "Izaan (EM)", items: teamItems("em", isIzaan) });
+const NavRow = React.forwardRef<HTMLElement, RowProps>(function NavRow(
+  { item, depth, expanded, active, badge, railBadge, labelVariants, open, onToggle },
+  ref,
+) {
+  const dotCount = railBadge ?? badge;
+  const isParent = !!item.children;
+  const Icon = item.icon;
+
+  const body = (
+    <>
+      <Icon
+        className={cn(
+          "size-4 shrink-0 transition-colors",
+          active ? "text-foreground" : "text-muted-foreground/80 group-hover:text-foreground/80",
+        )}
+      />
+      <motion.span
+        variants={labelVariants}
+        className="min-w-0 flex-1 truncate text-left text-[13px] leading-5"
+      >
+        {item.title}
+      </motion.span>
+
+      {/* Stays mounted and only fades. Rendering something different here on
+          collapse would change this row's box at the instant of the click,
+          while the rail is still animating — a jump, not a transition.
+          (Team parents do swap <button>/<a> and drop their chevron, which
+          changes this cluster's width by ~14px. Harmless: the team labels are
+          short and the row's height and position are untouched.) */}
+      <motion.span variants={labelVariants} className="flex shrink-0 items-center gap-1.5">
+        {item.pill && <Pill kind={item.pill} />}
+        {badge > 0 && <CountBadge count={badge} />}
+        {isParent && (
+          <ChevronRight
+            className={cn(
+              "size-3.5 text-muted-foreground/60 transition-transform duration-200",
+              open && "rotate-90",
+            )}
+          />
+        )}
+      </motion.span>
+
+      {/* Rail mode has no room for a count — a dot still says "look here".
+          Absolutely positioned so it contributes no layout either way. */}
+      {dotCount > 0 && (
+        <span
+          className={cn(
+            "absolute left-[26px] top-1.5 size-[7px] rounded-full bg-destructive ring-2 ring-sidebar",
+            "transition-opacity duration-200 ease-out",
+            expanded ? "opacity-0" : "opacity-100",
+          )}
+        />
+      )}
+    </>
+  );
+
+  const className = cn(
+    "group relative flex h-8 w-full items-center gap-2.5 overflow-hidden rounded-md pr-2 text-[13px] transition-colors",
+    active
+      ? "bg-accent font-medium text-foreground"
+      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+  );
+  const style = { paddingLeft: depth * 14 + 10 };
+
+  if (isParent) {
+    return (
+      <button
+        ref={ref as React.Ref<HTMLButtonElement>}
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        title={!expanded ? item.title : undefined}
+        className={cn(className, "cursor-pointer")}
+        style={style}
+      >
+        {body}
+      </button>
+    );
   }
-  if (isCeo || partnerDeptHas(" - AE")) {
-    sections.push({ key: "ae", label: "Awais (AE)", items: teamItems("ae", false) });
-  }
-  if (isCeo || partnerDeptHas(" - ME")) {
-    sections.push({ key: "me", label: "Mubeen (ME)", items: teamItems("me", false) });
-  }
 
-  return sections;
-}
+  return (
+    <Link
+      ref={ref as React.Ref<HTMLAnchorElement>}
+      href={item.href!}
+      title={!expanded ? item.title : undefined}
+      aria-current={active ? "page" : undefined}
+      className={className}
+      style={style}
+    >
+      {body}
+    </Link>
+  );
+});
 
-const settingsNav = [
-  // Office settings: only CEO can edit. Partners don't see settings — office
-  // hours/holidays are controlled globally per Wasif's policy.
-  { title: "Office Timings", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN"] },
-  { title: "How It Works", href: "/how-it-works", icon: HelpCircle, roles: ["all"] },
-  // Automated messages: CEO only.
-  { title: "Automated Messages", href: "/automated-messages", icon: MessageSquare, roles: ["SUPER_ADMIN"] },
-];
+/* ─── Sidebar ─────────────────────────────────────────────────────────── */
 
-function hasAccess(roles: string[], userRole: string) {
-  return roles.includes("all") || roles.includes(userRole);
-}
-
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user }: { user: NavUser }) {
+  const { expanded, pinned, setHovered, mobileOpen, setMobileOpen, isMobile, motionSource } =
+    useShell();
+  // The reference's staggered slide is the PEEK animation. The collapse
+  // button is a deliberate switch and gets a plain fade instead.
+  const isPeek = motionSource === "hover";
+  const labelVariants = isPeek ? hoverLabelVariants : pinLabelVariants;
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTeam = searchParams.get("team");
-  const [pendingDevices, setPendingDevices] = useState(0);
-  // Pending review counts per Etsy team. CEO populates all three; partners
-  // populate just their own; Izaan (MANAGER) populates EM only. Drives the
-  // badge on each partner section's "Review Approvals" link.
-  const [pendingByTeam, setPendingByTeam] = useState<{ em?: number; ae?: number; me?: number }>({});
-  const [openComplaints, setOpenComplaints] = useState(0);
 
-  // Active-state check that handles ?team= query params on /bonus-program and
-  // /etsy-analytics. For partner-specific links, the team param must match.
-  function isItemActive(href: string): boolean {
-    const [path, queryStr] = href.split("?");
-    if (pathname !== path) return false;
-    if (!queryStr) return true;
-    const itemTeam = new URLSearchParams(queryStr).get("team");
-    if (!itemTeam) return true;
-    return currentTeam === itemTeam;
-  }
+  const [pendingDevices, setPendingDevices] = React.useState(0);
+  const [pendingByTeam, setPendingByTeam] = React.useState<{ em?: number; ae?: number; me?: number }>({});
+  const [openComplaints, setOpenComplaints] = React.useState(0);
 
-  // Poll for pending device approvals every 30 seconds (CEO only)
-  useEffect(() => {
+  /* ── Pollers (unchanged from the pre-redesign sidebar) ── */
+
+  // Pending device approvals (CEO only).
+  React.useEffect(() => {
     if (user.role !== "SUPER_ADMIN") return;
     async function fetchPending() {
       try {
         const res = await fetch("/api/device-approval");
         if (res.ok) {
-          const devices = await res.json();
-          setPendingDevices(devices.filter((d: any) => d.status === "PENDING").length);
+          const devices: { status?: string }[] = await res.json();
+          setPendingDevices(devices.filter((d) => d.status === "PENDING").length);
         }
       } catch {}
     }
@@ -313,11 +264,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role]);
 
-  // Poll per-team pending review counts every 2 minutes. CEO fetches all
-  // three Etsy teams; partners and Izaan fetch their own. The API ignores
-  // ?team= for partners/managers (they're already pinned to their scope), so
-  // passing it is harmless and keeps the fetch logic uniform.
-  useEffect(() => {
+  // Per-team pending review counts. CEO fetches all three Etsy teams;
+  // partners and Izaan fetch their own. The API ignores ?team= for
+  // partners/managers (already pinned to their scope), so passing it is
+  // harmless and keeps the fetch logic uniform.
+  React.useEffect(() => {
     if (
       user.role !== "SUPER_ADMIN" &&
       user.role !== "MANAGER" &&
@@ -358,14 +309,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role, user.employeeId, user.partnerTeams]);
 
-  // Poll for the complaint badge counter on the sidebar:
-  //   CEO/HR → number of OPEN complaints in the inbox (employees launching
-  //            something, plus their own threads still in progress).
-  //   Everyone else → number of THEIR complaints flagged unread (CEO sent
-  //                   them a message they haven't opened yet — covers both
-  //                   CEO-launched complaints and CEO replies on threads
-  //                   they themselves opened).
-  useEffect(() => {
+  // Complaint counter. CEO/HR → OPEN complaints in the inbox. Everyone else
+  // → their own threads the CEO has new content on.
+  React.useEffect(() => {
     const isAdminUser = user.role === "SUPER_ADMIN" || user.role === "HR_ADMIN";
     async function fetchComplaints() {
       try {
@@ -376,10 +322,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
         if (isAdminUser) {
           setOpenComplaints(data.length);
         } else {
-          // The GET endpoint already scopes non-admin queries to userId =
-          // session.user.id, so this list is just the current user's
-          // threads. Count the ones where the CEO has new content for them.
-          setOpenComplaints(data.filter((c: any) => c.unreadByEmployee).length);
+          setOpenComplaints(
+            (data as { unreadByEmployee?: boolean }[]).filter((c) => c.unreadByEmployee).length,
+          );
         }
       } catch {}
     }
@@ -388,391 +333,288 @@ export function AppSidebar({ user }: AppSidebarProps) {
     return () => clearInterval(interval);
   }, [user.role]);
 
-  const mainNav = getMainNav(user.role);
+  /* ── Derived nav ── */
 
-  const renderNavItems = (items: { title: string; href: string; icon: any; roles: string[] }[]) =>
-    items
-      .filter((item) => hasAccess(item.roles, user.role))
-      .map((item) => (
-        <SidebarMenuItem key={item.href}>
-          <SidebarMenuButton render={<Link href={item.href} />} isActive={isItemActive(item.href)}>
-              <item.icon className="size-4" />
-              <span>{item.title}</span>
-              {item.href === "/login-approvals" && pendingDevices > 0 && (
-                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
-                  {pendingDevices}
-                </Badge>
-              )}
-              {item.href === "/complaints" && openComplaints > 0 && (
-                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
-                  {openComplaints}
-                </Badge>
-              )}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ));
+  const groups = React.useMemo(() => buildNav(user), [user]);
 
-  const initials = user.name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase();
+  const badges = React.useMemo<Record<BadgeKey, number>>(
+    () => ({
+      devices: pendingDevices,
+      complaints: openComplaints,
+      "review:em": pendingByTeam.em ?? 0,
+      "review:ae": pendingByTeam.ae ?? 0,
+      "review:me": pendingByTeam.me ?? 0,
+    }),
+    [pendingDevices, openComplaints, pendingByTeam],
+  );
+
+  // Active-state check that handles ?team= on /bonus-program, /refunds etc.
+  // For team-specific links the team param must match too, otherwise every
+  // team's "Refunds" would light up at once.
+  const isItemActive = React.useCallback(
+    (href: string): boolean => {
+      const [path, queryStr] = href.split("?");
+      if (pathname !== path) return false;
+      if (!queryStr) return true;
+      const itemTeam = new URLSearchParams(queryStr).get("team");
+      if (!itemTeam) return true;
+      return currentTeam === itemTeam;
+    },
+    [pathname, currentTeam],
+  );
+
+  const hasActiveChild = React.useCallback(
+    (item: NavItem): boolean =>
+      (item.children ?? []).some((c) => {
+        if (!c.href) return false;
+        // "Bonus Guide" is the same URL in all three team sections. Letting a
+        // shared link count as that section's active child would spring every
+        // team open at once and wipe the CEO's collapse choices. Only
+        // team-scoped links (?team=…) identify their own section.
+        if (item.id.startsWith("team:") && !c.href.includes("?team=")) return false;
+        return isItemActive(c.href);
+      }),
+    [isItemActive],
+  );
+
+  // A parent is open when one of its children is the current page, unless the
+  // user has explicitly collapsed it this session.
+  const [overrides, setOverrides] = React.useState<Record<string, boolean>>({});
+
+  // Navigating INTO a collapsed section should reveal it again — otherwise
+  // the active page sits hidden behind a closed chevron.
+  React.useEffect(() => {
+    setOverrides((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const group of groups) {
+        for (const item of group.items) {
+          if (item.children && next[item.id] === false && hasActiveChild(item)) {
+            delete next[item.id];
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [groups, hasActiveChild]);
+
+  /* ── Render ── */
+
+  const renderItems = (items: NavItem[], depth = 0): React.ReactNode =>
+    items.map((item) => {
+      if (item.children) {
+        const open = overrides[item.id] ?? hasActiveChild(item);
+        const childBadgeTotal = item.children.reduce(
+          (sum, c) => sum + (c.badge ? badges[c.badge] ?? 0 : 0),
+          0,
+        );
+
+        // A rail row is an icon with no chevron and no children, so tapping a
+        // team parent there would do nothing — and on a touch device wide
+        // enough to miss the hover peek (tablets) a whole team's 6 pages
+        // would have no way in. Collapsed, the row becomes a link to the
+        // team's first page instead of a disclosure button.
+        //
+        // Only the ELEMENT changes (button ↔ anchor, same classes, same box).
+        // The wrapper and the children below stay mounted in both states —
+        // returning a different tree here used to unmount the children and
+        // change the nav's height at the instant of the click.
+        const firstHref = item.children.find((c) => c.href)?.href;
+        const railItem =
+          !expanded && firstHref
+            ? { ...item, children: undefined, href: firstHref }
+            : item;
+        // Deliberately `open` alone, NOT `expanded && open`.
+        //
+        // Tying this to `expanded` meant every collapse folded an open team
+        // section shut — 202px of height, 25 rows jumping — while the rail
+        // was still narrowing, and every hover-peek unfolded and refolded it
+        // again. That was the "glitch". It hid on /dashboard, where no team
+        // section is open, which is why an earlier measurement there came
+        // back clean.
+        //
+        // Now the section's height never depends on the rail. The rail simply
+        // clips the children horizontally, exactly as it clips labels and the
+        // trailing pill. Collapse and peek change width and opacity only.
+        const sectionOpen = open;
+
+        return (
+          <div key={item.id} className="flex w-full flex-col">
+            <NavRow
+              item={railItem}
+              depth={depth}
+              expanded={expanded}
+              active={sectionOpen ? false : hasActiveChild(item)}
+              // Roll the children's badge up onto the parent while closed so
+              // a pending approval isn't hidden inside a collapsed section.
+              badge={sectionOpen ? 0 : childBadgeTotal}
+              railBadge={childBadgeTotal}
+              labelVariants={labelVariants}
+              open={sectionOpen}
+              onToggle={() => setOverrides((prev) => ({ ...prev, [item.id]: !open }))}
+            />
+            <div
+                // `invisible` when closed is load-bearing, not cosmetic: a
+                // grid-rows-[0fr] row still contains focusable links, so
+                // without it Tab walks into a section you can't see.
+                //
+                // `visibility` is in the transition list on purpose. It's a
+                // discrete property, so transitioning it holds `visible` for
+                // the full duration and flips at the end — otherwise it snaps
+                // to hidden on the first frame and the section pops shut
+                // instead of collapsing.
+                // Collapsing the rail folds any OPEN team section shut, which
+                // is ~204px of height per section. That fold is unavoidable
+                // (rail mode has no room for children), but it must ride the
+                // exact clock the rail and content offset use — on its own
+                // 200ms timing it finished early and read as the nav lurching
+                // out from under the still-narrowing rail.
+                style={{
+                  transitionProperty: "grid-template-rows, opacity, visibility",
+                  transitionDuration: "var(--shell-duration)",
+                  transitionTimingFunction: "var(--shell-ease)",
+                }}
+                className={cn(
+                  "grid",
+                  sectionOpen ? "grid-rows-[1fr] opacity-100" : "invisible grid-rows-[0fr] opacity-0",
+                )}
+              >
+                <div className="relative flex min-h-0 flex-col gap-0.5 overflow-hidden pt-0.5">
+                  <span
+                    aria-hidden
+                    className="absolute bottom-1 top-0 w-px bg-border"
+                    style={{ left: depth * 14 + 18 }}
+                  />
+                  {renderItems(item.children, depth + 1)}
+                </div>
+              </div>
+          </div>
+        );
+      }
+
+      return (
+        <NavRow
+          key={item.id}
+          item={item}
+          depth={depth}
+          expanded={expanded}
+          active={isItemActive(item.href!)}
+          badge={item.badge ? badges[item.badge] ?? 0 : 0}
+          labelVariants={labelVariants}
+        />
+      );
+    });
 
   return (
-    <Sidebar>
-      <SidebarHeader className="border-b px-4 py-3">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <img src="/logo.png" alt="META7MEDIA" className="h-8 w-auto" />
-          <div className="flex flex-col">
-            <span className="text-sm font-bold">META7MEDIA AI</span>
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Office Manager</span>
-            <span className="text-[8px] text-muted-foreground/60">Powered By: Google</span>
-          </div>
+    <motion.aside
+      initial={false}
+      animate={expanded ? "open" : "closed"}
+      variants={sidebarVariants}
+      transition={isPeek ? transitionProps : pinTransition}
+      onMouseEnter={() => setHovered(true)}
+      // ⌘B collapses the rail around a pointer that is already inside it. No
+      // boundary is crossed, so mouseenter never fires and the peek would sit
+      // dead until you left and came back — the exact symptom of the removed
+      // "disarm" behaviour. mousemove catches that case.
+      onMouseMove={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      // Off-canvas is a transform, not display:none, so without `inert` the
+      // closed drawer keeps ~40 focusable links in the phone's tab order
+      // ahead of the actual page content.
+      inert={isMobile && !mobileOpen ? true : undefined}
+      // Width animates the CLIP BOX only — the column inside stays FULL_W
+      // wide, so none of the ~42 nav rows relayout while the rail moves.
+      className={cn(
+        "shell-rail fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden border-r border-sidebar-border bg-sidebar",
+        // Peeking over the content needs a shadow to read as a layer.
+        !pinned && !isMobile && expanded && "shadow-xl shadow-foreground/5",
+        // Mobile: off-canvas drawer.
+        "max-md:transition-transform max-md:duration-300 max-md:ease-out",
+        mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full",
+      )}
+    >
+      {/* Fixed-width column. Pinning this to FULL_W is what makes the
+          collapse cheap: the rail clips it instead of resizing it, so the
+          nav rows never re-measure. */}
+      <motion.div variants={noStaggerVariants} className="flex h-full flex-col" style={{ width: FULL_W }}>
+      {/* ── Brand ──
+          Restored to the pre-redesign block on CEO instruction: 32px logo tile
+          + "META7MEDIA AI" / "OFFICE MANAGER" / "Powered By: Google".
+
+          The only change from the original is the image source — the same
+          artwork, pre-scaled to 32/64/96px and served via srcSet, because the
+          original pointed at the 1563px square and let the browser squash it
+          (soft at every density). Appearance is identical, just sharp.
+
+          Still a plain <Link> with no dropdown and no hover state. The text
+          block stays mounted and only fades, so the row's height is identical
+          expanded vs collapsed and the rail stays a pure width+opacity move. */}
+      <div className="relative flex shrink-0 items-center border-b border-sidebar-border px-4 py-3">
+        <Link
+          href="/dashboard"
+          aria-label="META7MEDIA AI — go to dashboard"
+          className="flex min-w-0 items-center gap-2 overflow-hidden"
+        >
+          <img
+            src="/logo-icon-96.png"
+            srcSet="/logo-icon-32.png 32w, /logo-icon-64.png 64w, /logo-icon-96.png 96w"
+            sizes="32px"
+            alt="META7MEDIA"
+            width={32}
+            height={32}
+            className="size-8 shrink-0 object-contain"
+          />
+          <motion.span variants={labelVariants} className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-bold">META7MEDIA AI</span>
+            <span className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+              Office Manager
+            </span>
+            <span className="truncate text-[8px] text-muted-foreground/60">Powered By: Google</span>
+          </motion.span>
         </Link>
-      </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Main</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>{renderNavItems(mainNav)}</SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* Drawer close — mobile only. Absolute so it can't pull the logo off
+            centre. */}
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close menu"
+          className="absolute right-2 top-1/2 hidden size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:inline-flex"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
 
-        {managementNav.some((item) => hasAccess(item.roles, user.role)) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Management</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>{renderNavItems(managementNav)}</SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+      {/* ── Nav ── */}
+      <nav
+        className="shell-scroll flex flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-2 py-3"
+      >
+        {groups.map((group: NavGroup) => (
+          <div key={group.id} className="flex flex-col gap-0.5">
+            {/* The heading keeps its box in both states and only fades.
+                Swapping it for a 1px divider when collapsed removed ~16px of
+                height PER GROUP the instant the toggle was clicked — six
+                groups meant the whole nav lurched ~96px upward while the rail
+                was still animating. That lurch was the "glitch". */}
+            {group.heading && (
+              <motion.span
+                variants={labelVariants}
+                className="truncate px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60"
+              >
+                {group.heading}
+              </motion.span>
+            )}
+            {renderItems(group.items)}
+          </div>
+        ))}
+      </nav>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Finance</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>{renderNavItems(financeNav)}</SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {/* Etsy Tools — utility links that aren't team-scoped. Sits directly
-            below the main nav for all Etsy roles (CEO, Etsy partners, Izaan,
-            EM-/AE-/ME- employees) so the calculator is reachable in one
-            click without scrolling past team sections. Strictly Etsy-side:
-            FB-team employees (SMM-*) and the FB partner (Zain) never see
-            this — visibility mirrors the page guard. */}
-        {(() => {
-          const isCeo = user.role === "SUPER_ADMIN";
-          const isHrAdmin = user.role === "HR_ADMIN";
-          const isIzaan = user.role === "MANAGER" && user.employeeId === "EM-4";
-          const isEtsyPartner =
-            user.role === "PARTNER" &&
-            (user.partnerTeams ?? []).some(
-              (t) =>
-                t.departmentName.includes(" - EM") ||
-                t.departmentName.includes(" - AE") ||
-                t.departmentName.includes(" - ME"),
-            );
-          const isEtsyEmployee =
-            (user.employeeId?.startsWith("EM") ||
-              user.employeeId?.startsWith("AE") ||
-              user.employeeId?.startsWith("ME")) &&
-            user.employeeId !== "EM-4L";
-          // Etsy Tools sidebar group — shown to anyone on the Etsy
-          // side of the org (CEO, HR Admin, Etsy partners, Izaan,
-          // EM/AE/ME employees). Individual entries inside no longer
-          // need their own pill predicates after the May 18 launch
-          // pass — every tool is fully live for the Etsy team and
-          // dropped its Beta badge.
-          const isEmEmployee =
-            user.employeeId?.startsWith("EM") &&
-            user.employeeId !== "EM-4" &&
-            user.employeeId !== "EM-4L";
-          // `isEmEmployee` kept exported via the closure for any
-          // future per-entry gate that needs it.
-          void isEmEmployee;
-          const showTools =
-            isCeo || isHrAdmin || isIzaan || isEtsyPartner || isEtsyEmployee;
-          if (!showTools) return null;
-          return (
-            <SidebarGroup>
-              <SidebarGroupLabel>Etsy Tools</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {/* CEO-only: full-page Autopilot analytics dashboard sits
-                      at the top of the Etsy Tools group so Wasif can jump
-                      to it in one click — it's the most-visited admin
-                      surface during the EM-team test rollout. */}
-                  {isCeo && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        render={<Link href="/seo-autopilot/dashboard" />}
-                        isActive={isItemActive("/seo-autopilot/dashboard")}
-                      >
-                        <BarChart3 className="size-4" />
-                        <span>Autopilot Dashboard</span>
-                        <span className="ml-auto inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300 tracking-wider uppercase">
-                          Admin
-                        </span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
-                  {/* Product Hunter — finds underserved Etsy niches before
-                      sending the team to AliExpress. Launched to the full
-                      Etsy team May 18 2026 (CEO + Izaan + EM + AE + ME +
-                      Etsy partners). No pill — tool is fully live and the
-                      "Live" badge added visual clutter to a settled tool.
-                      Users without access still land on the Coming Soon
-                      placeholder when clicking through. */}
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      render={<Link href="/seo-autopilot/product-hunter" />}
-                      isActive={isItemActive(
-                        "/seo-autopilot/product-hunter",
-                      )}
-                    >
-                      <Target className="size-4" />
-                      <span>Product Hunter</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-
-                  {/* Removed sub-tools (kept here as a trail for future
-                      contributors):
-                        - Reverse Hunt    (May 17 2026)
-                        - Image Hunt      (May 17 2026)
-                        - Daily Trending  (May 18 2026)
-                        - "More Soon"     (May 18 2026)
-                      Product Hunter is now a single-pane tool — no tabs,
-                      no sub-routes. */}
-
-                  {/* Product Validator — CEO-ONLY since Aug 6 2026 (CEO
-                      directive). Hidden from everyone else so employees
-                      don't click into a Coming Soon dead end; the page
-                      and API enforce the same lock server-side. */}
-                  {isCeo && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        render={<Link href="/product-validator" />}
-                        isActive={isItemActive("/product-validator")}
-                      >
-                        <ShieldCheck className="size-4" />
-                        <span>Product Validator</span>
-                        <CeoOnlyPill />
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
-
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      render={<Link href="/price-calculator" />}
-                      isActive={isItemActive("/price-calculator")}
-                    >
-                      <Calculator className="size-4" />
-                      <span>Price Calculator</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  {/* SEO Autopilot — CEO-ONLY since Aug 6 2026 (CEO
-                      directive; was full Etsy team). Hidden from
-                      everyone else; page + generate/swap-tag APIs
-                      enforce the same lock server-side. */}
-                  {isCeo && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        render={<Link href="/seo-autopilot" />}
-                        isActive={isItemActive("/seo-autopilot")}
-                      >
-                        <Sparkles className="size-4" />
-                        <span>SEO Autopilot</span>
-                        <CeoOnlyPill />
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
-                  {/* Prompt Engineer — AliExpress photo → Higgsfield
-                      image-gen prompt. CEO-only (page + API); hidden
-                      from everyone else since Aug 6 2026 instead of
-                      showing a "Soon" pill. */}
-                  {isCeo && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        render={<Link href="/prompt-engineer" />}
-                        isActive={isItemActive("/prompt-engineer")}
-                      >
-                        <Wand2 className="size-4" />
-                        <span>Prompt Engineer</span>
-                        <CeoOnlyPill />
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          );
-        })()}
-
-        {/* Per-partner sections — one group per Etsy team. CEO sees all three;
-            partners see only their own; Izaan (MANAGER) sees the EM group.
-            Each section is self-contained: Bonus Program, Analytics, Review
-            Approvals, Refunds, Bonus Guide (+ Team Reports for Izaan). */}
-        {(() => {
-          const partnerSections = getPartnerSections(user.role, user.employeeId || "", user.partnerTeams);
-          const hasPartnerSections = partnerSections.length > 0;
-          const isEtsyEmployee =
-            !hasPartnerSections &&
-            (user.employeeId?.startsWith("EM") ||
-              user.employeeId?.startsWith("AE") ||
-              user.employeeId?.startsWith("ME")) &&
-            user.employeeId !== "EM-4L";
-
-          return (
-            <>
-              {partnerSections.map((section) => (
-                <SidebarGroup key={section.key}>
-                  <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {section.items.map((item) => {
-                        const teamPending = item.isReviewLink ? pendingByTeam[section.key] ?? 0 : 0;
-                        return (
-                          <SidebarMenuItem key={`${section.key}-${item.href}`}>
-                            <SidebarMenuButton render={<Link href={item.href} />} isActive={isItemActive(item.href)}>
-                              <item.icon className="size-4" />
-                              <span>{item.title}</span>
-                              {item.isReviewLink && teamPending > 0 && (
-                                <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center">
-                                  {teamPending}
-                                </Badge>
-                              )}
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        );
-                      })}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              ))}
-
-              {/* Shared Etsy group — only renders for plain Etsy employees who
-                  don't have a partner section. Gives them Submit Review /
-                  Submit Refund / Bonus Guide. */}
-              {isEtsyEmployee &&
-                getEtsyNav(user.role, user.employeeId || "").some((item) => hasAccess(item.roles, user.role)) && (
-                  <SidebarGroup>
-                    <SidebarGroupLabel>Etsy</SidebarGroupLabel>
-                    <SidebarGroupContent>
-                      <SidebarMenu>{renderNavItems(getEtsyNav(user.role, user.employeeId || ""))}</SidebarMenu>
-                    </SidebarGroupContent>
-                  </SidebarGroup>
-                )}
-
-            </>
-          );
-        })()}
-
-        {/* FB Program — restructured into per-team entries:
-            - Bonus Program        (CEO + SMM-* employees; hidden from Zain per "FB is simple")
-            - Facebook HQ Reports  (CEO only — HQ has no partner, Wasif manages directly)
-            - Zain Team Reports    (CEO + Zain — his FB-O2 team)
-            Visible if any item is visible. */}
-        {(() => {
-          const isCeo = user.role === "SUPER_ADMIN";
-          const isSmm = !!user.employeeId?.startsWith("SMM");
-          const isZain =
-            user.role === "PARTNER" &&
-            (user.partnerTeams?.some((t) => t.departmentName.includes(" - O2")) ?? false);
-
-          const showBonus = isCeo || isSmm; // unchanged; Zain still excluded
-          const showHqReports = isCeo;
-          const showZainReports = isCeo || isZain;
-
-          if (!showBonus && !showHqReports && !showZainReports) return null;
-
-          return (
-            <SidebarGroup>
-              <SidebarGroupLabel>FB Program</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {showBonus && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton isActive={pathname === "/fb-program"} render={<Link href="/fb-program" />}>
-                        <Rocket className="size-4" />
-                        <span>Bonus Program</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
-                  {showHqReports && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        isActive={isItemActive("/daily-work-report?team=fb-hq")}
-                        render={<Link href="/daily-work-report?team=fb-hq" />}
-                      >
-                        <FileText className="size-4" />
-                        <span>HQ Team Reports</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
-                  {showZainReports && (
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        isActive={isItemActive("/daily-work-report?team=fb-o2")}
-                        render={<Link href="/daily-work-report?team=fb-o2" />}
-                      >
-                        <FileText className="size-4" />
-                        <span>Zain Team Reports</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          );
-        })()}
-
-        {settingsNav.some((item) => hasAccess(item.roles, user.role)) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Settings</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>{renderNavItems(settingsNav)}</SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-      </SidebarContent>
-
-      <SidebarSeparator />
-
-      <SidebarFooter className="p-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuButton className="w-full" />}>
-                  <Avatar className="size-6">
-                    {(user as any).role === "SUPER_ADMIN" ? (
-                      <img src="/logo.png" alt="CEO" className="size-6 object-contain" />
-                    ) : (
-                      <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                    )}
-                  </Avatar>
-                  <div className="flex flex-col items-start text-left">
-                    <span className="text-sm">{user.name}</span>
-                    <span className="text-xs text-muted-foreground">{user.employeeId}</span>
-                  </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-48">
-                <DropdownMenuItem render={<Link href="/profile" />}>
-                    <User className="mr-2 size-4" />
-                    Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={async () => {
-                  await signOut({ redirect: false });
-                  window.location.href = "/login";
-                }}>
-                    <LogOut className="mr-2 size-4" />
-                    Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
+      {/* No account footer. Identity and sign-out moved to the top-right
+          avatar (components/layout/user-menu.tsx) on CEO instruction — the
+          sidebar is navigation only now. The nav's `flex-1` above already
+          claims the space the footer used to hold, so nothing else shifts. */}
+      </motion.div>
+    </motion.aside>
   );
 }

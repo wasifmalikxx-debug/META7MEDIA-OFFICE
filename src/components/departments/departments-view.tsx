@@ -111,12 +111,12 @@ export function DepartmentsView({ departments, offices }: DepartmentsViewProps) 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full">
-            <Building2 className="size-3.5 text-slate-500" />
+          <div className="flex items-center gap-1.5 bg-muted px-3 py-1.5 rounded-full">
+            <Building2 className="size-3.5 text-muted-foreground" />
             <span className="text-xs font-medium">{departments.length} departments</span>
           </div>
-          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full">
-            <Users className="size-3.5 text-slate-500" />
+          <div className="flex items-center gap-1.5 bg-muted px-3 py-1.5 rounded-full">
+            <Users className="size-3.5 text-muted-foreground" />
             <span className="text-xs font-medium">{totalEmployees} employees</span>
           </div>
         </div>
@@ -203,7 +203,7 @@ export function DepartmentsView({ departments, offices }: DepartmentsViewProps) 
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {departments.map((dept: any) => {
-            const colorClass = deptColors[dept.name] || "from-slate-50 to-white dark:from-slate-800 dark:to-slate-800 border-slate-200 dark:border-slate-700";
+            const colorClass = deptColors[dept.name] || "from-slate-50 to-white dark:from-slate-800 dark:to-slate-800 border-border";
             return (
               <Card key={dept.id} className={`border-0 shadow-sm overflow-hidden hover:shadow-md transition-shadow bg-gradient-to-br ${colorClass}`}>
                 <CardContent className="p-5">

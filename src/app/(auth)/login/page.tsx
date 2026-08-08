@@ -118,7 +118,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[var(--canvas)] via-background to-[var(--canvas)] px-4">
       {/* Background decoration */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 size-80 rounded-full bg-blue-500/5 blur-3xl" />
@@ -128,15 +128,15 @@ export default function LoginPage() {
       <div className="w-full max-w-[420px] relative z-10">
         {/* Logo & Branding */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-white dark:bg-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-slate-950/50 mb-5 border border-slate-100 dark:border-slate-700">
-            <img src="/logo.png" alt="META7MEDIA" className="size-10 object-contain" />
+          <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-card shadow-lg shadow-foreground/5 mb-5 border border-border">
+            <img src="/logo-mark-128.png" srcSet="/logo-mark-28.png 28w, /logo-mark-56.png 56w, /logo-mark-84.png 84w, /logo-mark-128.png 128w" sizes="40px" alt="META7MEDIA" className="size-10 object-contain" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">META7MEDIA</h1>
           <p className="text-sm text-muted-foreground mt-1">AI-Powered Office Management System</p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl shadow-slate-200/40 dark:shadow-slate-950/40 border border-slate-200/60 dark:border-slate-800 overflow-hidden">
+        <div className="bg-card rounded-2xl shadow-xl shadow-foreground/5 border border-border overflow-hidden">
 
           {/* Device Pending */}
           {deviceStatus === "pending" && (

@@ -116,7 +116,7 @@ export function NotificationsBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        className="inline-flex items-center justify-center size-8 p-0 relative rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="relative inline-flex size-8 items-center justify-center rounded-lg p-0 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         aria-label={unread > 0 ? `${unread} unread notifications` : "Notifications"}
       >
         <Bell className="size-4" />

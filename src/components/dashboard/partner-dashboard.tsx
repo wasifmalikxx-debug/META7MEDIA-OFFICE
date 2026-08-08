@@ -67,13 +67,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string;
   PRESENT:        { label: "Present",        color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400", dot: "bg-emerald-500", icon: UserCheck },
   LATE:           { label: "Late",           color: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",         dot: "bg-amber-500",   icon: Clock },
   ON_BREAK:       { label: "On Break",       color: "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",                 dot: "bg-sky-500",     icon: Coffee },
-  CHECKED_OUT:    { label: "Checked Out",    color: "bg-slate-50 text-slate-600 dark:bg-slate-800/50 dark:text-slate-400",          dot: "bg-slate-400",   icon: LogOut },
+  CHECKED_OUT:    { label: "Checked Out",    color: "bg-muted/60 text-muted-foreground",          dot: "bg-slate-400",   icon: LogOut },
   ABSENT:         { label: "Absent",         color: "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",              dot: "bg-rose-500",    icon: UserX },
   ON_LEAVE:       { label: "On Leave",       color: "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",      dot: "bg-violet-500",  icon: CalendarOff },
   HALF_DAY:       { label: "Half Day",       color: "bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",      dot: "bg-orange-500",  icon: CalendarCheck2 },
   HALF_DAY_LEAVE: { label: "Half Day Leave", color: "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",      dot: "bg-violet-500",  icon: CalendarOff },
   NOT_CHECKED_IN: { label: "Not Checked In", color: "bg-rose-50/50 text-rose-500 dark:bg-rose-900/15 dark:text-rose-400",           dot: "bg-rose-400",    icon: CircleDot },
-  DAY_OFF:        { label: "Day Off",        color: "bg-slate-50 text-slate-500 dark:bg-slate-800/40 dark:text-slate-400",          dot: "bg-slate-400",   icon: CalendarOff },
+  DAY_OFF:        { label: "Day Off",        color: "bg-muted/60 text-muted-foreground",          dot: "bg-slate-400",   icon: CalendarOff },
 };
 
 const STATUS_ORDER: Record<string, number> = {
@@ -140,8 +140,8 @@ export function PartnerDashboard({ partnerName, officeName, dayOffLabel, teams =
                 <p className="text-3xl font-bold mt-1">{totals.members}</p>
                 <p className="text-xs text-muted-foreground mt-1">Active workforce</p>
               </div>
-              <div className="rounded-xl bg-slate-100 dark:bg-slate-700 p-2.5">
-                <Users className="size-5 text-slate-600 dark:text-slate-300" />
+              <div className="rounded-xl bg-muted p-2.5">
+                <Users className="size-5 text-muted-foreground" />
               </div>
             </div>
           </CardContent>
@@ -295,7 +295,7 @@ export function PartnerDashboard({ partnerName, officeName, dayOffLabel, teams =
             </div>
             <div className="flex items-center gap-3">
               {dayOffLabel && (
-                <Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 text-[10px] border-0">
+                <Badge className="bg-muted text-muted-foreground text-[10px] border-0">
                   {dayOffLabel}
                 </Badge>
               )}
@@ -323,7 +323,7 @@ export function PartnerDashboard({ partnerName, officeName, dayOffLabel, teams =
                   >
                     <div className="flex items-center gap-3.5">
                       <div className="relative">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300">
+                        <div className="flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-muted to-accent text-xs font-bold text-foreground">
                           {emp.firstName[0]}{emp.lastName?.[0] || ""}
                         </div>
                         <div className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white dark:border-slate-900 ${config.dot}`} />

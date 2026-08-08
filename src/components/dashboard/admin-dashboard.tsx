@@ -187,13 +187,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string;
   PRESENT: { label: "Present", color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400", dot: "bg-emerald-500", icon: UserCheck },
   LATE: { label: "Late", color: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", dot: "bg-amber-500", icon: Clock },
   ON_BREAK: { label: "On Break", color: "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400", dot: "bg-sky-500", icon: Coffee },
-  CHECKED_OUT: { label: "Checked Out", color: "bg-slate-50 text-slate-600 dark:bg-slate-800/50 dark:text-slate-400", dot: "bg-slate-400", icon: LogOut },
+  CHECKED_OUT: { label: "Checked Out", color: "bg-muted/60 text-muted-foreground", dot: "bg-slate-400", icon: LogOut },
   ABSENT: { label: "Absent", color: "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400", dot: "bg-rose-500", icon: UserX },
   ON_LEAVE: { label: "On Leave", color: "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400", dot: "bg-violet-500", icon: CalendarOff },
   HALF_DAY: { label: "Half Day", color: "bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", dot: "bg-orange-500", icon: CalendarCheck2 },
   HALF_DAY_LEAVE: { label: "Half Day Leave", color: "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400", dot: "bg-violet-500", icon: CalendarOff },
   NOT_CHECKED_IN: { label: "Not Checked In", color: "bg-rose-50/50 text-rose-500 dark:bg-rose-900/15 dark:text-rose-400", dot: "bg-rose-400", icon: CircleDot },
-  DAY_OFF: { label: "Day Off", color: "bg-slate-50 text-slate-500 dark:bg-slate-800/40 dark:text-slate-400", dot: "bg-slate-400", icon: CalendarOff },
+  DAY_OFF: { label: "Day Off", color: "bg-muted/60 text-muted-foreground", dot: "bg-slate-400", icon: CalendarOff },
 };
 
 const STATUS_ORDER: Record<string, number> = {
@@ -616,7 +616,7 @@ export function AdminDashboard({
             <div className="relative h-[180px] w-full">
               {attendanceBreakdown.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" debounce={200}>
                     <PieChart>
                       <Pie
                         data={attendanceBreakdown}
@@ -636,8 +636,8 @@ export function AdminDashboard({
                         contentStyle={{
                           fontSize: 11,
                           borderRadius: 8,
-                          border: "1px solid hsl(var(--border))",
-                          backgroundColor: "hsl(var(--background))",
+                          border: "1px solid var(--border)",
+                          backgroundColor: "var(--background)",
                           boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
                         }}
                         formatter={(v: any, name: any) => [`${v} ${v === 1 ? "person" : "people"}`, name]}
@@ -713,7 +713,7 @@ export function AdminDashboard({
           </CardHeader>
           <CardContent className="pb-4">
             <div className="h-[220px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" debounce={200}>
                 <AreaChart data={attendanceTrend} margin={{ top: 10, right: 8, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="presentGrad" x1="0" y1="0" x2="0" y2="1">
@@ -727,18 +727,18 @@ export function AdminDashboard({
                   </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke="hsl(var(--border))"
+                    stroke="var(--border)"
                     opacity={0.4}
                     vertical={false}
                   />
                   <XAxis
                     dataKey="day"
-                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
                   />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
                     width={32}
@@ -747,11 +747,11 @@ export function AdminDashboard({
                     contentStyle={{
                       fontSize: 11,
                       borderRadius: 8,
-                      border: "1px solid hsl(var(--border))",
-                      backgroundColor: "hsl(var(--background))",
+                      border: "1px solid var(--border)",
+                      backgroundColor: "var(--background)",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
                     }}
-                    cursor={{ stroke: "hsl(var(--muted))", strokeDasharray: "3 3" }}
+                    cursor={{ stroke: "var(--muted)", strokeDasharray: "3 3" }}
                   />
                   <Area
                     type="monotone"
@@ -863,7 +863,7 @@ export function AdminDashboard({
           </CardHeader>
           <CardContent className="pb-4">
             <div className="h-[200px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" debounce={200}>
                 <BarChart data={finesTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="finesBarGrad" x1="0" y1="0" x2="0" y2="1">
@@ -871,15 +871,15 @@ export function AdminDashboard({
                       <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.5} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} vertical={false} />
                   <XAxis
                     dataKey="day"
-                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
                   />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
                     width={32}
@@ -888,12 +888,12 @@ export function AdminDashboard({
                     contentStyle={{
                       fontSize: 11,
                       borderRadius: 8,
-                      border: "1px solid hsl(var(--border))",
-                      backgroundColor: "hsl(var(--background))",
+                      border: "1px solid var(--border)",
+                      backgroundColor: "var(--background)",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
                     }}
                     formatter={(value: any) => [`PKR ${value}`, "Fines"]}
-                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
+                    cursor={{ fill: "var(--muted)", opacity: 0.3 }}
                   />
                   <Bar dataKey="fines" fill="url(#finesBarGrad)" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -1033,7 +1033,7 @@ function KpiTile({
   accent?: "success";
 }) {
   const tones = {
-    slate: { iconBg: "bg-slate-100 dark:bg-slate-800/60", iconText: "text-slate-700 dark:text-slate-300", spark: "#64748b", bar: "bg-slate-500" },
+    slate: { iconBg: "bg-muted", iconText: "text-foreground", spark: "#64748b", bar: "bg-slate-500" },
     emerald: { iconBg: "bg-emerald-50 dark:bg-emerald-950/40", iconText: "text-emerald-600 dark:text-emerald-400", spark: "#10b981", bar: "bg-emerald-500" },
     amber: { iconBg: "bg-amber-50 dark:bg-amber-950/40", iconText: "text-amber-600 dark:text-amber-400", spark: "#f59e0b", bar: "bg-amber-500" },
     rose: { iconBg: "bg-rose-50 dark:bg-rose-950/40", iconText: "text-rose-600 dark:text-rose-400", spark: "#f43f5e", bar: "bg-rose-500" },
@@ -1093,7 +1093,7 @@ function KpiTile({
       )}
       {sparkData && sparkKey && (
         <div className="mt-3 -mx-1 h-[28px]">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" debounce={200}>
             <AreaChart data={sparkData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id={sparkId} x1="0" y1="0" x2="0" y2="1">
@@ -1713,7 +1713,7 @@ function FinancialTile({
 }) {
   const tones = {
     emerald: { iconBg: "bg-emerald-50 dark:bg-emerald-950/40", iconText: "text-emerald-600 dark:text-emerald-400", primary: "text-emerald-700 dark:text-emerald-400" },
-    slate: { iconBg: "bg-slate-100 dark:bg-slate-800/60", iconText: "text-slate-700 dark:text-slate-300", primary: "" },
+    slate: { iconBg: "bg-muted", iconText: "text-foreground", primary: "" },
     violet: { iconBg: "bg-violet-50 dark:bg-violet-950/40", iconText: "text-violet-600 dark:text-violet-400", primary: "" },
     rose: { iconBg: "bg-rose-50 dark:bg-rose-950/40", iconText: "text-rose-600 dark:text-rose-400", primary: "" },
     amber: { iconBg: "bg-amber-50 dark:bg-amber-950/40", iconText: "text-amber-600 dark:text-amber-400", primary: "" },
@@ -1816,7 +1816,7 @@ function RevenueTrendCard({
       <CardContent className="pb-4">
         <div className="h-[220px] w-full">
           {hasData ? (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" debounce={200}>
               <AreaChart data={data} margin={{ top: 10, right: 8, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="revSaleGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1828,12 +1828,12 @@ function RevenueTrendCard({
                     <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={20} />
-                <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => showMoney ? compactUsd(v) : "•"} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={20} />
+                <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => showMoney ? compactUsd(v) : "•"} />
                 <Tooltip
-                  contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid hsl(var(--border))", backgroundColor: "hsl(var(--background))", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}
-                  cursor={{ stroke: "hsl(var(--muted))", strokeDasharray: "3 3" }}
+                  contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--background)", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}
+                  cursor={{ stroke: "var(--muted)", strokeDasharray: "3 3" }}
                   formatter={(v: any, name: any) => [showMoney ? `$${(v as number).toFixed(2)}` : MONEY_MASK, name]}
                 />
                 <Area type="monotone" dataKey="sale" stroke="#64748b" strokeWidth={1.5} fill="url(#revSaleGrad)" name="Sale" />

@@ -422,7 +422,7 @@ export function EmployeeDashboard({
     emerald: { bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-200 dark:border-emerald-900", text: "text-emerald-700 dark:text-emerald-400", ring: "ring-emerald-500" },
     amber: { bg: "bg-amber-50 dark:bg-amber-950/30", border: "border-amber-200 dark:border-amber-900", text: "text-amber-700 dark:text-amber-400", ring: "ring-amber-500" },
     rose: { bg: "bg-rose-50 dark:bg-rose-950/30", border: "border-rose-200 dark:border-rose-900", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-500" },
-    slate: { bg: "bg-slate-50 dark:bg-slate-800/50", border: "border-slate-200 dark:border-slate-700", text: "text-slate-700 dark:text-slate-400", ring: "ring-slate-500" },
+    slate: { bg: "bg-muted/60", border: "border-border", text: "text-muted-foreground", ring: "ring-slate-500" },
   };
   // Check if employee has an approved half-day leave for today
   const todayStr = `${pktNow.getUTCFullYear()}-${String(pktNow.getUTCMonth() + 1).padStart(2, "0")}-${String(pktNow.getUTCDate()).padStart(2, "0")}`;
@@ -797,11 +797,11 @@ export function EmployeeDashboard({
       <Card className="border-0 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {/* Status Header */}
-          <div className={`px-5 py-4 ${isDayOff ? "bg-slate-50 dark:bg-slate-800/50" : hasCheckedOut ? "bg-gradient-to-r from-emerald-50 to-white dark:from-emerald-950/20 dark:to-slate-800" : hasCheckedIn ? "bg-gradient-to-r from-blue-50 to-white dark:from-blue-950/20 dark:to-slate-800" : "bg-gradient-to-r from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-800"}`}>
+          <div className={`px-5 py-4 ${isDayOff ? "bg-muted/60" : hasCheckedOut ? "bg-gradient-to-r from-emerald-50 to-white dark:from-emerald-950/20 dark:to-slate-800" : hasCheckedIn ? "bg-gradient-to-r from-blue-50 to-white dark:from-blue-950/20 dark:to-slate-800" : "bg-gradient-to-r from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-800"}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`size-11 rounded-xl flex items-center justify-center ${isDayOff ? "bg-slate-200 dark:bg-slate-700" : hasCheckedOut ? "bg-emerald-100 dark:bg-emerald-900/30" : hasCheckedIn ? "bg-blue-100 dark:bg-blue-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
-                  {isDayOff ? <Calendar className="size-5 text-slate-500" /> : hasCheckedOut ? <CheckCircle className="size-5 text-emerald-600" /> : hasCheckedIn ? <Clock className="size-5 text-blue-600" /> : <AlertTriangle className="size-5 text-amber-600" />}
+                <div className={`size-11 rounded-xl flex items-center justify-center ${isDayOff ? "bg-muted" : hasCheckedOut ? "bg-emerald-100 dark:bg-emerald-900/30" : hasCheckedIn ? "bg-blue-100 dark:bg-blue-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
+                  {isDayOff ? <Calendar className="size-5 text-muted-foreground" /> : hasCheckedOut ? <CheckCircle className="size-5 text-emerald-600" /> : hasCheckedIn ? <Clock className="size-5 text-blue-600" /> : <AlertTriangle className="size-5 text-amber-600" />}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -1108,7 +1108,7 @@ export function EmployeeDashboard({
                       <div key={name} className={`flex-1 flex flex-col items-center gap-1 rounded-lg py-2 ${isToday ? "ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-slate-900" : ""}`}>
                         <span className={`text-[10px] font-medium ${isToday ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>{name}</span>
                         {att ? (
-                          <div className={`size-7 rounded-md flex items-center justify-center text-[9px] font-bold ${statusColors[att.status] || "bg-slate-200 text-slate-600"}`}>
+                          <div className={`size-7 rounded-md flex items-center justify-center text-[9px] font-bold ${statusColors[att.status] || "bg-muted text-muted-foreground"}`}>
                             {statusLabels[att.status] || "?"}
                           </div>
                         ) : isFuture ? (

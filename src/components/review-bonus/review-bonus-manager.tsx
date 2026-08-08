@@ -134,13 +134,13 @@ export function ReviewBonusManager({
       PENDING: "bg-amber-50/50 dark:bg-amber-950/15",
       APPROVED: "bg-emerald-50/30 dark:bg-emerald-950/10",
       REJECTED: "bg-rose-50/30 dark:bg-rose-950/10",
-      REMOVED: "bg-slate-50/50 dark:bg-slate-800/50",
+      REMOVED: "bg-muted/40",
     };
     const statusBadgeColors: Record<string, string> = {
       PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
       APPROVED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
       REJECTED: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
-      REMOVED: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+      REMOVED: "bg-muted text-muted-foreground",
     };
 
     return (
@@ -150,7 +150,7 @@ export function ReviewBonusManager({
           <div className={`px-4 py-3 border-b ${statusColors[sub.status] || ""}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="size-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                <div className="size-8 rounded-full bg-gradient-to-br from-muted to-accent flex items-center justify-center text-[10px] font-bold text-foreground">
                   {sub.user.firstName[0]}{sub.user.lastName?.[0] || ""}
                 </div>
                 <div>

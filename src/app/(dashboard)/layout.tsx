@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isDeviceSessionBlocked } from "@/lib/api-helpers";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppShell } from "@/components/layout/shell";
+import { SIDEBAR_COOKIE } from "@/lib/shell-constants";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
 import { SessionProvider } from "@/components/providers/session-provider";
@@ -66,22 +68,21 @@ export default async function DashboardLayout({
       })) || [],
   };
 
+  // Read the sidebar's pinned state on the server so the first paint already
+  // has the right content offset — otherwise a rail user watches the layout
+  // jump from 256px to 56px on every navigation.
+  const cookieStore = await cookies();
+  const defaultPinned = cookieStore.get(SIDEBAR_COOKIE)?.value !== "false";
+
   return (
     <SessionProvider>
-      <SidebarProvider>
-        <AppSidebar user={user} />
-        <SidebarInset>
-          <Header />
-          {/* min-w-0 is critical: <main> sits in a flex row next to the
-              sidebar. Without it, wide content (5-card stat grids, long
-              table rows, etc.) pushes <main> past the viewport's right
-              edge and gets clipped. Daily Activities specifically tripped
-              this. min-w-0 lets the flex item shrink so its children
-              honor their own responsive breakpoints instead of forcing
-              the parent wider. */}
-          <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
-        </SidebarInset>
-      </SidebarProvider>
+      <AppShell
+        defaultPinned={defaultPinned}
+        sidebar={<AppSidebar user={user} />}
+        header={<Header user={user} />}
+      >
+        {children}
+      </AppShell>
     </SessionProvider>
   );
 }

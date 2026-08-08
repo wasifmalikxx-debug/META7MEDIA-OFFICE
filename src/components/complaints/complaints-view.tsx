@@ -203,13 +203,13 @@ const CATEGORIES = [
   { value: "POLICY", label: "Policy", icon: FileText, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-100 dark:bg-amber-900/30" },
   { value: "TECHNICAL", label: "Technical", icon: Wrench, color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-100 dark:bg-cyan-900/30" },
   { value: "HARASSMENT", label: "Harassment", icon: AlertTriangle, color: "text-red-700 dark:text-red-400", bg: "bg-red-100 dark:bg-red-900/30" },
-  { value: "OTHER", label: "Other", icon: HelpCircle, color: "text-slate-600 dark:text-slate-400", bg: "bg-slate-100 dark:bg-slate-800" },
+  { value: "OTHER", label: "Other", icon: HelpCircle, color: "text-muted-foreground", bg: "bg-muted" },
 ];
 
 const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.value, c]));
 
 const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string; ring: string }> = {
-  LOW: { label: "Low", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-600 dark:text-slate-400", ring: "ring-slate-200 dark:ring-slate-700" },
+  LOW: { label: "Low", bg: "bg-muted", text: "text-muted-foreground", ring: "ring-border" },
   MEDIUM: { label: "Medium", bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-700 dark:text-blue-400", ring: "ring-blue-200 dark:ring-blue-800" },
   HIGH: { label: "High", bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", ring: "ring-amber-200 dark:ring-amber-800" },
   URGENT: { label: "Urgent", bg: "bg-rose-100 dark:bg-rose-900/30", text: "text-rose-700 dark:text-rose-400", ring: "ring-rose-200 dark:ring-rose-800" },

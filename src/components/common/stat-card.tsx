@@ -12,11 +12,16 @@ interface StatCardProps {
   variant?: "default" | "success" | "warning" | "danger";
 }
 
-const variantStyles = {
-  default: "border-0 shadow-sm",
-  success: "border-0 shadow-sm bg-emerald-50/50 dark:bg-emerald-950/20",
-  warning: "border-0 shadow-sm bg-amber-50/50 dark:bg-amber-950/20",
-  danger: "border-0 shadow-sm bg-rose-50/50 dark:bg-rose-950/20",
+/**
+ * Variants now carry their colour in the icon well rather than washing the
+ * whole card. A grid of four tinted panels reads as noise; a neutral card
+ * with one coloured accent keeps the number the loudest thing on screen.
+ */
+const iconStyles = {
+  default: "bg-muted text-muted-foreground",
+  success: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",
+  warning: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
+  danger: "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400",
 };
 
 export function StatCard({
@@ -29,21 +34,25 @@ export function StatCard({
   variant = "default",
 }: StatCardProps) {
   return (
-    <Card className={cn(variantStyles[variant])}>
-      <CardContent className="pt-5 pb-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
-            <p className="text-2xl font-bold tracking-tight whitespace-nowrap">{value}</p>
+    <Card className="gap-0 transition-shadow hover:shadow-sm">
+      <CardContent className="pb-1 pt-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <p className="truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              {title}
+            </p>
+            <p className="whitespace-nowrap text-[26px] font-semibold leading-tight tracking-[-0.02em] tabular-nums">
+              {value}
+            </p>
           </div>
           {Icon && (
-            <div className="rounded-xl bg-muted/60 dark:bg-muted/30 p-2.5">
-              <Icon className="size-5 text-muted-foreground" />
+            <div className={cn("shrink-0 rounded-lg p-2", iconStyles[variant])}>
+              <Icon className="size-[18px]" />
             </div>
           )}
         </div>
         {(description || trend) && (
-          <div className="flex items-center gap-1.5 mt-2">
+          <div className="mt-2 flex items-center gap-1.5">
             {trend && trend !== "neutral" && (
               <span
                 className={cn(
@@ -60,7 +69,7 @@ export function StatCard({
               </span>
             )}
             {description && (
-              <p className="text-[11px] text-muted-foreground">{description}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{description}</p>
             )}
           </div>
         )}

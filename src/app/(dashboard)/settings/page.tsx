@@ -209,7 +209,7 @@ export default function SettingsPage() {
         </SectionCard>
 
         {/* IP Restriction */}
-        <SectionCard icon={Shield} title="IP Restriction" color="bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-400">
+        <SectionCard icon={Shield} title="IP Restriction" color="bg-muted text-muted-foreground">
           <div className="flex items-center gap-2">
             <Checkbox id="ipRestriction" checked={settings.ipRestrictionEnabled} onCheckedChange={(v) => update("ipRestrictionEnabled", !!v)} />
             <Label htmlFor="ipRestriction" className="text-xs">Enable IP restriction for check-in</Label>

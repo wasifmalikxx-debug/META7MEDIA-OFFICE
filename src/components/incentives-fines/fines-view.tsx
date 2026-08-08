@@ -116,7 +116,7 @@ export function FinesView({ fines, employees, isAdmin, currentMonth, currentYear
     EARLY_DEPARTURE: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
     ABSENT_WITHOUT_LEAVE: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
     POLICY_VIOLATION: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
-    OTHER: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400",
+    OTHER: "bg-muted text-muted-foreground",
   };
 
   const typeIcons: Record<string, any> = {

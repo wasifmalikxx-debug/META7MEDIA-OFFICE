@@ -469,7 +469,7 @@ function KpiTile({
   accent?: "primary";
 }) {
   const tones = {
-    slate: { iconBg: "bg-slate-100 dark:bg-slate-800/60", iconText: "text-slate-700 dark:text-slate-300" },
+    slate: { iconBg: "bg-muted", iconText: "text-foreground" },
     emerald: { iconBg: "bg-emerald-50 dark:bg-emerald-950/40", iconText: "text-emerald-600 dark:text-emerald-400" },
     rose: { iconBg: "bg-rose-50 dark:bg-rose-950/40", iconText: "text-rose-600 dark:text-rose-400" },
     amber: { iconBg: "bg-amber-50 dark:bg-amber-950/40", iconText: "text-amber-600 dark:text-amber-400" },
@@ -679,7 +679,7 @@ function DailySalesChart({
   return (
     <div className="px-3 py-4">
       <div className="h-[260px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" debounce={200}>
           <AreaChart data={fullDays} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="dailySalesGrad" x1="0" y1="0" x2="0" y2="1">
@@ -689,32 +689,32 @@ function DailySalesChart({
             </defs>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="hsl(var(--border))"
+              stroke="var(--border)"
               opacity={0.4}
               vertical={false}
             />
             <XAxis
               dataKey="day"
-              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
               tickLine={false}
               axisLine={false}
               interval="preserveStartEnd"
               minTickGap={20}
             />
             <YAxis
-              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
               tickLine={false}
               axisLine={false}
               width={50}
               tickFormatter={(v: number) => (show ? compactUsd(v).replace("$", "$") : "•")}
             />
             <Tooltip
-              cursor={{ stroke: "hsl(var(--muted))", strokeDasharray: "3 3" }}
+              cursor={{ stroke: "var(--muted)", strokeDasharray: "3 3" }}
               contentStyle={{
                 fontSize: 11,
                 borderRadius: 8,
-                border: "1px solid hsl(var(--border))",
-                backgroundColor: "hsl(var(--background))",
+                border: "1px solid var(--border)",
+                backgroundColor: "var(--background)",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
               }}
               labelFormatter={(_v: any, payload: any) => payload?.[0]?.payload?.label || ""}
@@ -1169,7 +1169,7 @@ function RankBadge({ rank }: { rank: number }) {
   }
   if (rank === 2) {
     return (
-      <div className="size-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-bold flex items-center justify-center shrink-0 tabular-nums">
+      <div className="size-7 rounded-full bg-muted text-foreground text-[11px] font-bold flex items-center justify-center shrink-0 tabular-nums">
         02
       </div>
     );

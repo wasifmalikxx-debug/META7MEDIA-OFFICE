@@ -27,8 +27,8 @@ const STATUS_CELL: Record<string, { label: string; bg: string }> = {
   HALF_DAY: { label: "H", bg: "bg-blue-500" },
   ABSENT: { label: "A", bg: "bg-rose-500" },
   ON_LEAVE: { label: "LV", bg: "bg-violet-500" },
-  HOLIDAY: { label: "", bg: "bg-slate-300 dark:bg-slate-600" },
-  WEEKEND: { label: "", bg: "bg-slate-200 dark:bg-slate-700" },
+  HOLIDAY: { label: "", bg: "bg-neutral-300 dark:bg-neutral-600" },
+  WEEKEND: { label: "", bg: "bg-neutral-300 dark:bg-neutral-600" },
 };
 
 const DAY_NAMES = ["S", "M", "T", "W", "T", "F", "S"];
@@ -298,7 +298,7 @@ export function MyAttendanceCalendar({
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-rose-500" /><span>Absent</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-blue-500" /><span>Half Day</span></div>
         <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-violet-500" /><span>On Leave</span></div>
-        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-slate-300 dark:bg-slate-600" /><span>Day Off</span></div>
+        <div className="flex items-center gap-1.5"><div className="size-3 rounded-sm bg-neutral-300 dark:bg-neutral-600" /><span>Day Off</span></div>
       </div>
     </div>
   );
