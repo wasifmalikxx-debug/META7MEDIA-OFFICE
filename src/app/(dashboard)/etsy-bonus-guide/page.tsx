@@ -198,6 +198,18 @@ export default async function EtsyBonusGuidePage() {
             </p>
           </div>
 
+          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 p-3">
+            <p className="text-xs font-bold text-rose-700 dark:text-rose-400">Suspended Shops Count as Zero Profit</p>
+            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+              If a shop is suspended, the profit from that shop is <strong>not counted</strong> — it becomes zero
+              for the month. A suspension is a straight loss to the office.
+            </p>
+            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1.5">
+              The orders already placed through that shop still cost us, and <strong>that cost is not zeroed
+              out</strong> — it stays against your total. So a suspension can put your month in minus.
+            </p>
+          </div>
+
           <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3">
             <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Review Bonus is Independent</p>
             <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
