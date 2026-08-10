@@ -100,7 +100,7 @@ export default async function EtsyBonusGuidePage() {
             { num: 2, title: "Orders Processed Same Day", desc: "Every order processed on the day it comes in" },
             { num: 3, title: "Messages Cleared", desc: "Customer messages cleared daily — no backlog" },
             { num: 4, title: "Zero Wrong Orders", desc: "No wrong orders or shipping mistakes for the entire month" },
-            { num: 5, title: "Max 3 Listings Removed", desc: "Maximum 3 listings removed by Etsy — any more = disqualified" },
+            { num: 5, title: "Max 3 Listings Removed", desc: "Maximum 3 listings removed by Etsy — any more = disqualified. See Important Rules for which removals count against you" },
             { num: 6, title: "All Stores Above 4 Stars", desc: "Every store must maintain above 4-star rating" },
             { num: 7, title: "Profit >= $1,000", desc: "Total combined monthly profit across all stores" },
           ].map((item) => (
@@ -198,15 +198,39 @@ export default async function EtsyBonusGuidePage() {
             </p>
           </div>
 
-          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 p-3">
-            <p className="text-xs font-bold text-rose-700 dark:text-rose-400">Suspended Shops Count as Zero Profit</p>
-            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
-              If a shop is suspended, the profit from that shop is <strong>not counted</strong> — it becomes zero
-              for the month. A suspension is a straight loss to the office.
+          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3">
+            <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Removed Listings That Do NOT Count Against You</p>
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+              Listings removed for <strong>IP infringement</strong> or <strong>creativity standards</strong> are
+              not counted towards your 3-listing limit — as long as the listing has a source link from
+              Amazon, eBay, Alibaba or AliExpress.
             </p>
-            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1.5">
-              The orders already placed through that shop still cost us, and <strong>that cost is not zeroed
-              out</strong> — it stays against your total. So a suspension can put your month in minus.
+          </div>
+
+          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 p-3">
+            <p className="text-xs font-bold text-rose-700 dark:text-rose-400">Removed Listings That DO Count Against You</p>
+            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+              Two things are on you: a <strong>prohibited item</strong>, and a listing removed where
+              <strong> no link was given</strong>. You are responsible for those, and only those are counted
+              in the portal against your 3-listing limit.
+            </p>
+          </div>
+
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3">
+            <p className="text-xs font-bold text-blue-700 dark:text-blue-400">Suspended Account — With Reserve</p>
+            <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">
+              If an account is suspended and there is a <strong>reserve</strong> on it, there is no profit from
+              that account and the <strong>cost is zero as well</strong>. The office carries that cost — it does
+              not affect your sheet.
+            </p>
+          </div>
+
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3">
+            <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Suspended Account — No Reserve</p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+              If a suspended account is <strong>not</strong> in reserve, payment is decided by the
+              <strong> date the account was suspended</strong>. For example: suspended on a Sunday — no payment;
+              suspended on a Tuesday — the bonus is paid.
             </p>
           </div>
 
