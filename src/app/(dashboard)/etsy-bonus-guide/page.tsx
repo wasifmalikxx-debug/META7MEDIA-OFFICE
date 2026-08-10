@@ -29,6 +29,91 @@ function Section({ icon: Icon, title, color, children }: { icon: any; title: str
   );
 }
 
+/** Key phrase inside a rule. Contrast rather than colour does the lifting, so
+ *  the list keeps one accent. */
+function Em({ children }: { children: React.ReactNode }) {
+  return <strong className="font-semibold text-foreground">{children}</strong>;
+}
+
+const RULES: { title: string; body: React.ReactNode }[] = [
+  {
+    title: "All-or-Nothing Rule (Profit Bonus Only)",
+    body: (
+      <>
+        If ANY of the 7 criteria fails, the <Em>profit bonus</Em> becomes zero — no partial credit.
+        Review fix bonuses are NOT affected by this rule and remain in your payroll independently.
+      </>
+    ),
+  },
+  {
+    title: "Removed Listings That Do NOT Count Against You",
+    body: (
+      <>
+        Listings removed for <Em>IP infringement</Em> or <Em>creativity standards</Em> are not counted
+        towards your 3-listing limit — as long as the listing has a source link from Amazon, eBay,
+        Alibaba or AliExpress.
+      </>
+    ),
+  },
+  {
+    title: "Removed Listings That DO Count Against You",
+    body: (
+      <>
+        Two things are on you: a <Em>prohibited item</Em>, and a listing removed where{" "}
+        <Em>no link was given</Em>. You are responsible for those, and only those are counted in the
+        portal against your 3-listing limit.
+      </>
+    ),
+  },
+  {
+    title: "Suspended Account — With Reserve",
+    body: (
+      <>
+        If an account is suspended and there is a <Em>reserve</Em> on it, there is no profit from that
+        account and the <Em>cost is zero as well</Em>. The office carries that cost — it does not
+        affect your sheet.
+      </>
+    ),
+  },
+  {
+    title: "Suspended Account — No Reserve",
+    body: (
+      <>
+        If a suspended account is <Em>not</Em> in reserve, payment is decided by the{" "}
+        <Em>date the account was suspended</Em>. For example: suspended on a Sunday — no payment;
+        suspended on a Tuesday — the bonus is paid.
+      </>
+    ),
+  },
+  {
+    title: "Review Bonus is Independent",
+    body: (
+      <>
+        Every approved review fix earns <Em>PKR 500</Em>, regardless of whether you met the 7-criteria
+        monthly target. As long as you are HIRED (not on PROBATION), your review bonuses are paid out.
+      </>
+    ),
+  },
+  {
+    title: "Probation Employees",
+    body: (
+      <>
+        Employees on <Em>PROBATION</Em> status are not eligible for any bonuses — profit or review.
+        Incentives begin once status changes to HIRED.
+      </>
+    ),
+  },
+  {
+    title: "Profit Source",
+    body: (
+      <>
+        Profit data is auto-fetched from your individual Google Sheet. Make sure your{" "}
+        <Em>&quot;AFTER TAX&quot;</Em> values are accurate and up to date.
+      </>
+    ),
+  },
+];
+
 export default async function EtsyBonusGuidePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -187,75 +272,24 @@ export default async function EtsyBonusGuidePage() {
         </div>
       </Section>
 
-      {/* Important Rules */}
-      <Section icon={ShieldAlert} title="Important Rules" color="bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400">
-        <div className="space-y-3">
-          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 p-3">
-            <p className="text-xs font-bold text-rose-700 dark:text-rose-400">All-or-Nothing Rule (Profit Bonus Only)</p>
-            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
-              If ANY of the 7 criteria fails, the <strong>profit bonus</strong> becomes zero — no partial credit.
-              Review fix bonuses are NOT affected by this rule and remain in your payroll independently.
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3">
-            <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Removed Listings That Do NOT Count Against You</p>
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-              Listings removed for <strong>IP infringement</strong> or <strong>creativity standards</strong> are
-              not counted towards your 3-listing limit — as long as the listing has a source link from
-              Amazon, eBay, Alibaba or AliExpress.
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 p-3">
-            <p className="text-xs font-bold text-rose-700 dark:text-rose-400">Removed Listings That DO Count Against You</p>
-            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
-              Two things are on you: a <strong>prohibited item</strong>, and a listing removed where
-              <strong> no link was given</strong>. You are responsible for those, and only those are counted
-              in the portal against your 3-listing limit.
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3">
-            <p className="text-xs font-bold text-blue-700 dark:text-blue-400">Suspended Account — With Reserve</p>
-            <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">
-              If an account is suspended and there is a <strong>reserve</strong> on it, there is no profit from
-              that account and the <strong>cost is zero as well</strong>. The office carries that cost — it does
-              not affect your sheet.
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3">
-            <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Suspended Account — No Reserve</p>
-            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-              If a suspended account is <strong>not</strong> in reserve, payment is decided by the
-              <strong> date the account was suspended</strong>. For example: suspended on a Sunday — no payment;
-              suspended on a Tuesday — the bonus is paid.
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3">
-            <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Review Bonus is Independent</p>
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-              Every approved review fix earns PKR 500, regardless of whether you met the 7-criteria monthly target.
-              As long as you are HIRED (not on PROBATION), your review bonuses are paid out.
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3">
-            <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Probation Employees</p>
-            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-              Employees on PROBATION status are not eligible for any bonuses — profit or review. Incentives begin once status changes to HIRED.
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3">
-            <p className="text-xs font-bold text-blue-700 dark:text-blue-400">Profit Source</p>
-            <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">
-              Profit data is auto-fetched from your individual Google Sheet. Make sure your &quot;AFTER TAX&quot; values are accurate and up to date.
-            </p>
-          </div>
-        </div>
+      {/* Important Rules
+          One accent colour and a bulleted list, not eight tinted boxes. The
+          old version used rose / emerald / amber / blue inside a single
+          section, which read as decoration rather than meaning — the CEO
+          called it funky. Emphasis now comes from the wording and from
+          <Em> lifting key phrases to full contrast. */}
+      <Section icon={ShieldAlert} title="Important Rules" color="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400">
+        <ul className="divide-y divide-border">
+          {RULES.map((rule) => (
+            <li key={rule.title} className="flex gap-3 py-3 first:pt-0 last:pb-0">
+              <span className="mt-[6px] size-1.5 shrink-0 rounded-full bg-blue-600 dark:bg-blue-400" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground">{rule.title}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{rule.body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
       </Section>
 
       <p className="text-[10px] text-center text-muted-foreground/40 pb-4 pt-2">
