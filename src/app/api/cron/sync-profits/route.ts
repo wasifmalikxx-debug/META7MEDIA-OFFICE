@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, serverError, requireCronSecret } from "@/lib/api-helpers";
+import { json, error, serverError, requireCronSecret, isMaintenanceMode } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 import { fetchAllProfits } from "@/lib/services/google-sheets.service";
@@ -16,6 +16,16 @@ import { calculateEligibility } from "@/lib/services/bonus.service";
 export async function GET(request: NextRequest) {
   const gate = requireCronSecret(request);
   if (gate) return gate;
+
+  // Stand down while the portal is locked.
+  // Reads every employee's Google Sheet and rewrites bonus eligibility rows.
+  // Held during maintenance so nobody's bonus data moves under them while
+  // the portal they'd check it on is locked.
+  if (isMaintenanceMode()) {
+    return json(
+    { skipped: "maintenance_mode", synced: 0 },
+    );
+  }
 
   try {
     const now = nowPKT();

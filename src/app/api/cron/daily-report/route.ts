@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, serverError, requireCronSecret } from "@/lib/api-helpers";
+import { json, error, serverError, requireCronSecret, isMaintenanceMode } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { claimCronSend, releaseCronSend } from "@/lib/services/cron-send-log.service";
 import { nowPKT } from "@/lib/pkt";
@@ -270,6 +270,15 @@ async function readEmployeeSheetReport(
 export async function GET(request: NextRequest) {
   const gate = requireCronSecret(request);
   if (gate) return gate;
+
+  // Stand down while the portal is locked.
+  // Sends the CEO's 4-message WhatsApp sequence. Held so the office is not
+  // reporting on a day the portal was shut and the numbers are incomplete.
+  if (isMaintenanceMode()) {
+    return json(
+    { skipped: "maintenance_mode", sent: 0 },
+    );
+  }
 
   // Check if today is Sunday in PKT — skip
   const pktNow = new Date(Date.now() + 5 * 60 * 60_000);

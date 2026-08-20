@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, serverError, requireCronSecret } from "@/lib/api-helpers";
+import { json, error, serverError, requireCronSecret, isMaintenanceMode } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { nowPKT } from "@/lib/pkt";
 
@@ -25,6 +25,15 @@ import { nowPKT } from "@/lib/pkt";
 export async function GET(request: NextRequest) {
   const gate = requireCronSecret(request);
   if (gate) return gate;
+
+  // Stand down while the portal is locked.
+  // Monthly data cleanup — deletes old rows. Held because a destructive job
+  // should never run unattended while the portal is closed.
+  if (isMaintenanceMode()) {
+    return json(
+    { skipped: "maintenance_mode", deleted: 0 },
+    );
+  }
 
   try {
     const now = nowPKT();
