@@ -2,6 +2,7 @@
 
 import { signOut } from "next-auth/react";
 import { Lock, LogOut } from "lucide-react";
+import { MaintenanceWatcher } from "@/components/layout/maintenance-watcher";
 
 /**
  * Maintenance notice — what every non-CEO account sees while
@@ -25,6 +26,9 @@ import { Lock, LogOut } from "lucide-react";
 export function MaintenanceScreen({ name, employeeId }: { name: string; employeeId: string }) {
   return (
     <div className="flex min-h-svh items-center justify-center bg-background p-4">
+      {/* Reloads back into the portal the moment the lock is lifted, so
+          nobody sits on a stale notice after it reopens. */}
+      <MaintenanceWatcher expect="on" />
       <div className="w-full max-w-[440px] rounded-2xl border border-border bg-card p-7 text-center shadow-2xl shadow-foreground/10">
         <span className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:ring-rose-900">
           <Lock className="size-6" />

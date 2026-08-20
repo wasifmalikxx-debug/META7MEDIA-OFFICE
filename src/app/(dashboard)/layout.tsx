@@ -9,6 +9,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { MaintenanceScreen } from "@/components/layout/maintenance-screen";
+import { MaintenanceWatcher } from "@/components/layout/maintenance-watcher";
 
 export default async function DashboardLayout({
   children,
@@ -95,6 +96,10 @@ export default async function DashboardLayout({
         sidebar={<AppSidebar user={user} />}
         header={<Header user={user} />}
       >
+        {/* Kicks an already-open tab into the notice when the portal is
+            locked. Never rendered for the CEO: he is exempt from the gate,
+            so reloading him would just return the portal and loop. */}
+        {user.role !== "SUPER_ADMIN" && <MaintenanceWatcher expect="off" />}
         {children}
       </AppShell>
     </SessionProvider>
