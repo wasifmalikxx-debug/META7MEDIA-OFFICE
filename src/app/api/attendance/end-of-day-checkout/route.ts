@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, requireAuth } from "@/lib/api-helpers";
+import { json, error, requireAuth, isMaintenanceMode } from "@/lib/api-helpers";
 import { prisma, getCachedSettings } from "@/lib/prisma";
 import { todayPKT, nowPKT, pktMonth, pktYear, pktMinutesSinceMidnight } from "@/lib/pkt";
 import { createNotification } from "@/lib/services/notification.service";
@@ -48,6 +48,15 @@ export async function GET(request: NextRequest) {
       return error("Unauthorized", 401);
     }
   }
+  // Stand down while the portal is locked. If maintenance is switched on
+  // mid-shift, staff can no longer reach the daily-report form or the break
+  // buttons, so this run would fine them for a missing report and a skipped
+  // break — for work the lockout stopped them doing. Shifts left open are
+  // recoverable; wrong fines in payroll are not.
+  if (isMaintenanceMode()) {
+    return json({ skipped: "maintenance_mode", route: ROUTE_VERSION });
+  }
+
   const guardError = await timeWindowGuard();
   if (guardError) return guardError;
   return runCheckout("cron");

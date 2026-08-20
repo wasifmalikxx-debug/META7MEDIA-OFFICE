@@ -2,12 +2,13 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isDeviceSessionBlocked } from "@/lib/api-helpers";
+import { isDeviceSessionBlocked, isLockedByMaintenance } from "@/lib/api-helpers";
 import { AppShell } from "@/components/layout/shell";
 import { SIDEBAR_COOKIE } from "@/lib/shell-constants";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
 import { SessionProvider } from "@/components/providers/session-provider";
+import { MaintenanceScreen } from "@/components/layout/maintenance-screen";
 
 export default async function DashboardLayout({
   children,
@@ -67,6 +68,19 @@ export default async function DashboardLayout({
         departmentName: t.department.name,
       })) || [],
   };
+
+  // MAINTENANCE_MODE=true locks the portal for everyone except the CEO.
+  //
+  // Placed here on purpose: after the auth, device and employment gates (so a
+  // terminated account is still bounced to /login rather than shown a notice),
+  // and before the shell is built — returning early means a locked-out user's
+  // browser is never sent the sidebar, the header or any page data.
+  //
+  // SUPER_ADMIN is exempt inside isLockedByMaintenance, so this cannot lock
+  // the CEO out of his own portal.
+  if (isLockedByMaintenance(user.role)) {
+    return <MaintenanceScreen name={user.name} employeeId={user.employeeId} />;
+  }
 
   // Read the sidebar's pinned state on the server so the first paint already
   // has the right content offset — otherwise a rail user watches the layout

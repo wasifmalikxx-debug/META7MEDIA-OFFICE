@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json, error, serverError, requireCronSecret } from "@/lib/api-helpers";
+import { json, error, serverError, requireCronSecret, isMaintenanceMode } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import { createFineDedup } from "@/lib/services/fine.service";
 import { todayPKT, pktMonth, pktYear, nowPKT } from "@/lib/pkt";
@@ -21,6 +21,17 @@ import { todayPKT, pktMonth, pktYear, nowPKT } from "@/lib/pkt";
 export async function GET(request: NextRequest) {
   const gate = requireCronSecret(request);
   if (gate) return gate;
+
+  // Stand down while the portal is locked.
+  //
+  // Maintenance mode removes the only way to check in — the attendance UI —
+  // so without this guard this cron would mark every single employee ABSENT,
+  // fine each one a day's salary (salary/30), push it into payroll and
+  // WhatsApp them about it. Punishing 35 people for a lockout the office
+  // imposed is the opposite of what the flag is for.
+  if (isMaintenanceMode()) {
+    return json({ skipped: "maintenance_mode", marked: 0, fined: 0 });
+  }
 
   try {
     const today = todayPKT();

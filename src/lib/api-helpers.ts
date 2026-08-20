@@ -168,6 +168,13 @@ export async function requireAuth(opts?: { deviceCheck?: boolean }) {
   // Routes that a pending-device user legitimately needs (e.g. registering the
   // device for approval) pass { deviceCheck: false }.
   if (opts?.deviceCheck !== false && isDeviceSessionBlocked(session)) return null;
+  // Maintenance mode: a locked-out session keeps a valid 7-day JWT, so without
+  // this the lock would be cosmetic — the notice hides the UI while the same
+  // account could still POST a check-in or GET its payroll straight from the
+  // browser console. One gate here covers all 54 route files. SUPER_ADMIN is
+  // exempt (inside isLockedByMaintenance) and crons are unaffected: they
+  // authorise with requireCronSecret, never requireAuth.
+  if (isLockedByMaintenance((session.user as { role?: string }).role)) return null;
   return session;
 }
 
@@ -420,4 +427,29 @@ export function auditLog(
     .catch((err) => {
       console.warn(`[audit] log failed for action=${action}:`, err.message);
     });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MAINTENANCE MODE — MAINTENANCE_MODE=true
+// (referenced by requireAuth above; function declarations hoist)
+//
+// Locks the portal for everyone except the CEO. Staff can still sign in
+// normally; the dashboard layout swaps the whole app for a notice, so no page
+// data is fetched or sent to the browser for a locked-out user.
+//
+// SUPER_ADMIN is bypassed, so turning this on cannot lock the CEO out of his
+// own portal. Turning it off is removing the env var — no code change.
+//
+// Scope, deliberately: this gates the UI, not the API. Cron jobs authenticate
+// with CRON_SECRET rather than a user session, so daily reports, auto-absent
+// and payroll sync keep running while the portal is locked.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export function isMaintenanceMode(): boolean {
+  return process.env.MAINTENANCE_MODE === "true";
+}
+
+/** True when this user must see the maintenance notice instead of the portal. */
+export function isLockedByMaintenance(role: string | undefined): boolean {
+  return isMaintenanceMode() && role !== "SUPER_ADMIN";
 }
