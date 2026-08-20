@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { PayrollView } from "@/components/payroll/payroll-view";
 import { generatePayrollForEmployee, generatePayrollForAll } from "@/lib/services/payroll.service";
 import { autoHealBogusCheckouts } from "@/lib/services/auto-heal-bogus-checkouts";
+import { isMaintenanceMode } from "@/lib/api-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,13 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   const monthLocked = !!monthSnapshot;
 
   const isCurrentMonth = month === currentMonth && year === currentYear;
-  if (isCurrentMonth && !monthLocked) {
+  // `&& !isMaintenanceMode()` — merely OPENING this page regenerates payroll
+  // for the whole roster (upserts records, creates and re-prices absent
+  // fines). That must not happen silently while the portal is locked and the
+  // data behind it is mid-upgrade. The CEO can still regenerate deliberately
+  // from the Generate button; this only stops the write that fires just
+  // because a page was viewed.
+  if (isCurrentMonth && !monthLocked && !isMaintenanceMode()) {
     try {
       if (isAdmin) {
         await generatePayrollForAll(month, year, session.user.id);

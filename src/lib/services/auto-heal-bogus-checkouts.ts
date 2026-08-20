@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { todayPKT, nowPKT } from "@/lib/pkt";
+import { isMaintenanceMode } from "@/lib/api-helpers";
 
 /**
  * Self-healing scan that detects and reverts the legacy bogus auto-checkout
@@ -23,6 +24,17 @@ import { todayPKT, nowPKT } from "@/lib/pkt";
  * Returns the count of records that were healed (0 if nothing was bogus).
  */
 export async function autoHealBogusCheckouts(): Promise<{ healed: number; fines: number }> {
+  // Held during maintenance mode.
+  //
+  // This is a render-time writer, not a cron: three server pages await it
+  // (dashboard, attendance-calendar, payroll) and the CEO — exempt from the
+  // maintenance gate — has clients that router.refresh() every 30s, so one
+  // tab left open re-runs attendance and fine writes twice a minute right
+  // through the upgrade window. Nothing can need healing while the portal is
+  // shut: nobody can check in, and the auto-checkout cron whose rows this
+  // repairs is itself held.
+  if (isMaintenanceMode()) return { healed: 0, fines: 0 };
+
   const today = todayPKT();
   const now = nowPKT();
 
